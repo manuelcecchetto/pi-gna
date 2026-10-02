@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { type AnsiStyle, parseAnsi } from "../lib/ansi";
-import { formatDuration } from "../lib/format";
+import { formatClock, formatDuration } from "../lib/format";
 
 export function Ansi({ text }: { text: string }) {
   const spans = useMemo(() => parseAnsi(text), [text]);
@@ -51,10 +51,12 @@ export function useNow(intervalMs: number, enabled = true): number {
   return now;
 }
 
-export function Elapsed({ since }: { since: number }) {
-  const now = useNow(100);
-  return <span className="font-mono text-[11.5px] text-faint tabular-nums">{formatDuration(now - since)}</span>;
+export function Elapsed({ since, plain = false }: { since: number; plain?: boolean }) {
+  const now = useNow(plain ? 1000 : 100);
+  const text = plain ? formatClock(now - since) : formatDuration(now - since);
+  return <span className={plain ? "tabular-nums" : "font-mono text-[11.5px] text-faint tabular-nums"}>{text}</span>;
 }
+
 
 /** Click-outside popover anchored to its parent (which must be `relative`). */
 export function Popover({

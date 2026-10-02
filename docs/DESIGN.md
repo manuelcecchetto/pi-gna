@@ -92,12 +92,18 @@ Verified live (pi 1.0.0, Oct 2026):
 ## UI model
 
 - Sidebar: projects (cwd) -> sessions; dots for open and running sessions.
-- Transcript: a **run** is everything between two user messages. Text blocks render inline as markdown;
-  consecutive thinking blocks and tool calls merge into an **activity group** with a one-line summary
-  ("Read 3 files · ran 2 commands · edited 1 file"). The live group is expanded and collapses when the run moves on.
-  Each tool row expands to its details (bash output, edit diff, written file, read file, generic JSON).
-  Ctrl+O toggles expand-all (same key as the pi TUI).
-- Loader: pixel-grid loader with a contextual label (Thinking, Running bash, Compacting, Retrying) and elapsed time.
+- Transcript: a **run** is everything between two user messages. Your messages are plain text with a `›` marker
+  (no bubbles); runs are separated by dashed dividers. Each run splits (`layoutRun`) into a **work accordion**
+  and the **final answer**: everything up to the last thinking/tool step (commentary, steps, notices) goes in the
+  accordion, the text after it is the answer. Header: "Working for 13m 16s" (live) / "Worked for 22s", plus a
+  tool summary ("Read 3 files · ran 2 commands"). It is open while working and closes itself once the answer is
+  clearly streaming (message stopped, or over 300 characters, so short "Let me check…" commentary before the
+  next tool does not collapse it) or the run ends. Your toggle is keyed per phase (working/done), so the answer
+  still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
+  (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
+  visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI).
+- Live state: pixel-grid loader and shimmer on the "Working for" header, with "waiting for you", "compacting
+  context" or "retrying" called out next to it.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
   `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
 - Extension UI: `select`/`confirm`/`input`/`editor` become approval cards above the composer; `notify` -> toast;

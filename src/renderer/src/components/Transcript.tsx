@@ -3,12 +3,11 @@ import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { formatTokens } from "../lib/format";
 import type { SessionState } from "../lib/session";
-import { presentTool } from "../lib/tools";
-import { type Block, createRunDeriver, type Run } from "../lib/view";
+import { type Block, createRunDeriver, layoutRun, type Run } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
-import { ActivityGroup } from "./Activity";
+import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
-import { Ansi, Elapsed, PixelLoader } from "./primitives";
+import { Ansi } from "./primitives";
 
 const PAGE = 30;
 
@@ -50,9 +49,8 @@ export function Transcript({ session }: { session: SessionState }) {
           </button>
         )}
         {visible.map((run) => (
-          <RunView key={run.key} run={run} cwd={session.cwd} home={home} />
+          <RunView key={run.key} run={run} cwd={session.cwd} home={home} status={run.live ? liveStatus(session) : undefined} />
         ))}
-        {session.running && <LiveIndicator session={session} runs={runs} />}
         {!runs.length && !session.running && <EmptyTranscript session={session} />}
       </div>
     </div>
@@ -69,39 +67,24 @@ function EmptyTranscript({ session }: { session: SessionState }) {
   );
 }
 
-function liveLabel(session: SessionState, runs: Run[]): string {
-  if (session.dialogs.length) return "Waiting for you";
-  if (session.compacting) return "Compacting context";
-  if (session.retry) return `Retrying (${session.retry.attempt}/${session.retry.maxAttempts})`;
-  const last = runs.at(-1)?.blocks.at(-1);
-  if (last?.kind === "activity") {
-    const step = last.steps.at(-1);
-    if (step?.kind === "thinking") return step.streaming ? "Thinking" : "Working";
-    if (step?.kind === "tool") {
-      const presentation = presentTool(step.call.name, step.call.arguments, session.cwd);
-      if (step.argsStreaming) return `Preparing ${step.call.name}`;
-      if (!step.run || step.run.status === "running") return presentation.activeVerb;
-    }
-  }
-  if (last?.kind === "text" && last.streaming) return "Writing";
-  return "Working";
+/** Live states worth calling out next to "Working for…". */
+function liveStatus(session: SessionState): string | undefined {
+  if (session.dialogs.length) return "waiting for you";
+  if (session.compacting) return "compacting context";
+  if (session.retry) return `retrying (${session.retry.attempt}/${session.retry.maxAttempts})`;
+  return undefined;
 }
 
-function LiveIndicator({ session, runs }: { session: SessionState; runs: Run[] }) {
-  return (
-    <div className="-mt-3 flex items-center gap-2.5 text-[13px]">
-      <PixelLoader />
-      <span className="shimmer">{liveLabel(session, runs)}</span>
-      {session.runStartedAt && <Elapsed since={session.runStartedAt} />}
-    </div>
-  );
-}
-
-const RunView = memo(function RunView({ run, cwd, home }: { run: Run; cwd: string; home: string }) {
+const RunView = memo(function RunView({ run, cwd, home, status }: { run: Run; cwd: string; home: string; status?: string }) {
+  const layout = useMemo(() => layoutRun(run), [run]);
+  const renderBlock = (block: Block) => <BlockView block={block} cwd={cwd} home={home} />;
   return (
     <section className="flex flex-col gap-3.5 border-t border-dashed border-line-strong pt-6 first-of-type:border-t-0 first-of-type:pt-0">
       {run.user && <UserMessageView message={run.user.message} />}
-      {run.blocks.map((block) => (
+      {(layout.work.length > 0 || run.live) && (
+        <WorkAccordion run={run} layout={layout} cwd={cwd} home={home} status={status} renderBlock={renderBlock} />
+      )}
+      {layout.final.map((block) => (
         <BlockView key={block.key} block={block} cwd={cwd} home={home} />
       ))}
     </section>
@@ -173,7 +156,7 @@ function BlockView({ block, cwd, home }: { block: Block; cwd: string; home: stri
     case "text":
       return <Markdown text={block.text} streaming={block.streaming} />;
     case "activity":
-      return <ActivityGroup block={block} cwd={cwd} home={home} />;
+      return null; // rendered inside the work accordion
     case "error":
       return (
         <div className="flex gap-2.5 rounded-xl border border-bad/30 bg-bad/5 px-3.5 py-2.5 text-[13px] text-fg">

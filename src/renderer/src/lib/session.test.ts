@@ -3,7 +3,7 @@ import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
 import { createSession, hydrate, reduceHostEvent, type SessionState } from "./session";
 import { presentTool, summarizeTools } from "./tools";
-import { createRunDeriver, deriveRuns } from "./view";
+import { createRunDeriver, deriveRuns, layoutRun } from "./view";
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop"): AssistantMessage => ({
@@ -181,5 +181,65 @@ describe("hydrate + view", () => {
     expect(presentTool("read", { path: "/repo/a.ts", offset: 10, limit: 5 }, "/repo")).toMatchObject({ target: "a.ts", meta: "L10–14" });
     expect(presentTool("edit", { path: "/repo/b.ts" }, "/repo", { diff: "+1 a\n-1 b\n+2 c" }).meta).toBe("+2 −1");
     expect(presentTool("apply_patch", { input: "*** Begin Patch\n*** Update File: x.ts\n*** Add File: y.ts\n" }, "/repo").target).toBe("x.ts +1 more");
+  });
+});
+
+describe("layoutRun (Working/Worked accordion)", () => {
+  const run = (events: SessionEvent[]) => deriveRuns(play(events)).at(-1)!;
+  const toolTurn: SessionEvent[] = [
+    { type: "agent_start" },
+    { type: "message_end", message: { role: "user", content: "go", timestamp: 1000 } },
+    { type: "message_start", message: assistant([], "pending") },
+    { type: "message_end", message: { ...assistant([{ type: "text", text: "Let me look." }, readCall], "toolUse"), timestamp: 1500 } },
+    { type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: {} },
+    { type: "tool_execution_end", toolCallId: "c1", toolName: "read", result: { content: [] }, isError: false },
+  ];
+  const streamAnswer = (text: string): SessionEvent[] => [
+    { type: "message_start", message: { ...assistant([], "pending"), timestamp: 9000 } },
+    { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } },
+    { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text } },
+  ];
+
+  it("keeps the accordion open while tools run, with commentary inside the work", () => {
+    const layout = layoutRun(run(toolTurn));
+    expect(layout.settled).toBe(false);
+    expect(layout.work.map((b) => b.kind)).toEqual(["text", "activity"]);
+    expect(layout.final).toEqual([]);
+    expect(layout.startedAt).toBe(1000);
+  });
+
+  it("stays open for short trailing commentary that may precede another tool call", () => {
+    const layout = layoutRun(run([...toolTurn, ...streamAnswer("Now I'll check the tests.")]));
+    expect(layout.final.map((b) => b.kind)).toEqual(["text"]);
+    expect(layout.settled).toBe(false);
+  });
+
+  it("closes once the final answer is clearly streaming or its message stopped", () => {
+    expect(layoutRun(run([...toolTurn, ...streamAnswer("x".repeat(400))])).settled).toBe(true);
+    const done = layoutRun(run([...toolTurn, { type: "message_end", message: { ...assistant([{ type: "text", text: "Done." }]), timestamp: 9000 } }]));
+    expect(done.settled).toBe(true);
+    expect(done.endedAt).toBe(9000); // "Worked for" stops when the answer starts
+    // Thinking at the start of the answer's message still counts as work: the clock stops when the
+    // answer text starts, not when its message started.
+    const thoughtFirst = layoutRun(
+      run([
+        ...toolTurn,
+        { type: "message_start", message: { ...assistant([], "pending"), timestamp: 9000 } },
+        { type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
+        { type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: "hm" } },
+        { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 1 } },
+        { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 1, delta: "y".repeat(400) } },
+      ]),
+    );
+    const answer = thoughtFirst.final[0];
+    expect(answer?.kind === "text" && answer.at).toBeGreaterThan(0);
+    expect(thoughtFirst.endedAt).toBe(answer?.kind === "text" ? answer.at : -1);
+    expect(answer?.kind === "text" && answer.at).not.toBe(9000);
+  });
+
+  it("is settled for finished runs and has no work when no tools or thinking ran", () => {
+    const plain = layoutRun(run([...userTurn("hi"), { type: "message_end", message: assistant([{ type: "text", text: "Hello" }]) }]));
+    expect(plain.work).toEqual([]);
+    expect(plain.settled).toBe(true);
   });
 });

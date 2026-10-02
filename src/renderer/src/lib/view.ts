@@ -1,6 +1,6 @@
 // Transcript view model: items -> runs (one per user message) -> blocks. Consecutive thinking
 // and tool calls merge into one activity group so a long agent loop reads as a single line.
-import type { BashExecutionMessage, CustomMessage, ToolCall, UserMessage } from "../../../shared/protocol";
+import type { BashExecutionMessage, CustomMessage, StopReason, ToolCall, UserMessage } from "../../../shared/protocol";
 import type { Item, SessionState, ToolRun } from "./session";
 
 export type Step =
@@ -8,8 +8,8 @@ export type Step =
   | { kind: "tool"; key: string; call: ToolCall; run?: ToolRun; argsStreaming: boolean };
 
 export type Block =
-  | { kind: "text"; key: string; text: string; streaming: boolean }
-  | { kind: "activity"; key: string; steps: Step[]; live: boolean }
+  | { kind: "text"; key: string; text: string; streaming: boolean; at: number; stopReason: StopReason }
+  | { kind: "activity"; key: string; steps: Step[]; live: boolean; at: number }
   | { kind: "error"; key: string; text: string }
   | { kind: "aborted"; key: string }
   | { kind: "bash"; key: string; message: BashExecutionMessage }
@@ -91,13 +91,15 @@ function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, li
   const close = () => {
     group = undefined;
   };
-  const addStep = (step: Step) => {
+  const addStep = (step: Step, at: number) => {
     if (!group) {
       // Prefixed: the group and its first step have separate expanded state.
-      group = { kind: "activity", key: `group:${step.key}`, steps: [], live: false };
+      group = { kind: "activity", key: `group:${step.key}`, steps: [], live: false, at };
       blocks.push(group);
     }
     group.steps.push(step);
+    const ended = step.kind === "tool" ? step.run?.endedAt : undefined;
+    group.at = Math.max(group.at, at, ended ?? 0);
   };
 
   for (const item of items) {
@@ -113,20 +115,33 @@ function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, li
           if (block.type === "text") {
             if (!block.text.trim()) return;
             close();
-            blocks.push({ kind: "text", key: blockKey, text: block.text, streaming: streaming && time?.end === undefined });
+            blocks.push({
+              kind: "text",
+              key: blockKey,
+              text: block.text,
+              streaming: streaming && time?.end === undefined,
+              at: time?.start ?? message.timestamp,
+              stopReason: message.stopReason,
+            });
           } else if (block.type === "thinking") {
             const blockStreaming = streaming && time !== undefined && time.end === undefined;
             if (!block.thinking.trim() && !block.redacted && !blockStreaming) return;
-            addStep({
-              kind: "thinking",
-              key: blockKey,
-              text: block.thinking,
-              redacted: Boolean(block.redacted),
-              streaming: blockStreaming,
-              durationMs: time?.end !== undefined ? time.end - time.start : undefined,
-            });
+            addStep(
+              {
+                kind: "thinking",
+                key: blockKey,
+                text: block.thinking,
+                redacted: Boolean(block.redacted),
+                streaming: blockStreaming,
+                durationMs: time?.end !== undefined ? time.end - time.start : undefined,
+              },
+              time?.end ?? message.timestamp,
+            );
           } else if (block.type === "toolCall") {
-            addStep({ kind: "tool", key: blockKey, call: block, run: tools[block.id], argsStreaming: Boolean(item.partialArgs && index in item.partialArgs) });
+            addStep(
+              { kind: "tool", key: blockKey, call: block, run: tools[block.id], argsStreaming: Boolean(item.partialArgs && index in item.partialArgs) },
+              message.timestamp,
+            );
           }
         });
         if (message.stopReason === "error") {
@@ -160,4 +175,45 @@ function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, li
   const last = blocks.at(-1);
   if (live && last?.kind === "activity") last.live = true;
   return { key, user, blocks, live };
+}
+
+/** Trailing text this long while streaming is treated as the final answer even before the turn ends. */
+const FINAL_TEXT_CHARS = 300;
+
+export interface RunLayout {
+  /** Everything up to the last thinking/tool activity: commentary, steps, notices. */
+  work: Block[];
+  /** The answer after the last activity (plus trailing errors or notices). */
+  final: Block[];
+  /** The final answer is streaming or done; the work accordion closes itself from here. */
+  settled: boolean;
+  startedAt?: number;
+  /** When the work ended: the final answer's start, else the last activity. */
+  endedAt?: number;
+}
+
+/**
+ * Split a run into the "Working/Worked for" accordion and the final answer. A trailing text block
+ * only counts as final once its message stopped (not toolUse) or it is clearly an answer by length,
+ * so a short "Let me check…" before the next tool call does not collapse the accordion.
+ */
+export function layoutRun(run: Run): RunLayout {
+  let last = -1;
+  run.blocks.forEach((block, index) => {
+    if (block.kind === "activity") last = index;
+  });
+  const work = run.blocks.slice(0, last + 1);
+  const final = run.blocks.slice(last + 1);
+  const texts = final.filter((block): block is Extract<Block, { kind: "text" }> => block.kind === "text");
+  const answered = texts.some(
+    (block) => (!block.streaming && block.stopReason !== "toolUse" && block.stopReason !== "pending") || block.text.length > FINAL_TEXT_CHARS,
+  );
+  const lastWork = work.at(-1);
+  return {
+    work,
+    final,
+    settled: !run.live || answered,
+    startedAt: run.user?.message.timestamp,
+    endedAt: Math.max(texts[0]?.at ?? 0, lastWork && "at" in lastWork ? lastWork.at : 0) || undefined,
+  };
 }

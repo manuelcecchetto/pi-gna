@@ -6,19 +6,19 @@ import {
   FilePen,
   FileText,
   Globe,
-  Layers,
   type LucideIcon,
   Search,
   Sparkles,
   SquareTerminal,
   Wrench,
 } from "lucide-react";
-import { memo, useMemo } from "react";
-import { formatDuration } from "../lib/format";
+import { memo, type ReactNode, useMemo } from "react";
+import { formatClock, formatDuration } from "../lib/format";
 import { type ToolCategory, presentTool, summarizeTools } from "../lib/tools";
-import type { Block, Step } from "../lib/view";
+import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
-import { PixelLoader } from "./primitives";
+import { Markdown } from "./Markdown";
+import { Elapsed, PixelLoader } from "./primitives";
 import { resultImages, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, LucideIcon> = {
@@ -39,53 +39,98 @@ function useExpanded(key: string, fallback: boolean): boolean {
   return override ?? (all || fallback);
 }
 
-type ActivityBlock = Extract<Block, { kind: "activity" }>;
+type ToolStep = Extract<Step, { kind: "tool" }>;
 
-function thinkingTime(steps: Step[]): number {
-  return steps.reduce((total, step) => total + (step.kind === "thinking" ? (step.durationMs ?? 0) : 0), 0);
-}
-
-export const ActivityGroup = memo(function ActivityGroup({ block, cwd, home }: { block: ActivityBlock; cwd: string; home: string }) {
-  const open = useExpanded(block.key, block.live);
-  const tools = block.steps.filter((step): step is Extract<Step, { kind: "tool" }> => step.kind === "tool");
-  const summary = useMemo(() => {
-    const tools = block.steps.filter((step): step is Extract<Step, { kind: "tool" }> => step.kind === "tool");
-    const toolSummary = summarizeTools(
-      tools.map((step) => ({
-        presentation: presentTool(step.call.name, step.call.arguments, cwd, step.run?.result?.details, home),
-        failed: step.run?.status === "error" && step.run.result !== undefined,
-      })),
-    );
-    if (toolSummary) return toolSummary;
-    if (block.steps.some((step) => step.kind === "thinking" && step.streaming)) return "Thinking";
-    const ms = thinkingTime(block.steps);
-    return ms ? `Thought for ${formatDuration(ms)}` : "Thought";
-  }, [block.steps, cwd, home]);
-  const Icon = tools.length ? Layers : Sparkles;
+/**
+ * Codex-style "Working for… / Worked for…" accordion holding everything before the final answer.
+ * Open while working, closes itself once the answer streams or the run ends. Your toggle only
+ * applies to the current phase, so the answer still collapses it. Closed while working, it shows
+ * just the active (last) step.
+ */
+export const WorkAccordion = memo(function WorkAccordion({
+  run,
+  layout,
+  cwd,
+  home,
+  status,
+  renderBlock,
+}: {
+  run: Run;
+  layout: RunLayout;
+  cwd: string;
+  home: string;
+  status?: string;
+  renderBlock: (block: Block) => ReactNode;
+}) {
+  const open = useExpanded(`work:${run.key}:${layout.settled ? "done" : "working"}`, !layout.settled);
+  const steps = layout.work.flatMap((block) => (block.kind === "activity" ? block.steps : []));
+  const tools = steps.filter((step): step is ToolStep => step.kind === "tool");
+  const summary = useMemo(
+    () =>
+      summarizeTools(
+        tools.map((step) => ({
+          presentation: presentTool(step.call.name, step.call.arguments, cwd, step.run?.result?.details, home),
+          failed: step.run?.status === "error" && step.run.result !== undefined,
+        })),
+      ),
+    [tools, cwd, home],
+  );
+  const toggle = () => setExpanded(`work:${run.key}:${layout.settled ? "done" : "working"}`, !open);
+  const started = layout.startedAt;
+  const lastStep = steps.at(-1);
 
   return (
-    <div className="-mx-2">
+    <div>
       <button
         type="button"
-        onClick={() => setExpanded(block.key, !open)}
-        className="group flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[13px] text-muted hover:bg-raised/60 hover:text-fg"
+        onClick={toggle}
+        className={`group flex w-full items-center gap-2 pb-2 text-left text-[13.5px] ${open ? "border-b border-line" : ""}`}
       >
-        <Icon size={14} className="shrink-0 text-faint group-hover:text-muted" />
-        <span className="truncate">{summary}</span>
-        {tools.length > 1 && summary.includes("·") && <span className="font-mono text-[11px] text-faint">{tools.length}</span>}
+        {run.live && <PixelLoader />}
+        <span className={run.live ? "shimmer" : "text-muted group-hover:text-fg"}>
+          {run.live ? "Working" : "Worked"}
+          {started !== undefined && (
+            <>
+              {" for "}
+              {run.live ? <Elapsed since={started} plain /> : formatClock((layout.endedAt ?? started) - started)}
+            </>
+          )}
+        </span>
+        {status && <span className="text-[12.5px] text-warn">· {status}</span>}
+        {summary && <span className="min-w-0 truncate text-[12.5px] text-faint">· {summary}</span>}
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
-      {!open && <InlineImages images={tools.flatMap((step) => resultImages(step.run?.result ?? step.run?.partial))} />}
-      {open && (
-        <div className="ml-[15px] mt-1 flex flex-col gap-0.5 border-l border-dashed border-line-strong pl-3">
-          {block.steps.map((step) =>
-            step.kind === "thinking" ? (
-              <ThinkingStep key={step.key} step={step} />
+
+      {open ? (
+        <div className="mt-3 flex flex-col gap-2.5">
+          {layout.work.map((block) =>
+            block.kind === "activity" ? (
+              <div key={block.key} className="flex flex-col gap-0.5">
+                {block.steps.map((step) =>
+                  step.kind === "thinking" ? (
+                    <ThinkingStep key={step.key} step={step} />
+                  ) : (
+                    <ToolRow key={step.key} step={step} cwd={cwd} home={home} live={run.live} />
+                  ),
+                )}
+              </div>
+            ) : block.kind === "text" ? (
+              <div key={block.key} className="text-muted [&_.prose]:text-[14px]">
+                <Markdown text={block.text} streaming={block.streaming} />
+              </div>
             ) : (
-              <ToolRow key={step.key} step={step} cwd={cwd} home={home} live={block.live} />
+              <div key={block.key}>{renderBlock(block)}</div>
             ),
           )}
         </div>
+      ) : run.live ? (
+        lastStep && (
+          <div className="mt-1">
+            {lastStep.kind === "thinking" ? <ThinkingStep step={lastStep} /> : <ToolRow step={lastStep} cwd={cwd} home={home} live />}
+          </div>
+        )
+      ) : (
+        <InlineImages images={tools.flatMap((step) => resultImages(step.run?.result ?? step.run?.partial))} />
       )}
     </div>
   );
