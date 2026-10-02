@@ -360,6 +360,7 @@ export function boot(): void {
   const browser = studio().browser;
   browser.onState((state) => store.set((s) => ({ ...s, browser: state })));
   browser.onReveal(() => setPane({ open: true }));
+  browser.onToggle(toggleBrowser);
   browser.onAnnotation((annotation) => store.set((s) => ({ ...s, annotations: [...s.annotations, annotation] })));
   void browser.state().then((state) => state && store.set((s) => ({ ...s, browser: state })));
   refreshProjects();

@@ -33,6 +33,7 @@ export const IPC = {
   browserState: "browser:state",
   browserReveal: "browser:reveal",
   browserAnnotation: "browser:annotation",
+  browserToggle: "browser:toggle",
 } as const;
 
 export interface BrowserApi {
@@ -49,6 +50,8 @@ export interface BrowserApi {
   onState(listener: (state: BrowserState) => void): () => void;
   onReveal(listener: () => void): () => void;
   onAnnotation(listener: (annotation: Annotation) => void): () => void;
+  /** View > Toggle Browser (a menu accelerator, so it works while a page has focus). */
+  onToggle(listener: () => void): () => void;
 }
 
 export interface SessionSummary {

@@ -36,6 +36,7 @@ const api: StudioApi = {
     onState: (listener) => subscribe<BrowserState>(IPC.browserState, listener),
     onReveal: (listener) => subscribe<void>(IPC.browserReveal, listener),
     onAnnotation: (listener) => subscribe<Annotation>(IPC.browserAnnotation, listener),
+    onToggle: (listener) => subscribe<void>(IPC.browserToggle, listener),
   },
 };
 

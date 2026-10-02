@@ -3,7 +3,7 @@ import { BrowserPane } from "./components/BrowserPane";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { Sidebar } from "./components/Sidebar";
-import { boot, dismissToast, newSession, openLightbox, setPane, store, toggleBrowser, toggleExpandAll, useApp } from "./state/app";
+import { boot, dismissToast, newSession, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
   useEffect(() => {
@@ -17,9 +17,6 @@ export function App() {
         event.preventDefault();
         const { active, sessions } = store.get();
         newSession((active && sessions[active]?.cwd) || window.studio.launchCwd || window.studio.homeDir);
-      } else if (event.metaKey && key === "b") {
-        event.preventDefault();
-        toggleBrowser();
       } else if (key === "escape" && store.get().lightbox) {
         openLightbox(undefined);
       }

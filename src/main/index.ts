@@ -109,7 +109,21 @@ function buildMenu(): void {
     Menu.buildFromTemplate([
       { role: "appMenu" },
       { role: "editMenu" },
-      { role: "viewMenu" },
+      {
+        label: "View",
+        submenu: [
+          { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
+          { type: "separator" },
+          { role: "reload" },
+          { role: "toggleDevTools" },
+          { type: "separator" },
+          { role: "resetZoom" },
+          { role: "zoomIn" },
+          { role: "zoomOut" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
       { role: "windowMenu" },
     ]),
   );
