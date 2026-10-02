@@ -6,6 +6,7 @@ import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";
 import { activate, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
+import { PignaMark } from "./PignaMark";
 
 const SESSIONS_PER_PROJECT = 6;
 
@@ -58,8 +59,7 @@ export function Sidebar() {
       {/* Fixed inner width, so collapsing slides the sidebar away instead of reflowing it. */}
       <div className="flex h-full flex-col" style={{ width }}>
         <div className="drag flex h-[52px] shrink-0 items-center pr-2.5 pl-[86px]">
-          <PiLogo size={14} />
-          <span className="ml-2 flex-1 text-[12.5px] font-medium tracking-tight text-muted">studio</span>
+          <PignaMark className="flex-1 text-[13px] font-semibold tracking-tight text-muted" />
           <IconButton title="Hide sidebar (⌘⇧S)" onClick={toggleSidebar}>
             <PanelLeftClose size={15} />
           </IconButton>

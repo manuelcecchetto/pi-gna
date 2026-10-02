@@ -1,4 +1,4 @@
-// Read-only view of pi's own settings where studio needs them for display. pi still owns behavior;
+// Read-only view of pi's own settings where pi-gna needs them for display. pi still owns behavior;
 // project settings (.pi/settings.json) can override these after project trust and are not read here.
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";

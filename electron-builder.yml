@@ -1,5 +1,5 @@
 # `pnpm dist` packages the app into dist/ (a .dmg per architecture). The app name is package.json's productName.
-appId: io.github.manuelcecchetto.pistudio
+appId: io.github.manuelcecchetto.pigna
 copyright: Copyright © 2026 Manuel Cecchetto
 directories:
   output: dist
@@ -11,7 +11,7 @@ files:
   - resources/**
   - src/shared/browser.ts
   - "!resources/icon.png"
-  - "!resources/studio-flag.ts"
+  - "!resources/pigna-flag.ts"
 # pi reads these from disk (`pi -e`, `--append-system-prompt`); browser-extension.ts imports src/shared/browser.ts.
 asarUnpack:
   - resources/**
@@ -38,7 +38,8 @@ mac:
   identity: "-"
   hardenedRuntime: false
 dmg:
-  artifactName: ${name}-${version}-${arch}.${ext}
+  # Version-free names keep releases/latest/download/pi-gna-<arch>.dmg stable (the README's agent install).
+  artifactName: ${name}-${arch}.${ext}
   format: ULFO
   # No auto-updater, so no .blockmap files.
   writeUpdateInfo: false

@@ -1,11 +1,11 @@
-// The renderer is served from app://studio instead of file:// (Electron security checklist #18): a standard,
+// The renderer is served from app://pigna instead of file:// (Electron security checklist #18): a standard,
 // secure origin gets normal web isolation, V8 code caching and a CSP response header, and the file:// fuse
 // privileges can stay off.
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { net, protocol } from "electron";
 
-export const APP_ORIGIN = "app://studio";
+export const APP_ORIGIN = "app://pigna";
 
 // index.html's meta CSP also allows ws: for Vite's dev server. Pages served here get this header too, and since
 // both policies apply, the stricter one wins everywhere but the dev server.
@@ -28,12 +28,12 @@ export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }]);
 }
 
-/** Serve `root` (the built renderer) on app://studio, refusing anything outside it. */
+/** Serve `root` (the built renderer) on app://pigna, refusing anything outside it. */
 export function serveRenderer(root: string): void {
   protocol.handle("app", async (request) => {
     const url = new URL(request.url);
     const file = resolve(root, `.${decodeURIComponent(url.pathname)}`);
-    if (url.host !== "studio" || !file.startsWith(root + sep)) return new Response("not found", { status: 404 });
+    if (url.host !== "pigna" || !file.startsWith(root + sep)) return new Response("not found", { status: 404 });
     try {
       const response = await net.fetch(pathToFileURL(file).href);
       if (!file.endsWith(".html")) return response;

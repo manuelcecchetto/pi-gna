@@ -13,7 +13,7 @@ describe("railItems", () => {
     expect(railItems([run])).toEqual([{ key: "r1", at: 1, label: "fix auth", preview: "Fixed **auth**.\n\nTests pass.", live: false }]);
   });
 
-  it("puts the message on one line without studio's file and comment blocks", () => {
+  it("puts the message on one line without pi-gna's file and comment blocks", () => {
     const message = "look at\n\nthese   files\n\n# Files mentioned by the user:\n\n## a.ts: /repo/a.ts\n\n<browser-comments>\n1. too big\n</browser-comments>";
     expect(railItems([{ key: "r1", user: user(message), live: false, blocks: [] }])[0]?.label).toBe("look at these files");
     expect(railItems([{ key: "r2", user: user("# Files mentioned by the user:\n\n## a.ts: /repo/a.ts"), live: false, blocks: [] }])[0]?.label).toBe("a.ts");

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dev tool: a stand-in for `pi --mode rpc` that streams a long text answer to every prompt, for
 // checking streaming UI (scrolling, live states) without a model. Point a test instance at it:
-//   PI_STUDIO_PI_BIN=$PWD/scripts/fake-pi.mjs FAKE_LINES=400 FAKE_DELAY=100 node bin/pi-studio.mjs ...
+//   PIGNA_PI_BIN=$PWD/scripts/fake-pi.mjs FAKE_LINES=400 FAKE_DELAY=100 node bin/pi-gna.mjs ...
 // FAKE_LINES paragraphs, one every FAKE_DELAY ms. No session file is written.
 import { createInterface } from "node:readline";
 

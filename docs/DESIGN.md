@@ -1,8 +1,8 @@
-# pi-studio design
+# pi-gna design
 
-pi-studio is an Electron desktop UI for the [pi coding agent](https://pi.dev). pi is always the backend: every
+pi-gna is an Electron desktop UI for the [pi coding agent](https://pi.dev). pi is always the backend: every
 model call, tool, extension, skill and setting runs inside a `pi --mode rpc` child process, exactly as the user
-configured pi. pi-studio only renders and controls.
+configured pi. pi-gna only renders and controls.
 
 ## Principles
 
@@ -11,8 +11,8 @@ configured pi. pi-studio only renders and controls.
   Tailwind. No diff library: pi's `edit` tool already returns a rendered diff. A tiny custom store.
 - **pi owns behavior.** Never reimplement agent features client-side. If RPC lacks something, read pi's own files
   (sessions) or add a pi extension; do not fork the runtime.
-- **The terminal is the log.** Launched from a terminal (`pi --studio`, `bin/pi-studio.mjs`), the main process logs
-  there, along with every pi child's stderr (prefixed by session). `PI_STUDIO_DEBUG=1` also prints all RPC traffic.
+- **The terminal is the log.** Launched from a terminal (`pi --pigna`, `bin/pi-gna.mjs`), the main process logs
+  there, along with every pi child's stderr (prefixed by session). `PIGNA_DEBUG=1` also prints all RPC traffic.
   The same lines go to `~/Library/Logs/<app name>/main.log` (Help > Show Logs), the only log for Finder launches.
 - **Untrusted content.** Model output and web pages are untrusted: sanitize markdown, keep the renderer sandboxed
   (contextIsolation, sandbox, CSP), open links outside the app window.
@@ -20,33 +20,33 @@ configured pi. pi-studio only renders and controls.
 ## Architecture
 
 ```
-terminal: pi-studio            -> logs (main + pi stderr), Ctrl-C quits
+terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
   Electron main
     PiProcess      one `pi --mode rpc` child per open session (LF-only JSONL, id-correlated commands)
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     files          `rg --files` for @ mentions
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), AgentBridge (localhost)
-    app-protocol   serves the built renderer on app://studio with a strict CSP header
+    app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
-resources/browser-extension.ts   pi extension loaded with `-e` into every studio session
-resources/studio-flag.ts         pi package extension (`pi install <repo>`): `pi --studio` launches studio
+resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session
+resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
 
-`pi --studio`: the repo's `package.json` `pi` manifest exposes `resources/studio-flag.ts`. It registers the flag
+`pi --pigna`: the repo's `package.json` `pi` manifest exposes `resources/pigna-flag.ts`. It registers the flag
 and, because flag values are not available to factories yet, checks `process.argv` in its (async) factory: pi
-loads extensions before starting the TUI, so the factory can run studio in the foreground with the terminal
+loads extensions before starting the TUI, so the factory can run pi-gna in the foreground with the terminal
 attached and `process.exit` with its code. It runs the installed app (`/Applications/<productName>.app`, or
 `~/Applications`) so the menu bar and Dock show the real name, else this checkout's build through
-`bin/pi-studio.mjs` (Electron from node_modules, which macOS labels "Electron"); `PI_STUDIO_DEV=1` forces the
-checkout. Every other pi process (including studio's RPC children) only registers the flag. `bin/pi-studio.mjs`
+`bin/pi-gna.mjs` (Electron from node_modules, which macOS labels "Electron"); `PIGNA_DEV=1` forces the
+checkout. Every other pi process (including pi-gna's RPC children) only registers the flag. `bin/pi-gna.mjs`
 itself always runs the checkout, so test instances test the code you are changing.
 
 ## Packaging and release
 
-`pnpm dist` builds `dist/<name>-<version>-<arch>.dmg` with electron-builder (`electron-builder.yml`); pushing a
+`pnpm dist` builds `dist/<name>-<arch>.dmg` (no version, so `releases/latest/download/` URLs stay stable) with electron-builder (`electron-builder.yml`); pushing a
 `v*` tag makes `.github/workflows/release.yml` build arm64 and x64 dmgs and attach them to a GitHub release.
 
 - **Name.** `productName` in `package.json` is the app's name everywhere (menus, About, Dock, bundle, profile
@@ -54,7 +54,7 @@ itself always runs the checkout, so test instances test the code you are changin
   the old folder over when you rename.
 - **No node_modules in the app.** Every runtime dependency is renderer code that Vite bundles, so they all sit in
   `devDependencies`; main and preload only import Node and Electron. The asar holds `out/`, `package.json` and
-  the three files pi reads from disk (`resources/browser-extension.ts`, `resources/studio-prompt.md`,
+  the three files pi reads from disk (`resources/browser-extension.ts`, `resources/pigna-prompt.md`,
   `src/shared/browser.ts`), which are also unpacked to `app.asar.unpacked/` (session-host points pi there).
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
   runtime, no notarization) and macOS asks once before opening a downloaded build (README). Without notarization
@@ -63,18 +63,18 @@ itself always runs the checkout, so test instances test the code you are changin
   integrity validation; encrypted cookies; no extra `file://` privileges. Check with
   `pnpm dlx @electron/fuses read --app "dist/mac-arm64/<name>.app"`. Cookie encryption keeps a key in the
   Keychain; an ad-hoc signature changes with every build, so macOS may ask to allow access after an update.
-- **Renderer origin.** Outside the dev server the renderer is served from `app://studio` (standard, secure, V8
+- **Renderer origin.** Outside the dev server the renderer is served from `app://pigna` (standard, secure, V8
   code cache) with a CSP header stricter than the `index.html` meta tag, which also allows Vite's `ws:`.
   localStorage is per origin, so the sidebar layout, pins and bookmarks saved by earlier `file://` builds reset once.
 - **IPC** handlers only accept messages from the app window's own page (`trusted()` in `src/main/index.ts`); the
   default session grants only `clipboard-sanitized-write`; `<webview>` is refused.
-- **Launch modes.** From a terminal, `PI_STUDIO_CWD` carries the launch directory and the environment is the
+- **Launch modes.** From a terminal, `PIGNA_CWD` carries the launch directory and the environment is the
   shell's. From Finder the cwd is `/` (new chats start in your home) and `shell-env.ts` runs `$SHELL -ilc` once
   (10 s timeout) in parallel with window creation; IPC that spawns pi or `rg` waits for it. To test a Finder
-  launch, scrub the environment: `open` passes the caller's (including `PI_STUDIO_CWD` from the studio session an
+  launch, scrub the environment: `open` passes the caller's (including `PIGNA_CWD` from the pi-gna session an
   agent runs in), so use `env -i HOME="$HOME" USER="$USER" SHELL="$SHELL" PATH=/usr/bin:/bin open -n -g <app>
-  --env PI_STUDIO_USER_DATA=/tmp/<dir> --env PI_STUDIO_BACKGROUND=1 --args --remote-debugging-port=<port>`.
-- **One instance per profile.** A second launch (another `pi --studio`) passes its `PI_STUDIO_CWD` to the
+  --env PIGNA_USER_DATA=/tmp/<dir> --env PIGNA_BACKGROUND=1 --args --remote-debugging-port=<port>`.
+- **One instance per profile.** A second launch (another `pi --pigna`) passes its `PIGNA_CWD` to the
   running app, which opens a new chat there, and exits 0. Test instances have their own profile, so they are
   unaffected.
 - **Measured** with `scripts/measure-startup.mjs` (Oct 2026, M-series, machine under heavy load, median of 7
@@ -84,14 +84,14 @@ itself always runs the checkout, so test instances test the code you are changin
 
 ## Browser (M2)
 
-- **Tabs** are `WebContentsView`s in the persistent partition `persist:pi-studio-browser` (separate cookies and
+- **Tabs** are `WebContentsView`s in the persistent partition `persist:pigna-browser` (separate cookies and
   storage from the app; no camera, mic, location or notifications). The renderer draws the tab strip and toolbar
   and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views
   paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
   image lightbox). History lives in `userData/browser-history.json`.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
   `browser_screenshot`, `browser_evaluate`, `browser_console`. The extension calls `POST /browser` on a
-  loopback HTTP server; each pi process gets its own bearer token (env `PI_STUDIO_TOKEN`), and the token, never
+  loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
   and its actions run through a per-session queue because pi executes one message's tool calls in parallel.
 - **Input and screenshots go through CDP** (`webContents.debugger`), not `sendInputEvent`/`capturePage`: those
@@ -100,9 +100,9 @@ itself always runs the checkout, so test instances test the code you are changin
 - **Snapshots** run in an isolated world (shared DOM, separate JS globals) and tag interactive elements with
   `data-pi-ref` numbers that click/type use.
 - **Policy** lives in the extension: loopback and `*.localhost` URLs are allowed; any other origin asks once per
-  session through `ctx.ui.select`, which renders as a studio approval card. Actions that navigate are re-checked
+  session through `ctx.ui.select`, which renders as a pi-gna approval card. Actions that navigate are re-checked
   afterwards and stepped back if denied. Stagehand's `run`, `snapshot` and `screenshot` are excluded with
-  `--exclude-tools` (override with `PI_STUDIO_EXCLUDE_TOOLS`). The extension imports `src/shared/browser.ts`
+  `--exclude-tools` (override with `PIGNA_EXCLUDE_TOOLS`). The extension imports `src/shared/browser.ts`
   directly (pi loads extensions with jiti and aliases `typebox`).
 - **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab; a
   long-pending promise resolves with the element, selector, HTML and comment, main crops the element, and the
@@ -133,7 +133,7 @@ Verified live (pi 1.0.0, Oct 2026):
 
 - `toolResult` and `system` messages also arrive as `message_start`/`message_end`; system messages are ignored.
 - Opening a session (`pi --mode rpc --session <file>`) and closing it without prompting leaves the file
-  byte-identical, so "preview" opens are safe. Two pi processes prompting the same file are not; studio does not
+  byte-identical, so "preview" opens are safe. Two pi processes prompting the same file are not; pi-gna does not
   warn about it (a "recently updated" banner was tried and removed as noise), so avoid prompting a session that
   is still open in a terminal pi.
 - RPC never shows the project-trust prompt: a saved decision in `~/.pi/agent/trust.json` or
@@ -143,7 +143,7 @@ Verified live (pi 1.0.0, Oct 2026):
 
 ## UI model
 
-- New chats are drafts (`isDraft`: started in studio, nothing sent, not running or waiting) and stay out of the
+- New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
 - Sidebar layout (Codex-style): header with the logo and a hide button, a "New chat" row (⌘N), then a
@@ -155,8 +155,8 @@ Verified live (pi 1.0.0, Oct 2026):
   new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
   header gets `COLLAPSED_INSET` left padding.
 - Sidebar order (`projectViews`): pinned projects first, in the order you pinned them (hover pin button; a pinned
-  project keeps its pin visible, studio-only state in localStorage), then the rest by latest activity: the index's
-  file times, raised by messages you send from studio so a chat and its project move up right away instead of
+  project keeps its pin visible, app-only state in localStorage), then the rest by latest activity: the index's
+  file times, raised by messages you send from pi-gna so a chat and its project move up right away instead of
   after the run. Opening or switching chats must never reorder projects or chats (opening leaves the file
   untouched, and an opened chat closes again when you leave it, so "open chats first" made projects jump around).
 - Sidebar marks: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
@@ -206,12 +206,12 @@ Verified live (pi 1.0.0, Oct 2026):
   fixed truncated columns). Click smooth-scrolls the turn to the jump position (`TOP_GAP`) and flashes its
   bubble; dragging scrubs instantly; ⌥↑/⌥↓ jump to the start of the current/previous or the next message
   (`adjacentTurn`; left to the caret while a text field has text). Turns on earlier pages are rendered first
-  (`reveal`). Bookmarks are studio-only state in localStorage, per session file, keyed by the message
+  (`reveal`). Bookmarks are app-only state in localStorage, per session file, keyed by the message
   timestamp because item keys change on every load.
 - Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
-  strips `<input>`). Studio sessions get `--append-system-prompt resources/studio-prompt.md`, which tells the
+  strips `<input>`). pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the
   model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
-  footnotes or Mermaid). It only applies to studio sessions; opening a terminal session in studio adds that
+  footnotes or Mermaid). It only applies to pi-gna sessions; opening a terminal session in pi-gna adds that
   prompt section on its next request.
 - Context meter (`ContextMeter`, Codex-style): a ring with the percent next to the send button; hover for a
   card with tokens in context / window, where pi auto-compacts (`contextWindow - reserveTokens`, read from
@@ -248,9 +248,8 @@ Verified live (pi 1.0.0, Oct 2026):
   with its tools); images also go as image content (pi resizes them, `images.autoResize`). Dropped/pasted Files
   get their path through `webUtils.getPathForFile` in the preload; in-memory clipboard images are read at paste
   time. The transcript folds the block back into path chips (`splitFileMentions`).
-- Empty state: the pi logo (pi.dev `logo-auto.svg`, a 4x4 pixel glyph in coral/blue/yellow) assembles cell by
-  cell over a drifting dot grid with slow glows in the logo colours; suggestion chips prefill the composer.
-  `scripts/make-icon.py` renders `resources/icon.png` (Dock icon) from the same grid.
+- Empty state: the painted sky (see Visual language) above "What should we build?" and the project path; no
+  suggestion chips (nobody used them).
 - Extension UI: `select`/`confirm`/`input`/`editor` become approval cards above the composer; `notify` -> toast;
   `setStatus` is tracked in session state but not shown (there is no status line); `setWidget` -> panel above the composer; `set_editor_text` -> composer text.
 
@@ -259,17 +258,26 @@ Verified live (pi 1.0.0, Oct 2026):
 Inspired by beautifului.dev (no code copied; it has no public source or license): dark neutral surfaces
 (~#1b1b1d), hairline borders, dashed dividers, system sans, mono only for code, paths and numbers, no eyebrow labels (small uppercase captions), muted grays, one blue accent,
 light and dark themes, the pi-logo spinner with shimmer text, compact chips that expand.
-Empty states sit on a painted sky whose clouds form the pi logo (`assets/sky-dusk.webp` dark, `sky-day.webp`
-light; generated with GPT Image 2.5 from `resources/icon.png`), masked into the canvas above the text and composer.
+Empty states sit on a painted 🤌 raised into a dusk sky (`assets/pigna-dusk.webp` dark, `pigna-day.webp` light;
+Shinkai-style with a halftone texture, generated with GPT Image 2.5 and outpainted to 16:9 with the hand centered),
+masked into the canvas above the text and composer. The spinner and the sidebar's state marks stay pi's pixel
+logo in its coral/blue/yellow: they show pi working.
+
+Brand: **pi-gna** (Italian *pigna*, the 🤌 "mano a pigna" gesture). The logo is 🤌i: Twemoji's pinched fingers
+(CC-BY 4.0, credited in the README and About panel) mirrored and turned 90° (`matrix(0 -1 -1 0 36 36)` in its
+36-unit box) so the hand reads as a P, then a white "i". Written out it is always `pi-gna` (package, bundle,
+repo, docs); the 🤌i mark is visual only (sidebar header, icon). `resources/icon.svg` is the icon's source: dark
+tile with blurred coral, blue and yellow glows in the corners; `pnpm icon` rasterizes it to `resources/icon.png`
+(dev Dock icon) and `build/icon.icns`. `assets/pigna-hand.svg` is the same hand cropped for the UI.
 
 ## Verifying the UI
 
-`scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys; it finds the `app://studio` page); start it with
-`node bin/pi-studio.mjs --remote-debugging-port=9333`. Give test instances `PI_STUDIO_USER_DATA=/tmp/<dir>`, `PI_STUDIO_BACKGROUND=1` (opens without taking focus; a
+`scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys; it finds the `app://pigna` page); start it with
+`node bin/pi-gna.mjs --remote-debugging-port=9333`. Give test instances `PIGNA_USER_DATA=/tmp/<dir>`, `PIGNA_BACKGROUND=1` (opens without taking focus; a
 focused test window once swallowed the user's typing) and their own port, so they never share a profile, focus or
-debugging port with the studio you work in, and stop them by their PID, never with
-`pkill -f bin/pi-studio.mjs`: the agent doing the testing may itself be running inside a pi studio session, and a
-pattern kill takes down the user's app and the agent with it. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
+debugging port with the pi-gna you work in, and stop them by their PID, never with
+`pkill -f bin/pi-gna.mjs`: the agent doing the testing may itself be running inside a pi-gna session, and a
+pattern kill takes down the user's app and the agent with it. `PIGNA_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
 The same starvation hits CDP tests of background windows: mouse moves are dispatched with the next frame (hover
@@ -279,7 +287,7 @@ Background test windows are `document.visibilityState === "hidden"`: smooth scro
 fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
-`PI_STUDIO_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model.
+`PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
 `click x y` sends real mouse input (useful for driving the annotation picker), `drag x1 y1 x2 y2` drags (resize
 handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
@@ -300,6 +308,6 @@ electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandb
 2. **Browser (done):** `WebContentsView` tabs with a persistent separate profile, address bar and history, split/full view,
    agent `browser_*` tools via a pi extension loaded with `-e` that calls a token-gated localhost bridge (CDP through
    `webContents.debugger`), annotation mode whose comments attach to the next prompt. Stagehand tools are excluded in
-   studio sessions; localhost is allowed, other sites ask once.
+   pi-gna sessions; localhost is allowed, other sites ask once.
 3. **Polish:** session tree, changed-files review, Cmd-K, usage insights, selection actions, Adjust panel,
    dictation, task rows for subagents and workflows.

@@ -1,18 +1,18 @@
 {
-  "name": "pi-studio",
-  "productName": "pi studio",
+  "name": "pi-gna",
+  "productName": "pi-gna",
   "version": "0.1.0",
   "private": true,
   "description": "A desktop app for the pi coding agent",
   "author": "Manuel Cecchetto",
   "license": "MIT",
-  "homepage": "https://github.com/manuelcecchetto/pi-studio",
+  "homepage": "https://github.com/manuelcecchetto/pi-gna",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/manuelcecchetto/pi-studio.git"
+    "url": "git+https://github.com/manuelcecchetto/pi-gna.git"
   },
   "bugs": {
-    "url": "https://github.com/manuelcecchetto/pi-studio/issues"
+    "url": "https://github.com/manuelcecchetto/pi-gna/issues"
   },
   "keywords": [
     "pi-package"
@@ -20,15 +20,16 @@
   "type": "module",
   "main": "./out/main/index.js",
   "bin": {
-    "pi-studio": "./bin/pi-studio.mjs"
+    "pi-gna": "./bin/pi-gna.mjs"
   },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "start": "electron-vite build && node bin/pi-studio.mjs",
+    "start": "electron-vite build && node bin/pi-gna.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
-    "dist": "electron-vite build && electron-builder --mac --publish never"
+    "dist": "electron-vite build && electron-builder --mac --publish never",
+    "icon": "electron scripts/make-icon.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
@@ -57,7 +58,7 @@
   },
   "pi": {
     "extensions": [
-      "./resources/studio-flag.ts"
+      "./resources/pigna-flag.ts"
     ]
   },
   "packageManager": "pnpm@10.34.3"

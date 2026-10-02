@@ -128,7 +128,7 @@ function safeParse(line: string): FileRecord | undefined {
 
 export function textOf(content: string | { type: string; text?: string }[]): string {
   const full = typeof content === "string" ? content : content.find((block) => block.type === "text")?.text ?? "";
-  // Drop the blocks pi studio appends to prompts (file mentions, browser comments).
+  // Drop the blocks pi-gna appends to prompts (file mentions, browser comments).
   const raw = full.split(/\n*(?:# Files mentioned by the user:|<browser-comments>)/)[0] ?? full;
   return raw.replace(/\s+/g, " ").trim().slice(0, 160);
 }

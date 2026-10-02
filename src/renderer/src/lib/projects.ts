@@ -1,6 +1,6 @@
 // Sidebar projects: pinned folders first (in the order you pinned them), then the rest by latest activity.
 // Opening or switching chats never reorders anything; only pinning and sending a message do. Pins are
-// studio-only state in localStorage, like the sidebar layout.
+// app-only state in localStorage, like the sidebar layout.
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { isDraft, type SessionState } from "./session";
 import { createStore, useStore } from "./store";
@@ -52,7 +52,7 @@ export function projectViews(projects: ProjectGroup[], open: SessionState[], pin
 }
 
 /**
- * When you last sent a message from studio, so the chat and its project move up right away instead of when the
+ * When you last sent a message from pi-gna, so the chat and its project move up right away instead of when the
  * index refreshes after the run. Chats only opened from disk count as untouched: their file time already says it.
  */
 function sentAt(session: SessionState): number | undefined {
@@ -66,7 +66,7 @@ function sentAt(session: SessionState): number | undefined {
 
 // ── Pins ─────────────────────────────────────────────────────────────────────
 
-const KEY = "pi-studio:pinned-projects";
+const KEY = "pigna:pinned-projects";
 
 function load(): string[] {
   try {

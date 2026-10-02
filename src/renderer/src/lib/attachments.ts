@@ -71,7 +71,7 @@ export function splitFileMentions(text: string): [string, FileMention[]] {
   return [[text.slice(0, index).trimEnd(), rest].filter(Boolean).join("\n\n"), mentions];
 }
 
-/** Message text without the blocks studio appends (file mentions, browser comments). */
+/** Message text without the blocks pi-gna appends (file mentions, browser comments). */
 export function stripStudioBlocks(text: string): string {
   return splitFileMentions(text)[0].replace(/\n*<browser-comments>[\s\S]*?<\/browser-comments>/g, "").trim();
 }

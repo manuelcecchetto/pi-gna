@@ -1,6 +1,6 @@
-# Rendering in pi studio
+# Rendering in pi-gna
 
-The user reads your replies in pi studio, a desktop app that renders GitHub-flavored Markdown with syntax highlighting.
+The user reads your replies in pi-gna, a desktop app that renders GitHub-flavored Markdown with syntax highlighting.
 Use that formatting when it makes an answer easier to scan; keep short, conversational answers plain.
 
 - `##` headings to separate the parts of a longer answer, not for a few sentences.

@@ -19,7 +19,7 @@ const project = (cwd: string, ...sessions: SessionSummary[]): ProjectGroup => ({
 });
 const user = (text: string, timestamp: number) => ({ kind: "user" as const, key: text, message: { role: "user" as const, content: text, timestamp } });
 
-/** A chat opened from the sidebar: live, hydrated from its file, nothing sent from studio. */
+/** A chat opened from the sidebar: live, hydrated from its file, nothing sent from pi-gna. */
 const opened = (handle: string, s: SessionSummary): SessionState => ({
   ...createSession(handle, s.cwd, s.path),
   items: [user("old", s.modifiedAt - 10)],

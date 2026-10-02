@@ -42,7 +42,7 @@ describe("activeBranch", () => {
 
 describe("summarizeSessionFile", () => {
   it("finds the first user message past a large system message and the latest name in the tail", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pi-studio-"));
+    const dir = await mkdtemp(join(tmpdir(), "pi-gna-"));
     const path = join(dir, "s.jsonl");
     const bigSystem = msg("sys", null, "system", "x".repeat(200_000));
     const filler = Array.from({ length: 50 }, (_, i) => msg(`f${i}`, "u1", "assistant", "y".repeat(5_000)));

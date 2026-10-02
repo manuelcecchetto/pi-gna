@@ -12,14 +12,14 @@ import { readActiveBranch } from "./session-file";
 const HANDLE = /^[a-z0-9]{6,32}$/;
 /** Files pi reads from disk. Packaged builds keep them beside app.asar, in app.asar.unpacked (electron-builder asarUnpack). */
 const onDisk = (...parts: string[]) => join(app.getAppPath().replace(/app\.asar$/, "app.asar.unpacked"), ...parts);
-/** Tools that would compete with the integrated browser (Stagehand's). Override with PI_STUDIO_EXCLUDE_TOOLS. */
-const EXCLUDED_TOOLS = process.env.PI_STUDIO_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
+/** Tools that would compete with the integrated browser (Stagehand's). Override with PIGNA_EXCLUDE_TOOLS. */
+const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();
   private readonly extension = onDisk("resources", "browser-extension.ts");
-  /** Tells the model its replies render as Markdown in studio (studio sessions only, not the terminal UI). */
-  private readonly prompt = onDisk("resources", "studio-prompt.md");
+  /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
+  private readonly prompt = onDisk("resources", "pigna-prompt.md");
 
   constructor(
     private readonly emit: (batch: HostEventBatch) => void,
@@ -29,7 +29,7 @@ export class SessionHost {
   private piArgs(handle: string): { args: string[]; env: Record<string, string> } {
     const args = ["-e", this.extension, "--append-system-prompt", this.prompt];
     if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
-    return { args, env: { PI_STUDIO_BRIDGE: this.bridge.url, PI_STUDIO_TOKEN: this.bridge.register(handle) } };
+    return { args, env: { PIGNA_BRIDGE: this.bridge.url, PIGNA_TOKEN: this.bridge.register(handle) } };
   }
 
   get size(): number {

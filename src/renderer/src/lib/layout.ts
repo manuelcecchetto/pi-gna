@@ -25,7 +25,7 @@ export function sidebarDrag(pointerX: number, windowWidth: number): { collapsed:
   return { collapsed: false, width: clampSidebarWidth(pointerX, windowWidth) };
 }
 
-const KEY = "pi-studio:sidebar";
+const KEY = "pigna:sidebar";
 
 export function loadSidebar(): SidebarLayout {
   try {

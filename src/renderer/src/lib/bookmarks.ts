@@ -1,11 +1,11 @@
-// Bookmarked turns, per session file. Studio-only navigation state (pi has no notion of it), kept in
+// Bookmarked turns, per session file. App-only navigation state (pi has no notion of it), kept in
 // localStorage like the sidebar layout. A turn is identified by its message's timestamp: item keys are
 // assigned per load and change when a session is reopened.
 import { createStore, useStore } from "./store";
 
 type Bookmarks = Record<string, number[]>;
 
-const KEY = "pi-studio:bookmarks";
+const KEY = "pigna:bookmarks";
 const NONE: number[] = [];
 
 function load(): Bookmarks {

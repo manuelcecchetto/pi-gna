@@ -1,10 +1,10 @@
-// Logging. The terminal that launched pi studio is the app's live log: main-process events, every pi child's
-// stderr, and (with PI_STUDIO_DEBUG=1) all RPC traffic. The same lines go to a file (Help > Show Logs), which is
+// Logging. The terminal that launched pi-gna is the app's live log: main-process events, every pi child's
+// stderr, and (with PIGNA_DEBUG=1) all RPC traffic. The same lines go to a file (Help > Show Logs), which is
 // the only log when the app is opened from Finder or the Dock.
 import { createWriteStream, renameSync, statSync, type WriteStream } from "node:fs";
 
 const tty = process.stdout.isTTY === true && !process.env.NO_COLOR;
-export const debugRpc = process.env.PI_STUDIO_DEBUG === "1";
+export const debugRpc = process.env.PIGNA_DEBUG === "1";
 
 const paint = (code: string) => (text: string) => (tty ? `\x1b[${code}m${text}\x1b[0m` : text);
 const dim = paint("2");

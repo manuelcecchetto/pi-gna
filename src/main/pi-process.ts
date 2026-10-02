@@ -29,12 +29,12 @@ interface Pending {
   resolve(response: RpcResponse): void;
 }
 
-const PI_BIN = process.env.PI_STUDIO_PI_BIN || "pi";
+const PI_BIN = process.env.PIGNA_PI_BIN || "pi";
 const STDERR_TAIL = 4000;
 
 function spawnError(error: NodeJS.ErrnoException): string {
   if (error.code !== "ENOENT") return error.message;
-  return `\`${PI_BIN}\` was not found on your PATH. Install pi with \`npm install -g @earendil-works/pi-coding-agent\`, or set PI_STUDIO_PI_BIN to its path.`;
+  return `\`${PI_BIN}\` was not found on your PATH. Install pi with \`npm install -g @earendil-works/pi-coding-agent\`, or set PIGNA_PI_BIN to its path.`;
 }
 
 export class PiProcess {

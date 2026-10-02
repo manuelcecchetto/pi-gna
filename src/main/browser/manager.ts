@@ -15,7 +15,7 @@ import {
 import { log } from "../log";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 
-export const PARTITION = "persist:pi-studio-browser";
+export const PARTITION = "persist:pigna-browser";
 const CONSOLE_LIMIT = 300;
 const HISTORY_LIMIT = 500;
 

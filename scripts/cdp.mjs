@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Dev tool: drive a running pi studio over CDP. Start the app with
-//   node bin/pi-studio.mjs --remote-debugging-port=9333
+// Dev tool: drive a running pi-gna over CDP. Start the app with
+//   node bin/pi-gna.mjs --remote-debugging-port=9333
 // then:
-//   node scripts/cdp.mjs shot /tmp/studio.png          # screenshot the window
+//   node scripts/cdp.mjs shot /tmp/pigna.png          # screenshot the window
 //   node scripts/cdp.mjs eval "document.title"          # evaluate in the renderer
 //   node scripts/cdp.mjs type "hello" [--enter]         # type into the focused element
 //   node scripts/cdp.mjs key Escape|Enter|ctrl+o        # press a key
@@ -21,7 +21,7 @@ const [command, ...args] = process.argv.slice(2);
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 const match = process.env.CDP_URL;
 const page = targets.find((t) =>
-  t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /^app:\/\/studio\/|localhost:5173\/?$/.test(t.url)),
+  t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /^app:\/\/pigna\/|localhost:5173\/?$/.test(t.url)),
 );
 if (!page) throw new Error("no page target");
 
@@ -78,8 +78,8 @@ switch (command) {
     const [x, y, width, height, scale] = args.slice(1).map(Number);
     const clip = width ? { x, y, width, height, scale: scale || 3 } : undefined;
     const { data } = await send("Page.captureScreenshot", { format: "png", ...(clip ? { clip } : {}) });
-    writeFileSync(args[0] ?? "/tmp/studio.png", Buffer.from(data, "base64"));
-    console.log(args[0] ?? "/tmp/studio.png");
+    writeFileSync(args[0] ?? "/tmp/pigna.png", Buffer.from(data, "base64"));
+    console.log(args[0] ?? "/tmp/pigna.png");
     break;
   }
   case "eval": {

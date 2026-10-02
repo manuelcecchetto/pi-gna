@@ -375,7 +375,7 @@ export function formatAnnotations(annotations: Annotation[]): string {
     ].join("\n"),
   );
   const note = annotations.some((a) => a.image) ? " Attached images are crops of the commented elements, in order." : "";
-  return `<browser-comments>\nThe user commented on elements in the pi studio browser.${note}\n${items.join("\n")}\n</browser-comments>`;
+  return `<browser-comments>\nThe user commented on elements in the pi-gna browser.${note}\n${items.join("\n")}\n</browser-comments>`;
 }
 
 export function removeAnnotation(id: string): void {

@@ -365,12 +365,12 @@ code.hl span {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: url("./assets/sky-dusk.webp") center top / cover no-repeat;
+  background: url("./assets/pigna-dusk.webp") center top / cover no-repeat;
   mask-image: linear-gradient(to bottom, black 50%, transparent 94%);
 }
 @media (prefers-color-scheme: light) {
   .hero {
-    background-image: url("./assets/sky-day.webp");
+    background-image: url("./assets/pigna-day.webp");
   }
 }
 

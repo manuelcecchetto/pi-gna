@@ -98,9 +98,9 @@ export interface SessionState {
   editorText?: { text: string; nonce: number };
   title?: string;
   stats?: SessionStats;
-  /** Opened from an existing session file (as opposed to a new chat started in studio). */
+  /** Opened from an existing session file (as opposed to a new chat started in pi-gna). */
   fromDisk: boolean;
-  /** Set once the user prompts from studio; such sessions stay alive when switching away. */
+  /** Set once the user prompts from pi-gna; such sessions stay alive when switching away. */
   prompted: boolean;
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
   unread?: RunOutcome;

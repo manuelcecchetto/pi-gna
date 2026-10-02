@@ -4,7 +4,7 @@
 import { execFile } from "node:child_process";
 import { log } from "./log";
 
-const MARK = "__PI_STUDIO_ENV__";
+const MARK = "__PIGNA_ENV__";
 /** Shell-local or per-process values that must not leak into ours. */
 const SKIP = new Set(["_", "PWD", "OLDPWD", "SHLVL", "TERM_SESSION_ID"]);
 
@@ -31,8 +31,8 @@ export async function loadShellEnv(): Promise<void> {
       process.env[entry.slice(0, at)] = entry.slice(at + 1);
       count++;
     }
-    log.info("studio", `loaded ${count} variables from ${shell} in ${Date.now() - started} ms`);
+    log.info("pigna", `loaded ${count} variables from ${shell} in ${Date.now() - started} ms`);
   } catch (error) {
-    log.warn("studio", `could not read the ${shell} login environment (${(error as Error).message}); pi may not be found`);
+    log.warn("pigna", `could not read the ${shell} login environment (${(error as Error).message}); pi may not be found`);
   }
 }

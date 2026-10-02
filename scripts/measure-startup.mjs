@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Dev tool: launch the app N times in a throwaway profile and print spawn -> first contentful paint, its
 // navigation/paint split and the RSS of the app's processes 5 s later, plus medians. Uses fake pi.
-//   node scripts/measure-startup.mjs checkout 7 node bin/pi-studio.mjs
-//   node scripts/measure-startup.mjs packaged 7 "dist/mac-arm64/pi studio.app/Contents/MacOS/pi studio"
+//   node scripts/measure-startup.mjs checkout 7 node bin/pi-gna.mjs
+//   node scripts/measure-startup.mjs packaged 7 "dist/mac-arm64/pi-gna.app/Contents/MacOS/pi-gna"
 // Each instance is stopped by its own PID. Startup times swing with machine load: compare medians taken back to back.
 import { execSync, spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
@@ -12,7 +12,7 @@ const [label = "run", runs = "5", command, ...args] = process.argv.slice(2);
 if (!command) throw new Error("usage: measure-startup.mjs <label> <runs> <command> [args...]");
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const port = 9471;
-const profile = `/tmp/pi-studio-measure-${label}`;
+const profile = `/tmp/pi-gna-measure-${label}`;
 execSync(`rm -rf '${profile}'`);
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
@@ -21,7 +21,7 @@ async function measure() {
   const child = spawn(command.includes("/") ? resolve(command) : command, [...args, `--remote-debugging-port=${port}`], {
     cwd: root,
     stdio: "ignore",
-    env: { ...process.env, PI_STUDIO_USER_DATA: profile, PI_STUDIO_BACKGROUND: "1", PI_STUDIO_CWD: root, PI_STUDIO_PI_BIN: join(root, "scripts", "fake-pi.mjs") },
+    env: { ...process.env, PIGNA_USER_DATA: profile, PIGNA_BACKGROUND: "1", PIGNA_CWD: root, PIGNA_PI_BIN: join(root, "scripts", "fake-pi.mjs") },
   });
   try {
     let page;

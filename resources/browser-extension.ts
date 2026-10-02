@@ -1,5 +1,5 @@
-// pi extension loaded into every pi studio session (`pi -e`). Registers browser_* tools that drive
-// the pane the user is watching, through pi studio's token-gated localhost bridge.
+// pi extension loaded into every pi-gna session (`pi -e`). Registers browser_* tools that drive
+// the pane the user is watching, through pi-gna's token-gated localhost bridge.
 // Policy: loopback/dev-server URLs are always allowed; any other origin asks the user once per session.
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -12,11 +12,11 @@ interface BridgeResult {
   image?: string;
 }
 
-const BRIDGE = process.env.PI_STUDIO_BRIDGE;
-const TOKEN = process.env.PI_STUDIO_TOKEN;
+const BRIDGE = process.env.PIGNA_BRIDGE;
+const TOKEN = process.env.PIGNA_TOKEN;
 
 const ABOUT =
-  "The browser is a pane inside pi studio that the user can see; use it to check local dev servers and web pages. ";
+  "The browser is a pane inside pi-gna that the user can see; use it to check local dev servers and web pages. ";
 
 export default function (pi: ExtensionAPI) {
   if (!BRIDGE || !TOKEN) return;
@@ -66,7 +66,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "browser_open",
     label: "Open in browser",
-    description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi studio browser and return a snapshot of the page with numbered element refs for browser_click and browser_type.`,
+    description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi-gna browser and return a snapshot of the page with numbered element refs for browser_click and browser_type.`,
     parameters: Type.Object({
       url: Type.String({ description: "URL to open; bare localhost:PORT works" }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing this session's tab" })),

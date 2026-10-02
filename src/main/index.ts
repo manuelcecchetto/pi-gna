@@ -1,6 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, session, shell } from "electron";
 import { bugs, description } from "../../package.json";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
@@ -8,7 +8,7 @@ import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { BrowserAgent } from "./browser/agent";
 import { AgentBridge } from "./browser/bridge";
-import { BrowserManager } from "./browser/manager";
+import { BrowserManager, PARTITION } from "./browser/manager";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { listFiles } from "./files";
@@ -20,20 +20,38 @@ import { loadShellEnv } from "./shell-env";
 
 // The app's name (menus, About, profile and log folders) is package.json's productName.
 // Test instances (scripts/cdp.mjs) get their own profile and logs so they never share a browser profile or history
-// with the studio you are working in.
-if (process.env.PI_STUDIO_USER_DATA) {
-  app.setPath("userData", process.env.PI_STUDIO_USER_DATA);
-  app.setAppLogsPath(join(process.env.PI_STUDIO_USER_DATA, "logs"));
+// with the pi-gna you are working in.
+if (process.env.PIGNA_USER_DATA) {
+  app.setPath("userData", process.env.PIGNA_USER_DATA);
+  app.setAppLogsPath(join(process.env.PIGNA_USER_DATA, "logs"));
+} else {
+  adoptProfile("pi studio", "pi-studio-browser");
 }
 const logFile = join(app.getPath("logs"), "main.log");
 mkdirSync(app.getPath("logs"), { recursive: true });
 logToFile(logFile);
 
 const devUrl = process.env.ELECTRON_RENDERER_URL;
-// Launched from a terminal (bin/pi-studio.mjs, `pi --studio`), new chats start where you launched it and the
+// Launched from a terminal (bin/pi-gna.mjs, `pi --pigna`), new chats start where you launched it and the
 // environment is your shell's. From Finder or the Dock the cwd is / and the environment is launchd's.
-const fromTerminal = Boolean(process.env.PI_STUDIO_CWD);
-const launchCwd = process.env.PI_STUDIO_CWD || (process.cwd() === "/" ? homedir() : process.cwd());
+const fromTerminal = Boolean(process.env.PIGNA_CWD);
+const launchCwd = process.env.PIGNA_CWD || (process.cwd() === "/" ? homedir() : process.cwd());
+
+/**
+ * First launch after a rename: copy the profile of the app's previous name (browser cookies and history) into
+ * this one. Copied, not moved, so a still-running old build keeps working; Chromium's singleton lock files are
+ * left behind, or this instance would think the old one owns the new profile. The profile folder itself already
+ * exists by now (Chromium puts Crashpad there before any app code runs), so "Local State" marks a used profile.
+ */
+function adoptProfile(oldName: string, oldPartition: string): void {
+  const profile = app.getPath("userData");
+  const old = join(dirname(profile), oldName);
+  if (existsSync(join(profile, "Local State")) || !existsSync(join(old, "Local State"))) return;
+  cpSync(old, profile, { recursive: true, filter: (path) => !/^(Singleton|DevToolsActivePort|Crashpad)/.test(basename(path)) });
+  const partitions = join(profile, "Partitions");
+  if (existsSync(join(partitions, oldPartition))) renameSync(join(partitions, oldPartition), join(partitions, PARTITION.replace(/^persist:/, "")));
+  console.log(`copied the ${oldName} profile to ${profile}`);
+}
 
 let window: BrowserWindow | undefined;
 let browser: BrowserManager | undefined;
@@ -63,11 +81,11 @@ function createWindow(): void {
       additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`],
     },
   });
-  // PI_STUDIO_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the
-  // studio you are working in never land in a test window.
+  // PIGNA_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the
+  // pi-gna you are working in never land in a test window.
   window.once("ready-to-show", () => {
-    log.info("studio", `window ready ${Math.round(process.uptime() * 1000)} ms after launch`);
-    if (process.env.PI_STUDIO_BACKGROUND === "1") window?.showInactive();
+    log.info("pigna", `window ready ${Math.round(process.uptime() * 1000)} ms after launch`);
+    if (process.env.PIGNA_BACKGROUND === "1") window?.showInactive();
     else window?.show();
   });
   // The terminal is the log: surface renderer warnings, errors and crashes there too.
@@ -122,7 +140,7 @@ function handle<A extends unknown[]>(channel: string, listener: (...args: A) => 
 function on<A extends unknown[]>(channel: string, listener: (...args: A) => void): void {
   ipcMain.on(channel, (event, ...args) => {
     if (trusted(event)) listener(...(args as A));
-    else log.warn("studio", `dropped ${channel} from an untrusted sender`);
+    else log.warn("pigna", `dropped ${channel} from an untrusted sender`);
   });
 }
 
@@ -210,12 +228,12 @@ function init(): void {
     if (quitting || host.size === 0) return;
     event.preventDefault();
     quitting = true;
-    log.info("studio", `stopping ${host.size} pi session(s)`);
+    log.info("pigna", `stopping ${host.size} pi session(s)`);
     void host.closeAll().finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
-  // A second launch on this profile (say `pi --studio` in another project) opens a chat here instead.
+  // A second launch on this profile (say `pi --pigna` in another project) opens a chat here instead.
   app.on("second-instance", (_event, _argv, _cwd, data) => {
     if (!window) return;
     if (window.isMinimized()) window.restore();
@@ -228,10 +246,14 @@ function init(): void {
   app.on("web-contents-created", (_event, contents) => contents.on("will-attach-webview", (event) => event.preventDefault()));
 
   void app.whenReady().then(async () => {
-    log.info("studio", `${app.getName()} ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
-    log.info("studio", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PI_STUDIO_DEBUG=1 logs RPC traffic)"}`);
+    log.info("pigna", `${app.getName()} ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
+    log.info("pigna", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PIGNA_DEBUG=1 logs RPC traffic)"}`);
     if (!app.isPackaged && process.platform === "darwin") app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
-    app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion(), credits: description });
+    app.setAboutPanelOptions({
+      applicationName: app.getName(),
+      applicationVersion: app.getVersion(),
+      credits: `${description}\n\nThe 🤌 in the logo is Twemoji (CC-BY 4.0, © Twitter, Inc. and other contributors).`,
+    });
     // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
     if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));
@@ -242,9 +264,9 @@ function init(): void {
 }
 
 // One instance per profile: a second one hands its launch directory to the first and quits. Test instances use
-// their own PI_STUDIO_USER_DATA profile, so they run beside the app you work in.
-if (app.requestSingleInstanceLock({ cwd: process.env.PI_STUDIO_CWD })) init();
+// their own PIGNA_USER_DATA profile, so they run beside the app you work in.
+if (app.requestSingleInstanceLock({ cwd: process.env.PIGNA_CWD })) init();
 else {
-  log.info("studio", `already running with this profile${process.env.PI_STUDIO_CWD ? `; opening a new chat in ${process.env.PI_STUDIO_CWD} there` : ""}`);
+  log.info("pigna", `already running with this profile${process.env.PIGNA_CWD ? `; opening a new chat in ${process.env.PIGNA_CWD} there` : ""}`);
   app.quit();
 }
