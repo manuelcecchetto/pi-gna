@@ -7,6 +7,7 @@ import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { BrowserAgent } from "./browser/agent";
 import { AgentBridge } from "./browser/bridge";
 import { BrowserManager } from "./browser/manager";
+import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { listFiles } from "./files";
 import { debugRpc, log } from "./log";
 import { SessionHost } from "./session-host";
@@ -91,6 +92,15 @@ function registerIpc(): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   ipcMain.on(IPC.openExternal, (_event, url: string) => openExternal(url));
+  ipcMain.handle(IPC.describePaths, (_event, paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));
+  ipcMain.handle(IPC.pickAttachments, async (_event, kind: "photos" | "files") => {
+    const options: Electron.OpenDialogOptions =
+      kind === "photos"
+        ? { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] }
+        : { title: "Attach files and folders", properties: ["openFile", "openDirectory", "multiSelections"] };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    return result.canceled ? [] : describePaths(result.filePaths);
+  });
 
   ipcMain.on(IPC.browserLayout, (_event, layout: BrowserLayout) => browser?.setLayout(layout));
   ipcMain.on(IPC.browserNewTab, (_event, url?: string) => browser?.createTab(url));
@@ -144,6 +154,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => ap
 void app.whenReady().then(async () => {
   log.info("studio", `pi studio ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}`);
   log.info("studio", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PI_STUDIO_DEBUG=1 logs RPC traffic)"}`);
+  const icon = join(app.getAppPath(), "resources", "icon.png");
+  if (process.platform === "darwin") app.dock?.setIcon(icon);
   buildMenu();
   registerIpc();
   await bridge.start();

@@ -1,7 +1,8 @@
-import { ChevronsDownUp, ChevronsUpDown, Globe, X } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, X } from "lucide-react";
+import { useRef, useState } from "react";
 import type { SessionState } from "../lib/session";
 import { formatCost, formatTokens, relativeTime, tildify } from "../lib/format";
-import { closeSession, dismissRecentWrite, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
+import { attachFiles, closeSession, dismissRecentWrite, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
 import { Composer } from "./Composer";
 import { Ansi } from "./primitives";
 import { Transcript } from "./Transcript";
@@ -9,8 +10,45 @@ import { Transcript } from "./Transcript";
 export function SessionPane({ session }: { session: SessionState }) {
   const expandAll = useApp((state) => state.expandAll);
   const browserOpen = useApp((state) => state.pane.open);
+  const [dragging, setDragging] = useState(false);
+  const depth = useRef(0);
+  const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("Files");
+  const canDrop = session.phase !== "exited";
   return (
-    <div className="flex h-full min-w-0 flex-col">
+    <div
+      className="relative flex h-full min-w-0 flex-col"
+      onDragEnter={(event) => {
+        if (!hasFiles(event) || !canDrop) return;
+        depth.current += 1;
+        setDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (!hasFiles(event)) return;
+        depth.current = Math.max(0, depth.current - 1);
+        if (depth.current === 0) setDragging(false);
+      }}
+      onDragOver={(event) => {
+        if (!hasFiles(event) || !canDrop) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        depth.current = 0;
+        setDragging(false);
+        if (canDrop) void attachFiles(session.handle, [...event.dataTransfer.files]);
+      }}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-3 z-40 grid place-items-center rounded-2xl border-2 border-dashed border-accent/60 bg-canvas/85">
+          <div className="flex flex-col items-center gap-2 text-[13.5px] text-fg">
+            <Paperclip size={20} className="text-accent" />
+            Drop files or folders to attach
+            <span className="text-[12px] text-faint">Images are shown to the model; files are passed by path</span>
+          </div>
+        </div>
+      )}
       <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-3 px-5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-fg">{sessionTitle(session)}</div>

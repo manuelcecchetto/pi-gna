@@ -4,6 +4,7 @@ import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import type { SessionState } from "../lib/session";
 import { activate, newSession, openSession, sessionTitle, useApp } from "../state/app";
+import { PiLogo } from "./PiLogo";
 
 const SESSIONS_PER_PROJECT = 6;
 
@@ -31,7 +32,9 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[268px] shrink-0 flex-col bg-[var(--sidebar)]">
-      <div className="drag flex h-[52px] shrink-0 items-center justify-end gap-0.5 px-2.5">
+      <div className="drag flex h-[52px] shrink-0 items-center gap-0.5 pr-2.5 pl-[86px]">
+        <PiLogo size={14} />
+        <span className="ml-2 flex-1 text-[12.5px] font-medium tracking-tight text-muted">studio</span>
         <IconButton title="Open folder…" onClick={() => void openFolder()}>
           <FolderPlus size={15} />
         </IconButton>

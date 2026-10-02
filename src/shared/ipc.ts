@@ -18,6 +18,8 @@ export const IPC = {
   respondUi: "studio:respond-ui",
   listFiles: "studio:list-files",
   pickFolder: "studio:pick-folder",
+  pickAttachments: "studio:pick-attachments",
+  describePaths: "studio:describe-paths",
   openExternal: "studio:open-external",
   events: "studio:events",
   browserLayout: "browser:layout",
@@ -70,6 +72,14 @@ export interface ProjectGroup {
   sessions: SessionSummary[];
 }
 
+/** A path the user attached; images include their bytes. */
+export interface PickedPath {
+  path: string;
+  name: string;
+  isDir: boolean;
+  image?: { mimeType: string; data: string };
+}
+
 export interface OpenSessionRequest {
   /** Renderer-chosen handle, so events can never arrive for an unknown session. */
   handle: string;
@@ -105,6 +115,11 @@ export interface StudioApi {
   respondUi(handle: string, response: ExtensionUiResponse): void;
   listFiles(cwd: string): Promise<string[]>;
   pickFolder(): Promise<string | null>;
+  /** Native picker: "photos" for images, "files" for files and folders. */
+  pickAttachments(kind: "photos" | "files"): Promise<PickedPath[]>;
+  describePaths(paths: string[]): Promise<PickedPath[]>;
+  /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
+  pathForFile(file: File): string;
   openExternal(url: string): void;
   onEvents(listener: (batch: HostEventBatch) => void): () => void;
   browser: BrowserApi;

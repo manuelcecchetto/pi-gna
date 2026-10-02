@@ -13,6 +13,15 @@ import type {
   SlashCommand,
   ThinkingLevel,
 } from "../../../shared/protocol";
+import {
+  type Attachment,
+  attachmentImages,
+  formatFileMentions,
+  fromImageData,
+  fromPicked,
+  mergeAttachments,
+  stripStudioBlocks,
+} from "../lib/attachments";
 import { createSession, hydrate, reduceHostEvent, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
 
@@ -41,6 +50,8 @@ export interface AppState {
   pane: { open: boolean; full: boolean; /** Browser share of the main area, 0..1. */ split: number };
   /** Browser comments waiting to ride along with the next prompt. */
   annotations: Annotation[];
+  /** Composer attachments per session handle (picker, drag and drop, paste). */
+  attachments: Record<string, Attachment[]>;
   /** Full-size image overlay (data URL). Hides the native browser view while open. */
   lightbox?: string;
 }
@@ -59,6 +70,7 @@ export const store = createStore<AppState>({
   browser: { tabs: [], annotating: false },
   pane: { open: false, full: false, split: 0.5 },
   annotations: [],
+  attachments: {},
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -199,6 +211,8 @@ export function handleBatch(batch: HostEventBatch): void {
       const level = event.record.notifyType === "error" ? "error" : event.record.notifyType === "warning" ? "warning" : "info";
       // Every pi process repeats the same extension startup notices; show each one once per app run.
       const starting = store.get().sessions[handle]?.phase === "starting";
+      // Startup chatter ("X loaded") stays in the terminal log; startup warnings still toast once.
+      if (starting && level === "info") continue;
       if (starting && seenStartupNotices.has(event.record.message)) continue;
       if (starting) seenStartupNotices.add(event.record.message);
       toast(event.record.message, level);
@@ -242,20 +256,25 @@ async function refreshStats(handle: string): Promise<void> {
 
 export type SendMode = "send" | "followUp";
 
-export async function send(handle: string, text: string, ownImages: ImageContent[], mode: SendMode): Promise<boolean> {
+export async function send(handle: string, text: string, mode: SendMode): Promise<boolean> {
   const session = store.get().sessions[handle];
   if (!session || session.phase === "exited") return false;
   const isCommand = text.startsWith("/");
   const annotations = isCommand ? [] : store.get().annotations;
-  const message = annotations.length ? `${text}\n\n${formatAnnotations(annotations)}`.trim() : text;
-  const images = [
-    ...ownImages,
+  const attachments = store.get().attachments[handle] ?? [];
+  const message = [text, formatAnnotations(annotations), formatFileMentions(attachments)].filter(Boolean).join("\n\n");
+  const images: ImageContent[] = [
+    ...attachmentImages(attachments),
     ...annotations.flatMap((a) => (a.image ? [{ type: "image" as const, data: a.image, mimeType: "image/jpeg" }] : [])),
   ];
   const cmd: RpcCommand = { type: "prompt", message, images: images.length ? images : undefined };
   if (session.running && !isCommand) cmd.streamingBehavior = mode === "followUp" ? "followUp" : "steer";
   patchSession(handle, (s) => ({ ...s, prompted: true }));
   const response = await command<{ disposition: string }>(handle, cmd);
+  if (response.success && attachments.length) {
+    const sent = new Set(attachments.map((a) => a.id));
+    store.set((s) => ({ ...s, attachments: { ...s.attachments, [handle]: (s.attachments[handle] ?? []).filter((a) => !sent.has(a.id)) } }));
+  }
   if (response.success && annotations.length) {
     const sent = new Set(annotations.map((a) => a.id));
     store.set((s) => ({ ...s, annotations: s.annotations.filter((a) => !sent.has(a.id)) }));
@@ -264,8 +283,50 @@ export async function send(handle: string, text: string, ownImages: ImageContent
   return response.success;
 }
 
+// ── Attachments ──────────────────────────────────────────────────────────────
+
+export function addAttachments(handle: string, incoming: Attachment[]): void {
+  if (!incoming.length) return;
+  store.set((s) => ({ ...s, attachments: { ...s.attachments, [handle]: mergeAttachments(s.attachments[handle] ?? [], incoming) } }));
+}
+
+export function removeAttachment(handle: string, id: string): void {
+  store.set((s) => ({ ...s, attachments: { ...s.attachments, [handle]: (s.attachments[handle] ?? []).filter((a) => a.id !== id) } }));
+}
+
+export async function pickAttachments(handle: string, kind: "photos" | "files"): Promise<void> {
+  addAttachments(handle, (await studio().pickAttachments(kind)).map(fromPicked));
+}
+
+/**
+ * Dropped or pasted Files: anything with a path (Finder files and folders) is described by main;
+ * in-memory images (a screenshot copied to the clipboard) are read right away, since clipboard
+ * data does not outlive the event.
+ */
+export async function attachFiles(handle: string, files: File[]): Promise<void> {
+  const paths: string[] = [];
+  const pending: Promise<Attachment>[] = [];
+  for (const file of files) {
+    const path = studio().pathForFile(file);
+    if (path) paths.push(path);
+    else if (file.type.startsWith("image/")) pending.push(readImage(file));
+  }
+  const [described, images] = await Promise.all([paths.length ? studio().describePaths(paths) : [], Promise.all(pending)]);
+  addAttachments(handle, [...described.map(fromPicked), ...images]);
+}
+
+function readImage(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(fromImageData(file.name || "pasted image", file.type, String(reader.result).split(",")[1] ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 /** Browser comments as a prompt block; element crops travel as images in the same order. */
 export function formatAnnotations(annotations: Annotation[]): string {
+  if (!annotations.length) return "";
   const items = annotations.map((a, index) =>
     [
       `${index + 1}. ${a.comment}`,
@@ -342,6 +403,11 @@ export function toggleExpandAll(): void {
   store.set((state) => ({ ...state, expandAll: !state.expandAll, expanded: {} }));
 }
 
+/** Put text in a session's composer (suggestions, like an extension's set_editor_text). */
+export function prefill(handle: string, text: string): void {
+  patchSession(handle, (s) => ({ ...s, editorText: { text, nonce: Date.now() } }));
+}
+
 export function dismissRecentWrite(handle: string): void {
   patchSession(handle, (s) => ({ ...s, recentWriteAt: undefined }));
 }
@@ -374,7 +440,8 @@ export function sessionTitle(session: SessionState): string {
   if (first?.kind === "user") {
     const content = first.message.content;
     const text = typeof content === "string" ? content : (content.find((block) => block.type === "text") as { text?: string } | undefined)?.text;
-    if (text?.trim()) return text.replace(/\s+/g, " ").trim().slice(0, 120);
+    const clean = text ? stripStudioBlocks(text) : "";
+    if (clean) return clean.replace(/\s+/g, " ").slice(0, 120);
   }
   return "New session";
 }

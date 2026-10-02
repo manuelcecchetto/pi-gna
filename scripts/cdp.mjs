@@ -7,6 +7,7 @@
 //   node scripts/cdp.mjs type "hello" [--enter]         # type into the focused element
 //   node scripts/cdp.mjs key Escape|Enter|ctrl+o        # press a key
 //   node scripts/cdp.mjs click 120 340                  # real mouse click at CSS px
+//   node scripts/cdp.mjs drop 600 400 /path/a /path/dir  # drop files from the OS at CSS px
 //   CDP_URL=localhost:8765 node scripts/cdp.mjs shot    # target a browser tab instead of the app
 // Uses Node's built-in WebSocket; no dependencies.
 import { writeFileSync } from "node:fs";
@@ -85,6 +86,15 @@ switch (command) {
     const [x, y] = args.map(Number);
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
       await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+    }
+    break;
+  }
+  case "drop": {
+    // Real OS-style file drop: drop <x> <y> <path...>
+    const [x, y, ...files] = args;
+    const data = { items: [], files, dragOperationsMask: 1 };
+    for (const type of ["dragEnter", "dragOver", "drop"]) {
+      await send("Input.dispatchDragEvent", { type, x: Number(x), y: Number(y), data });
     }
     break;
   }

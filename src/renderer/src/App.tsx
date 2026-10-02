@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { BrowserPane } from "./components/BrowserPane";
+import { PiLogo } from "./components/PiLogo";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
+import { HeroBackdrop } from "./components/Transcript";
 import { Sidebar } from "./components/Sidebar";
 import { boot, dismissToast, newSession, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
 
@@ -21,8 +23,18 @@ export function App() {
         openLightbox(undefined);
       }
     };
+    // Files dropped outside a drop zone must not navigate the window to file://.
+    const block = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("dragover", block);
+      window.removeEventListener("drop", block);
+    };
   }, []);
 
   const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
@@ -54,7 +66,11 @@ export function App() {
           {session ? (
             <SessionPane key={session.handle} session={session} />
           ) : (
-            <div className="drag grid h-full place-items-center text-[13px] text-faint">Pick a session or start a new one (⌘N)</div>
+            <div className="drag relative flex h-full flex-col items-center justify-center gap-5 overflow-hidden">
+              <HeroBackdrop />
+              <PiLogo size={56} animate className="relative" />
+              <div className="relative text-[13px] text-faint">Pick a session or start a new one (⌘N)</div>
+            </div>
           )}
           <Toasts />
         </section>

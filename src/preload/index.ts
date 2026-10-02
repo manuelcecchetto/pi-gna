@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { Annotation, BrowserState } from "../shared/browser";
 import { type HostEventBatch, IPC, type StudioApi } from "../shared/ipc";
 
@@ -20,6 +20,9 @@ const api: StudioApi = {
   respondUi: (handle, response) => ipcRenderer.send(IPC.respondUi, handle, response),
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
+  pickAttachments: (kind) => ipcRenderer.invoke(IPC.pickAttachments, kind),
+  describePaths: (paths) => ipcRenderer.invoke(IPC.describePaths, paths),
+  pathForFile: (file) => webUtils.getPathForFile(file),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
   onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),
   browser: {

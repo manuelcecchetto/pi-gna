@@ -99,8 +99,9 @@ Verified live (pi 1.0.0, Oct 2026):
 ## UI model
 
 - Sidebar: projects (cwd) -> sessions; dots for open and running sessions.
-- Transcript: a **run** is everything between two user messages. Your messages are plain text with a `›` marker
-  (no bubbles); runs are separated by dashed dividers. Each run splits (`layoutRun`) into a **work accordion**
+- Transcript: a **run** is everything between two user messages. Your messages are right-aligned bubbles without
+  an avatar, under a centred time stamp ("Yesterday 5:22 PM"), Codex-style; finished answers end with Copy and a
+  time. Runs are separated by spacing. Each run splits (`layoutRun`) into a **work accordion**
   and the **final answer**: everything up to the last thinking/tool step (commentary, steps, notices) goes in the
   accordion, the text after it is the answer. Header: "Working for 13m 16s" (live) / "Worked for 22s", plus a
   tool summary ("Read 3 files · ran 2 commands"). It is open while working and closes itself once the answer is
@@ -113,6 +114,15 @@ Verified live (pi 1.0.0, Oct 2026):
   context" or "retrying" called out next to it.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
   `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
+- Attachments (Codex-style, verified against the Codex app bundle): "+" menu with "Add photos" and "Attach files
+  and folders" (⌘U, native picker with files and folders), drop anywhere on the session pane, ⌘V. Files and
+  folders are sent by path in a `# Files mentioned by the user:` block of `## name: /path` lines (pi reads them
+  with its tools); images also go as image content (pi resizes them, `images.autoResize`). Dropped/pasted Files
+  get their path through `webUtils.getPathForFile` in the preload; in-memory clipboard images are read at paste
+  time. The transcript folds the block back into path chips (`splitFileMentions`).
+- Empty state: the pi logo (pi.dev `logo-auto.svg`, a 4x4 pixel glyph in coral/blue/yellow) assembles cell by
+  cell over a drifting dot grid with slow glows in the logo colours; suggestion chips prefill the composer.
+  `scripts/make-icon.py` renders `resources/icon.png` (Dock icon) from the same grid.
 - Extension UI: `select`/`confirm`/`input`/`editor` become approval cards above the composer; `notify` -> toast;
   `setStatus` -> status bar; `setWidget` -> panel above the composer; `set_editor_text` -> composer text.
 

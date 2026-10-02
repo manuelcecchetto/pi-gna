@@ -1,13 +1,27 @@
-import { ArrowUp, Brain, ChevronDown, Cpu, MessageSquare, Square, X } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageSquare, Paperclip, Plus, Square, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ImageContent, Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
+import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
+import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
 import type { SessionState } from "../lib/session";
-import { interrupt, openLightbox, removeAnnotation, type SendMode, send, setModel, setThinking, useApp } from "../state/app";
+import {
+  attachFiles,
+  interrupt,
+  openLightbox,
+  pickAttachments,
+  removeAnnotation,
+  removeAttachment,
+  type SendMode,
+  send,
+  setModel,
+  setThinking,
+  useApp,
+} from "../state/app";
 import { Dialogs } from "./Dialogs";
 import { Ansi, Kbd, Popover } from "./primitives";
 
 const drafts = new Map<string, string>();
+const NO_ATTACHMENTS: Attachment[] = [];
 const fileLists = new Map<string, Promise<string[]>>();
 
 interface MenuState {
@@ -36,13 +50,13 @@ function detectMenu(text: string, caret: number): MenuState | undefined {
 export function Composer({ session }: { session: SessionState }) {
   const { handle } = session;
   const [text, setTextState] = useState(() => drafts.get(handle) ?? "");
-  const [images, setImages] = useState<ImageContent[]>([]);
   const [menu, setMenu] = useState<MenuState>();
   const [selected, setSelected] = useState(0);
   const [files, setFiles] = useState<string[]>([]);
   const area = useRef<HTMLTextAreaElement>(null);
   const commands = useApp((state) => state.commands[handle]);
   const annotations = useApp((state) => state.annotations);
+  const attachments = useApp((state) => state.attachments[handle]) ?? NO_ATTACHMENTS;
 
   const setText = useCallback(
     (value: string) => {
@@ -55,7 +69,9 @@ export function Composer({ session }: { session: SessionState }) {
   // Extensions can prefill the editor (set_editor_text).
   const injected = session.editorText;
   useEffect(() => {
-    if (injected) setText(injected.text);
+    if (!injected) return;
+    setText(injected.text);
+    area.current?.focus();
   }, [injected, setText]);
 
   useLayoutEffect(() => {
@@ -112,16 +128,12 @@ export function Composer({ session }: { session: SessionState }) {
 
   const submit = async (mode: SendMode) => {
     const message = text.trim();
-    if (!message && !images.length && !annotations.length) return;
+    if (!message && !attachments.length && !annotations.length) return;
     const sentText = text;
-    const sentImages = images;
     setText("");
-    setImages([]);
-    const ok = await send(handle, message, sentImages, mode);
-    if (!ok) {
-      setText(sentText);
-      setImages(sentImages);
-    }
+    // Attachments and comments clear in the store once pi accepts the prompt.
+    const ok = await send(handle, message, mode);
+    if (!ok) setText(sentText);
   };
 
   const stop = async () => {
@@ -154,6 +166,9 @@ export function Composer({ session }: { session: SessionState }) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit(event.altKey ? "followUp" : "send");
+    } else if (event.metaKey && event.key.toLowerCase() === "u") {
+      event.preventDefault();
+      void pickAttachments(handle, "files");
     }
   };
 
@@ -164,20 +179,12 @@ export function Composer({ session }: { session: SessionState }) {
     setSelected(0);
   };
 
+  // Cmd+V: copied screenshots and images, and files or folders copied in Finder. Text pastes as usual.
   const onPaste = (event: React.ClipboardEvent) => {
-    const pasted = [...event.clipboardData.items].filter((item) => item.type.startsWith("image/"));
-    if (!pasted.length) return;
+    const files = [...event.clipboardData.files];
+    if (!files.length) return;
     event.preventDefault();
-    for (const item of pasted) {
-      const file = item.getAsFile();
-      if (!file) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const data = String(reader.result).split(",")[1] ?? "";
-        setImages((current) => [...current, { type: "image", data, mimeType: file.type }]);
-      };
-      reader.readAsDataURL(file);
-    }
+    void attachFiles(handle, files);
   };
 
   const queued = [...session.queue.steering.map((t) => ["steer", t] as const), ...session.queue.followUp.map((t) => ["queued", t] as const)];
@@ -243,22 +250,7 @@ export function Composer({ session }: { session: SessionState }) {
           </div>
         )}
 
-        {images.length > 0 && (
-          <div className="flex gap-2 px-3 pt-3">
-            {images.map((image, index) => (
-              <div key={index} className="group relative">
-                <img alt="" className="h-14 w-14 rounded-lg border border-line object-cover" src={`data:${image.mimeType};base64,${image.data}`} />
-                <button
-                  type="button"
-                  onClick={() => setImages((current) => current.filter((_, i) => i !== index))}
-                  className="absolute -top-1.5 -right-1.5 hidden rounded-full border border-line bg-panel p-0.5 group-hover:block"
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <AttachmentChips handle={handle} attachments={attachments} />
 
         <textarea
           ref={area}
@@ -277,6 +269,7 @@ export function Composer({ session }: { session: SessionState }) {
         />
 
         <div className="flex items-center gap-1 px-2 pb-2">
+          <AttachMenu handle={handle} disabled={exited} />
           <ModelPicker session={session} />
           <ThinkingPicker session={session} />
           <div className="ml-auto flex items-center gap-2">
@@ -285,14 +278,14 @@ export function Composer({ session }: { session: SessionState }) {
                 <Kbd>esc</Kbd> stop
               </span>
             )}
-            {session.running && !text.trim() && !annotations.length ? (
+            {session.running && !text.trim() && !annotations.length && !attachments.length ? (
               <button type="button" onClick={() => void stop()} title="Stop (Esc)" className="grid h-8 w-8 place-items-center rounded-full bg-fg text-canvas hover:opacity-90">
                 <Square size={11} fill="currentColor" />
               </button>
             ) : (
               <button
                 type="button"
-                disabled={(!text.trim() && !images.length && !annotations.length) || exited}
+                disabled={(!text.trim() && !attachments.length && !annotations.length) || exited}
                 onClick={() => void submit("send")}
                 title={session.running ? "Steer (Enter)" : "Send (Enter)"}
                 className="grid h-8 w-8 place-items-center rounded-full bg-accent text-white transition enabled:hover:opacity-90 disabled:bg-raised disabled:text-faint"
@@ -407,6 +400,72 @@ function ThinkingPicker({ session }: { session: SessionState }) {
           </button>
         ))}
       </Popover>
+    </div>
+  );
+}
+
+function AttachMenu({ handle, disabled }: { handle: string; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const pick = (kind: "photos" | "files") => {
+    setOpen(false);
+    void pickAttachments(handle, kind);
+  };
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        title="Add photos and files"
+        onClick={() => setOpen(!open)}
+        className="grid h-7 w-7 place-items-center rounded-lg text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
+      >
+        <Plus size={16} />
+      </button>
+      <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 w-60 p-1">
+        <button type="button" onClick={() => pick("photos")} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-raised">
+          <ImagePlus size={14} className="text-muted" /> Add photos
+        </button>
+        <button type="button" onClick={() => pick("files")} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-raised">
+          <Paperclip size={14} className="text-muted" />
+          <span className="flex-1">Attach files and folders</span>
+          <Kbd>⌘U</Kbd>
+        </button>
+        <div className="px-2.5 pt-1.5 pb-1 text-[11px] text-faint">You can also drop files anywhere or paste with ⌘V.</div>
+      </Popover>
+    </div>
+  );
+}
+
+function AttachmentChips({ handle, attachments }: { handle: string; attachments: Attachment[] }) {
+  if (!attachments.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 px-3 pt-3">
+      {attachments.map((attachment) => (
+        <div key={attachment.id} className="group relative" title={attachment.path ?? attachment.name}>
+          {attachment.kind === "image" ? (
+            <button type="button" onClick={() => openLightbox(`data:${attachment.mimeType};base64,${attachment.data}`)} className="block cursor-zoom-in">
+              <img alt={attachment.name} className="h-14 w-14 rounded-lg border border-line object-cover" src={`data:${attachment.mimeType};base64,${attachment.data}`} />
+            </button>
+          ) : (
+            <div className="flex h-14 max-w-56 items-center gap-2 rounded-lg border border-line bg-sunken px-3">
+              {attachment.isDir ? <Folder size={15} className="shrink-0 text-muted" /> : <FileText size={15} className="shrink-0 text-muted" />}
+              <span className="truncate text-[12.5px] text-fg">
+                {attachment.name}
+                {attachment.isDir ? "/" : ""}
+              </span>
+            </div>
+          )}
+          <button
+            type="button"
+            title={`Remove ${attachment.name}`}
+            onClick={() => removeAttachment(handle, attachment.id)}
+            className="absolute -top-1.5 -right-1.5 hidden rounded-full border border-line bg-panel p-0.5 text-muted hover:text-fg group-hover:block"
+          >
+            <X size={11} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

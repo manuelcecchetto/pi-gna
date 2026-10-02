@@ -37,6 +37,7 @@ they are attached to your next prompt with a crop of each element.
 | Cmd+N | New session in the current project |
 | Cmd+B | Show or hide the browser |
 | `/` and `@` | Commands, skills and prompt templates / project files |
+| Cmd+U, "+", drop, Cmd+V | Attach files and folders (sent by path) or images (sent to the model) |
 
 ## Develop
 

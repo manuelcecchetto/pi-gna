@@ -1,12 +1,27 @@
-import { AlertTriangle, ChevronRight, CircleSlash, FoldVertical, GitBranch, MessageSquare, SquareTerminal } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronRight,
+  CircleSlash,
+  Copy,
+  FileText,
+  Folder,
+  FoldVertical,
+  GitBranch,
+  ImageIcon,
+  MessageSquare,
+  SquareTerminal,
+} from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
-import { formatTokens } from "../lib/format";
+import { splitFileMentions } from "../lib/attachments";
+import { formatStamp, formatTokens, tildify } from "../lib/format";
 import type { SessionState } from "../lib/session";
 import { type Block, createRunDeriver, layoutRun, type Run } from "../lib/view";
-import { openLightbox, setExpanded, useApp } from "../state/app";
+import { openLightbox, prefill, setExpanded, useApp } from "../state/app";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
+import { PI_COLORS, PiLogo } from "./PiLogo";
 import { Ansi } from "./primitives";
 
 const PAGE = 30;
@@ -26,6 +41,8 @@ export function Transcript({ session }: { session: SessionState }) {
     if (element && pinned.current) element.scrollTop = element.scrollHeight;
   });
 
+  if (!runs.length && !session.running) return <EmptyTranscript session={session} />;
+
   return (
     <div
       ref={scroller}
@@ -35,7 +52,7 @@ export function Transcript({ session }: { session: SessionState }) {
       }}
       className="min-h-0 flex-1 overflow-y-auto"
     >
-      <div className="mx-auto flex max-w-[800px] flex-col gap-7 px-8 pt-6 pb-10">
+      <div className="mx-auto flex max-w-[800px] flex-col gap-10 px-8 pt-6 pb-10">
         {hidden > 0 && (
           <button
             type="button"
@@ -51,18 +68,66 @@ export function Transcript({ session }: { session: SessionState }) {
         {visible.map((run) => (
           <RunView key={run.key} run={run} cwd={session.cwd} home={home} status={run.live ? liveStatus(session) : undefined} />
         ))}
-        {!runs.length && !session.running && <EmptyTranscript session={session} />}
       </div>
+    </div>
+  );
+}
+
+const SUGGESTIONS = [
+  "Explain how this project is structured",
+  "Review my uncommitted changes",
+  "Find and fix a failing test",
+  "Open the dev server in the browser and check the console",
+];
+
+// Deterministic "random" pixels for the backdrop.
+const PIXELS = Array.from({ length: 14 }, (_, i) => ({
+  left: `${8 + ((i * 37) % 84)}%`,
+  top: `${22 + ((i * 53) % 62)}%`,
+  size: 5 + ((i * 7) % 6),
+  color: PI_COLORS[i % 3],
+  delay: `${-((i * 1.7) % 11)}s`,
+}));
+
+export function HeroBackdrop() {
+  return (
+    <div className="hero" aria-hidden>
+      <div className="hero-grid" />
+      <div className="hero-glow" style={{ background: PI_COLORS[0], left: "calc(50% - 360px)", top: "14%" }} />
+      <div className="hero-glow" style={{ background: PI_COLORS[1], left: "calc(50% - 90px)", top: "34%", animationDelay: "-7s" }} />
+      <div className="hero-glow" style={{ background: PI_COLORS[2], left: "calc(50% + 40px)", top: "2%", opacity: 0.11, animationDelay: "-13s" }} />
+      {PIXELS.map((pixel, index) => (
+        <span
+          key={index}
+          className="hero-pixel"
+          style={{ left: pixel.left, top: pixel.top, width: pixel.size, height: pixel.size, background: pixel.color, animationDelay: pixel.delay }}
+        />
+      ))}
     </div>
   );
 }
 
 function EmptyTranscript({ session }: { session: SessionState }) {
   return (
-    <div className="mt-[18vh] flex flex-col items-center gap-3 text-center">
-      <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-faint">pi</div>
-      <div className="text-[22px] font-medium tracking-tight text-fg">What should we build?</div>
-      <div className="font-mono text-[12px] text-faint">{session.cwd.replace(window.studio.homeDir, "~")}</div>
+    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-8">
+      <HeroBackdrop />
+      <div className="relative flex flex-col items-center">
+        <PiLogo size={68} animate />
+        <h1 className="mt-7 text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
+        <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, window.studio.homeDir)}</div>
+        <div className="mt-9 flex max-w-[600px] flex-wrap justify-center gap-2">
+          {SUGGESTIONS.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => prefill(session.handle, suggestion)}
+              className="rounded-full border border-line bg-panel/70 px-3.5 py-1.5 text-[12.5px] text-muted backdrop-blur hover:border-line-strong hover:text-fg"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -79,7 +144,7 @@ const RunView = memo(function RunView({ run, cwd, home, status }: { run: Run; cw
   const layout = useMemo(() => layoutRun(run), [run]);
   const renderBlock = (block: Block) => <BlockView block={block} cwd={cwd} home={home} />;
   return (
-    <section className="flex flex-col gap-3.5 border-t border-dashed border-line-strong pt-6 first-of-type:border-t-0 first-of-type:pt-0">
+    <section className="flex flex-col gap-4">
       {run.user && <UserMessageView message={run.user.message} />}
       {(layout.work.length > 0 || run.live) && (
         <WorkAccordion run={run} layout={layout} cwd={cwd} home={home} status={status} renderBlock={renderBlock} />
@@ -87,6 +152,7 @@ const RunView = memo(function RunView({ run, cwd, home, status }: { run: Run; cw
       {layout.final.map((block) => (
         <BlockView key={block.key} block={block} cwd={cwd} home={home} />
       ))}
+      {!run.live && <AnswerFooter blocks={layout.final} />}
     </section>
   );
 });
@@ -102,44 +168,84 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
   };
 }
 
-/** Your own messages: plain text with a prompt marker, no chat bubble. */
+/** Your messages: a right-aligned bubble (no avatar), Codex-style, with a centred time stamp above. */
 function UserMessageView({ message }: { message: UserMessage }) {
   const parts = userParts(message);
-  // Browser comments ride along as a tagged block; show them folded instead of inline.
-  const [text, comments] = splitComments(parts.text);
+  const [withoutFiles, mentions] = splitFileMentions(parts.text);
+  const [text, comments] = splitComments(withoutFiles);
   const images = parts.images;
   const [expanded, setOpen] = useState(false);
   const long = text.split("\n").length > 14 || text.length > 1400;
   return (
-    <div className="flex gap-3">
-      <span className="mt-[1px] shrink-0 select-none font-mono text-[14px] text-accent">›</span>
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {text && (
-          <div className={`selectable whitespace-pre-wrap break-words text-[14.5px] leading-relaxed text-fg ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
-        )}
-        {long && (
-          <button type="button" onClick={() => setOpen(!expanded)} className="self-start text-[12px] text-muted hover:text-fg">
-            {expanded ? "Show less" : "Show more"}
-          </button>
-        )}
-        {comments && (
+    <div className="flex flex-col items-end gap-2">
+      <div className="self-center pb-2 text-[12px] text-faint">{formatStamp(message.timestamp)}</div>
+      {images.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {images.map((image, index) => {
+            const src = `data:${image.mimeType};base64,${image.data}`;
+            return (
+              <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
+                <img alt="" className="h-24 max-w-56 rounded-xl border border-line object-cover" src={src} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {text && (
+        <div className="max-w-[78%] rounded-[22px] bg-raised px-5 py-3 text-[14.5px] leading-relaxed text-fg">
+          <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
+          {long && (
+            <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
+      )}
+      {mentions.length > 0 && (
+        <div className="flex max-w-[78%] flex-wrap justify-end gap-1.5">
+          {mentions.map((mention) => {
+            const Icon = mention.isDir ? Folder : mention.image ? ImageIcon : FileText;
+            return (
+              <span
+                key={mention.path}
+                title={mention.path}
+                className="flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 font-mono text-[11.5px] text-muted"
+              >
+                <Icon size={12} className="shrink-0 text-faint" />
+                <span className="truncate">{tildify(mention.path, window.studio.homeDir)}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {comments && (
+        <div className="w-[78%]">
           <Disclosure id={`${message.timestamp}:comments`} icon={<MessageSquare size={13} />} label={`Browser comments (${comments.count})`}>
             <pre className="code selectable whitespace-pre-wrap text-muted">{comments.body}</pre>
           </Disclosure>
-        )}
-        {images.length > 0 && (
-          <div className="flex gap-2">
-            {images.map((image, index) => {
-              const src = `data:${image.mimeType};base64,${image.data}`;
-              return (
-                <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
-                  <img alt="" className="h-20 rounded-lg border border-line object-cover" src={src} />
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Copy and time under a finished answer. */
+function AnswerFooter({ blocks }: { blocks: Block[] }) {
+  const texts = blocks.filter((block): block is Extract<Block, { kind: "text" }> => block.kind === "text");
+  const [copied, setCopied] = useState(false);
+  const last = texts.at(-1);
+  if (!last) return null;
+  const copy = () => {
+    void navigator.clipboard.writeText(texts.map((block) => block.text).join("\n\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+  return (
+    <div className="-mt-1 flex items-center gap-3 text-[12px] text-faint">
+      <button type="button" onClick={copy} title="Copy answer" className="rounded-md p-1 hover:bg-raised hover:text-fg">
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+      </button>
+      <span>{formatStamp(last.at)}</span>
     </div>
   );
 }

@@ -43,3 +43,16 @@ export function tildify(path: string, home: string): string {
 export function baseName(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
+
+/** Codex-style stamps: "5:22 PM" today, "Yesterday 5:22 PM", "Thursday 5:23 PM" this week, else "Sep 12, 5:22 PM". */
+export function formatStamp(timestamp: number, now = Date.now()): string {
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date(now)) - startOfDay(date)) / 86_400_000);
+  if (days <= 0) return time;
+  if (days === 1) return `Yesterday ${time}`;
+  if (days < 7) return `${date.toLocaleDateString(undefined, { weekday: "long" })} ${time}`;
+  const sameYear = date.getFullYear() === new Date(now).getFullYear();
+  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) })}, ${time}`;
+}

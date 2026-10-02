@@ -84,7 +84,7 @@ export const WorkAccordion = memo(function WorkAccordion({
       <button
         type="button"
         onClick={toggle}
-        className={`group flex w-full items-center gap-2 pb-2 text-left text-[13.5px] ${open ? "border-b border-line" : ""}`}
+        className="group flex w-full items-center gap-2 border-b border-line pb-2 text-left text-[13.5px]"
       >
         {run.live && <PixelLoader />}
         <span className={run.live ? "shimmer" : "text-muted group-hover:text-fg"}>
