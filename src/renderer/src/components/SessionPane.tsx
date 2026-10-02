@@ -1,19 +1,28 @@
-import { ChevronsDownUp, ChevronsUpDown, X } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Globe, X } from "lucide-react";
 import type { SessionState } from "../lib/session";
 import { formatCost, formatTokens, relativeTime, tildify } from "../lib/format";
-import { closeSession, dismissRecentWrite, sessionTitle, toggleExpandAll, useApp } from "../state/app";
+import { closeSession, dismissRecentWrite, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
 import { Composer } from "./Composer";
 import { Ansi } from "./primitives";
 import { Transcript } from "./Transcript";
 
 export function SessionPane({ session }: { session: SessionState }) {
   const expandAll = useApp((state) => state.expandAll);
+  const browserOpen = useApp((state) => state.pane.open);
   return (
     <div className="flex h-full min-w-0 flex-col">
       <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-3 px-5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-fg">{sessionTitle(session)}</div>
         </div>
+        <button
+          type="button"
+          onClick={toggleBrowser}
+          title={browserOpen ? "Hide browser (⌘B)" : "Show browser (⌘B)"}
+          className={`rounded-md p-1.5 hover:bg-raised hover:text-fg ${browserOpen ? "text-accent" : "text-faint"}`}
+        >
+          <Globe size={15} />
+        </button>
         <button
           type="button"
           onClick={toggleExpandAll}

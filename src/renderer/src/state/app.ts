@@ -1,5 +1,6 @@
 // App state and actions. Session state transitions live in lib/session.ts (pure); this module
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
+import type { Annotation, BrowserState } from "../../../shared/browser";
 import type { HostEventBatch, ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
@@ -36,6 +37,12 @@ export interface AppState {
   models: Model[];
   commands: Record<string, SlashCommand[]>;
   levels: Record<string, ThinkingLevel[]>;
+  browser: BrowserState;
+  pane: { open: boolean; full: boolean; /** Browser share of the main area, 0..1. */ split: number };
+  /** Browser comments waiting to ride along with the next prompt. */
+  annotations: Annotation[];
+  /** Full-size image overlay (data URL). Hides the native browser view while open. */
+  lightbox?: string;
 }
 
 export const store = createStore<AppState>({
@@ -49,6 +56,9 @@ export const store = createStore<AppState>({
   models: [],
   commands: {},
   levels: {},
+  browser: { tabs: [], annotating: false },
+  pane: { open: false, full: false, split: 0.5 },
+  annotations: [],
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -232,15 +242,60 @@ async function refreshStats(handle: string): Promise<void> {
 
 export type SendMode = "send" | "followUp";
 
-export async function send(handle: string, message: string, images: ImageContent[], mode: SendMode): Promise<boolean> {
+export async function send(handle: string, text: string, ownImages: ImageContent[], mode: SendMode): Promise<boolean> {
   const session = store.get().sessions[handle];
   if (!session || session.phase === "exited") return false;
-  const isCommand = message.startsWith("/");
+  const isCommand = text.startsWith("/");
+  const annotations = isCommand ? [] : store.get().annotations;
+  const message = annotations.length ? `${text}\n\n${formatAnnotations(annotations)}`.trim() : text;
+  const images = [
+    ...ownImages,
+    ...annotations.flatMap((a) => (a.image ? [{ type: "image" as const, data: a.image, mimeType: "image/jpeg" }] : [])),
+  ];
   const cmd: RpcCommand = { type: "prompt", message, images: images.length ? images : undefined };
   if (session.running && !isCommand) cmd.streamingBehavior = mode === "followUp" ? "followUp" : "steer";
   patchSession(handle, (s) => ({ ...s, prompted: true }));
   const response = await command<{ disposition: string }>(handle, cmd);
+  if (response.success && annotations.length) {
+    const sent = new Set(annotations.map((a) => a.id));
+    store.set((s) => ({ ...s, annotations: s.annotations.filter((a) => !sent.has(a.id)) }));
+    if (store.get().browser.annotating) window.studio.browser.annotate(false);
+  }
   return response.success;
+}
+
+/** Browser comments as a prompt block; element crops travel as images in the same order. */
+export function formatAnnotations(annotations: Annotation[]): string {
+  const items = annotations.map((a, index) =>
+    [
+      `${index + 1}. ${a.comment}`,
+      `   page: ${a.url}${a.title ? ` (${a.title})` : ""}`,
+      `   element: ${a.label}  selector: ${a.selector}`,
+      `   html: ${a.html.replace(/\s+/g, " ").slice(0, 400)}`,
+    ].join("\n"),
+  );
+  const note = annotations.some((a) => a.image) ? " Attached images are crops of the commented elements, in order." : "";
+  return `<browser-comments>\nThe user commented on elements in the pi studio browser.${note}\n${items.join("\n")}\n</browser-comments>`;
+}
+
+export function removeAnnotation(id: string): void {
+  store.set((s) => ({ ...s, annotations: s.annotations.filter((a) => a.id !== id) }));
+}
+
+// ── Browser pane ─────────────────────────────────────────────────────────────
+
+export function setPane(patch: Partial<AppState["pane"]>): void {
+  store.set((s) => ({ ...s, pane: { ...s.pane, ...patch } }));
+}
+
+export function toggleBrowser(): void {
+  const { pane, browser } = store.get();
+  setPane({ open: !pane.open, full: false });
+  if (!pane.open && browser.tabs.length === 0) window.studio.browser.newTab();
+}
+
+export function openLightbox(src: string | undefined): void {
+  store.set((s) => ({ ...s, lightbox: src }));
 }
 
 /** Esc: pull queued messages back into the composer, then abort the run. */
@@ -302,6 +357,11 @@ export function boot(): void {
   if (booted) return;
   booted = true;
   studio().onEvents(handleBatch);
+  const browser = studio().browser;
+  browser.onState((state) => store.set((s) => ({ ...s, browser: state })));
+  browser.onReveal(() => setPane({ open: true }));
+  browser.onAnnotation((annotation) => store.set((s) => ({ ...s, annotations: [...s.annotations, annotation] })));
+  void browser.state().then((state) => state && store.set((s) => ({ ...s, browser: state })));
   refreshProjects();
   newSession(studio().launchCwd || studio().homeDir);
 }

@@ -17,9 +17,9 @@ import { memo, useMemo } from "react";
 import { formatDuration } from "../lib/format";
 import { type ToolCategory, presentTool, summarizeTools } from "../lib/tools";
 import type { Block, Step } from "../lib/view";
-import { setExpanded, useApp } from "../state/app";
+import { openLightbox, setExpanded, useApp } from "../state/app";
 import { PixelLoader } from "./primitives";
-import { ToolDetails } from "./ToolDetails";
+import { resultImages, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, LucideIcon> = {
   read: FileText,
@@ -72,9 +72,10 @@ export const ActivityGroup = memo(function ActivityGroup({ block, cwd, home }: {
       >
         <Icon size={14} className="shrink-0 text-faint group-hover:text-muted" />
         <span className="truncate">{summary}</span>
-        {tools.length > 1 && <span className="font-mono text-[11px] text-faint">{tools.length}</span>}
+        {tools.length > 1 && summary.includes("·") && <span className="font-mono text-[11px] text-faint">{tools.length}</span>}
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
+      {!open && <InlineImages images={tools.flatMap((step) => resultImages(step.run?.result ?? step.run?.partial))} />}
       {open && (
         <div className="ml-[15px] mt-1 flex flex-col gap-0.5 border-l border-dashed border-line-strong pl-3">
           {block.steps.map((step) =>
@@ -154,7 +155,25 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
           <ChevronRight size={12} className={`transition ${open ? "rotate-90" : "opacity-0 group-hover:opacity-100"}`} />
         </span>
       </button>
+      <InlineImages images={resultImages(run?.result ?? run?.partial)} />
       {open && <ToolDetails call={call} run={run} />}
+    </div>
+  );
+}
+
+/** Tool-result images render inline, like pi's terminal does; click for full size. */
+function InlineImages({ images }: { images: ReturnType<typeof resultImages> }) {
+  if (!images.length) return null;
+  return (
+    <div className="mt-1 mb-1.5 flex flex-wrap gap-2 pl-7">
+      {images.map((image, index) => {
+        const src = `data:${image.mimeType};base64,${image.data}`;
+        return (
+          <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
+            <img alt="" src={src} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -1,20 +1,27 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { BrowserPane } from "./components/BrowserPane";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { Sidebar } from "./components/Sidebar";
-import { boot, dismissToast, newSession, store, toggleExpandAll, useApp } from "./state/app";
+import { boot, dismissToast, newSession, openLightbox, setPane, store, toggleBrowser, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
   useEffect(() => {
     boot();
     const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "o") {
+      const key = event.key.toLowerCase();
+      if (event.ctrlKey && !event.metaKey && key === "o") {
         event.preventDefault();
         toggleExpandAll();
-      } else if (event.metaKey && event.key.toLowerCase() === "n") {
+      } else if (event.metaKey && key === "n") {
         event.preventDefault();
         const { active, sessions } = store.get();
         newSession((active && sessions[active]?.cwd) || window.studio.launchCwd || window.studio.homeDir);
+      } else if (event.metaKey && key === "b") {
+        event.preventDefault();
+        toggleBrowser();
+      } else if (key === "escape" && store.get().lightbox) {
+        openLightbox(undefined);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -22,26 +29,68 @@ export function App() {
   }, []);
 
   const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
+  const pane = useApp((state) => state.pane);
+  const main = useRef<HTMLElement>(null);
+
+  const startDrag = (event: React.PointerEvent) => {
+    const element = main.current;
+    if (!element) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = element.getBoundingClientRect();
+    const move = (e: PointerEvent) => {
+      const split = (rect.right - e.clientX) / rect.width;
+      setPane({ split: Math.min(0.75, Math.max(0.25, split)) });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   return (
     <div className="flex h-full">
       <Sidebar />
-      <main className="min-w-0 flex-1 border-l border-line bg-canvas">
-        {session ? (
-          <SessionPane key={session.handle} session={session} />
-        ) : (
-          <div className="drag grid h-full place-items-center text-[13px] text-faint">Pick a session or start a new one (⌘N)</div>
+      <main ref={main} className="flex min-w-0 flex-1 border-l border-line bg-canvas">
+        <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
+          {session ? (
+            <SessionPane key={session.handle} session={session} />
+          ) : (
+            <div className="drag grid h-full place-items-center text-[13px] text-faint">Pick a session or start a new one (⌘N)</div>
+          )}
+          <Toasts />
+        </section>
+        {pane.open && (
+          <>
+            {!pane.full && (
+              <div onPointerDown={startDrag} className="w-1 shrink-0 cursor-col-resize border-l border-line hover:bg-accent/40" title="Drag to resize" />
+            )}
+            <section className="min-w-0 shrink-0" style={{ width: pane.full ? "100%" : `${pane.split * 100}%` }}>
+              <BrowserPane />
+            </section>
+          </>
         )}
       </main>
-      <Toasts />
+      <Lightbox />
     </div>
+  );
+}
+
+function Lightbox() {
+  const src = useApp((state) => state.lightbox);
+  if (!src) return null;
+  return (
+    <button type="button" onClick={() => openLightbox(undefined)} className="fixed inset-0 z-50 grid cursor-zoom-out place-items-center bg-black/75 p-10">
+      <img alt="" src={src} className="max-h-full max-w-full rounded-lg shadow-2xl" />
+    </button>
   );
 }
 
 function Toasts() {
   const toasts = useApp((state) => state.toasts);
   return (
-    <div className="pointer-events-none fixed top-14 right-4 z-50 flex w-80 flex-col gap-2">
+    <div className="pointer-events-none absolute top-14 right-4 z-40 flex w-80 flex-col gap-2">
       {toasts.map((toast) => (
         <button
           key={toast.id}

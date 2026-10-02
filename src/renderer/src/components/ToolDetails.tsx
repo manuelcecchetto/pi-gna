@@ -15,7 +15,7 @@ export function resultText(result: ToolResultLike | undefined): string {
     .join("\n");
 }
 
-function resultImages(result: ToolResultLike | undefined): ImageContent[] {
+export function resultImages(result: ToolResultLike | undefined): ImageContent[] {
   return result?.content.filter((block): block is ImageContent => block.type === "image") ?? [];
 }
 
@@ -103,16 +103,6 @@ function Section({ label, children }: { label?: string; children: React.ReactNod
   );
 }
 
-function Images({ images }: { images: ImageContent[] }) {
-  if (!images.length) return null;
-  return (
-    <div className="flex flex-wrap gap-2 p-3">
-      {images.map((image, index) => (
-        <img key={index} alt="" className="max-h-72 rounded-lg border border-line" src={`data:${image.mimeType};base64,${image.data}`} />
-      ))}
-    </div>
-  );
-}
 
 export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
   const args = call.arguments;
@@ -177,8 +167,7 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
         <Output text={text} error />
       ) : (
         <>
-          <Clipped text={text}>{(visible) => <CodeView code={visible} lang={langFromPath(str(args.path))} className="max-h-96 overflow-auto" />}</Clipped>
-          <Images images={resultImages(result)} />
+          {text.trim() && <Clipped text={text}>{(visible) => <CodeView code={visible} lang={langFromPath(str(args.path))} className="max-h-96 overflow-auto" />}</Clipped>}
         </>
       );
       break;
@@ -191,7 +180,6 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
           {result && (
             <Section label={failed ? "error" : "result"}>
               <Output text={text} error={failed} />
-              <Images images={resultImages(result)} />
             </Section>
           )}
         </>

@@ -1,9 +1,9 @@
-import { ArrowUp, Brain, ChevronDown, Cpu, Square, X } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, Cpu, MessageSquare, Square, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import { fuzzyFilter } from "../lib/fuzzy";
 import type { SessionState } from "../lib/session";
-import { interrupt, type SendMode, send, setModel, setThinking, useApp } from "../state/app";
+import { interrupt, openLightbox, removeAnnotation, type SendMode, send, setModel, setThinking, useApp } from "../state/app";
 import { Dialogs } from "./Dialogs";
 import { Ansi, Kbd, Popover } from "./primitives";
 
@@ -42,6 +42,7 @@ export function Composer({ session }: { session: SessionState }) {
   const [files, setFiles] = useState<string[]>([]);
   const area = useRef<HTMLTextAreaElement>(null);
   const commands = useApp((state) => state.commands[handle]);
+  const annotations = useApp((state) => state.annotations);
 
   const setText = useCallback(
     (value: string) => {
@@ -111,7 +112,7 @@ export function Composer({ session }: { session: SessionState }) {
 
   const submit = async (mode: SendMode) => {
     const message = text.trim();
-    if (!message && !images.length) return;
+    if (!message && !images.length && !annotations.length) return;
     const sentText = text;
     const sentImages = images;
     setText("");
@@ -201,6 +202,26 @@ export function Composer({ session }: { session: SessionState }) {
         </div>
       )}
 
+      {annotations.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {annotations.map((annotation) => (
+            <div key={annotation.id} className="flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-soft px-2.5 py-1.5 text-[12.5px]">
+              <MessageSquare size={12} className="shrink-0 text-accent" />
+              {annotation.image && (
+                <button type="button" onClick={() => openLightbox(`data:image/jpeg;base64,${annotation.image}`)} className="shrink-0">
+                  <img alt="" src={`data:image/jpeg;base64,${annotation.image}`} className="h-6 max-w-16 rounded border border-line object-cover" />
+                </button>
+              )}
+              <span className="truncate text-fg">{annotation.comment}</span>
+              <span className="min-w-0 shrink truncate font-mono text-[11px] text-faint">{annotation.label}</span>
+              <button type="button" title="Remove comment" onClick={() => removeAnnotation(annotation.id)} className="ml-auto shrink-0 text-faint hover:text-fg">
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="relative rounded-2xl border border-line-strong bg-panel transition focus-within:border-accent/50">
         {menu && items.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-line-strong bg-panel p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
@@ -264,14 +285,14 @@ export function Composer({ session }: { session: SessionState }) {
                 <Kbd>esc</Kbd> stop
               </span>
             )}
-            {session.running && !text.trim() ? (
+            {session.running && !text.trim() && !annotations.length ? (
               <button type="button" onClick={() => void stop()} title="Stop (Esc)" className="grid h-8 w-8 place-items-center rounded-full bg-fg text-canvas hover:opacity-90">
                 <Square size={11} fill="currentColor" />
               </button>
             ) : (
               <button
                 type="button"
-                disabled={(!text.trim() && !images.length) || exited}
+                disabled={(!text.trim() && !images.length && !annotations.length) || exited}
                 onClick={() => void submit("send")}
                 title={session.running ? "Steer (Enter)" : "Send (Enter)"}
                 className="grid h-8 w-8 place-items-center rounded-full bg-accent text-white transition enabled:hover:opacity-90 disabled:bg-raised disabled:text-faint"

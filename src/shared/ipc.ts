@@ -1,4 +1,5 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
+import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -19,7 +20,36 @@ export const IPC = {
   pickFolder: "studio:pick-folder",
   openExternal: "studio:open-external",
   events: "studio:events",
+  browserLayout: "browser:layout",
+  browserNewTab: "browser:new-tab",
+  browserCloseTab: "browser:close-tab",
+  browserActivate: "browser:activate",
+  browserNavigate: "browser:navigate",
+  browserCommand: "browser:command",
+  browserAnnotate: "browser:annotate",
+  browserInspect: "browser:inspect",
+  browserHistory: "browser:history",
+  browserGetState: "browser:get-state",
+  browserState: "browser:state",
+  browserReveal: "browser:reveal",
+  browserAnnotation: "browser:annotation",
 } as const;
+
+export interface BrowserApi {
+  layout(layout: BrowserLayout): void;
+  newTab(url?: string): void;
+  closeTab(id: string): void;
+  activate(id: string): void;
+  navigate(id: string, input: string): void;
+  command(id: string, command: BrowserCommand): void;
+  annotate(on: boolean): void;
+  inspect(id: string): void;
+  history(): Promise<HistoryEntry[]>;
+  state(): Promise<BrowserState>;
+  onState(listener: (state: BrowserState) => void): () => void;
+  onReveal(listener: () => void): () => void;
+  onAnnotation(listener: (annotation: Annotation) => void): () => void;
+}
 
 export interface SessionSummary {
   path: string;
@@ -74,4 +104,5 @@ export interface StudioApi {
   pickFolder(): Promise<string | null>;
   openExternal(url: string): void;
   onEvents(listener: (batch: HostEventBatch) => void): () => void;
+  browser: BrowserApi;
 }

@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { Annotation, BrowserState } from "../shared/browser";
 import { type HostEventBatch, IPC, type StudioApi } from "../shared/ipc";
+
+function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
+  const handler = (_event: unknown, value: T) => listener(value);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.off(channel, handler);
+}
 
 const arg = (name: string) => process.argv.find((value) => value.startsWith(`--${name}=`))?.slice(name.length + 3) ?? "";
 
@@ -14,10 +21,21 @@ const api: StudioApi = {
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
-  onEvents(listener) {
-    const handler = (_event: unknown, batch: HostEventBatch) => listener(batch);
-    ipcRenderer.on(IPC.events, handler);
-    return () => ipcRenderer.off(IPC.events, handler);
+  onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),
+  browser: {
+    layout: (layout) => ipcRenderer.send(IPC.browserLayout, layout),
+    newTab: (url) => ipcRenderer.send(IPC.browserNewTab, url),
+    closeTab: (id) => ipcRenderer.send(IPC.browserCloseTab, id),
+    activate: (id) => ipcRenderer.send(IPC.browserActivate, id),
+    navigate: (id, input) => ipcRenderer.send(IPC.browserNavigate, id, input),
+    command: (id, command) => ipcRenderer.send(IPC.browserCommand, id, command),
+    annotate: (on) => ipcRenderer.send(IPC.browserAnnotate, on),
+    inspect: (id) => ipcRenderer.send(IPC.browserInspect, id),
+    history: () => ipcRenderer.invoke(IPC.browserHistory),
+    state: () => ipcRenderer.invoke(IPC.browserGetState),
+    onState: (listener) => subscribe<BrowserState>(IPC.browserState, listener),
+    onReveal: (listener) => subscribe<void>(IPC.browserReveal, listener),
+    onAnnotation: (listener) => subscribe<Annotation>(IPC.browserAnnotation, listener),
   },
 };
 

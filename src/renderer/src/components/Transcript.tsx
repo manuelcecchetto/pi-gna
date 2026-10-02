@@ -1,11 +1,11 @@
-import { AlertTriangle, ChevronRight, CircleSlash, FoldVertical, GitBranch, SquareTerminal } from "lucide-react";
+import { AlertTriangle, ChevronRight, CircleSlash, FoldVertical, GitBranch, MessageSquare, SquareTerminal } from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { formatTokens } from "../lib/format";
 import type { SessionState } from "../lib/session";
 import { presentTool } from "../lib/tools";
 import { type Block, createRunDeriver, type Run } from "../lib/view";
-import { setExpanded, useApp } from "../state/app";
+import { openLightbox, setExpanded, useApp } from "../state/app";
 import { ActivityGroup } from "./Activity";
 import { Markdown } from "./Markdown";
 import { Ansi, Elapsed, PixelLoader } from "./primitives";
@@ -99,8 +99,8 @@ function LiveIndicator({ session, runs }: { session: SessionState; runs: Run[] }
 
 const RunView = memo(function RunView({ run, cwd, home }: { run: Run; cwd: string; home: string }) {
   return (
-    <section className="flex flex-col gap-3.5">
-      {run.user && <UserBubble message={run.user.message} />}
+    <section className="flex flex-col gap-3.5 border-t border-dashed border-line-strong pt-6 first-of-type:border-t-0 first-of-type:pt-0">
+      {run.user && <UserMessageView message={run.user.message} />}
       {run.blocks.map((block) => (
         <BlockView key={block.key} block={block} cwd={cwd} home={home} />
       ))}
@@ -119,31 +119,53 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
   };
 }
 
-function UserBubble({ message }: { message: UserMessage }) {
-  const { text, images } = userParts(message);
+/** Your own messages: plain text with a prompt marker, no chat bubble. */
+function UserMessageView({ message }: { message: UserMessage }) {
+  const parts = userParts(message);
+  // Browser comments ride along as a tagged block; show them folded instead of inline.
+  const [text, comments] = splitComments(parts.text);
+  const images = parts.images;
   const [expanded, setOpen] = useState(false);
   const long = text.split("\n").length > 14 || text.length > 1400;
   return (
-    <div className="flex flex-col items-end gap-2">
-      {images.length > 0 && (
-        <div className="flex gap-2">
-          {images.map((image, index) => (
-            <img key={index} alt="" className="h-20 rounded-lg border border-line object-cover" src={`data:${image.mimeType};base64,${image.data}`} />
-          ))}
-        </div>
-      )}
-      {text && (
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-raised px-4 py-2.5 text-[14.5px] leading-relaxed">
-          <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
-          {long && (
-            <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
-              {expanded ? "Show less" : "Show more"}
-            </button>
-          )}
-        </div>
-      )}
+    <div className="flex gap-3">
+      <span className="mt-[1px] shrink-0 select-none font-mono text-[14px] text-accent">›</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {text && (
+          <div className={`selectable whitespace-pre-wrap break-words text-[14.5px] leading-relaxed text-fg ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
+        )}
+        {long && (
+          <button type="button" onClick={() => setOpen(!expanded)} className="self-start text-[12px] text-muted hover:text-fg">
+            {expanded ? "Show less" : "Show more"}
+          </button>
+        )}
+        {comments && (
+          <Disclosure id={`${message.timestamp}:comments`} icon={<MessageSquare size={13} />} label={`Browser comments (${comments.count})`}>
+            <pre className="code selectable whitespace-pre-wrap text-muted">{comments.body}</pre>
+          </Disclosure>
+        )}
+        {images.length > 0 && (
+          <div className="flex gap-2">
+            {images.map((image, index) => {
+              const src = `data:${image.mimeType};base64,${image.data}`;
+              return (
+                <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
+                  <img alt="" className="h-20 rounded-lg border border-line object-cover" src={src} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+function splitComments(text: string): [string, { body: string; count: number } | undefined] {
+  const match = text.match(/\n*<browser-comments>\n?([\s\S]*?)\n?<\/browser-comments>/);
+  if (!match) return [text, undefined];
+  const body = (match[1] ?? "").trim();
+  return [text.replace(match[0], "").trim(), { body, count: (body.match(/^\d+\. /gm) ?? []).length }];
 }
 
 function BlockView({ block, cwd, home }: { block: Block; cwd: string; home: string }) {

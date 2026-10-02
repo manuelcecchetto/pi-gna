@@ -25,9 +25,37 @@ terminal: pi-studio            -> logs (main + pi stderr), Ctrl-C quits
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     files          `rg --files` for @ mentions
+    browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), AgentBridge (localhost)
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
+resources/browser-extension.ts   pi extension loaded with `-e` into every studio session
 ```
+
+## Browser (M2)
+
+- **Tabs** are `WebContentsView`s in the persistent partition `persist:pi-studio-browser` (separate cookies and
+  storage from the app; no camera, mic, location or notifications). The renderer draws the tab strip and toolbar
+  and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views
+  paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
+  image lightbox). History lives in `userData/browser-history.json`.
+- **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
+  `browser_screenshot`, `browser_evaluate`, `browser_console`. The extension calls `POST /browser` on a
+  loopback HTTP server; each pi process gets its own bearer token (env `PI_STUDIO_TOKEN`), and the token, never
+  the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
+  and its actions run through a per-session queue because pi executes one message's tool calls in parallel.
+- **Input and screenshots go through CDP** (`webContents.debugger`), not `sendInputEvent`/`capturePage`: those
+  need composited frames, which Chromium stops producing while the app window is hidden behind other windows
+  (verified: the click did nothing and capture failed with "Current display surface not available").
+- **Snapshots** run in an isolated world (shared DOM, separate JS globals) and tag interactive elements with
+  `data-pi-ref` numbers that click/type use.
+- **Policy** lives in the extension: loopback and `*.localhost` URLs are allowed; any other origin asks once per
+  session through `ctx.ui.select`, which renders as a studio approval card. Actions that navigate are re-checked
+  afterwards and stepped back if denied. Stagehand's `run`, `snapshot` and `screenshot` are excluded with
+  `--exclude-tools` (override with `PI_STUDIO_EXCLUDE_TOOLS`). The extension imports `src/shared/browser.ts`
+  directly (pi loads extensions with jiti and aliases `typebox`).
+- **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab; a
+  long-pending promise resolves with the element, selector, HTML and comment, main crops the element, and the
+  renderer shows it as a chip. The next prompt carries a `<browser-comments>` block plus the crops as images.
 
 ## pi RPC notes (pi 1.0.0)
 
@@ -87,6 +115,9 @@ light and dark themes, pixel-grid loaders with shimmer text, compact chips that 
 `node bin/pi-studio.mjs --remote-debugging-port=9333`. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
+Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
+`click x y` sends real mouse input (useful for driving the annotation picker). CDP screenshots of the app window
+do not include native tab views.
 
 Build notes: Electron 44 has no postinstall; it downloads its binary on the first `require("electron")`.
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.
@@ -95,7 +126,7 @@ electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandb
 
 1. **Core (done):** RPC bridge, terminal logs, transcript with streaming, thinking and tool groups, prompt bar, sessions
    sidebar, approval cards, steer/follow-up/abort, status bar.
-2. **Browser:** `WebContentsView` tabs with a persistent separate profile, address bar and history, split/full view,
+2. **Browser (done):** `WebContentsView` tabs with a persistent separate profile, address bar and history, split/full view,
    agent `browser_*` tools via a pi extension loaded with `-e` that calls a token-gated localhost bridge (CDP through
    `webContents.debugger`), annotation mode whose comments attach to the next prompt. Stagehand tools are excluded in
    studio sessions; localhost is allowed, other sites ask once.

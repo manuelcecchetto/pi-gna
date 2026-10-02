@@ -6,14 +6,20 @@
 //   node scripts/cdp.mjs eval "document.title"          # evaluate in the renderer
 //   node scripts/cdp.mjs type "hello" [--enter]         # type into the focused element
 //   node scripts/cdp.mjs key Escape|Enter|ctrl+o        # press a key
+//   node scripts/cdp.mjs click 120 340                  # real mouse click at CSS px
+//   CDP_URL=localhost:8765 node scripts/cdp.mjs shot    # target a browser tab instead of the app
 // Uses Node's built-in WebSocket; no dependencies.
 import { writeFileSync } from "node:fs";
 
 const port = process.env.CDP_PORT || "9333";
 const [command, ...args] = process.argv.slice(2);
 
+// CDP_URL picks a target by URL substring (browser tabs are separate targets); default: the app window.
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-const page = targets.find((t) => t.type === "page" && !t.url.startsWith("devtools://"));
+const match = process.env.CDP_URL;
+const page = targets.find((t) =>
+  t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /\/renderer\/index\.html|localhost:5173\/?$/.test(t.url)),
+);
 if (!page) throw new Error("no page target");
 
 const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -74,6 +80,16 @@ switch (command) {
   }
   case "key":
     await press(args[0]);
+    break;
+  case "click": {
+    const [x, y] = args.map(Number);
+    for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+      await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+    }
+    break;
+  }
+  case "targets":
+    console.log(targets.filter((t) => t.type === "page").map((t) => t.url).join("\n"));
     break;
   default:
     console.error("usage: cdp.mjs shot <path> | eval <expr> | type <text> [--enter] | key <key>");

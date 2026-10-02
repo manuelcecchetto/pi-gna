@@ -14,10 +14,15 @@ node bin/pi-studio.mjs        # or `pnpm link --global` once, then `pi-studio` i
 
 New sessions start in the directory you launch from. Ctrl-C in the terminal quits and stops every pi process.
 
+The browser pane (Cmd+B) is shared by you and pi. pi gets `browser_*` tools for it: local dev servers open
+without asking, other sites ask once per session. Use the comment button to click elements and leave notes;
+they are attached to your next prompt with a crop of each element.
+
 | Variable | Effect |
 |---|---|
 | `PI_STUDIO_DEBUG=1` | Log every RPC record in the terminal |
 | `PI_STUDIO_PI_BIN` | pi executable to spawn (default `pi` on `PATH`) |
+| `PI_STUDIO_EXCLUDE_TOOLS` | Tools hidden from studio sessions (default `run,snapshot,screenshot`, Stagehand's) |
 | `PI_CODING_AGENT_SESSION_DIR`, `PI_CODING_AGENT_DIR` | Where sessions are listed from (same as pi) |
 
 ## Keys
@@ -29,6 +34,7 @@ New sessions start in the directory you launch from. Ctrl-C in the terminal quit
 | Esc | Pull queued messages back into the composer and stop the run |
 | Ctrl+O | Expand or collapse every tool call |
 | Cmd+N | New session in the current project |
+| Cmd+B | Show or hide the browser |
 | `/` and `@` | Commands, skills and prompt templates / project files |
 
 ## Develop

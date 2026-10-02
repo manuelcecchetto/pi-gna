@@ -9,6 +9,8 @@ export interface PiProcessOptions {
   sessionPath?: string;
   /** Short label used in terminal logs. */
   tag: string;
+  args?: string[];
+  env?: Record<string, string>;
 }
 
 export interface PiExit {
@@ -43,11 +45,12 @@ export class PiProcess {
     private readonly options: PiProcessOptions,
     private readonly handlers: PiProcessHandlers,
   ) {
-    const args = ["--mode", "rpc"];
+    const args = ["--mode", "rpc", ...(options.args ?? [])];
     if (options.sessionPath) args.push("--session", options.sessionPath);
     log.info(options.tag, `spawn ${PI_BIN} ${args.join(" ")}  (cwd ${options.cwd})`);
 
-    this.child = spawn(PI_BIN, args, { cwd: options.cwd, env: process.env, stdio: ["pipe", "pipe", "pipe"] });
+    const env = { ...process.env, ...options.env };
+    this.child = spawn(PI_BIN, args, { cwd: options.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.child.stdout.on("data", (chunk: Buffer) => this.onStdout(this.stdout.push(chunk)));
     this.child.stdout.on("end", () => this.onStdout(this.stdout.end()));
     this.child.stderr.on("data", (chunk: Buffer) => this.onStderr(this.stderr.push(chunk)));

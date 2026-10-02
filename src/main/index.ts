@@ -1,8 +1,12 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
+import type { BrowserCommand, BrowserLayout } from "../shared/browser";
 import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
+import { BrowserAgent } from "./browser/agent";
+import { AgentBridge } from "./browser/bridge";
+import { BrowserManager } from "./browser/manager";
 import { listFiles } from "./files";
 import { debugRpc, log } from "./log";
 import { SessionHost } from "./session-host";
@@ -12,9 +16,13 @@ app.setName("pi studio");
 const launchCwd = process.env.PI_STUDIO_CWD || process.cwd();
 
 let window: BrowserWindow | undefined;
-const host = new SessionHost((batch: HostEventBatch) => {
-  if (window && !window.isDestroyed()) window.webContents.send(IPC.events, batch);
-});
+let browser: BrowserManager | undefined;
+let agent: BrowserAgent | undefined;
+const bridge = new AgentBridge(() => agent);
+const send = (channel: string, ...args: unknown[]) => {
+  if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
+};
+const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge);
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -56,6 +64,13 @@ function createWindow(): void {
     }
   });
 
+  browser = new BrowserManager(window, {
+    state: (state) => send(IPC.browserState, state),
+    reveal: () => send(IPC.browserReveal),
+    annotation: (annotation) => send(IPC.browserAnnotation, annotation),
+  });
+  agent = new BrowserAgent(browser);
+
   if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
   else void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
 }
@@ -76,6 +91,17 @@ function registerIpc(): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   ipcMain.on(IPC.openExternal, (_event, url: string) => openExternal(url));
+
+  ipcMain.on(IPC.browserLayout, (_event, layout: BrowserLayout) => browser?.setLayout(layout));
+  ipcMain.on(IPC.browserNewTab, (_event, url?: string) => browser?.createTab(url));
+  ipcMain.on(IPC.browserCloseTab, (_event, id: string) => browser?.closeTab(id));
+  ipcMain.on(IPC.browserActivate, (_event, id: string) => browser?.activate(id));
+  ipcMain.on(IPC.browserNavigate, (_event, id: string, input: string) => browser?.navigate(id, input));
+  ipcMain.on(IPC.browserCommand, (_event, id: string, command: BrowserCommand) => browser?.command(id, command));
+  ipcMain.on(IPC.browserAnnotate, (_event, on: boolean) => browser?.setAnnotating(on));
+  ipcMain.on(IPC.browserInspect, (_event, id: string) => browser?.inspect(id));
+  ipcMain.handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
+  ipcMain.handle(IPC.browserGetState, () => browser?.snapshot());
 }
 
 function buildMenu(): void {
@@ -91,6 +117,7 @@ function buildMenu(): void {
 
 let quitting = false;
 app.on("before-quit", (event) => {
+  bridge.stop();
   if (quitting || host.size === 0) return;
   event.preventDefault();
   quitting = true;
@@ -100,10 +127,11 @@ app.on("before-quit", (event) => {
 app.on("window-all-closed", () => app.quit());
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   log.info("studio", `pi studio ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}`);
   log.info("studio", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PI_STUDIO_DEBUG=1 logs RPC traffic)"}`);
   buildMenu();
   registerIpc();
+  await bridge.start();
   createWindow();
 });

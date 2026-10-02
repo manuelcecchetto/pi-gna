@@ -93,6 +93,22 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       const urls = Array.isArray(args.urls) ? (args.urls as unknown[]).map(str) : [str(args.url)];
       return { category: "web", verb: "Fetched", activeVerb: "Fetching", target: urls[0] ?? "", meta: urls.length > 1 ? `+${urls.length - 1} more` : undefined };
     }
+    case "browser_open":
+      return { category: "browser", verb: "Opened", activeVerb: "Opening", target: str(args.url) };
+    case "browser_snapshot":
+      return { category: "browser", verb: "Read the page", activeVerb: "Reading the page", target: "" };
+    case "browser_click":
+      return { category: "browser", verb: "Clicked", activeVerb: "Clicking", target: `[${String(args.ref ?? "")}]` };
+    case "browser_type":
+      return { category: "browser", verb: "Typed", activeVerb: "Typing", target: firstLine(str(args.text), 60), meta: `into [${String(args.ref ?? "")}]` };
+    case "browser_press":
+      return { category: "browser", verb: "Pressed", activeVerb: "Pressing", target: str(args.key) };
+    case "browser_screenshot":
+      return { category: "browser", verb: "Took a screenshot", activeVerb: "Taking a screenshot", target: "" };
+    case "browser_evaluate":
+      return { category: "browser", verb: "Evaluated", activeVerb: "Evaluating", target: firstLine(str(args.expression), 80) };
+    case "browser_console":
+      return { category: "browser", verb: "Read the console", activeVerb: "Reading the console", target: "" };
     case "run":
     case "snapshot":
     case "screenshot":
