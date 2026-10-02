@@ -81,6 +81,8 @@ export interface SessionState {
   editorText?: { text: string; nonce: number };
   title?: string;
   stats?: SessionStats;
+  /** Opened from an existing session file (as opposed to a new chat started in studio). */
+  fromDisk: boolean;
   /** Set once the user prompts from studio; such sessions stay alive when switching away. */
   prompted: boolean;
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
@@ -102,6 +104,7 @@ export function createSession(handle: string, cwd: string, sessionPath?: string)
     dialogs: [],
     statuses: {},
     widgets: {},
+    fromDisk: sessionPath !== undefined,
     prompted: false,
     items: [],
     tools: {},
@@ -466,4 +469,13 @@ export function strongestAttention(sessions: AttentionInput[]): Attention | unde
     if (level !== "idle" && (!best || ATTENTION_RANK[level] > ATTENTION_RANK[best])) best = level;
   }
   return best;
+}
+
+/**
+ * A new chat you have not sent anything to yet. It stays out of the sidebar (the "New chat" row stands in for
+ * it) until it has a message, runs, or needs you.
+ */
+export function isDraft(session: Pick<SessionState, "fromDisk" | "items" | "prompted" | "running" | "dialogs" | "unread">): boolean {
+  // Not sessionPath: pi names a session file as soon as it is ready, before anything is written.
+  return !session.fromDisk && !session.items.length && !session.prompted && !session.running && !session.dialogs.length && !session.unread;
 }

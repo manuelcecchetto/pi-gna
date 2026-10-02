@@ -61,7 +61,6 @@ export function App() {
   return (
     <div className="flex h-full">
       <Sidebar />
-      <CollapsedSidebarControls />
       <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
           {session ? (
@@ -86,6 +85,7 @@ export function App() {
           </>
         )}
       </main>
+      <CollapsedSidebarControls />
       <Lightbox />
     </div>
   );

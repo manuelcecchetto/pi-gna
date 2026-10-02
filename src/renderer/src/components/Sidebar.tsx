@@ -2,7 +2,7 @@ import { ChevronRight, Folder, PanelLeftClose, PanelLeftOpen, Plus, SquarePen } 
 import { useMemo, useState } from "react";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
-import { type Attention, attention, type SessionState, strongestAttention } from "../lib/session";
+import { type Attention, attention, isDraft, type SessionState, strongestAttention } from "../lib/session";
 import { clampSidebarWidth, SIDEBAR_DEFAULT } from "../lib/layout";
 import { activate, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
@@ -27,6 +27,9 @@ export function Sidebar() {
   const activeCwd = active ? sessions[active]?.cwd : undefined;
 
   const groups = useMemo(() => mergeOpenSessions(projects, Object.values(sessions)), [projects, sessions]);
+  // You are in an empty new chat: highlight "New chat" instead of a row.
+  const activeSession = active ? sessions[active] : undefined;
+  const inDraft = Boolean(activeSession && isDraft(activeSession));
   const width = clampSidebarWidth(layout.width, window.innerWidth);
 
   const openFolder = async () => {
@@ -52,7 +55,7 @@ export function Sidebar() {
     <aside
       className={`relative shrink-0 overflow-hidden bg-[var(--sidebar)] ${dragging ? "" : "transition-[width] duration-200 ease-out"}`}
       style={{ width: layout.collapsed ? 0 : width }}
-      aria-hidden={layout.collapsed}
+      inert={layout.collapsed}
     >
       {/* Fixed inner width, so collapsing slides the sidebar away instead of reflowing it. */}
       <div className="flex h-full flex-col" style={{ width }}>
@@ -68,7 +71,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={newChat}
-            className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-fg/90 hover:bg-raised/60"
+            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${inDraft ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
           >
             <SquarePen size={14} className="shrink-0 text-muted" />
             <span className="flex-1">New chat</span>
@@ -106,7 +109,11 @@ export function Sidebar() {
   );
 }
 
-/** Shown in the top-left corner while the sidebar is hidden: bring it back, or start a chat. */
+/**
+ * Shown in the top-left corner while the sidebar is hidden: bring it back, or start a chat. Must render after
+ * <main> in the DOM: Electron applies -webkit-app-region rects in document order, so a later drag region (the
+ * header under these buttons) would swallow the clicks of an earlier no-drag element.
+ */
 export function CollapsedSidebarControls() {
   const collapsed = useApp((state) => state.sidebar.collapsed);
   if (!collapsed) return null;
@@ -135,6 +142,7 @@ function mergeOpenSessions(projects: ProjectGroup[], open: SessionState[]): { cw
     );
   }
   for (const session of open) {
+    if (isDraft(session)) continue;
     const rows = byCwd.get(session.cwd) ?? [];
     const existing = rows.find((row) => row.summary && row.summary.path === session.sessionPath);
     if (existing) existing.live = session;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
-import { attention, createSession, hydrate, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
+import { attention, createSession, hydrate, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
 import { presentTool, summarizeTools } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
@@ -343,5 +343,25 @@ describe("attention (sidebar mark)", () => {
     expect(runOutcome(modelError.items)).toBe("error");
     const retriesFailed = play([{ type: "agent_start" }, ...userTurn("go"), { type: "auto_retry_end", success: false, attempt: 3, finalError: "529" }]);
     expect(runOutcome(retriesFailed.items)).toBe("error");
+  });
+});
+
+describe("isDraft (kept out of the sidebar)", () => {
+  it("is a new chat with nothing sent, running or waiting, and stops being one once you prompt", () => {
+    const fresh = createSession("h", "/repo");
+    expect(isDraft(fresh)).toBe(true);
+    expect(isDraft({ ...fresh, prompted: true })).toBe(false); // sent, before pi echoes the message
+    expect(isDraft(play([{ type: "agent_start" }, ...userTurn("hi")], fresh))).toBe(false);
+    const dialog = { type: "extension_ui_request" as const, id: "d", method: "confirm" as const, title: "?" };
+    expect(isDraft({ ...fresh, dialogs: [dialog] })).toBe(false); // needs you: must stay visible
+    expect(isDraft(createSession("h", "/repo", "/s/file.jsonl"))).toBe(false); // opened from disk
+    // pi names the session file as soon as it is ready, before anything is written: still a draft.
+    const ready = reduceHostEvent(
+      fresh,
+      { kind: "ready", state: { thinkingLevel: "high", isStreaming: false, isCompacting: false, steeringMode: "all", followUpMode: "all", sessionFile: "/s/new.jsonl", sessionId: "x", autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 } },
+      1,
+    );
+    expect(ready.sessionPath).toBe("/s/new.jsonl");
+    expect(isDraft(ready)).toBe(true);
   });
 });

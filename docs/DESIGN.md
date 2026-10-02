@@ -99,10 +99,14 @@ Verified live (pi 1.0.0, Oct 2026):
 
 ## UI model
 
+- New chats are drafts (`isDraft`: started in studio, nothing sent, not running or waiting) and stay out of the
+  sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
+  spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
 - Sidebar layout (Codex-style): header with the logo and a hide button, a "New chat" row (⌘N), then a
   "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
-  the browser here). Width and collapsed state persist in localStorage. While collapsed, show-sidebar and
+  the browser here). Width and collapsed state persist in localStorage. Collapsed, the sidebar is `inert` (not `aria-hidden`, which
+  Chromium blocks while a button inside still has focus). While collapsed, show-sidebar and
   new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
   header gets `COLLAPSED_INSET` left padding.
 - Sidebar marks: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
@@ -197,6 +201,10 @@ Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.
 handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
 styles render in a background test window. CDP screenshots of the app window
 do not include native tab views.
+
+Electron drag regions: `-webkit-app-region` rects are applied in document order, so a `no-drag` element that
+overlaps a `drag` header must come later in the DOM (or be its descendant), or real clicks start a window drag.
+CDP clicks bypass the OS drag layer, so tests cannot catch this; check DOM order instead.
 
 Build notes: Electron 44 has no postinstall; it downloads its binary on the first `require("electron")`.
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.

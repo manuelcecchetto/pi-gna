@@ -25,7 +25,7 @@ import {
 import type { CompactionSettings } from "../../../shared/compaction";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
-import { createSession, hydrate, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
+import { createSession, hydrate, isDraft, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
 
 export interface Toast {
@@ -139,6 +139,12 @@ export function openSession(summary: SessionSummary): void {
 }
 
 export function newSession(cwd: string): void {
+  const { active, sessions } = store.get();
+  const current = active ? sessions[active] : undefined;
+  if (current && current.cwd === cwd && current.phase !== "exited" && isDraft(current)) {
+    prefill(current.handle, ""); // already in an empty chat here: just focus its composer
+    return;
+  }
   void start(cwd);
 }
 
