@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
-import { createSession, hydrate, reduceHostEvent, type SessionState } from "./session";
+import { attention, createSession, hydrate, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
 import { presentTool, summarizeTools } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
@@ -314,5 +314,34 @@ describe("steering", () => {
       entry("u3", { role: "user", content: "next prompt", timestamp: 4 }),
     ]);
     expect(deriveRuns(state).map((run) => run.user?.message.content)).toEqual(["fix auth", "next prompt"]);
+  });
+});
+
+describe("attention (sidebar mark)", () => {
+  const chat = (patch: Partial<SessionState>) => ({ ...createSession("h", "/repo"), phase: "ready" as const, ...patch });
+  const dialog = { type: "extension_ui_request" as const, id: "d", method: "confirm" as const, title: "?" };
+
+  it("ranks waiting > running > failed > unread, and idle chats get no mark", () => {
+    expect(attention(chat({ dialogs: [dialog], running: true, unread: "done" }))).toBe("waiting");
+    expect(attention(chat({ running: true, unread: "error" }))).toBe("running");
+    expect(attention(chat({ unread: "error" }))).toBe("failed");
+    expect(attention(chat({ phase: "exited", unread: "done" }))).toBe("failed");
+    expect(attention(chat({ unread: "done" }))).toBe("unread");
+    expect(attention(chat({}))).toBe("idle");
+  });
+
+  it("rolls a collapsed project up to its strongest chat", () => {
+    expect(strongestAttention([chat({}), chat({ unread: "done" }), chat({ unread: "error" })])).toBe("failed");
+    expect(strongestAttention([chat({ unread: "done" }), chat({ running: true })])).toBe("running");
+    expect(strongestAttention([chat({}), chat({})])).toBeUndefined();
+  });
+
+  it("tells a failed run from a finished one when it settles", () => {
+    const done = play([{ type: "agent_start" }, ...userTurn("go"), { type: "message_end", message: assistant([{ type: "text", text: "ok" }]) }]);
+    expect(runOutcome(done.items)).toBe("done");
+    const modelError = play([{ type: "agent_start" }, ...userTurn("go"), { type: "message_end", message: assistant([], "error") }]);
+    expect(runOutcome(modelError.items)).toBe("error");
+    const retriesFailed = play([{ type: "agent_start" }, ...userTurn("go"), { type: "auto_retry_end", success: false, attempt: 3, finalError: "529" }]);
+    expect(runOutcome(retriesFailed.items)).toBe("error");
   });
 });

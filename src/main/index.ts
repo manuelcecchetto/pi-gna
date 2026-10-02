@@ -57,6 +57,8 @@ function createWindow(): void {
       log[details.level === "error" ? "error" : "warn"]("renderer", `${details.message}  (${details.sourceId.split("/").at(-1)}:${details.lineNumber})`);
     }
   });
+  window.on("focus", () => send(IPC.windowFocus, true));
+  window.on("blur", () => send(IPC.windowFocus, false));
   window.webContents.on("render-process-gone", (_event, details) => log.error("renderer", `gone: ${details.reason}`));
 
   // Model output is untrusted: links never navigate the app window.
@@ -99,6 +101,7 @@ function registerIpc(): void {
   });
   ipcMain.on(IPC.openExternal, (_event, url: string) => openExternal(url));
   ipcMain.handle(IPC.compactionSettings, () => readCompactionSettings());
+  ipcMain.handle(IPC.windowFocused, () => window?.isFocused() ?? false);
   ipcMain.handle(IPC.describePaths, (_event, paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));
   ipcMain.handle(IPC.pickAttachments, async (_event, kind: "photos" | "files") => {
     const options: Electron.OpenDialogOptions =

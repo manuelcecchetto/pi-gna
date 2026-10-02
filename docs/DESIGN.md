@@ -98,7 +98,13 @@ Verified live (pi 1.0.0, Oct 2026):
 
 ## UI model
 
-- Sidebar: projects (cwd) -> sessions; the pi spinner on running sessions, dots for other open ones.
+- Sidebar: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
+  one still logo color for what needs you: yellow (pulsing) waiting for you, coral failed (the run errored while you
+  were not looking, or pi exited), blue finished but not seen yet. Idle chats get no mark; the highlighted row is
+  the one you are in. Those three states also make the title bold, and a collapsed project shows its strongest
+  mark. "Not seen" means the run settled while another chat was open or the app window was not focused (main
+  reports BrowserWindow focus; `document.hasFocus()` would be false while you use the browser pane). It clears
+  when you open the chat, or when the window regains focus with it open. Unread is in memory: a restart clears it.
 - Transcript: a **run** is everything between two user messages. Your messages are right-aligned bubbles without
   an avatar, Codex-style; finished answers end with a Copy button. Times ("Yesterday 5:22 PM", full date in the
   tooltip) appear while hovering a message or answer; a centered time divider is always shown above the first

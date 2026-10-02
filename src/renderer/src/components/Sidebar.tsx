@@ -2,9 +2,9 @@ import { ChevronRight, Folder, FolderPlus, Plus, SquarePen } from "lucide-react"
 import { useMemo, useState } from "react";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
-import type { SessionState } from "../lib/session";
+import { type Attention, attention, type SessionState, strongestAttention } from "../lib/session";
 import { activate, newSession, openSession, sessionTitle, useApp } from "../state/app";
-import { PiLogo, PiSpinner } from "./PiLogo";
+import { PI, PiLogo, PiSpinner } from "./PiLogo";
 
 const SESSIONS_PER_PROJECT = 6;
 
@@ -85,6 +85,8 @@ function ProjectSection({
   const [open, setOpen] = useState(defaultOpen);
   const [showAll, setShowAll] = useState(false);
   const rows = showAll ? group.rows : group.rows.slice(0, SESSIONS_PER_PROJECT);
+  // A collapsed project still says when one of its chats is running, waiting or unread.
+  const rollup = open ? undefined : strongestAttention(group.rows.flatMap((row) => (row.live ? [row.live] : [])));
   return (
     <div className="mb-1">
       <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50">
@@ -92,6 +94,7 @@ function ProjectSection({
           <ChevronRight size={12} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
           <Folder size={13} className="shrink-0 text-faint" />
           <span className="truncate text-[13px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
+          {rollup && <Indicator level={rollup} />}
         </button>
         <button
           type="button"
@@ -121,6 +124,8 @@ function ProjectSection({
 function SessionRow({ row, active }: { row: Row; active: boolean }) {
   const live = row.live;
   const title = live ? sessionTitle(live) : row.title;
+  const level = live ? attention(live) : undefined;
+  const needsYou = level === "waiting" || level === "failed" || level === "unread";
   const onClick = () => {
     if (live) activate(live.handle);
     else if (row.summary) openSession(row.summary);
@@ -129,19 +134,30 @@ function SessionRow({ row, active }: { row: Row; active: boolean }) {
     <button
       type="button"
       onClick={onClick}
-      className={`group flex items-center gap-2 rounded-lg px-2.5 py-[5px] text-left ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
+      className={`group flex items-center gap-2 rounded-lg px-2.5 py-[5px] text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
     >
-      <span className="grid w-3 shrink-0 place-items-center">
-        {live &&
-          (live.running && !live.dialogs.length ? (
-            <PiSpinner size={12} />
-          ) : (
-            <span className={`h-1.5 w-1.5 rounded-full ${live.dialogs.length ? "bg-warn pulse-dot" : live.phase === "exited" ? "bg-bad" : "bg-ok/80"}`} />
-          ))}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[13px]">{title}</span>
+      <span className="grid w-3 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
+      <span className={`min-w-0 flex-1 truncate text-[13px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
       {row.time && <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(row.time)}</span>}
     </button>
+  );
+}
+
+/** The pi logo tells the state: spinning while working, one still logo color for what needs you. */
+const MARKS: Record<Exclude<Attention, "idle" | "running">, { color: string; title: string; pulse?: boolean }> = {
+  waiting: { color: PI.yellow, title: "Waiting for you", pulse: true },
+  failed: { color: PI.coral, title: "Failed or exited" },
+  unread: { color: PI.blue, title: "Finished, not seen yet" },
+};
+
+function Indicator({ level }: { level: Attention }) {
+  if (level === "idle") return null;
+  if (level === "running") return <PiSpinner size={12} />;
+  const mark = MARKS[level];
+  return (
+    <span title={mark.title} className="grid place-items-center">
+      <PiLogo size={12} color={mark.color} className={mark.pulse ? "pulse-dot" : undefined} />
+    </span>
   );
 }
 

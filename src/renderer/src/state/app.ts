@@ -24,7 +24,7 @@ import {
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
-import { createSession, hydrate, reduceHostEvent, type SessionState } from "../lib/session";
+import { createSession, hydrate, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
 
 export interface Toast {
@@ -165,11 +165,19 @@ async function start(cwd: string, sessionPath?: string, modifiedAt?: number): Pr
 
 /** Sessions opened just to look at are closed again when you move on; prompted ones stay alive. */
 function isDisposable(session: SessionState): boolean {
-  return !session.prompted && !session.running && session.dialogs.length === 0;
+  return !session.prompted && !session.running && !session.unread && session.dialogs.length === 0;
+}
+
+let windowFocused = true;
+
+/** You are looking at this chat: clear its unread mark. */
+function markRead(handle: string | undefined): void {
+  if (handle && store.get().sessions[handle]?.unread) patchSession(handle, (s) => ({ ...s, unread: undefined }));
 }
 
 export function activate(handle: string | undefined): void {
   const previous = store.get().active;
+  markRead(handle);
   if (previous === handle) return;
   store.set((state) => ({ ...state, active: handle }));
   const prev = previous ? store.get().sessions[previous] : undefined;
@@ -221,7 +229,11 @@ export function handleBatch(batch: HostEventBatch): void {
       if (starting && seenStartupNotices.has(event.record.message)) continue;
       if (starting) seenStartupNotices.add(event.record.message);
       toast(event.record.message, level);
-    } else if (event.record.type === "agent_settled") void onSettled(handle);
+    } else if (event.record.type === "agent_settled") {
+      // Finished while you were not looking: another chat was open, or the window was in the background.
+      if (store.get().active !== handle || !windowFocused) patchSession(handle, (s) => ({ ...s, unread: runOutcome(s.items) }));
+      void onSettled(handle);
+    }
     // Context grows every turn and shrinks on compaction; get_session_stats is cheap (ms, even at 40 MB).
     else if (event.record.type === "turn_end" || event.record.type === "compaction_end") scheduleStats(handle);
   }
@@ -462,6 +474,15 @@ export function boot(): void {
   if (booted) return;
   booted = true;
   studio().onEvents(handleBatch);
+  void studio()
+    .windowFocused()
+    .then((focused) => {
+      windowFocused = focused;
+    });
+  studio().onWindowFocus((focused) => {
+    windowFocused = focused;
+    if (focused) markRead(store.get().active);
+  });
   const browser = studio().browser;
   browser.onState((state) => store.set((s) => ({ ...s, browser: state })));
   browser.onReveal(() => setPane({ open: true }));

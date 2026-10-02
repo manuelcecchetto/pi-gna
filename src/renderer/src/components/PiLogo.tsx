@@ -21,18 +21,20 @@ const CELLS: [number, number, string][] = [
 ];
 
 export const PI_COLORS = [CORAL, BLUE, YELLOW];
+export const PI = { coral: CORAL, blue: BLUE, yellow: YELLOW };
 
-export function PiLogo({ size = 64, animate = false, className = "" }: { size?: number; animate?: boolean; className?: string }) {
+/** The logo; `color` paints every cell one color (sidebar state marks). */
+export function PiLogo({ size = 64, animate = false, color, className = "" }: { size?: number; animate?: boolean; color?: string; className?: string }) {
   return (
     <svg viewBox="0 0 4 4" width={size} height={size} shapeRendering="crispEdges" className={className} role="img" aria-label="pi">
-      {CELLS.map(([x, y, color], index) => (
+      {CELLS.map(([x, y, cellColor], index) => (
         <rect
           key={`${x}${y}`}
           x={x}
           y={y}
           width={1.01}
           height={1.01}
-          fill={color}
+          fill={color ?? cellColor}
           className={animate ? "pi-cell" : undefined}
           style={animate ? { animationDelay: `${120 + index * 70}ms` } : undefined}
         />

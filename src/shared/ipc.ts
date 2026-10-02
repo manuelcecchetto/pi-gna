@@ -22,6 +22,8 @@ export const IPC = {
   pickAttachments: "studio:pick-attachments",
   describePaths: "studio:describe-paths",
   compactionSettings: "studio:compaction-settings",
+  windowFocused: "studio:window-focused",
+  windowFocus: "studio:window-focus",
   openExternal: "studio:open-external",
   events: "studio:events",
   browserLayout: "browser:layout",
@@ -122,6 +124,12 @@ export interface StudioApi {
   describePaths(paths: string[]): Promise<PickedPath[]>;
   /** pi's global compaction settings (reserveTokens and per-model overrides), for the context meter. */
   compactionSettings(): Promise<CompactionSettings>;
+  /**
+   * Whether the app window is focused. Not document.hasFocus(): that is also false while you use the
+   * browser pane (a separate web view), which still counts as looking at the window.
+   */
+  windowFocused(): Promise<boolean>;
+  onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
   pathForFile(file: File): string;
   openExternal(url: string): void;

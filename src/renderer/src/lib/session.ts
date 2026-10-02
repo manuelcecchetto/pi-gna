@@ -85,6 +85,8 @@ export interface SessionState {
   prompted: boolean;
   /** The file was written shortly before studio opened it: possibly live in another pi. */
   recentWriteAt?: number;
+  /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
+  unread?: RunOutcome;
   items: Item[];
   tools: Record<string, ToolRun>;
   seq: number;
@@ -428,4 +430,42 @@ function updateAssistant(state: SessionState, event: AssistantMessageEvent, usag
 
 function basename(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
+}
+
+export type RunOutcome = "done" | "error";
+
+/** How the run that just settled ended: the model or retries failed, or it finished. */
+export function runOutcome(items: Item[]): RunOutcome {
+  const last = items.at(-1);
+  if (last?.kind === "assistant" && last.message.stopReason === "error") return "error";
+  if (last?.kind === "notice" && last.level === "error") return "error";
+  return "done";
+}
+
+/**
+ * What a chat needs from you, strongest first. Drives the sidebar mark; idle chats get none (the
+ * highlighted row already marks the one you are in).
+ */
+export type Attention = "waiting" | "running" | "failed" | "unread" | "idle";
+
+const ATTENTION_RANK: Record<Attention, number> = { waiting: 4, running: 3, failed: 2, unread: 1, idle: 0 };
+
+type AttentionInput = Pick<SessionState, "dialogs" | "running" | "unread" | "phase">;
+
+export function attention(session: AttentionInput): Attention {
+  if (session.dialogs.length) return "waiting";
+  if (session.running) return "running";
+  if (session.phase === "exited" || session.unread === "error") return "failed";
+  if (session.unread) return "unread";
+  return "idle";
+}
+
+/** Strongest signal across chats (for a collapsed project), ignoring idle. */
+export function strongestAttention(sessions: AttentionInput[]): Attention | undefined {
+  let best: Attention | undefined;
+  for (const session of sessions) {
+    const level = attention(session);
+    if (level !== "idle" && (!best || ATTENTION_RANK[level] > ATTENTION_RANK[best])) best = level;
+  }
+  return best;
 }
