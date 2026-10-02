@@ -99,7 +99,13 @@ Verified live (pi 1.0.0, Oct 2026):
 
 ## UI model
 
-- Sidebar: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
+- Sidebar layout (Codex-style): header with the logo and a hide button, a "New chat" row (⌘N), then a
+  "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
+  never leaving the chat under 520px; double-click resets), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
+  the browser here). Width and collapsed state persist in localStorage. While collapsed, show-sidebar and
+  new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
+  header gets `COLLAPSED_INSET` left padding.
+- Sidebar marks: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
   one still logo color for what needs you: yellow (pulsing) waiting for you, coral failed (the run errored while you
   were not looking, or pi exited), blue finished but not seen yet. Idle chats get no mark; the highlighted row is
   the one you are in. Those three states also make the title bold, and a collapsed project shows its strongest

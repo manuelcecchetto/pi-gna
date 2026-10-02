@@ -40,6 +40,7 @@ export const IPC = {
   browserReveal: "browser:reveal",
   browserAnnotation: "browser:annotation",
   browserToggle: "browser:toggle",
+  sidebarToggle: "studio:sidebar-toggle",
 } as const;
 
 export interface BrowserApi {
@@ -130,6 +131,8 @@ export interface StudioApi {
    */
   windowFocused(): Promise<boolean>;
   onWindowFocus(listener: (focused: boolean) => void): () => void;
+  /** View > Toggle Sidebar (⌘⇧S). */
+  onSidebarToggle(listener: () => void): () => void;
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
   pathForFile(file: File): string;
   openExternal(url: string): void;

@@ -4,8 +4,8 @@ import { PiLogo } from "./components/PiLogo";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { HeroBackdrop } from "./components/Transcript";
-import { Sidebar } from "./components/Sidebar";
-import { boot, dismissToast, newSession, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
+import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
+import { boot, dismissToast, newChat, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
   useEffect(() => {
@@ -17,8 +17,7 @@ export function App() {
         toggleExpandAll();
       } else if (event.metaKey && key === "n") {
         event.preventDefault();
-        const { active, sessions } = store.get();
-        newSession((active && sessions[active]?.cwd) || window.studio.launchCwd || window.studio.homeDir);
+        newChat();
       } else if (key === "escape" && store.get().lightbox) {
         openLightbox(undefined);
       }
@@ -39,6 +38,7 @@ export function App() {
 
   const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
   const pane = useApp((state) => state.pane);
+  const collapsed = useApp((state) => state.sidebar.collapsed);
   const main = useRef<HTMLElement>(null);
 
   const startDrag = (event: React.PointerEvent) => {
@@ -61,7 +61,8 @@ export function App() {
   return (
     <div className="flex h-full">
       <Sidebar />
-      <main ref={main} className="flex min-w-0 flex-1 border-l border-line bg-canvas">
+      <CollapsedSidebarControls />
+      <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
           {session ? (
             <SessionPane key={session.handle} session={session} />

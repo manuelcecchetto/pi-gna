@@ -3,6 +3,7 @@ import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
 import { markdownToHtml } from "./markdown";
 import { applyQueueOp } from "./queue";
+import { clampSidebarWidth } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
@@ -160,5 +161,16 @@ describe("context meter", () => {
     expect(cacheHitRate({ input: 0, cacheRead: 0, cacheWrite: 0 })).toBeNull();
     expect(cacheHitRate({ input: 1000, cacheRead: 0, cacheWrite: 0 })).toBe(0);
     expect([formatTokens(684), formatTokens(569_362), formatTokens(1_000_000), formatTokens(124_707_648)]).toEqual(["684", "569k", "1M", "124.7M"]);
+  });
+});
+
+describe("clampSidebarWidth", () => {
+  it("keeps the sidebar between its bounds and leaves the chat at least 520px", () => {
+    expect(clampSidebarWidth(300, 1600)).toBe(300);
+    expect(clampSidebarWidth(100, 1600)).toBe(220);
+    expect(clampSidebarWidth(900, 1600)).toBe(480);
+    expect(clampSidebarWidth(450, 900)).toBe(380); // 900 - 520
+    expect(clampSidebarWidth(450, 600)).toBe(220); // tiny window: the minimum still wins
+    expect(clampSidebarWidth(Number.NaN, 1600)).toBe(268);
   });
 });

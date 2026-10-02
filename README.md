@@ -38,6 +38,7 @@ they are attached to your next prompt with a crop of each element.
 | Ctrl+O | Expand or collapse every tool call |
 | Cmd+N | New session in the current project |
 | Cmd+B | Show or hide the browser |
+| Cmd+Shift+S | Show or hide the sidebar (drag its edge to resize) |
 | `/` and `@` | Commands, skills and prompt templates / project files |
 | Cmd+U, "+", drop, Cmd+V | Attach files and folders (sent by path) or images (sent to the model) |
 

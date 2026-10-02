@@ -18,6 +18,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { setPane, useApp } from "../state/app";
+import { COLLAPSED_INSET } from "./Sidebar";
 
 const browser = () => window.studio.browser;
 
@@ -25,6 +26,7 @@ export function BrowserPane() {
   const state = useApp((s) => s.browser);
   const pane = useApp((s) => s.pane);
   const lightbox = useApp((s) => s.lightbox);
+  const sidebar = useApp((s) => s.sidebar);
   const sessions = useApp((s) => s.sessions);
   const active = state.tabs.find((tab) => tab.id === state.activeId);
   const [suggesting, setSuggesting] = useState(false);
@@ -47,13 +49,17 @@ export function BrowserPane() {
       observer.disconnect();
       window.removeEventListener("resize", report);
     };
-  }, [visible, pane.full, pane.split]);
+    // The native page view follows the viewport; the sidebar moving it must re-report its position.
+  }, [visible, pane.full, pane.split, sidebar.width, sidebar.collapsed]);
 
   useEffect(() => () => browser().layout({ visible: false, bounds: { x: 0, y: 0, width: 0, height: 0 } }), []);
 
   return (
     <div className="flex h-full min-w-0 flex-col bg-canvas">
-      <div className="drag dashed-b flex h-[52px] shrink-0 items-center gap-1 overflow-hidden px-2">
+      <div
+        className="drag dashed-b flex h-[52px] shrink-0 items-center gap-1 overflow-hidden px-2"
+        style={sidebar.collapsed && pane.full ? { paddingLeft: COLLAPSED_INSET } : undefined}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {state.tabs.map((tab) => (
             <TabPill key={tab.id} tab={tab} active={tab.id === state.activeId} agentRunning={Boolean(tab.agent && sessions[tab.agent]?.running)} />

@@ -23,6 +23,7 @@ import {
   stripStudioBlocks,
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
+import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
 import { createSession, hydrate, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
@@ -54,6 +55,7 @@ export interface AppState {
   annotations: Annotation[];
   /** Composer attachments per session handle (picker, drag and drop, paste). */
   attachments: Record<string, Attachment[]>;
+  sidebar: SidebarLayout;
   /** pi's compaction settings, for the context meter's auto-compaction point. */
   compaction: CompactionSettings;
   /** Full-size image overlay (data URL). Hides the native browser view while open. */
@@ -76,6 +78,7 @@ export const store = createStore<AppState>({
   annotations: [],
   attachments: {},
   compaction: {},
+  sidebar: loadSidebar(),
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -388,6 +391,22 @@ export function toggleBrowser(): void {
   if (!pane.open && browser.tabs.length === 0) window.studio.browser.newTab();
 }
 
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+
+export function setSidebar(patch: Partial<SidebarLayout>, persist = true): void {
+  store.set((s) => ({ ...s, sidebar: { ...s.sidebar, ...patch } }));
+  if (persist) saveSidebar(store.get().sidebar);
+}
+
+export function toggleSidebar(): void {
+  setSidebar({ collapsed: !store.get().sidebar.collapsed });
+}
+
+export function newChat(): void {
+  const { active, sessions } = store.get();
+  newSession((active && sessions[active]?.cwd) || studio().launchCwd || studio().homeDir);
+}
+
 export function openLightbox(src: string | undefined): void {
   store.set((s) => ({ ...s, lightbox: src }));
 }
@@ -471,6 +490,7 @@ export function boot(): void {
     .then((focused) => {
       windowFocused = focused;
     });
+  studio().onSidebarToggle(toggleSidebar);
   studio().onWindowFocus((focused) => {
     windowFocused = focused;
     if (focused) markRead(store.get().active);

@@ -1,9 +1,10 @@
-import { ChevronRight, Folder, FolderPlus, Plus, SquarePen } from "lucide-react";
+import { ChevronRight, Folder, PanelLeftClose, PanelLeftOpen, Plus, SquarePen } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, type SessionState, strongestAttention } from "../lib/session";
-import { activate, newSession, openSession, sessionTitle, useApp } from "../state/app";
+import { clampSidebarWidth, SIDEBAR_DEFAULT } from "../lib/layout";
+import { activate, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 
 const SESSIONS_PER_PROJECT = 6;
@@ -20,36 +21,110 @@ export function Sidebar() {
   const projects = useApp((state) => state.projects);
   const sessions = useApp((state) => state.sessions);
   const active = useApp((state) => state.active);
+  const layout = useApp((state) => state.sidebar);
+  const [dragging, setDragging] = useState(false);
   const home = window.studio.homeDir;
   const activeCwd = active ? sessions[active]?.cwd : undefined;
 
   const groups = useMemo(() => mergeOpenSessions(projects, Object.values(sessions)), [projects, sessions]);
+  const width = clampSidebarWidth(layout.width, window.innerWidth);
 
   const openFolder = async () => {
     const folder = await window.studio.pickFolder();
     if (folder) newSession(folder);
   };
 
+  const startResize = (event: React.PointerEvent) => {
+    event.preventDefault();
+    setDragging(true);
+    const move = (e: PointerEvent) => setSidebar({ width: clampSidebarWidth(e.clientX, window.innerWidth) }, false);
+    const up = () => {
+      setDragging(false);
+      setSidebar({}, true);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   return (
-    <aside className="flex w-[268px] shrink-0 flex-col bg-[var(--sidebar)]">
-      <div className="drag flex h-[52px] shrink-0 items-center gap-0.5 pr-2.5 pl-[86px]">
-        <PiLogo size={14} />
-        <span className="ml-2 flex-1 text-[12.5px] font-medium tracking-tight text-muted">studio</span>
-        <IconButton title="Open folder…" onClick={() => void openFolder()}>
-          <FolderPlus size={15} />
-        </IconButton>
-        <IconButton title="New session (⌘N)" onClick={() => newSession(activeCwd ?? window.studio.launchCwd ?? home)}>
-          <SquarePen size={15} />
-        </IconButton>
+    <aside
+      className={`relative shrink-0 overflow-hidden bg-[var(--sidebar)] ${dragging ? "" : "transition-[width] duration-200 ease-out"}`}
+      style={{ width: layout.collapsed ? 0 : width }}
+      aria-hidden={layout.collapsed}
+    >
+      {/* Fixed inner width, so collapsing slides the sidebar away instead of reflowing it. */}
+      <div className="flex h-full flex-col" style={{ width }}>
+        <div className="drag flex h-[52px] shrink-0 items-center pr-2.5 pl-[86px]">
+          <PiLogo size={14} />
+          <span className="ml-2 flex-1 text-[12.5px] font-medium tracking-tight text-muted">studio</span>
+          <IconButton title="Hide sidebar (⌘⇧S)" onClick={toggleSidebar}>
+            <PanelLeftClose size={15} />
+          </IconButton>
+        </div>
+
+        <div className="px-2 pb-2">
+          <button
+            type="button"
+            onClick={newChat}
+            className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-fg/90 hover:bg-raised/60"
+          >
+            <SquarePen size={14} className="shrink-0 text-muted" />
+            <span className="flex-1">New chat</span>
+            <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘N</span>
+          </button>
+        </div>
+
+        <div className="group/projects flex items-center px-4 pt-2 pb-1">
+          <span className="flex-1 text-[12.5px] font-medium text-faint">Projects</span>
+          <button
+            type="button"
+            title="Open folder…"
+            onClick={() => void openFolder()}
+            className="rounded-md p-0.5 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover/projects:opacity-100 focus-visible:opacity-100"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+          {groups.map((group, index) => (
+            <ProjectSection key={group.cwd} group={group} home={home} active={active} defaultOpen={index < 4 || group.cwd === activeCwd} />
+          ))}
+        </nav>
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-        {groups.map((group, index) => (
-          <ProjectSection key={group.cwd} group={group} home={home} active={active} defaultOpen={index < 4 || group.cwd === activeCwd} />
-        ))}
-      </nav>
+
+      {!layout.collapsed && (
+        <div
+          onPointerDown={startResize}
+          onDoubleClick={() => setSidebar({ width: SIDEBAR_DEFAULT })}
+          title="Drag to resize · double-click to reset"
+          className={`absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize transition-colors hover:bg-accent/40 ${dragging ? "bg-accent/50" : ""}`}
+        />
+      )}
     </aside>
   );
 }
+
+/** Shown in the top-left corner while the sidebar is hidden: bring it back, or start a chat. */
+export function CollapsedSidebarControls() {
+  const collapsed = useApp((state) => state.sidebar.collapsed);
+  if (!collapsed) return null;
+  return (
+    // Traffic lights sit at x=18..77 (y center 25); start one light-gap later so the spacing reads as one row.
+    <div className="no-drag fixed top-0 left-[88px] z-40 flex h-[50px] items-center gap-1">
+      <IconButton title="Show sidebar (⌘⇧S)" onClick={toggleSidebar}>
+        <PanelLeftOpen size={15} />
+      </IconButton>
+      <IconButton title="New chat (⌘N)" onClick={newChat}>
+        <SquarePen size={15} />
+      </IconButton>
+    </div>
+  );
+}
+
+/** Left padding for the leftmost header while the sidebar is hidden: the controls end at 137px. */
+export const COLLAPSED_INSET = 160;
 
 function mergeOpenSessions(projects: ProjectGroup[], open: SessionState[]): { cwd: string; rows: Row[] }[] {
   const byCwd = new Map<string, Row[]>();

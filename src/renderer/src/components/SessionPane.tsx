@@ -3,11 +3,13 @@ import { useRef, useState } from "react";
 import type { SessionState } from "../lib/session";
 import { attachFiles, closeSession, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
 import { Composer } from "./Composer";
+import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
 
 export function SessionPane({ session }: { session: SessionState }) {
   const expandAll = useApp((state) => state.expandAll);
   const browserOpen = useApp((state) => state.pane.open);
+  const inset = useApp((state) => state.sidebar.collapsed);
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
   const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("Files");
@@ -47,7 +49,7 @@ export function SessionPane({ session }: { session: SessionState }) {
           </div>
         </div>
       )}
-      <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-3 px-5">
+      <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-3 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-fg">{sessionTitle(session)}</div>
         </div>

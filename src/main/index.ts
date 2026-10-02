@@ -132,6 +132,7 @@ function buildMenu(): void {
       {
         label: "View",
         submenu: [
+          { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+Shift+S", click: () => send(IPC.sidebarToggle) },
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
           { type: "separator" },
           { role: "reload" },
