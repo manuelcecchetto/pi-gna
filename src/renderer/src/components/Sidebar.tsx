@@ -42,7 +42,6 @@ export function Sidebar() {
           <SquarePen size={15} />
         </IconButton>
       </div>
-      <div className="px-4 pb-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">Projects</div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
         {groups.map((group, index) => (
           <ProjectSection key={group.cwd} group={group} home={home} active={active} defaultOpen={index < 4 || group.cwd === activeCwd} />

@@ -194,7 +194,7 @@ export function Composer({ session }: { session: SessionState }) {
   const exited = session.phase === "exited";
 
   return (
-    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2 px-8 pb-2">
+    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2 px-8 pb-5">
       <Dialogs handle={handle} dialogs={session.dialogs} />
       {widgetsAbove.map(([key, widget]) => (
         <Widget key={key} lines={widget.lines} />
@@ -254,7 +254,7 @@ export function Composer({ session }: { session: SessionState }) {
           value={text}
           rows={1}
           disabled={exited}
-          placeholder={exited ? "pi exited" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : "Ask pi anything…  @ for files, / for commands"}
+          placeholder={exited ? "pi exited" : session.phase === "starting" ? "Starting pi…" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : "Ask pi anything…  @ for files, / for commands"}
           onChange={onChange}
           onKeyDown={onKeyDown}
           onPaste={onPaste}

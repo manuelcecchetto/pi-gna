@@ -166,10 +166,9 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
   const images = typeof step.message.content === "string" ? [] : step.message.content.filter((block) => block.type === "image");
   const long = shown.length > 280 || shown.split("\n").length > 4;
   return (
-    <div className="my-1.5 flex gap-2.5 rounded-xl border border-line bg-raised/50 px-3 py-2">
+    <div title="You steered" className="my-1.5 flex gap-2.5 rounded-xl border border-line bg-raised/50 px-3 py-2">
       <CornerDownRight size={14} className="mt-[3px] shrink-0 text-accent" />
       <div className="min-w-0 flex-1">
-        <div className="mb-0.5 text-[11px] text-faint">You steered</div>
         <div className={`selectable whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-fg ${long && !open ? "line-clamp-4" : ""}`}>{shown}</div>
         {long && (
           <button type="button" onClick={() => setExpanded(step.key, !open)} className="mt-0.5 text-[12px] text-muted hover:text-fg">

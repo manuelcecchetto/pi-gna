@@ -154,18 +154,19 @@ Verified live (pi 1.0.0, Oct 2026):
   cell over a drifting dot grid with slow glows in the logo colours; suggestion chips prefill the composer.
   `scripts/make-icon.py` renders `resources/icon.png` (Dock icon) from the same grid.
 - Extension UI: `select`/`confirm`/`input`/`editor` become approval cards above the composer; `notify` -> toast;
-  `setStatus` -> status bar; `setWidget` -> panel above the composer; `set_editor_text` -> composer text.
+  `setStatus` is tracked in session state but not shown (there is no status line); `setWidget` -> panel above the composer; `set_editor_text` -> composer text.
 
 ## Visual language
 
 Inspired by beautifului.dev (no code copied; it has no public source or license): dark neutral surfaces
-(~#1b1b1d), hairline borders, dashed dividers, system sans with small mono labels, muted grays, one blue accent,
+(~#1b1b1d), hairline borders, dashed dividers, system sans, mono only for code, paths and numbers, no eyebrow labels (small uppercase captions), muted grays, one blue accent,
 light and dark themes, pixel-grid loaders with shimmer text, compact chips that expand.
 
 ## Verifying the UI
 
 `scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys); start it with
-`node bin/pi-studio.mjs --remote-debugging-port=9333`. Give test instances `PI_STUDIO_USER_DATA=/tmp/<dir>` and their own port so they never share a profile or
+`node bin/pi-studio.mjs --remote-debugging-port=9333`. Give test instances `PI_STUDIO_USER_DATA=/tmp/<dir>`, `PI_STUDIO_BACKGROUND=1` (opens without taking focus; a
+focused test window once swallowed the user's typing) and their own port, so they never share a profile, focus or
 debugging port with the studio you work in, and stop them by their PID, never with
 `pkill -f bin/pi-studio.mjs`: the agent doing the testing may itself be running inside a pi studio session, and a
 pattern kill takes down the user's app and the agent with it. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
@@ -181,7 +182,7 @@ electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandb
 ## Milestones
 
 1. **Core (done):** RPC bridge, terminal logs, transcript with streaming, thinking and tool groups, prompt bar, sessions
-   sidebar, approval cards, steer/follow-up/abort, status bar.
+   sidebar, approval cards, steer/follow-up/abort.
 2. **Browser (done):** `WebContentsView` tabs with a persistent separate profile, address bar and history, split/full view,
    agent `browser_*` tools via a pi extension loaded with `-e` that calls a token-gated localhost bridge (CDP through
    `webContents.debugger`), annotation mode whose comments attach to the next prompt. Stagehand tools are excluded in

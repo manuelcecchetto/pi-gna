@@ -1,10 +1,9 @@
 import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SessionState } from "../lib/session";
-import { relativeTime, tildify } from "../lib/format";
+import { relativeTime } from "../lib/format";
 import { attachFiles, closeSession, dismissRecentWrite, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
 import { Composer } from "./Composer";
-import { Ansi } from "./primitives";
 import { Transcript } from "./Transcript";
 
 export function SessionPane({ session }: { session: SessionState }) {
@@ -87,7 +86,6 @@ export function SessionPane({ session }: { session: SessionState }) {
       )}
       <Transcript session={session} />
       <Composer session={session} />
-      <StatusBar session={session} />
     </div>
   );
 }
@@ -100,26 +98,5 @@ function ExitBanner({ session }: { session: SessionState }) {
       <span className="text-muted"> ({exit?.error ?? exit?.signal ?? `code ${exit?.code}`}). The transcript is read-only; reopen the session from the sidebar.</span>
       {exit?.stderrTail && <pre className="selectable mt-1.5 max-h-28 overflow-auto font-mono text-[11px] text-faint">{exit.stderrTail.trim().split("\n").slice(-8).join("\n")}</pre>}
     </div>
-  );
-}
-
-function StatusBar({ session }: { session: SessionState }) {
-  const home = window.studio.homeDir;
-  const statuses = Object.entries(session.statuses);
-  const phaseDot = session.phase === "starting" ? "bg-warn pulse-dot" : session.phase === "exited" ? "bg-bad" : "bg-ok";
-  return (
-    <footer className="flex h-7 shrink-0 items-center gap-3 overflow-hidden px-5 font-mono text-[11px] text-faint">
-      <span className="flex items-center gap-1.5" title={`pi ${session.phase}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${phaseDot}`} />
-        {session.phase === "starting" ? "starting pi…" : tildify(session.cwd, home)}
-      </span>
-      <span className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden whitespace-nowrap">
-        {statuses.map(([key, text]) => (
-          <span key={key} className="truncate" title={key}>
-            <Ansi text={text} />
-          </span>
-        ))}
-      </span>
-    </footer>
   );
 }

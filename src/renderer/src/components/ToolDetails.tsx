@@ -94,10 +94,10 @@ export function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function Section({ label, children }: { label?: string; children: React.ReactNode }) {
+function Section({ file, children }: { file?: string; children: React.ReactNode }) {
   return (
     <div className="border-t border-line first:border-t-0">
-      {label && <div className="px-3 pt-2 font-mono text-[10.5px] uppercase tracking-wide text-faint">{label}</div>}
+      {file && <div className="selectable px-3 pt-2 font-mono text-[11.5px] text-muted">{file}</div>}
       {children}
     </div>
   );
@@ -131,7 +131,7 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
       const fileDiffs = Array.isArray(details.fileDiffs) ? (details.fileDiffs as { path: string; status?: string; diff: string }[]) : undefined;
       if (fileDiffs?.length) {
         body = fileDiffs.map((file) => (
-          <Section key={file.path} label={`${file.status ?? "M"} ${file.path}`}>
+          <Section key={file.path} file={`${file.status ?? "M"} ${file.path}`}>
             <DiffView diff={file.diff} />
           </Section>
         ));
@@ -140,7 +140,7 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
       } else if (Array.isArray(args.edits)) {
         // Still running or failed before producing a diff: show the requested replacements.
         body = (args.edits as { oldText?: string; newText?: string }[]).map((edit, index) => (
-          <Section key={index} label={`edit ${index + 1}`}>
+          <Section key={index}>
             <DiffView
               diff={[...str(edit.oldText).split("\n").map((l) => `- ${l}`), ...str(edit.newText).split("\n").map((l) => `+ ${l}`)].join("\n")}
             />
@@ -174,11 +174,11 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
     default:
       body = (
         <>
-          <Section label="arguments">
+          <Section>
             <CodeView code={JSON.stringify(args, null, 2)} lang="json" className="max-h-72 overflow-auto" />
           </Section>
           {result && (
-            <Section label={failed ? "error" : "result"}>
+            <Section>
               <Output text={text} error={failed} />
             </Section>
           )}

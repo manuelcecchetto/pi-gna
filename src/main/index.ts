@@ -48,7 +48,9 @@ function createWindow(): void {
       additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`],
     },
   });
-  window.once("ready-to-show", () => window?.show());
+  // PI_STUDIO_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the
+  // studio you are working in never land in a test window.
+  window.once("ready-to-show", () => (process.env.PI_STUDIO_BACKGROUND === "1" ? window?.showInactive() : window?.show()));
   // The terminal is the log: surface renderer warnings, errors and crashes there too.
   window.webContents.on("console-message", (details) => {
     if (details.level === "warning" || details.level === "error") {

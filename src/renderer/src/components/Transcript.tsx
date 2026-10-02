@@ -419,8 +419,7 @@ function BlockView({ block, cwd, home }: { block: Block; cwd: string; home: stri
       const content = block.message.content;
       const text = typeof content === "string" ? content : content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
       return (
-        <div className="rounded-xl border border-line bg-panel px-3.5 py-2.5">
-          <div className="mb-1 font-mono text-[10.5px] uppercase tracking-wide text-faint">{block.message.customType}</div>
+        <div title={block.message.customType} className="rounded-xl border border-line bg-panel px-3.5 py-2.5">
           <Markdown text={text} />
         </div>
       );

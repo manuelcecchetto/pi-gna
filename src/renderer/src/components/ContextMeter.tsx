@@ -111,8 +111,7 @@ function ContextCard({ session, summary }: { session: SessionState; summary: Non
 
       {stats && (
         <>
-          <div className="dashed-t mt-3 pt-2.5 text-[11px] tracking-wide text-faint uppercase">Session totals</div>
-          <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+          <div className="dashed-t mt-3 grid pt-2.5 grid-cols-2 gap-x-4 gap-y-1 text-muted">
             <Row label="Input" value={formatTokens(stats.tokens.input)} />
             <Row label="Output" value={formatTokens(stats.tokens.output)} />
             <Row label="Cache read" value={formatTokens(stats.tokens.cacheRead)} />
