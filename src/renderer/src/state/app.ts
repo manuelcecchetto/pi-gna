@@ -125,9 +125,6 @@ export function refreshProjects(delay = 0): void {
 
 // ── Session lifecycle ────────────────────────────────────────────────────────
 
-/** A session file written this recently may still be open in another pi process. */
-const RECENT_WRITE_MS = 3 * 60_000;
-
 function newHandle(): string {
   return Math.random().toString(36).slice(2, 10).padEnd(8, "0");
 }
@@ -135,17 +132,16 @@ function newHandle(): string {
 export function openSession(summary: SessionSummary): void {
   const existing = Object.values(store.get().sessions).find((s) => s.sessionPath === summary.path);
   if (existing) return activate(existing.handle);
-  void start(summary.cwd, summary.path, summary.modifiedAt);
+  void start(summary.cwd, summary.path);
 }
 
 export function newSession(cwd: string): void {
   void start(cwd);
 }
 
-async function start(cwd: string, sessionPath?: string, modifiedAt?: number): Promise<void> {
+async function start(cwd: string, sessionPath?: string): Promise<void> {
   const handle = newHandle();
-  const recent = modifiedAt !== undefined && Date.now() - modifiedAt < RECENT_WRITE_MS;
-  const session = { ...createSession(handle, cwd, sessionPath), recentWriteAt: recent ? modifiedAt : undefined };
+  const session = createSession(handle, cwd, sessionPath);
   store.set((state) => ({ ...state, sessions: { ...state.sessions, [handle]: session }, open: [...state.open, handle] }));
   activate(handle);
   try {
@@ -457,10 +453,6 @@ export function toggleExpandAll(): void {
 /** Put text in a session's composer (suggestions, like an extension's set_editor_text). */
 export function prefill(handle: string, text: string): void {
   patchSession(handle, (s) => ({ ...s, editorText: { text, nonce: Date.now() } }));
-}
-
-export function dismissRecentWrite(handle: string): void {
-  patchSession(handle, (s) => ({ ...s, recentWriteAt: undefined }));
 }
 
 export function setExpanded(key: string, open: boolean): void {

@@ -83,8 +83,6 @@ export interface SessionState {
   stats?: SessionStats;
   /** Set once the user prompts from studio; such sessions stay alive when switching away. */
   prompted: boolean;
-  /** The file was written shortly before studio opened it: possibly live in another pi. */
-  recentWriteAt?: number;
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
   unread?: RunOutcome;
   items: Item[];

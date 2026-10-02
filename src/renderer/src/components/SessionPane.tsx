@@ -1,8 +1,7 @@
 import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SessionState } from "../lib/session";
-import { relativeTime } from "../lib/format";
-import { attachFiles, closeSession, dismissRecentWrite, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
+import { attachFiles, closeSession, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
 import { Composer } from "./Composer";
 import { Transcript } from "./Transcript";
 
@@ -73,17 +72,6 @@ export function SessionPane({ session }: { session: SessionState }) {
         </button>
       </header>
       {session.phase === "exited" && <ExitBanner session={session} />}
-      {session.recentWriteAt && !session.prompted && session.phase !== "exited" && (
-        <div className="flex items-center gap-3 border-b border-warn/30 bg-warn/5 px-5 py-2 text-[12.5px] text-muted">
-          <span>
-            <span className="text-warn">Updated {relativeTime(session.recentWriteAt) === "now" ? "just now" : `${relativeTime(session.recentWriteAt)} ago`}.</span> If this session is still open in another pi, prompting
-            here makes two writers append to the same file.
-          </span>
-          <button type="button" onClick={() => dismissRecentWrite(session.handle)} className="ml-auto shrink-0 text-faint hover:text-fg">
-            <X size={13} />
-          </button>
-        </div>
-      )}
       <Transcript session={session} />
       <Composer session={session} />
     </div>

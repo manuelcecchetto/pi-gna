@@ -89,8 +89,9 @@ Verified live (pi 1.0.0, Oct 2026):
 
 - `toolResult` and `system` messages also arrive as `message_start`/`message_end`; system messages are ignored.
 - Opening a session (`pi --mode rpc --session <file>`) and closing it without prompting leaves the file
-  byte-identical, so "preview" opens are safe. Two pi processes prompting the same file are not, hence the
-  "updated recently" banner for files written in the last 3 minutes.
+  byte-identical, so "preview" opens are safe. Two pi processes prompting the same file are not; studio does not
+  warn about it (a "recently updated" banner was tried and removed as noise), so avoid prompting a session that
+  is still open in a terminal pi.
 - RPC never shows the project-trust prompt: a saved decision in `~/.pi/agent/trust.json` or
   `defaultProjectTrust` decides, and untrusted project resources are skipped silently.
 - Every pi process re-emits the same extension startup notices; the renderer toasts each one once per app run
