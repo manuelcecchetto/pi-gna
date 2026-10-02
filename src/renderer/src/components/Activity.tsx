@@ -21,7 +21,8 @@ import { type ToolCategory, presentTool, summarizeTools } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
 import { Markdown } from "./Markdown";
-import { Elapsed, PixelLoader } from "./primitives";
+import { PiSpinner } from "./PiLogo";
+import { Elapsed } from "./primitives";
 import { resultImages, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, LucideIcon> = {
@@ -90,7 +91,7 @@ export const WorkAccordion = memo(function WorkAccordion({
         onClick={toggle}
         className="group flex w-full items-center gap-2 border-b border-line pb-2 text-left text-[13.5px]"
       >
-        {run.live && <PixelLoader />}
+        {run.live && <PiSpinner size={14} />}
         <span className={run.live ? "shimmer" : "text-muted group-hover:text-fg"}>
           {run.live ? "Working" : "Worked"}
           {started !== undefined && (
@@ -216,7 +217,7 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
         className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-[3px] text-left text-[13px] hover:bg-raised/60"
       >
         {running ? (
-          <PixelLoader />
+          <PiSpinner size={12} />
         ) : interrupted ? (
           <CircleSlash size={13} className="shrink-0 text-faint" />
         ) : (

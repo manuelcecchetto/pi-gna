@@ -132,28 +132,31 @@ body,
   }
 }
 
-/* Pixel-grid loader: a 3x3 grid where one cell "drives" around the ring. */
-.pixel-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 4px);
-  gap: 1.5px;
+/* Loader: pi logo with the three logo colors sweeping around it (PiSpinner). */
+.pi-spin {
+  animation-name: pi-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
-.pixel-grid > i {
-  width: 4px;
-  height: 4px;
-  border-radius: 1px;
-  background: var(--muted);
-  opacity: 0.22;
-  animation: pixel 1.2s steps(1) infinite;
-}
-@keyframes pixel {
+/* Each cell holds a pure logo color and switches quickly, so mid-transition greys never show at 12px. */
+@keyframes pi-spin {
   0%,
-  12% {
-    opacity: 1;
-  }
-  13%,
+  27%,
   100% {
-    opacity: 0.22;
+    fill: #f09082;
+  }
+  33%,
+  60% {
+    fill: #4d9abf;
+  }
+  66%,
+  93% {
+    fill: #f1be58;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pi-spin {
+    animation: none;
   }
 }
 

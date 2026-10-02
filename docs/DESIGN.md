@@ -98,7 +98,7 @@ Verified live (pi 1.0.0, Oct 2026):
 
 ## UI model
 
-- Sidebar: projects (cwd) -> sessions; dots for open and running sessions.
+- Sidebar: projects (cwd) -> sessions; the pi spinner on running sessions, dots for other open ones.
 - Transcript: a **run** is everything between two user messages. Your messages are right-aligned bubbles without
   an avatar, Codex-style; finished answers end with a Copy button. Times ("Yesterday 5:22 PM", full date in the
   tooltip) appear while hovering a message or answer; a centered time divider is always shown above the first
@@ -140,8 +140,10 @@ Verified live (pi 1.0.0, Oct 2026):
   compaction is when context gets summarized. Stats refresh after every `turn_end` and `compaction_end`
   (`get_session_stats` takes a few ms even on a 40 MB session). Right after compaction pi does not know the
   size until the next response, shown as a dashed ring.
-- Live state: pixel-grid loader and shimmer on the "Working for" header, with "waiting for you", "compacting
-  context" or "retrying" called out next to it.
+- Live state: the loader is the pi logo with its three colors sweeping around the glyph (`PiSpinner`); it marks
+  the "Working for" header, running tool rows and running chats in the sidebar. Waiting-for-you stays an amber
+  dot, exited red, idle green. "waiting for you", "compacting context" or "retrying" are called out next to the
+  header.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
   `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
 - Attachments (Codex-style, verified against the Codex app bundle): "+" menu with "Add photos" and "Attach files
@@ -160,7 +162,7 @@ Verified live (pi 1.0.0, Oct 2026):
 
 Inspired by beautifului.dev (no code copied; it has no public source or license): dark neutral surfaces
 (~#1b1b1d), hairline borders, dashed dividers, system sans, mono only for code, paths and numbers, no eyebrow labels (small uppercase captions), muted grays, one blue accent,
-light and dark themes, pixel-grid loaders with shimmer text, compact chips that expand.
+light and dark themes, the pi-logo spinner with shimmer text, compact chips that expand.
 
 ## Verifying the UI
 

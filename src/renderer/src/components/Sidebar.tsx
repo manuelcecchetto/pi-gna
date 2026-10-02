@@ -4,7 +4,7 @@ import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import type { SessionState } from "../lib/session";
 import { activate, newSession, openSession, sessionTitle, useApp } from "../state/app";
-import { PiLogo } from "./PiLogo";
+import { PiLogo, PiSpinner } from "./PiLogo";
 
 const SESSIONS_PER_PROJECT = 6;
 
@@ -131,12 +131,13 @@ function SessionRow({ row, active }: { row: Row; active: boolean }) {
       onClick={onClick}
       className={`group flex items-center gap-2 rounded-lg px-2.5 py-[5px] text-left ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
     >
-      <span className="grid w-2 shrink-0 place-items-center">
-        {live && (
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${live.dialogs.length ? "bg-warn pulse-dot" : live.running ? "bg-accent pulse-dot" : live.phase === "exited" ? "bg-bad" : "bg-ok/80"}`}
-          />
-        )}
+      <span className="grid w-3 shrink-0 place-items-center">
+        {live &&
+          (live.running && !live.dialogs.length ? (
+            <PiSpinner size={12} />
+          ) : (
+            <span className={`h-1.5 w-1.5 rounded-full ${live.dialogs.length ? "bg-warn pulse-dot" : live.phase === "exited" ? "bg-bad" : "bg-ok/80"}`} />
+          ))}
       </span>
       <span className="min-w-0 flex-1 truncate text-[13px]">{title}</span>
       {row.time && <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(row.time)}</span>}

@@ -63,7 +63,10 @@ async function press(spec) {
 
 switch (command) {
   case "shot": {
-    const { data } = await send("Page.captureScreenshot", { format: "png" });
+    // shot <path> [x y width height scale]: close-up of a region (CSS px)
+    const [x, y, width, height, scale] = args.slice(1).map(Number);
+    const clip = width ? { x, y, width, height, scale: scale || 3 } : undefined;
+    const { data } = await send("Page.captureScreenshot", { format: "png", ...(clip ? { clip } : {}) });
     writeFileSync(args[0] ?? "/tmp/studio.png", Buffer.from(data, "base64"));
     console.log(args[0] ?? "/tmp/studio.png");
     break;

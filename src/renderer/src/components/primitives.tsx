@@ -27,20 +27,6 @@ function ansiStyle(style: AnsiStyle): CSSProperties | undefined {
   };
 }
 
-const RING = [0, 1, 2, 5, 8, 7, 6, 3];
-
-/** 3x3 pixel grid; one lit cell drives around the ring. */
-export function PixelLoader({ className = "" }: { className?: string }) {
-  return (
-    <span className={`pixel-grid shrink-0 ${className}`} aria-hidden>
-      {Array.from({ length: 9 }, (_, cell) => {
-        const step = RING.indexOf(cell);
-        return <i key={cell} style={step === -1 ? { animation: "none", opacity: 0.12 } : { animationDelay: `${(step * 1.2) / 8 - 1.2}s` }} />;
-      })}
-    </span>
-  );
-}
-
 export function useNow(intervalMs: number, enabled = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

@@ -40,3 +40,31 @@ export function PiLogo({ size = 64, animate = false, className = "" }: { size?: 
     </svg>
   );
 }
+
+const SPIN_MS = 1400;
+
+/**
+ * Loader: the logo's cells keep their shape while a coral -> blue -> yellow sweep turns around the glyph.
+ * Each cell's phase is its angle around the center, so the colors appear to spin.
+ */
+export function PiSpinner({ size = 14, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg viewBox="0 0 4 4" width={size} height={size} shapeRendering="crispEdges" className={`shrink-0 ${className}`} aria-hidden>
+      {CELLS.map(([x, y, color]) => {
+        const turn = (Math.atan2(y + 0.5 - 2, x + 0.5 - 2) / (2 * Math.PI) + 1) % 1;
+        return (
+          <rect
+            key={`${x}${y}`}
+            x={x}
+            y={y}
+            width={1.01}
+            height={1.01}
+            fill={color}
+            className="pi-spin"
+            style={{ animationDelay: `${-Math.round(turn * SPIN_MS)}ms`, animationDuration: `${SPIN_MS}ms` }}
+          />
+        );
+      })}
+    </svg>
+  );
+}
