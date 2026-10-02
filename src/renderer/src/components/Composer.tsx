@@ -18,6 +18,7 @@ import {
   useApp,
 } from "../state/app";
 import { Dialogs } from "./Dialogs";
+import { QueueCard } from "./QueueCard";
 import { Ansi, Kbd, Popover } from "./primitives";
 
 const drafts = new Map<string, string>();
@@ -187,7 +188,6 @@ export function Composer({ session }: { session: SessionState }) {
     void attachFiles(handle, files);
   };
 
-  const queued = [...session.queue.steering.map((t) => ["steer", t] as const), ...session.queue.followUp.map((t) => ["queued", t] as const)];
   const widgetsAbove = Object.entries(session.widgets).filter(([, w]) => w.placement === "aboveEditor");
   const widgetsBelow = Object.entries(session.widgets).filter(([, w]) => w.placement === "belowEditor");
   const exited = session.phase === "exited";
@@ -198,17 +198,6 @@ export function Composer({ session }: { session: SessionState }) {
       {widgetsAbove.map(([key, widget]) => (
         <Widget key={key} lines={widget.lines} />
       ))}
-      {queued.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {queued.map(([kind, message], index) => (
-            <div key={index} className="flex items-center gap-2 rounded-lg border border-dashed border-line-strong px-3 py-1.5 text-[12.5px] text-muted">
-              <span className="font-mono text-[10.5px] uppercase tracking-wide text-faint">{kind}</span>
-              <span className="truncate">{message}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
       {annotations.length > 0 && (
         <div className="flex flex-col gap-1">
           {annotations.map((annotation) => (
@@ -229,7 +218,14 @@ export function Composer({ session }: { session: SessionState }) {
         </div>
       )}
 
-      <div className="relative rounded-2xl border border-line-strong bg-panel transition focus-within:border-accent/50">
+      <QueueCard
+        session={session}
+        onEdit={(queued) => {
+          setText([queued, drafts.get(handle) ?? ""].filter(Boolean).join("\n\n"));
+          area.current?.focus();
+        }}
+      />
+      <div className="relative z-10 rounded-2xl border border-line-strong bg-panel transition focus-within:border-accent/50">
         {menu && items.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-line-strong bg-panel p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
             {items.map((item, index) => (

@@ -33,7 +33,8 @@ export interface BlockTime {
 }
 
 export type Item =
-  | { kind: "user"; key: string; message: UserMessage }
+  /** `steer`: delivered into a running turn (pi's steering queue), so it belongs to that turn. */
+  | { kind: "user"; key: string; message: UserMessage; steer?: boolean }
   | {
       kind: "assistant";
       key: string;
@@ -68,6 +69,10 @@ export interface SessionState {
   compacting?: string;
   retry?: { attempt: number; maxAttempts: number; delayMs: number; errorMessage: string; at: number };
   queue: { steering: string[]; followUp: string[] };
+  /** Every text seen in the queues during this run, to tell a delivered steer from a follow-up. */
+  queueSeen: { steering: string[]; followUp: string[] };
+  /** Set by agent_start: the next user message is the run's own prompt, never a steer. */
+  awaitingPrompt?: boolean;
   dialogs: ExtensionUiDialog[];
   statuses: Record<string, string>;
   widgets: Record<string, { lines: string[]; placement: "aboveEditor" | "belowEditor" }>;
@@ -91,6 +96,7 @@ export function createSession(handle: string, cwd: string, sessionPath?: string)
     phase: "starting",
     running: false,
     queue: { steering: [], followUp: [] },
+    queueSeen: { steering: [], followUp: [] },
     dialogs: [],
     statuses: {},
     widgets: {},
@@ -196,7 +202,7 @@ function reduceUiRequest(state: SessionState, request: ExtensionUiRequest, now: 
 export function reduceSessionEvent(state: SessionState, event: SessionEvent, now: number): SessionState {
   switch (event.type) {
     case "agent_start":
-      return state.running ? state : { ...state, running: true, runStartedAt: now };
+      return state.running ? { ...state, awaitingPrompt: true } : { ...state, running: true, runStartedAt: now, awaitingPrompt: true };
     case "agent_settled":
       return settle(state);
     case "message_start":
@@ -204,7 +210,12 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
     case "message_update":
       return updateAssistant(state, event.assistantMessageEvent, event.usage, now);
     case "message_end":
-      return event.message.role === "assistant" ? endAssistant(state, event.message, now) : addMessage(state, event.message, now);
+      if (event.message.role === "assistant") return endAssistant(state, event.message, now);
+      if (event.message.role === "user") {
+        const steer = !state.awaitingPrompt && isLiveSteer(state, event.message);
+        return { ...addMessage(state, event.message, now, steer), awaitingPrompt: false };
+      }
+      return addMessage(state, event.message, now);
     case "tool_execution_start":
       return setTool(state, event.toolCallId, { status: "running", startedAt: now });
     case "tool_execution_update":
@@ -212,7 +223,14 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
     case "tool_execution_end":
       return setTool(state, event.toolCallId, { status: event.isError ? "error" : "done", result: event.result, endedAt: now });
     case "queue_update":
-      return { ...state, queue: { steering: event.steering, followUp: event.followUp } };
+      return {
+        ...state,
+        queue: { steering: event.steering, followUp: event.followUp },
+        queueSeen: {
+          steering: [...new Set([...state.queueSeen.steering, ...event.steering])],
+          followUp: [...new Set([...state.queueSeen.followUp, ...event.followUp])],
+        },
+      };
     case "session_info_changed":
       return { ...state, name: event.name || undefined };
     case "thinking_level_changed":
@@ -243,15 +261,48 @@ function settle(state: SessionState): SessionState {
   const items = state.items.map((item) => (item.kind === "assistant" && item.streaming ? { ...item, streaming: false, partialArgs: undefined } : item));
   const tools = { ...state.tools };
   for (const [id, run] of Object.entries(tools)) if (run.status === "running") tools[id] = { ...run, status: "error", endedAt: run.endedAt };
-  return { ...state, items, tools, running: false, runStartedAt: undefined, compacting: undefined, retry: undefined };
+  return {
+    ...state,
+    items,
+    tools,
+    running: false,
+    runStartedAt: undefined,
+    compacting: undefined,
+    retry: undefined,
+    awaitingPrompt: false,
+    queueSeen: { steering: [], followUp: [] },
+  };
+}
+
+export function userText(message: UserMessage): string {
+  const content = message.content;
+  return (typeof content === "string" ? content : content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n")).trim();
+}
+
+/**
+ * A user message that arrives right after a tool-using assistant message was delivered into the running
+ * turn: pi injects steers after the current tool calls, before the next model call. Every user message
+ * after a tool result in the user's sessions is a steer, so this also classifies sessions read from disk.
+ */
+function followsToolUse(state: SessionState): boolean {
+  const last = state.items.at(-1);
+  return last?.kind === "assistant" && last.message.stopReason === "toolUse";
+}
+
+/** Live: the queue says what the user queued as a steer or a follow-up; fall back to the tool-use rule. */
+function isLiveSteer(state: SessionState, message: UserMessage): boolean {
+  const text = userText(message);
+  if (state.queueSeen.steering.some((queued) => queued.trim() === text)) return true;
+  if (state.queueSeen.followUp.some((queued) => queued.trim() === text)) return false;
+  return followsToolUse(state);
 }
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 
-function addMessage(state: SessionState, message: AgentMessage, at: number): SessionState {
+function addMessage(state: SessionState, message: AgentMessage, at: number, steer = message.role === "user" && followsToolUse(state)): SessionState {
   switch (message.role) {
     case "user":
-      return pushItem(state, { kind: "user", message });
+      return pushItem(state, steer ? { kind: "user", message, steer: true } : { kind: "user", message });
     case "assistant":
       return pushItem(state, { kind: "assistant", message, streaming: false });
     case "toolResult":

@@ -22,6 +22,7 @@ import {
   mergeAttachments,
   stripStudioBlocks,
 } from "../lib/attachments";
+import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
 import { createSession, hydrate, reduceHostEvent, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
 
@@ -357,6 +358,20 @@ export function toggleBrowser(): void {
 
 export function openLightbox(src: string | undefined): void {
   store.set((s) => ({ ...s, lightbox: src }));
+}
+
+/**
+ * Edit pi's queues (trash, steer now, defer, take out to edit). RPC can only clear both queues and append,
+ * so this clears, applies the op and re-queues the rest in order. Images on re-queued messages are lost.
+ */
+export async function editQueue(handle: string, op: QueueOp): Promise<boolean> {
+  if (!store.get().sessions[handle]?.running) return false;
+  const cleared = await command<Queues>(handle, { type: "clear_queue" }, true);
+  if (!cleared.data) return false;
+  const { queues, found } = applyQueueOp(cleared.data, op);
+  for (const message of queues.steering) await command(handle, { type: "steer", message });
+  for (const message of queues.followUp) await command(handle, { type: "follow_up", message });
+  return found;
 }
 
 /** Esc: pull queued messages back into the composer, then abort the run. */

@@ -443,3 +443,13 @@ code.hl span {
     opacity: 0.35;
   }
 }
+
+/* Thinking: shown in full like pi's terminal, italic and muted. */
+.thinking .prose {
+  font-size: 13.5px;
+  font-style: italic;
+  color: var(--muted);
+}
+.thinking .prose code {
+  font-style: normal;
+}

@@ -111,6 +111,16 @@ Verified live (pi 1.0.0, Oct 2026):
   still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
   (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
   visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI).
+- Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window).
+- Steering: queued messages sit in a card attached to the top of the composer (Codex-style). Steers say
+  "Steering"; follow-ups (⌥⏎) have **Steer** to inject them now; each row has trash and "…" (edit in composer,
+  send after the run instead). RPC can only clear both queues and append, so edits clear, transform
+  (`applyQueueOp`, matched by text) and re-queue in order; images on re-queued messages are lost. A delivered
+  steer is part of the running turn, shown as a "You steered" step in the work, not a new turn. Live, pi's queue
+  says which messages were steers; sessions read from disk use the rule "a user message right after a
+  tool-using assistant message is a steer" (true for every such message in 80 real sessions). Known gap: a steer
+  delivered after a text-only answer (e.g. the second of two queued steers in one-at-a-time mode) shows as a new
+  turn when the session is reopened.
 - Scrolling (Codex-style, `useTurnScroll`): sending a message scrolls it to the top of the view and the answer
   streams in below; nothing follows the stream after that. The newest turn gets a min-height of one viewport so
   that is possible even for short answers (sessions opened from disk keep their natural height until you send).

@@ -3,6 +3,7 @@ import {
   Bot,
   ChevronRight,
   CircleSlash,
+  CornerDownRight,
   FilePen,
   FileText,
   Globe,
@@ -13,7 +14,9 @@ import {
   Wrench,
 } from "lucide-react";
 import { memo, type ReactNode, useMemo } from "react";
+import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
+import { userText } from "../lib/session";
 import { type ToolCategory, presentTool, summarizeTools } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
@@ -75,6 +78,7 @@ export const WorkAccordion = memo(function WorkAccordion({
       ),
     [tools, cwd, home],
   );
+  const steers = steps.filter((step) => step.kind === "steer").length;
   const toggle = () => setExpanded(`work:${run.key}:${layout.settled ? "done" : "working"}`, !open);
   const started = layout.startedAt;
   const lastStep = steps.at(-1);
@@ -97,7 +101,11 @@ export const WorkAccordion = memo(function WorkAccordion({
           )}
         </span>
         {status && <span className="text-[12.5px] text-warn">· {status}</span>}
-        {summary && <span className="min-w-0 truncate text-[12.5px] text-faint">· {summary}</span>}
+        {(summary || steers > 0) && (
+          <span className="min-w-0 truncate text-[12.5px] text-faint">
+            · {[summary, steers ? `steered ${steers === 1 ? "once" : `${steers} times`}` : ""].filter(Boolean).join(" · ")}
+          </span>
+        )}
         <ChevronRight size={13} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
       </button>
 
@@ -106,13 +114,9 @@ export const WorkAccordion = memo(function WorkAccordion({
           {layout.work.map((block) =>
             block.kind === "activity" ? (
               <div key={block.key} className="flex flex-col gap-0.5">
-                {block.steps.map((step) =>
-                  step.kind === "thinking" ? (
-                    <ThinkingStep key={step.key} step={step} />
-                  ) : (
-                    <ToolRow key={step.key} step={step} cwd={cwd} home={home} live={run.live} />
-                  ),
-                )}
+                {block.steps.map((step) => (
+                  <StepView key={step.key} step={step} cwd={cwd} home={home} live={run.live} />
+                ))}
               </div>
             ) : block.kind === "text" ? (
               <div key={block.key} className="text-muted [&_.prose]:text-[14px]">
@@ -126,7 +130,7 @@ export const WorkAccordion = memo(function WorkAccordion({
       ) : run.live ? (
         lastStep && (
           <div className="mt-1">
-            {lastStep.kind === "thinking" ? <ThinkingStep step={lastStep} /> : <ToolRow step={lastStep} cwd={cwd} home={home} live />}
+            <StepView step={lastStep} cwd={cwd} home={home} live />
           </div>
         )
       ) : (
@@ -136,30 +140,59 @@ export const WorkAccordion = memo(function WorkAccordion({
   );
 });
 
+function StepView({ step, cwd, home, live }: { step: Step; cwd: string; home: string; live: boolean }) {
+  if (step.kind === "thinking") return <ThinkingStep step={step} />;
+  if (step.kind === "steer") return <SteerStep step={step} />;
+  return <ToolRow step={step} cwd={cwd} home={home} live={live} />;
+}
+
+/** Thinking reads like pi's terminal: the whole text inline, italic and muted, no label or toggle. */
 function ThinkingStep({ step }: { step: Extract<Step, { kind: "thinking" }> }) {
-  const open = useExpanded(step.key, false);
-  const label = step.streaming
-    ? "Thinking"
-    : step.redacted && !step.text
-      ? "Thinking (redacted)"
-      : step.durationMs
-        ? `Thought for ${formatDuration(step.durationMs)}`
-        : "Thought";
-  const tail = step.streaming && !open ? step.text.slice(-280) : "";
+  if (!step.text.trim()) {
+    return step.redacted ? <div className="px-1.5 py-1 text-[12.5px] text-faint italic">Thinking (redacted)</div> : null;
+  }
   return (
-    <div>
-      <button
-        type="button"
-        disabled={!step.text}
-        onClick={() => setExpanded(step.key, !open)}
-        className="group flex w-full items-center gap-2 rounded-md px-1.5 py-[3px] text-left text-[13px] text-muted enabled:hover:text-fg"
-      >
-        <Sparkles size={13} className="shrink-0 text-faint" />
-        <span className={step.streaming ? "shimmer" : ""}>{label}</span>
-        {step.text && <ChevronRight size={12} className={`text-faint opacity-0 transition group-hover:opacity-100 ${open ? "rotate-90 opacity-100" : ""}`} />}
-      </button>
-      {tail && <p className="line-clamp-3 px-1.5 pb-1 pl-7 text-[12.5px] leading-relaxed text-faint">{tail}</p>}
-      {open && <p className="selectable max-h-80 overflow-auto whitespace-pre-wrap px-1.5 pb-2 pl-7 text-[12.5px] leading-relaxed text-muted">{step.text}</p>}
+    <div className="thinking px-1.5 py-1.5">
+      <Markdown text={step.text} streaming={step.streaming} />
+    </div>
+  );
+}
+
+/** A message you steered into the running turn: part of the work, not a new turn. */
+function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
+  const open = useExpanded(step.key, false);
+  const [withoutFiles, mentions] = splitFileMentions(userText(step.message));
+  const shown = stripStudioBlocks(withoutFiles);
+  const images = typeof step.message.content === "string" ? [] : step.message.content.filter((block) => block.type === "image");
+  const long = shown.length > 280 || shown.split("\n").length > 4;
+  return (
+    <div className="my-1.5 flex gap-2.5 rounded-xl border border-line bg-raised/50 px-3 py-2">
+      <CornerDownRight size={14} className="mt-[3px] shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <div className="mb-0.5 text-[11px] text-faint">You steered</div>
+        <div className={`selectable whitespace-pre-wrap break-words text-[13.5px] leading-relaxed text-fg ${long && !open ? "line-clamp-4" : ""}`}>{shown}</div>
+        {long && (
+          <button type="button" onClick={() => setExpanded(step.key, !open)} className="mt-0.5 text-[12px] text-muted hover:text-fg">
+            {open ? "Show less" : "Show more"}
+          </button>
+        )}
+        {(images.length > 0 || mentions.length > 0) && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {images.map((image, index) =>
+              image.type === "image" ? (
+                <button key={index} type="button" onClick={() => openLightbox(`data:${image.mimeType};base64,${image.data}`)} className="cursor-zoom-in">
+                  <img alt="" src={`data:${image.mimeType};base64,${image.data}`} className="h-12 max-w-28 rounded-md border border-line object-cover" />
+                </button>
+              ) : null,
+            )}
+            {mentions.map((mention) => (
+              <span key={mention.path} title={mention.path} className="max-w-56 truncate rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">
+                {mention.label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

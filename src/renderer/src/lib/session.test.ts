@@ -267,3 +267,52 @@ describe("needsTimeDivider", () => {
     expect(needsTimeDivider(turn(late, late + minute), turn(late + 10 * minute))).toBe(true);
   });
 });
+
+describe("steering", () => {
+  const user = (text: string, timestamp = 5): SessionEvent => ({ type: "message_end", message: { role: "user", content: text, timestamp } });
+  const toolTurnEvents: SessionEvent[] = [
+    { type: "agent_start" },
+    user("fix auth", 1),
+    { type: "message_start", message: assistant([], "pending") },
+    { type: "message_end", message: assistant([readCall], "toolUse") },
+    { type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: {} },
+    { type: "tool_execution_end", toolCallId: "c1", toolName: "read", result: { content: [] }, isError: false },
+    { type: "message_end", message: { role: "toolResult", toolCallId: "c1", toolName: "read", content: [], isError: false, timestamp: 2 } },
+  ];
+
+  it("folds a message delivered after tool calls into the running turn as a steer step", () => {
+    const state = play([...toolTurnEvents, user("no, check the tests first"), { type: "message_start", message: assistant([], "pending") }]);
+    expect(state.items.filter((item) => item.kind === "user").map((item) => item.kind === "user" && Boolean(item.steer))).toEqual([false, true]);
+    const runs = deriveRuns(state);
+    expect(runs).toHaveLength(1);
+    const steps = runs[0]?.blocks.flatMap((block) => (block.kind === "activity" ? block.steps.map((step) => step.kind) : []));
+    expect(steps).toEqual(["tool", "steer"]);
+    expect(layoutRun(runs[0] as Run).work.length).toBeGreaterThan(0);
+  });
+
+  it("uses pi's queue to tell a steer from a follow-up when the model had stopped", () => {
+    const stopped: SessionEvent[] = [{ type: "agent_start" }, user("go", 1), { type: "message_end", message: assistant([{ type: "text", text: "done" }]) }];
+    const steered = play([...stopped, { type: "queue_update", steering: ["redirect"], followUp: [] }, { type: "queue_update", steering: [], followUp: [] }, user("redirect")]);
+    expect(deriveRuns(steered)).toHaveLength(1);
+    const followed = play([...stopped, { type: "queue_update", steering: [], followUp: ["later"] }, user("later")]);
+    expect(deriveRuns(followed)).toHaveLength(2);
+  });
+
+  it("never treats the first message of a new run as a steer, even after an aborted tool call", () => {
+    const state = play([...toolTurnEvents, { type: "agent_settled" }, { type: "agent_start" }, user("new task")]);
+    expect(deriveRuns(state)).toHaveLength(2);
+  });
+
+  it("classifies steers in sessions read from disk by the tool-use rule", () => {
+    const entry = (id: string, message: unknown): SessionEntry => ({ type: "message", id, parentId: null, timestamp: "2026-10-01T10:00:00.000Z", message }) as SessionEntry;
+    const state = hydrate(createSession("h", "/repo"), [
+      entry("u1", { role: "user", content: "fix auth", timestamp: 1 }),
+      entry("a1", assistant([readCall], "toolUse")),
+      entry("t1", { role: "toolResult", toolCallId: "c1", toolName: "read", content: [], isError: false, timestamp: 2 }),
+      entry("u2", { role: "user", content: "steer", timestamp: 3 }),
+      entry("a2", assistant([{ type: "text", text: "ok" }])),
+      entry("u3", { role: "user", content: "next prompt", timestamp: 4 }),
+    ]);
+    expect(deriveRuns(state).map((run) => run.user?.message.content)).toEqual(["fix auth", "next prompt"]);
+  });
+});

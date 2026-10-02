@@ -5,7 +5,9 @@ import type { Item, SessionState, ToolRun } from "./session";
 
 export type Step =
   | { kind: "thinking"; key: string; text: string; redacted: boolean; streaming: boolean; durationMs?: number }
-  | { kind: "tool"; key: string; call: ToolCall; run?: ToolRun; argsStreaming: boolean };
+  | { kind: "tool"; key: string; call: ToolCall; run?: ToolRun; argsStreaming: boolean }
+  /** A message you steered into the running turn. */
+  | { kind: "steer"; key: string; message: UserMessage };
 
 export type Block =
   | { kind: "text"; key: string; text: string; streaming: boolean; at: number; stopReason: StopReason }
@@ -65,7 +67,8 @@ export function deriveRuns(state: Pick<SessionState, "items" | "tools" | "runnin
 function sliceRuns(items: Item[]): Item[][] {
   const slices: Item[][] = [];
   for (const item of items) {
-    if (item.kind === "user" || slices.length === 0) slices.push([item]);
+    // Steers continue the turn they were delivered into; only real prompts start a new run.
+    if ((item.kind === "user" && !item.steer) || slices.length === 0) slices.push([item]);
     else slices[slices.length - 1]?.push(item);
   }
   return slices;
@@ -105,7 +108,8 @@ function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, li
   for (const item of items) {
     switch (item.kind) {
       case "user":
-        user = { key: item.key, message: item.message };
+        if (item.steer || user) addStep({ kind: "steer", key: item.key, message: item.message }, item.message.timestamp);
+        else user = { key: item.key, message: item.message };
         break;
       case "assistant": {
         const { message, streaming } = item;

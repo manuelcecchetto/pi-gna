@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp } from "./format";
 import { markdownToHtml } from "./markdown";
+import { applyQueueOp } from "./queue";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
 import { parsePartialJson } from "./partial-json";
 
@@ -92,5 +93,31 @@ describe("markdownToHtml", () => {
     expect(html).toContain('<span class="task-box" aria-hidden="true"></span>next');
     expect(html).not.toContain("<input");
     expect(html).toContain('<code data-lang="ts">');
+  });
+});
+
+describe("applyQueueOp", () => {
+  const queues = { steering: ["fix the test", "also lint"], followUp: ["then summarize", "fix the test"] };
+
+  it("removes by kind and text, keeping the order of the rest", () => {
+    expect(applyQueueOp(queues, { type: "remove", kind: "steering", text: "fix the test" })).toEqual({
+      queues: { steering: ["also lint"], followUp: ["then summarize", "fix the test"] },
+      found: true,
+    });
+  });
+
+  it("steers a follow-up now, or defers a steer to after the run, appending to the other queue", () => {
+    expect(applyQueueOp(queues, { type: "move", kind: "followUp", text: "then summarize" }).queues).toEqual({
+      steering: ["fix the test", "also lint", "then summarize"],
+      followUp: ["fix the test"],
+    });
+    expect(applyQueueOp(queues, { type: "move", kind: "steering", text: "also lint" }).queues).toEqual({
+      steering: ["fix the test"],
+      followUp: ["then summarize", "fix the test", "also lint"],
+    });
+  });
+
+  it("is a no-op when pi already delivered the item", () => {
+    expect(applyQueueOp(queues, { type: "remove", kind: "steering", text: "gone" })).toEqual({ queues, found: false });
   });
 });
