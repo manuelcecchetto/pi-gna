@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp } from "./format";
+import { markdownToHtml } from "./markdown";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
 import { parsePartialJson } from "./partial-json";
 
@@ -81,5 +82,15 @@ describe("formatStamp", () => {
     expect(formatStamp(new Date(2026, 8, 29, 17, 22).getTime(), now)).toMatch(/^Tuesday /); // 3 days back
     expect(formatStamp(new Date(2026, 8, 12, 17, 22).getTime(), now)).toMatch(/Sep 12, /);
     expect(formatStamp(new Date(2025, 8, 12, 17, 22).getTime(), now)).toMatch(/2025/);
+  });
+});
+
+describe("markdownToHtml", () => {
+  it("renders task lists as styled boxes, not inputs the sanitizer would strip", () => {
+    const html = markdownToHtml("- [x] shipped\n- [ ] next\n\n```ts\nconst a = 1;\n```");
+    expect(html).toContain('<span class="task-box done" aria-hidden="true"></span>shipped');
+    expect(html).toContain('<span class="task-box" aria-hidden="true"></span>next');
+    expect(html).not.toContain("<input");
+    expect(html).toContain('<code data-lang="ts">');
   });
 });

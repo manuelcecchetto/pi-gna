@@ -16,6 +16,8 @@ const EXCLUDED_TOOLS = process.env.PI_STUDIO_EXCLUDE_TOOLS ?? "run,snapshot,scre
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();
   private readonly extension = join(app.getAppPath(), "resources", "browser-extension.ts");
+  /** Tells the model its replies render as Markdown in studio (studio sessions only, not the terminal UI). */
+  private readonly prompt = join(app.getAppPath(), "resources", "studio-prompt.md");
 
   constructor(
     private readonly emit: (batch: HostEventBatch) => void,
@@ -23,7 +25,7 @@ export class SessionHost {
   ) {}
 
   private piArgs(handle: string): { args: string[]; env: Record<string, string> } {
-    const args = ["-e", this.extension];
+    const args = ["-e", this.extension, "--append-system-prompt", this.prompt];
     if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
     return { args, env: { PI_STUDIO_BRIDGE: this.bridge.url, PI_STUDIO_TOKEN: this.bridge.register(handle) } };
   }

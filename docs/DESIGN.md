@@ -110,6 +110,16 @@ Verified live (pi 1.0.0, Oct 2026):
   still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
   (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
   visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI).
+- Scrolling (Codex-style, `useTurnScroll`): sending a message scrolls it to the top of the view and the answer
+  streams in below; nothing follows the stream after that. The newest turn gets a min-height of one viewport so
+  that is possible even for short answers (sessions opened from disk keep their natural height until you send).
+  Opening a session shows its end; "Show earlier turns" keeps your place; a ↓ button appears when content is
+  below the fold.
+- Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
+  strips `<input>`). Studio sessions get `--append-system-prompt resources/studio-prompt.md`, which tells the
+  model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
+  footnotes or Mermaid). It only applies to studio sessions; opening a terminal session in studio adds that
+  prompt section on its next request.
 - Live state: pixel-grid loader and shimmer on the "Working for" header, with "waiting for you", "compacting
   context" or "retrying" called out next to it.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
@@ -135,7 +145,8 @@ light and dark themes, pixel-grid loaders with shimmer text, compact chips that 
 ## Verifying the UI
 
 `scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys); start it with
-`node bin/pi-studio.mjs --remote-debugging-port=9333`. Stop test instances by their PID, never with
+`node bin/pi-studio.mjs --remote-debugging-port=9333`. Give test instances `PI_STUDIO_USER_DATA=/tmp/<dir>` and their own port so they never share a profile or
+debugging port with the studio you work in, and stop them by their PID, never with
 `pkill -f bin/pi-studio.mjs`: the agent doing the testing may itself be running inside a pi studio session, and a
 pattern kill takes down the user's app and the agent with it. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.

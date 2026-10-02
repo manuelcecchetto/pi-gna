@@ -23,6 +23,7 @@ they are attached to your next prompt with a crop of each element.
 |---|---|
 | `PI_STUDIO_DEBUG=1` | Log every RPC record in the terminal |
 | `PI_STUDIO_PI_BIN` | pi executable to spawn (default `pi` on `PATH`) |
+| `PI_STUDIO_USER_DATA` | Separate app profile (browser cookies and history), for test instances |
 | `PI_STUDIO_EXCLUDE_TOOLS` | Tools hidden from studio sessions (default `run,snapshot,screenshot`, Stagehand's) |
 | `PI_CODING_AGENT_SESSION_DIR`, `PI_CODING_AGENT_DIR` | Where sessions are listed from (same as pi) |
 

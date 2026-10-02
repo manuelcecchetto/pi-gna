@@ -14,6 +14,9 @@ import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
 
 app.setName("pi studio");
+// Test instances (scripts/cdp.mjs) get their own profile so they never share a browser profile or history
+// with the studio you are working in.
+if (process.env.PI_STUDIO_USER_DATA) app.setPath("userData", process.env.PI_STUDIO_USER_DATA);
 const launchCwd = process.env.PI_STUDIO_CWD || process.cwd();
 
 let window: BrowserWindow | undefined;

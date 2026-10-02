@@ -195,6 +195,41 @@ body,
 .prose .code-block {
   margin: 0.7em 0;
 }
+.prose li:has(> .task-box),
+.prose li:has(> p > .task-box) {
+  list-style: none;
+  margin-left: -1.3em;
+}
+.prose li:has(> .task-box.done),
+.prose li:has(> p > .task-box.done) {
+  color: var(--muted);
+}
+.task-box {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 0.55em;
+  vertical-align: -2px;
+  border: 1.5px solid var(--faint);
+  border-radius: 4px;
+}
+.task-box.done {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.task-box.done::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 4px;
+  height: 7.5px;
+  border: solid #fff;
+  border-width: 0 1.7px 1.7px 0;
+  transform: rotate(45deg);
+}
+
 .prose h1,
 .prose h2,
 .prose h3,

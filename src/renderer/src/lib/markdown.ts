@@ -13,10 +13,18 @@ const marked = new Marked({
       const label = escapeHtml((lang ?? "").split(/\s/)[0] || "text");
       return `<div class="code-block"><header><span>${label}</span><button type="button" data-copy>Copy</button></header><pre><code data-lang="${label}">${escapeHtml(text)}</code></pre></div>`;
     },
+    // Task lists: a styled box instead of an <input>, which the sanitizer strips.
+    checkbox({ checked }) {
+      return `<span class="task-box${checked ? " done" : ""}" aria-hidden="true"></span>`;
+    },
   },
 });
 
+/** Markdown -> HTML before sanitizing (exported for tests). */
+export function markdownToHtml(source: string): string {
+  return marked.parse(source, { async: false }) as string;
+}
+
 export function renderMarkdown(source: string): string {
-  const html = marked.parse(source, { async: false }) as string;
-  return DOMPurify.sanitize(html, { ADD_ATTR: ["data-lang", "data-copy"], FORBID_TAGS: ["style", "form", "input"] });
+  return DOMPurify.sanitize(markdownToHtml(source), { ADD_ATTR: ["data-lang", "data-copy"], FORBID_TAGS: ["style", "form", "input"] });
 }

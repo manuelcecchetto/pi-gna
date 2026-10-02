@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  ArrowDown,
   Check,
   ChevronRight,
   CircleSlash,
@@ -12,7 +13,7 @@ import {
   MessageSquare,
   SquareTerminal,
 } from "lucide-react";
-import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
@@ -35,42 +36,115 @@ export function Transcript({ session }: { session: SessionState }) {
   const home = window.studio.homeDir;
 
   const scroller = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (element && pinned.current) element.scrollTop = element.scrollHeight;
-  });
+  const { viewport, jumped, restoreFromBottom, below, onScroll } = useTurnScroll(scroller, runs);
 
   if (!runs.length && !session.running) return <EmptyTranscript session={session} />;
 
+  const last = visible.at(-1);
+  // The newest turn gets at least a screen of height, so your message can sit at the top while the
+  // answer streams in below it. Sessions opened from disk keep their natural height until you send.
+  const fillKey = last && (last.live || jumped.current === last.key) ? last.key : undefined;
+  const fillHeight = Math.max(0, viewport - TOP_GAP - BOTTOM_GAP);
+
   return (
-    <div
-      ref={scroller}
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
-      }}
-      className="min-h-0 flex-1 overflow-y-auto"
-    >
-      <div className="mx-auto flex max-w-[800px] flex-col gap-10 px-8 pt-6 pb-10">
-        {hidden > 0 && (
-          <button
-            type="button"
-            onClick={() => {
-              pinned.current = false;
-              setLimit((value) => value + PAGE);
-            }}
-            className="self-center rounded-full border border-line px-3 py-1 text-[12px] text-muted hover:text-fg"
-          >
-            Show {Math.min(hidden, PAGE)} earlier {hidden === 1 ? "turn" : "turns"}
-          </button>
-        )}
-        {visible.map((run) => (
-          <RunView key={run.key} run={run} cwd={session.cwd} home={home} status={run.live ? liveStatus(session) : undefined} />
-        ))}
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={scroller} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex max-w-[800px] flex-col gap-10 px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
+          {hidden > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const element = scroller.current;
+                if (element) restoreFromBottom.current = element.scrollHeight - element.scrollTop;
+                setLimit((value) => value + PAGE);
+              }}
+              className="self-center rounded-full border border-line px-3 py-1 text-[12px] text-muted hover:text-fg"
+            >
+              Show {Math.min(hidden, PAGE)} earlier {hidden === 1 ? "turn" : "turns"}
+            </button>
+          )}
+          {visible.map((run) => (
+            <RunView
+              key={run.key}
+              run={run}
+              cwd={session.cwd}
+              home={home}
+              status={run.live ? liveStatus(session) : undefined}
+              minHeight={run.key === fillKey ? fillHeight : undefined}
+            />
+          ))}
+        </div>
       </div>
+      {below && (
+        <button
+          type="button"
+          title="Jump to latest"
+          onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" })}
+          className="absolute bottom-3 left-1/2 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full border border-line-strong bg-panel text-muted shadow-[0_6px_20px_-6px_rgb(0_0_0/0.5)] hover:text-fg"
+        >
+          <ArrowDown size={15} />
+        </button>
+      )}
     </div>
   );
+}
+
+const TOP_GAP = 24;
+const BOTTOM_GAP = 40;
+
+/**
+ * Codex-style turn scrolling. Sending a message scrolls it to the top of the view and the answer
+ * streams in below; nothing follows the stream after that. Opening a session shows its end. A
+ * jump-to-latest button appears when more content sits below the fold.
+ */
+function useTurnScroll(scroller: React.RefObject<HTMLDivElement | null>, runs: Run[]) {
+  const [viewport, setViewport] = useState(0);
+  const [below, setBelow] = useState(false);
+  const seen = useRef<string | undefined>(undefined);
+  const jumped = useRef<string | undefined>(undefined);
+  const restoreFromBottom = useRef<number | null>(null);
+  const mounted = runs.length > 0;
+
+  const measureBelow = useCallback(() => {
+    const element = scroller.current;
+    if (element) setBelow(element.scrollHeight - element.scrollTop - element.clientHeight > 160);
+  }, [scroller]);
+
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      setViewport(element.clientHeight);
+      measureBelow();
+    });
+    observer.observe(element);
+    setViewport(element.clientHeight);
+    return () => observer.disconnect();
+  }, [scroller, mounted, measureBelow]);
+
+  const last = runs.at(-1);
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    if (restoreFromBottom.current !== null) {
+      element.scrollTop = element.scrollHeight - restoreFromBottom.current; // keep your place when earlier turns load
+      restoreFromBottom.current = null;
+    }
+    if (last && last.key !== seen.current) {
+      const first = seen.current === undefined;
+      seen.current = last.key;
+      const section = element.querySelector<HTMLElement>(`[data-run="${CSS.escape(last.key)}"]`);
+      if (last.live && section) {
+        jumped.current = last.key;
+        element.scrollTo({ top: section.offsetTop - TOP_GAP, behavior: first ? "auto" : "smooth" });
+      } else {
+        element.scrollTop = element.scrollHeight;
+      }
+    }
+    measureBelow();
+  });
+
+  return { viewport, jumped, restoreFromBottom, below, onScroll: measureBelow };
 }
 
 const SUGGESTIONS = [
@@ -140,11 +214,23 @@ function liveStatus(session: SessionState): string | undefined {
   return undefined;
 }
 
-const RunView = memo(function RunView({ run, cwd, home, status }: { run: Run; cwd: string; home: string; status?: string }) {
+const RunView = memo(function RunView({
+  run,
+  cwd,
+  home,
+  status,
+  minHeight,
+}: {
+  run: Run;
+  cwd: string;
+  home: string;
+  status?: string;
+  minHeight?: number;
+}) {
   const layout = useMemo(() => layoutRun(run), [run]);
   const renderBlock = (block: Block) => <BlockView block={block} cwd={cwd} home={home} />;
   return (
-    <section className="flex flex-col gap-4">
+    <section data-run={run.key} className="flex flex-col gap-4" style={minHeight ? { minHeight } : undefined}>
       {run.user && <UserMessageView message={run.user.message} />}
       {(layout.work.length > 0 || run.live) && (
         <WorkAccordion run={run} layout={layout} cwd={cwd} home={home} status={status} renderBlock={renderBlock} />
