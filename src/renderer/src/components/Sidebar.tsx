@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, isDraft, type SessionState, strongestAttention } from "../lib/session";
-import { clampSidebarWidth, SIDEBAR_DEFAULT } from "../lib/layout";
+import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { activate, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 
@@ -40,7 +40,12 @@ export function Sidebar() {
   const startResize = (event: React.PointerEvent) => {
     event.preventDefault();
     setDragging(true);
-    const move = (e: PointerEvent) => setSidebar({ width: clampSidebarWidth(e.clientX, window.innerWidth) }, false);
+    const startWidth = width;
+    const move = (e: PointerEvent) => {
+      const target = sidebarDrag(e.clientX, window.innerWidth);
+      // Pulled to the edge: collapse, keeping the width from before the drag for when it reopens.
+      setSidebar(target.collapsed ? { collapsed: true, width: startWidth } : { collapsed: false, width: target.width }, false);
+    };
     const up = () => {
       setDragging(false);
       setSidebar({}, true);
@@ -53,7 +58,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`relative shrink-0 overflow-hidden bg-[var(--sidebar)] ${dragging ? "" : "transition-[width] duration-200 ease-out"}`}
+      className={`relative shrink-0 overflow-hidden bg-[var(--sidebar)] ${dragging && !layout.collapsed ? "" : "transition-[width] duration-200 ease-out"}`}
       style={{ width: layout.collapsed ? 0 : width }}
       inert={layout.collapsed}
     >

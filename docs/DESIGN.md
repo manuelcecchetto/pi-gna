@@ -104,7 +104,8 @@ Verified live (pi 1.0.0, Oct 2026):
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
 - Sidebar layout (Codex-style): header with the logo and a hide button, a "New chat" row (⌘N), then a
   "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
-  never leaving the chat under 520px; double-click resets), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
+  never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
+  pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
   the browser here). Width and collapsed state persist in localStorage. Collapsed, the sidebar is `inert` (not `aria-hidden`, which
   Chromium blocks while a button inside still has focus). While collapsed, show-sidebar and
   new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost

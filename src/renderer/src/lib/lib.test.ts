@@ -3,7 +3,7 @@ import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
 import { markdownToHtml } from "./markdown";
 import { applyQueueOp } from "./queue";
-import { clampSidebarWidth } from "./layout";
+import { clampSidebarWidth, sidebarDrag } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
@@ -172,5 +172,14 @@ describe("clampSidebarWidth", () => {
     expect(clampSidebarWidth(450, 900)).toBe(380); // 900 - 520
     expect(clampSidebarWidth(450, 600)).toBe(220); // tiny window: the minimum still wins
     expect(clampSidebarWidth(Number.NaN, 1600)).toBe(268);
+  });
+});
+
+describe("sidebarDrag", () => {
+  it("collapses once dragged near the window edge instead of stopping at the minimum width", () => {
+    expect(sidebarDrag(300, 1600)).toEqual({ collapsed: false, width: 300 });
+    expect(sidebarDrag(160, 1600)).toEqual({ collapsed: false, width: 220 }); // between edge zone and minimum: hold at minimum
+    expect(sidebarDrag(119, 1600)).toEqual({ collapsed: true });
+    expect(sidebarDrag(-20, 1600)).toEqual({ collapsed: true });
   });
 });

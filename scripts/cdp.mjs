@@ -8,7 +8,7 @@
 //   node scripts/cdp.mjs key Escape|Enter|ctrl+o        # press a key
 //   node scripts/cdp.mjs click 120 340                  # real mouse click at CSS px
 //   node scripts/cdp.mjs drop 600 400 /path/a /path/dir  # drop files from the OS at CSS px
-//   node scripts/cdp.mjs drag 268 400 360 400           # real mouse drag (resize handles)
+//   node scripts/cdp.mjs drag 268 400 360 400 [x y ...] # real mouse drag through waypoints (resize handles)
 //   CDP_URL=localhost:8765 node scripts/cdp.mjs shot    # target a browser tab instead of the app
 // Uses Node's built-in WebSocket; no dependencies.
 import { writeFileSync } from "node:fs";
@@ -98,13 +98,21 @@ switch (command) {
   }
   case "drag": {
     // Real mouse drag: drag <x1> <y1> <x2> <y2>
-    const [x1, y1, x2, y2] = args.map(Number);
+    const points = [];
+    const nums = args.map(Number);
+    for (let i = 0; i + 1 < nums.length; i += 2) points.push([nums[i], nums[i + 1]]);
+    const [[x1, y1]] = points;
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x1, y: y1 });
     await send("Input.dispatchMouseEvent", { type: "mousePressed", x: x1, y: y1, button: "left", clickCount: 1 });
-    for (let i = 1; i <= 8; i++) {
-      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x1 + ((x2 - x1) * i) / 8, y: y1 + ((y2 - y1) * i) / 8, button: "left", buttons: 1 });
+    for (let p = 1; p < points.length; p++) {
+      const [ax, ay] = points[p - 1];
+      const [bx, by] = points[p];
+      for (let i = 1; i <= 8; i++) {
+        await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: ax + ((bx - ax) * i) / 8, y: ay + ((by - ay) * i) / 8, button: "left", buttons: 1 });
+      }
     }
-    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: x2, y: y2, button: "left", clickCount: 1 });
+    const [xe, ye] = points.at(-1);
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: xe, y: ye, button: "left", clickCount: 1 });
     break;
   }
   case "move":

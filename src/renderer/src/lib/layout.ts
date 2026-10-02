@@ -16,6 +16,15 @@ export function clampSidebarWidth(width: number, windowWidth: number): number {
   return Math.round(Math.min(max, Math.max(SIDEBAR_MIN, Number.isFinite(width) ? width : SIDEBAR_DEFAULT)));
 }
 
+/** Dragging the edge left of this collapses the sidebar (about half the minimum width). */
+export const SIDEBAR_COLLAPSE_AT = 120;
+
+/** Where a resize drag at pointer x puts the sidebar: a width, or collapsed when pulled to the window edge. */
+export function sidebarDrag(pointerX: number, windowWidth: number): { collapsed: true } | { collapsed: false; width: number } {
+  if (pointerX < SIDEBAR_COLLAPSE_AT) return { collapsed: true };
+  return { collapsed: false, width: clampSidebarWidth(pointerX, windowWidth) };
+}
+
 const KEY = "pi-studio:sidebar";
 
 export function loadSidebar(): SidebarLayout {
