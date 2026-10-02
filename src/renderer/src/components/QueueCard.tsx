@@ -26,7 +26,7 @@ export function QueueCard({ session, onEdit }: { session: SessionState; onEdit: 
   };
 
   return (
-    <div className="relative z-0 mx-4 -mb-6 rounded-t-2xl border border-line-strong bg-raised px-1.5 pt-1 pb-5">
+    <div className="relative z-[1] mx-4 -mb-6 rounded-t-2xl border border-line-strong bg-raised px-1.5 pt-1 pb-5">
       {items.map((item, index) => (
         <QueueRow
           key={`${item.kind}:${index}:${item.text}`}

@@ -45,6 +45,9 @@ const send = (method, params = {}) =>
     ws.send(JSON.stringify({ id, method, params }));
   });
 
+// CDP_FOCUS=1: the page behaves as focused (background test windows never are), so :focus styles render.
+if (process.env.CDP_FOCUS === "1") await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+
 const KEYS = {
   Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },
   Escape: { key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 },

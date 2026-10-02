@@ -159,6 +159,11 @@ Verified live (pi 1.0.0, Oct 2026):
   header.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
   `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
+- Composer: always at least 2 lines tall (like beautifului.dev's Chat composer). A soft blurred glow in the pi
+  logo colors mixed with grey sits behind it, and its hairline border is grey with faint logo tints. On focus the
+  border brightens (beautifului.dev's only focus change, measured: `line` -> `line-strong`) and becomes a slowly
+  flowing coral/grey/blue/yellow gradient with a stronger glow (the Gemini-like part, ours). `.composer*` in
+  `styles.css`; motion stops with reduced motion.
 - Attachments (Codex-style, verified against the Codex app bundle): "+" menu with "Add photos" and "Attach files
   and folders" (⌘U, native picker with files and folders), drop anywhere on the session pane, ⌘V. Files and
   folders are sent by path in a `# Files mentioned by the user:` block of `## name: /path` lines (pi reads them
@@ -188,7 +193,9 @@ pattern kill takes down the user's app and the agent with it. `PI_STUDIO_PI_BIN`
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
-`click x y` sends real mouse input (useful for driving the annotation picker). CDP screenshots of the app window
+`click x y` sends real mouse input (useful for driving the annotation picker), `drag x1 y1 x2 y2` drags (resize
+handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
+styles render in a background test window. CDP screenshots of the app window
 do not include native tab views.
 
 Build notes: Electron 44 has no postinstall; it downloads its binary on the first `require("electron")`.

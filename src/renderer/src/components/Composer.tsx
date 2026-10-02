@@ -226,7 +226,10 @@ export function Composer({ session }: { session: SessionState }) {
           area.current?.focus();
         }}
       />
-      <div className="relative z-10 rounded-2xl border border-line-strong bg-panel transition focus-within:border-accent/50">
+      {/* pi-colored glow behind the box; the box border becomes a flowing gradient on focus (see .composer). */}
+      <div className="composer relative">
+        <div className="composer-glow" aria-hidden />
+      <div className="composer-box relative z-10 rounded-2xl">
         {menu && items.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-line-strong bg-panel p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
             {items.map((item, index) => (
@@ -252,7 +255,7 @@ export function Composer({ session }: { session: SessionState }) {
         <textarea
           ref={area}
           value={text}
-          rows={1}
+          rows={2}
           disabled={exited}
           placeholder={exited ? "pi exited" : session.phase === "starting" ? "Starting pi…" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : "Ask pi anything…  @ for files, / for commands"}
           onChange={onChange}
@@ -293,6 +296,7 @@ export function Composer({ session }: { session: SessionState }) {
             )}
           </div>
         </div>
+      </div>
       </div>
       {widgetsBelow.map(([key, widget]) => (
         <Widget key={key} lines={widget.lines} />

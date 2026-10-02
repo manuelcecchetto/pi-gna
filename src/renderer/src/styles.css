@@ -456,3 +456,94 @@ code.hl span {
 .thinking .prose code {
   font-style: normal;
 }
+
+/* Composer: grey hairline with faint pi-logo tints and a soft blurred pi glow behind it. On focus the border
+   brightens (beautifului.dev) and becomes a slowly flowing coral/blue/yellow gradient (Gemini-like). */
+.composer {
+  --pi-coral: #f09082;
+  --pi-blue: #4d9abf;
+  --pi-yellow: #f1be58;
+  --pi-gray: #7c7c86;
+}
+.composer-box {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(
+        115deg,
+        color-mix(in srgb, var(--pi-coral) 45%, var(--line-strong)),
+        var(--line-strong) 28%,
+        var(--line-strong) 58%,
+        color-mix(in srgb, var(--pi-blue) 45%, var(--line-strong)) 80%,
+        color-mix(in srgb, var(--pi-yellow) 40%, var(--line-strong))
+      )
+      border-box;
+  background-size:
+    100% 100%,
+    220% 220%;
+  background-position:
+    0 0,
+    0% 50%;
+  transition: box-shadow 0.25s ease;
+}
+.composer-box:focus-within {
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 30%, var(--pi-blue) 52%, var(--pi-gray) 74%, var(--pi-yellow), var(--pi-coral))
+      border-box;
+  background-size:
+    100% 100%,
+    220% 220%;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  animation: composer-flow 7s ease-in-out infinite alternate;
+}
+.composer-glow {
+  position: absolute;
+  inset: 10px 14px -6px;
+  z-index: 0;
+  border-radius: 24px;
+  background: linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 35%, var(--pi-blue) 58%, var(--pi-gray) 78%, var(--pi-yellow));
+  background-size: 220% 220%;
+  filter: blur(24px);
+  opacity: 0.13;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+.composer:focus-within .composer-glow {
+  opacity: 0.3;
+  animation: composer-glow-flow 7s ease-in-out infinite alternate;
+}
+@keyframes composer-glow-flow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+@keyframes composer-flow {
+  from {
+    background-position:
+      0 0,
+      0% 50%;
+  }
+  to {
+    background-position:
+      0 0,
+      100% 50%;
+  }
+}
+@media (prefers-color-scheme: light) {
+  .composer-glow {
+    opacity: 0.1;
+  }
+  .composer:focus-within .composer-glow {
+    opacity: 0.22;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-box:focus-within,
+  .composer:focus-within .composer-glow {
+    animation: none;
+  }
+}
