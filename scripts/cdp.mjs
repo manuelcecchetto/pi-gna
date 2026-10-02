@@ -89,6 +89,10 @@ switch (command) {
     }
     break;
   }
+  case "move":
+    // Hover: move <x> <y>
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Number(args[0]), y: Number(args[1]) });
+    break;
   case "drop": {
     // Real OS-style file drop: drop <x> <y> <path...>
     const [x, y, ...files] = args;

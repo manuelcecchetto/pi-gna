@@ -3,7 +3,7 @@ import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
 import { createSession, hydrate, reduceHostEvent, type SessionState } from "./session";
 import { presentTool, summarizeTools } from "./tools";
-import { createRunDeriver, deriveRuns, layoutRun } from "./view";
+import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop"): AssistantMessage => ({
@@ -241,5 +241,29 @@ describe("layoutRun (Working/Worked accordion)", () => {
     const plain = layoutRun(run([...userTurn("hi"), { type: "message_end", message: assistant([{ type: "text", text: "Hello" }]) }]));
     expect(plain.work).toEqual([]);
     expect(plain.settled).toBe(true);
+  });
+});
+
+describe("needsTimeDivider", () => {
+  const minute = 60_000;
+  const turn = (userAt: number, answerAt?: number): Run => ({
+    key: `r${userAt}`,
+    live: false,
+    user: { key: `u${userAt}`, message: { role: "user", content: "x", timestamp: userAt } },
+    blocks: answerAt === undefined ? [] : [{ kind: "text", key: `t${answerAt}`, text: "ok", streaming: false, at: answerAt, stopReason: "stop" }],
+  });
+  const noon = new Date(2026, 9, 2, 12, 0).getTime();
+
+  it("shows a divider for the first message and after a long break, measured from the end of the previous turn", () => {
+    expect(needsTimeDivider(undefined, turn(noon))).toBe(true);
+    expect(needsTimeDivider(turn(noon, noon + minute), turn(noon + 20 * minute))).toBe(false);
+    // A long-running turn: 50 min after it started but only 5 min after it finished is not a break.
+    expect(needsTimeDivider(turn(noon, noon + 45 * minute), turn(noon + 50 * minute))).toBe(false);
+    expect(needsTimeDivider(turn(noon, noon + minute), turn(noon + 61 * minute))).toBe(true);
+  });
+
+  it("shows a divider when the day changes, even after a short gap", () => {
+    const late = new Date(2026, 9, 2, 23, 55).getTime();
+    expect(needsTimeDivider(turn(late, late + minute), turn(late + 10 * minute))).toBe(true);
   });
 });

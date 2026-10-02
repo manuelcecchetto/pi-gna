@@ -100,8 +100,9 @@ Verified live (pi 1.0.0, Oct 2026):
 
 - Sidebar: projects (cwd) -> sessions; dots for open and running sessions.
 - Transcript: a **run** is everything between two user messages. Your messages are right-aligned bubbles without
-  an avatar, under a centred time stamp ("Yesterday 5:22 PM"), Codex-style; finished answers end with Copy and a
-  time. Runs are separated by spacing. Each run splits (`layoutRun`) into a **work accordion**
+  an avatar, Codex-style; finished answers end with a Copy button. Times ("Yesterday 5:22 PM", full date in the
+  tooltip) appear while hovering a message or answer; a centered time divider is always shown above the first
+  message and above messages sent after a break of an hour or more, or on a new day (`needsTimeDivider`). Runs are separated by spacing. Each run splits (`layoutRun`) into a **work accordion**
   and the **final answer**: everything up to the last thinking/tool step (commentary, steps, notices) goes in the
   accordion, the text after it is the answer. Header: "Working for 13m 16s" (live) / "Worked for 22s", plus a
   tool summary ("Read 3 files · ran 2 commands"). It is open while working and closes itself once the answer is

@@ -217,3 +217,23 @@ export function layoutRun(run: Run): RunLayout {
     endedAt: Math.max(texts[0]?.at ?? 0, lastWork && "at" in lastWork ? lastWork.at : 0) || undefined,
   };
 }
+
+/** A break this long before a message (or a new day) gets a centered time divider: "I came back to this". */
+export const DIVIDER_GAP_MS = 60 * 60_000;
+
+/** Latest known time in a run: its message or any timed answer/activity block. */
+export function runEnd(run: Run): number | undefined {
+  let end = run.user?.message.timestamp;
+  for (const block of run.blocks) {
+    if ("at" in block && block.at > (end ?? 0)) end = block.at;
+  }
+  return end;
+}
+
+export function needsTimeDivider(previous: Run | undefined, run: Run): boolean {
+  const at = run.user?.message.timestamp;
+  if (at === undefined) return false;
+  const before = previous ? runEnd(previous) : undefined;
+  if (before === undefined) return true; // the first message anchors the transcript in time
+  return at - before >= DIVIDER_GAP_MS || new Date(at).toDateString() !== new Date(before).toDateString();
+}

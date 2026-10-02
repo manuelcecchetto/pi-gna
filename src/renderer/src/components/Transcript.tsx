@@ -18,7 +18,7 @@ import type { ImageContent, TextContent, UserMessage } from "../../../shared/pro
 import { splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import type { SessionState } from "../lib/session";
-import { type Block, createRunDeriver, layoutRun, type Run } from "../lib/view";
+import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { openLightbox, prefill, setExpanded, useApp } from "../state/app";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
@@ -63,10 +63,11 @@ export function Transcript({ session }: { session: SessionState }) {
               Show {Math.min(hidden, PAGE)} earlier {hidden === 1 ? "turn" : "turns"}
             </button>
           )}
-          {visible.map((run) => (
+          {visible.map((run, index) => (
             <RunView
               key={run.key}
               run={run}
+              divider={needsTimeDivider(runs[hidden + index - 1], run)}
               cwd={session.cwd}
               home={home}
               status={run.live ? liveStatus(session) : undefined}
@@ -220,25 +221,31 @@ const RunView = memo(function RunView({
   home,
   status,
   minHeight,
+  divider,
 }: {
   run: Run;
   cwd: string;
   home: string;
   status?: string;
   minHeight?: number;
+  divider: boolean;
 }) {
   const layout = useMemo(() => layoutRun(run), [run]);
   const renderBlock = (block: Block) => <BlockView block={block} cwd={cwd} home={home} />;
   return (
     <section data-run={run.key} className="flex flex-col gap-4" style={minHeight ? { minHeight } : undefined}>
-      {run.user && <UserMessageView message={run.user.message} />}
+      {run.user && <UserMessageView message={run.user.message} divider={divider} />}
       {(layout.work.length > 0 || run.live) && (
         <WorkAccordion run={run} layout={layout} cwd={cwd} home={home} status={status} renderBlock={renderBlock} />
       )}
-      {layout.final.map((block) => (
-        <BlockView key={block.key} block={block} cwd={cwd} home={home} />
-      ))}
-      {!run.live && <AnswerFooter blocks={layout.final} />}
+      {layout.final.length > 0 && (
+        <div className="group/answer flex flex-col gap-4">
+          {layout.final.map((block) => (
+            <BlockView key={block.key} block={block} cwd={cwd} home={home} />
+          ))}
+          {!run.live && <AnswerFooter blocks={layout.final} />}
+        </div>
+      )}
     </section>
   );
 });
@@ -254,19 +261,28 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
   };
 }
 
-/** Your messages: a right-aligned bubble (no avatar), Codex-style, with a centred time stamp above. */
-function UserMessageView({ message }: { message: UserMessage }) {
+/**
+ * Your messages: a right-aligned bubble (no avatar), Codex-style. The time shows on hover; a centered
+ * divider marks the first message and messages after a long break.
+ */
+function UserMessageView({ message, divider }: { message: UserMessage; divider: boolean }) {
   const parts = userParts(message);
   const [withoutFiles, mentions] = splitFileMentions(parts.text);
   const [text, comments] = splitComments(withoutFiles);
   const images = parts.images;
   const [expanded, setOpen] = useState(false);
   const long = text.split("\n").length > 14 || text.length > 1400;
+  const stamp = <HoverStamp at={message.timestamp} group="user" />;
   return (
-    <div className="flex flex-col items-end gap-2">
-      <div className="self-center pb-2 text-[12px] text-faint">{formatStamp(message.timestamp)}</div>
+    <div className="group/user flex flex-col items-end gap-2">
+      {divider && (
+        <div title={new Date(message.timestamp).toLocaleString()} className="self-center pb-2 text-[12px] text-faint">
+          {formatStamp(message.timestamp)}
+        </div>
+      )}
       {images.length > 0 && (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex w-full flex-wrap items-center justify-end gap-2">
+          {!text && stamp}
           {images.map((image, index) => {
             const src = `data:${image.mimeType};base64,${image.data}`;
             return (
@@ -278,13 +294,16 @@ function UserMessageView({ message }: { message: UserMessage }) {
         </div>
       )}
       {text && (
-        <div className="max-w-[78%] rounded-[22px] bg-raised px-5 py-3 text-[14.5px] leading-relaxed text-fg">
-          <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
-          {long && (
-            <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
-              {expanded ? "Show less" : "Show more"}
-            </button>
-          )}
+        <div className="flex w-full items-center justify-end gap-3">
+          {stamp}
+          <div className="max-w-[78%] rounded-[22px] bg-raised px-5 py-3 text-[14.5px] leading-relaxed text-fg">
+            <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
+            {long && (
+              <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
+                {expanded ? "Show less" : "Show more"}
+              </button>
+            )}
+          </div>
         </div>
       )}
       {mentions.length > 0 && (
@@ -331,8 +350,18 @@ function AnswerFooter({ blocks }: { blocks: Block[] }) {
       <button type="button" onClick={copy} title="Copy answer" className="rounded-md p-1 hover:bg-raised hover:text-fg">
         {copied ? <Check size={14} /> : <Copy size={14} />}
       </button>
-      <span>{formatStamp(last.at)}</span>
+      <HoverStamp at={last.at} group="answer" />
     </div>
+  );
+}
+
+/** Time stamps are noise most of the time: shown while hovering their message, full date in the tooltip. */
+function HoverStamp({ at, group }: { at: number; group: "user" | "answer" }) {
+  const reveal = group === "user" ? "group-hover/user:opacity-100" : "group-hover/answer:opacity-100";
+  return (
+    <span title={new Date(at).toLocaleString()} className={`shrink-0 text-[12px] text-faint opacity-0 transition-opacity ${reveal}`}>
+      {formatStamp(at)}
+    </span>
   );
 }
 
