@@ -111,7 +111,8 @@ Verified live (pi 1.0.0, Oct 2026):
   still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
   (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
   visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI).
-- Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window).
+- Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window);
+  commentary between tool calls is normal (white) text, so the two stay distinct.
 - Steering: queued messages sit in a card attached to the top of the composer (Codex-style). Steers say
   "Steering"; follow-ups (⌥⏎) have **Steer** to inject them now; each row has trash and "…" (edit in composer,
   send after the run instead). RPC can only clear both queues and append, so edits clear, transform

@@ -119,7 +119,7 @@ export const WorkAccordion = memo(function WorkAccordion({
                 ))}
               </div>
             ) : block.kind === "text" ? (
-              <div key={block.key} className="text-muted [&_.prose]:text-[14px]">
+              <div key={block.key} className="text-fg [&_.prose]:text-[14px]">
                 <Markdown text={block.text} streaming={block.streaming} />
               </div>
             ) : (
