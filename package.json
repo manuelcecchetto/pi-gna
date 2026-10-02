@@ -1,8 +1,19 @@
 {
   "name": "pi-studio",
+  "productName": "pi studio",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop UI for the pi coding agent",
+  "description": "A desktop app for the pi coding agent",
+  "author": "Manuel Cecchetto",
+  "license": "MIT",
+  "homepage": "https://github.com/manuelcecchetto/pi-studio",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manuelcecchetto/pi-studio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/manuelcecchetto/pi-studio/issues"
+  },
   "keywords": [
     "pi-package"
   ],
@@ -16,15 +27,8 @@
     "build": "electron-vite build",
     "start": "electron-vite build && node bin/pi-studio.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "dompurify": "3.4.16",
-    "lucide-react": "1.49.0",
-    "marked": "18.0.14",
-    "react": "19.3.0",
-    "react-dom": "19.3.0",
-    "shiki": "4.5.0"
+    "test": "vitest run",
+    "dist": "electron-vite build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
@@ -32,8 +36,15 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
+    "dompurify": "3.4.16",
     "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
+    "lucide-react": "1.49.0",
+    "marked": "18.0.14",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "shiki": "4.5.0",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "vite": "7.3.6",
@@ -48,5 +59,6 @@
     "extensions": [
       "./resources/studio-flag.ts"
     ]
-  }
+  },
+  "packageManager": "pnpm@10.34.3"
 }

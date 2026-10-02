@@ -1,0 +1,44 @@
+# `pnpm dist` packages the app into dist/ (a .dmg per architecture). The app name is package.json's productName.
+appId: io.github.manuelcecchetto.pistudio
+copyright: Copyright © 2026 Manuel Cecchetto
+directories:
+  output: dist
+  buildResources: build
+# Everything the renderer needs is bundled by Vite, and main and preload only use Node and Electron, so the app
+# ships no node_modules.
+files:
+  - out/**
+  - resources/**
+  - src/shared/browser.ts
+  - "!resources/icon.png"
+  - "!resources/studio-flag.ts"
+# pi reads these from disk (`pi -e`, `--append-system-prompt`); browser-extension.ts imports src/shared/browser.ts.
+asarUnpack:
+  - resources/**
+  - src/shared/browser.ts
+electronLanguages: [en]
+# Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: false
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  darkModeSupport: true
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  # No Developer ID certificate: ad-hoc signature, no notarization. The README explains the Gatekeeper prompt.
+  identity: "-"
+  hardenedRuntime: false
+dmg:
+  artifactName: ${name}-${version}-${arch}.${ext}
+  format: ULFO
+  # No auto-updater, so no .blockmap files.
+  writeUpdateInfo: false

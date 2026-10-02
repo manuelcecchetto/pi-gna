@@ -21,7 +21,7 @@ const [command, ...args] = process.argv.slice(2);
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
 const match = process.env.CDP_URL;
 const page = targets.find((t) =>
-  t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /\/renderer\/index\.html|localhost:5173\/?$/.test(t.url)),
+  t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /^app:\/\/studio\/|localhost:5173\/?$/.test(t.url)),
 );
 if (!page) throw new Error("no page target");
 

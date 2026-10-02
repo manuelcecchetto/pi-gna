@@ -41,6 +41,7 @@ export const IPC = {
   browserAnnotation: "browser:annotation",
   browserToggle: "browser:toggle",
   sidebarToggle: "studio:sidebar-toggle",
+  openProject: "studio:open-project",
 } as const;
 
 export interface BrowserApi {
@@ -111,7 +112,7 @@ export interface HostEventBatch {
 
 export interface StudioApi {
   homeDir: string;
-  /** Directory pi-studio was launched from; new sessions default to it. */
+  /** Directory pi studio was launched from (home when opened from Finder); new sessions default to it. */
   launchCwd: string;
   listSessions(): Promise<ProjectGroup[]>;
   openSession(request: OpenSessionRequest): Promise<OpenSessionResult>;
@@ -133,6 +134,8 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
+  /** Another launch (say `pi --studio` in a different project) asks for a new chat in `cwd`. */
+  onOpenProject(listener: (cwd: string) => void): () => void;
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
   pathForFile(file: File): string;
   openExternal(url: string): void;

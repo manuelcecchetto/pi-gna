@@ -84,8 +84,17 @@ function ExitBanner({ session }: { session: SessionState }) {
   const exit = session.exit;
   return (
     <div className="border-b border-bad/30 bg-bad/5 px-5 py-2 text-[12.5px]">
-      <span className="text-bad">pi exited</span>
-      <span className="text-muted"> ({exit?.error ?? exit?.signal ?? `code ${exit?.code}`}). The transcript is read-only; reopen the session from the sidebar.</span>
+      {exit?.error ? (
+        <>
+          <span className="text-bad">pi could not start.</span>
+          <span className="selectable text-muted"> {exit.error}</span>
+        </>
+      ) : (
+        <>
+          <span className="text-bad">pi exited</span>
+          <span className="text-muted"> ({exit?.signal ?? `code ${exit?.code}`}). The transcript is read-only; reopen the session from the sidebar.</span>
+        </>
+      )}
       {exit?.stderrTail && <pre className="selectable mt-1.5 max-h-28 overflow-auto font-mono text-[11px] text-faint">{exit.stderrTail.trim().split("\n").slice(-8).join("\n")}</pre>}
     </div>
   );

@@ -11,8 +11,9 @@ configured pi. pi-studio only renders and controls.
   Tailwind. No diff library: pi's `edit` tool already returns a rendered diff. A tiny custom store.
 - **pi owns behavior.** Never reimplement agent features client-side. If RPC lacks something, read pi's own files
   (sessions) or add a pi extension; do not fork the runtime.
-- **The terminal is the log.** `pi-studio` runs from a terminal; the main process logs there, along with every pi
-  child's stderr (prefixed by session). `PI_STUDIO_DEBUG=1` also prints all RPC traffic.
+- **The terminal is the log.** Launched from a terminal (`pi --studio`, `bin/pi-studio.mjs`), the main process logs
+  there, along with every pi child's stderr (prefixed by session). `PI_STUDIO_DEBUG=1` also prints all RPC traffic.
+  The same lines go to `~/Library/Logs/<app name>/main.log` (Help > Show Logs), the only log for Finder launches.
 - **Untrusted content.** Model output and web pages are untrusted: sanitize markdown, keep the renderer sandboxed
   (contextIsolation, sandbox, CSP), open links outside the app window.
 
@@ -26,6 +27,8 @@ terminal: pi-studio            -> logs (main + pi stderr), Ctrl-C quits
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     files          `rg --files` for @ mentions
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), AgentBridge (localhost)
+    app-protocol   serves the built renderer on app://studio with a strict CSP header
+    shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
 resources/browser-extension.ts   pi extension loaded with `-e` into every studio session
@@ -34,9 +37,50 @@ resources/studio-flag.ts         pi package extension (`pi install <repo>`): `pi
 
 `pi --studio`: the repo's `package.json` `pi` manifest exposes `resources/studio-flag.ts`. It registers the flag
 and, because flag values are not available to factories yet, checks `process.argv` in its (async) factory: pi
-loads extensions before starting the TUI, so the factory can run `bin/pi-studio.mjs` in the foreground with the
-terminal attached and `process.exit` with its code. Every other pi process (including studio's RPC children)
-only registers the flag.
+loads extensions before starting the TUI, so the factory can run studio in the foreground with the terminal
+attached and `process.exit` with its code. It runs the installed app (`/Applications/<productName>.app`, or
+`~/Applications`) so the menu bar and Dock show the real name, else this checkout's build through
+`bin/pi-studio.mjs` (Electron from node_modules, which macOS labels "Electron"); `PI_STUDIO_DEV=1` forces the
+checkout. Every other pi process (including studio's RPC children) only registers the flag. `bin/pi-studio.mjs`
+itself always runs the checkout, so test instances test the code you are changing.
+
+## Packaging and release
+
+`pnpm dist` builds `dist/<name>-<version>-<arch>.dmg` with electron-builder (`electron-builder.yml`); pushing a
+`v*` tag makes `.github/workflows/release.yml` build arm64 and x64 dmgs and attach them to a GitHub release.
+
+- **Name.** `productName` in `package.json` is the app's name everywhere (menus, About, Dock, bundle, profile
+  folder `~/Library/Application Support/<productName>`, logs). Renaming the app moves the profile, so carry
+  the old folder over when you rename.
+- **No node_modules in the app.** Every runtime dependency is renderer code that Vite bundles, so they all sit in
+  `devDependencies`; main and preload only import Node and Electron. The asar holds `out/`, `package.json` and
+  the three files pi reads from disk (`resources/browser-extension.ts`, `resources/studio-prompt.md`,
+  `src/shared/browser.ts`), which are also unpacked to `app.asar.unpacked/` (session-host points pi there).
+- **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
+  runtime, no notarization) and macOS asks once before opening a downloaded build (README). Without notarization
+  there is no Squirrel auto-update either.
+- **Fuses** (`electronFuses`): no `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` or `--inspect`; asar-only loading with
+  integrity validation; encrypted cookies; no extra `file://` privileges. Check with
+  `pnpm dlx @electron/fuses read --app "dist/mac-arm64/<name>.app"`. Cookie encryption keeps a key in the
+  Keychain; an ad-hoc signature changes with every build, so macOS may ask to allow access after an update.
+- **Renderer origin.** Outside the dev server the renderer is served from `app://studio` (standard, secure, V8
+  code cache) with a CSP header stricter than the `index.html` meta tag, which also allows Vite's `ws:`.
+  localStorage is per origin, so the sidebar layout, pins and bookmarks saved by earlier `file://` builds reset once.
+- **IPC** handlers only accept messages from the app window's own page (`trusted()` in `src/main/index.ts`); the
+  default session grants only `clipboard-sanitized-write`; `<webview>` is refused.
+- **Launch modes.** From a terminal, `PI_STUDIO_CWD` carries the launch directory and the environment is the
+  shell's. From Finder the cwd is `/` (new chats start in your home) and `shell-env.ts` runs `$SHELL -ilc` once
+  (10 s timeout) in parallel with window creation; IPC that spawns pi or `rg` waits for it. To test a Finder
+  launch, scrub the environment: `open` passes the caller's (including `PI_STUDIO_CWD` from the studio session an
+  agent runs in), so use `env -i HOME="$HOME" USER="$USER" SHELL="$SHELL" PATH=/usr/bin:/bin open -n -g <app>
+  --env PI_STUDIO_USER_DATA=/tmp/<dir> --env PI_STUDIO_BACKGROUND=1 --args --remote-debugging-port=<port>`.
+- **One instance per profile.** A second launch (another `pi --studio`) passes its `PI_STUDIO_CWD` to the
+  running app, which opens a new chat there, and exits 0. Test instances have their own profile, so they are
+  unaffected.
+- **Measured** with `scripts/measure-startup.mjs` (Oct 2026, M-series, machine under heavy load, median of 7
+  launches, spawn to first contentful paint / RSS of the app's processes): packaged 561 ms / 435 MB; the same code
+  unpackaged 768 ms / 551 MB; before packaging (file://, node launcher) ~620 ms / ~500 MB. The main log prints
+  `window ready <ms> after launch` on every start. App 242 MB (238 MB is Electron), asar 3.4 MB, arm64 dmg 112 MB.
 
 ## Browser (M2)
 
@@ -220,7 +264,7 @@ light; generated with GPT Image 2.5 from `resources/icon.png`), masked into the 
 
 ## Verifying the UI
 
-`scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys); start it with
+`scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys; it finds the `app://studio` page); start it with
 `node bin/pi-studio.mjs --remote-debugging-port=9333`. Give test instances `PI_STUDIO_USER_DATA=/tmp/<dir>`, `PI_STUDIO_BACKGROUND=1` (opens without taking focus; a
 focused test window once swallowed the user's typing) and their own port, so they never share a profile, focus or
 debugging port with the studio you work in, and stop them by their PID, never with

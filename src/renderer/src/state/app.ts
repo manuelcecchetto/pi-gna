@@ -219,7 +219,9 @@ export function handleBatch(batch: HostEventBatch): void {
   for (const event of events) {
     if (event.kind === "ready") void onReady(handle, event.state);
     else if (event.kind === "exit") {
-      if (event.code !== 0 && event.signal !== "SIGTERM") toast(`pi exited (${event.error ?? event.signal ?? `code ${event.code}`})`, "error");
+      // A spawn failure (pi not installed) is explained in the session's banner; keep the toast short.
+      if (event.error) toast("pi could not start", "error");
+      else if (event.code !== 0 && event.signal !== "SIGTERM") toast(`pi exited (${event.signal ?? `code ${event.code}`})`, "error");
     } else if (event.record.type === "extension_ui_request" && event.record.method === "notify") {
       const level = event.record.notifyType === "error" ? "error" : event.record.notifyType === "warning" ? "warning" : "info";
       // Every pi process repeats the same extension startup notices; show each one once per app run.
@@ -492,6 +494,7 @@ export function boot(): void {
       windowFocused = focused;
     });
   studio().onSidebarToggle(toggleSidebar);
+  studio().onOpenProject(newSession);
   studio().onWindowFocus((focused) => {
     windowFocused = focused;
     if (focused) markRead(store.get().active);

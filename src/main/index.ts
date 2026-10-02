@@ -1,24 +1,39 @@
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, session, shell } from "electron";
+import { bugs, description } from "../../package.json";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
 import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { BrowserAgent } from "./browser/agent";
 import { AgentBridge } from "./browser/bridge";
 import { BrowserManager } from "./browser/manager";
+import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { listFiles } from "./files";
 import { readCompactionSettings } from "./pi-settings";
-import { debugRpc, log } from "./log";
+import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
+import { loadShellEnv } from "./shell-env";
 
-app.setName("pi studio");
-// Test instances (scripts/cdp.mjs) get their own profile so they never share a browser profile or history
+// The app's name (menus, About, profile and log folders) is package.json's productName.
+// Test instances (scripts/cdp.mjs) get their own profile and logs so they never share a browser profile or history
 // with the studio you are working in.
-if (process.env.PI_STUDIO_USER_DATA) app.setPath("userData", process.env.PI_STUDIO_USER_DATA);
-const launchCwd = process.env.PI_STUDIO_CWD || process.cwd();
+if (process.env.PI_STUDIO_USER_DATA) {
+  app.setPath("userData", process.env.PI_STUDIO_USER_DATA);
+  app.setAppLogsPath(join(process.env.PI_STUDIO_USER_DATA, "logs"));
+}
+const logFile = join(app.getPath("logs"), "main.log");
+mkdirSync(app.getPath("logs"), { recursive: true });
+logToFile(logFile);
+
+const devUrl = process.env.ELECTRON_RENDERER_URL;
+// Launched from a terminal (bin/pi-studio.mjs, `pi --studio`), new chats start where you launched it and the
+// environment is your shell's. From Finder or the Dock the cwd is / and the environment is launchd's.
+const fromTerminal = Boolean(process.env.PI_STUDIO_CWD);
+const launchCwd = process.env.PI_STUDIO_CWD || (process.cwd() === "/" ? homedir() : process.cwd());
 
 let window: BrowserWindow | undefined;
 let browser: BrowserManager | undefined;
@@ -50,7 +65,11 @@ function createWindow(): void {
   });
   // PI_STUDIO_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the
   // studio you are working in never land in a test window.
-  window.once("ready-to-show", () => (process.env.PI_STUDIO_BACKGROUND === "1" ? window?.showInactive() : window?.show()));
+  window.once("ready-to-show", () => {
+    log.info("studio", `window ready ${Math.round(process.uptime() * 1000)} ms after launch`);
+    if (process.env.PI_STUDIO_BACKGROUND === "1") window?.showInactive();
+    else window?.show();
+  });
   // The terminal is the log: surface renderer warnings, errors and crashes there too.
   window.webContents.on("console-message", (details) => {
     if (details.level === "warning" || details.level === "error") {
@@ -80,30 +99,50 @@ function createWindow(): void {
   });
   agent = new BrowserAgent(browser);
 
-  if (process.env.ELECTRON_RENDERER_URL) void window.loadURL(process.env.ELECTRON_RENDERER_URL);
-  else void window.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+  void window.loadURL(devUrl ?? `${APP_ORIGIN}/index.html`);
 }
 
 function openExternal(url: string): void {
   if (/^(https?|mailto):/i.test(url)) void shell.openExternal(url);
 }
 
-function registerIpc(): void {
-  ipcMain.handle(IPC.listSessions, () => listSessions());
-  ipcMain.handle(IPC.openSession, (_event, request: OpenSessionRequest) => host.open(request));
-  ipcMain.handle(IPC.closeSession, (_event, handle: string) => host.close(handle));
-  ipcMain.handle(IPC.command, (_event, handle: string, command: RpcCommand) => host.command(handle, command));
-  ipcMain.on(IPC.respondUi, (_event, handle: string, response: ExtensionUiResponse) => host.respondUi(handle, response));
-  ipcMain.handle(IPC.listFiles, (_event, cwd: string) => listFiles(cwd));
-  ipcMain.handle(IPC.pickFolder, async () => {
+/** IPC is only accepted from the app window's own page (Electron security checklist #17). */
+function trusted(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  const url = event.senderFrame?.url ?? "";
+  return event.sender === window?.webContents && (url.startsWith(`${APP_ORIGIN}/`) || (devUrl !== undefined && url.startsWith(devUrl)));
+}
+
+function handle<A extends unknown[]>(channel: string, listener: (...args: A) => unknown): void {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!trusted(event)) throw new Error(`untrusted sender for ${channel}`);
+    return listener(...(args as A));
+  });
+}
+
+function on<A extends unknown[]>(channel: string, listener: (...args: A) => void): void {
+  ipcMain.on(channel, (event, ...args) => {
+    if (trusted(event)) listener(...(args as A));
+    else log.warn("studio", `dropped ${channel} from an untrusted sender`);
+  });
+}
+
+function registerIpc(shellEnv: Promise<void>): void {
+  // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
+  handle(IPC.listSessions, async () => (await shellEnv, listSessions()));
+  handle(IPC.openSession, async (request: OpenSessionRequest) => (await shellEnv, host.open(request)));
+  handle(IPC.closeSession, (handle: string) => host.close(handle));
+  handle(IPC.command, (handle: string, command: RpcCommand) => host.command(handle, command));
+  on(IPC.respondUi, (handle: string, response: ExtensionUiResponse) => host.respondUi(handle, response));
+  handle(IPC.listFiles, async (cwd: string) => (await shellEnv, listFiles(cwd)));
+  handle(IPC.pickFolder, async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
-  ipcMain.on(IPC.openExternal, (_event, url: string) => openExternal(url));
-  ipcMain.handle(IPC.compactionSettings, () => readCompactionSettings());
-  ipcMain.handle(IPC.windowFocused, () => window?.isFocused() ?? false);
-  ipcMain.handle(IPC.describePaths, (_event, paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));
-  ipcMain.handle(IPC.pickAttachments, async (_event, kind: "photos" | "files") => {
+  on(IPC.openExternal, (url: string) => openExternal(url));
+  handle(IPC.compactionSettings, async () => (await shellEnv, readCompactionSettings()));
+  handle(IPC.windowFocused, () => window?.isFocused() ?? false);
+  handle(IPC.describePaths, (paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));
+  handle(IPC.pickAttachments, async (kind: "photos" | "files") => {
     const options: Electron.OpenDialogOptions =
       kind === "photos"
         ? { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] }
@@ -112,16 +151,16 @@ function registerIpc(): void {
     return result.canceled ? [] : describePaths(result.filePaths);
   });
 
-  ipcMain.on(IPC.browserLayout, (_event, layout: BrowserLayout) => browser?.setLayout(layout));
-  ipcMain.on(IPC.browserNewTab, (_event, url?: string) => browser?.createTab(url));
-  ipcMain.on(IPC.browserCloseTab, (_event, id: string) => browser?.closeTab(id));
-  ipcMain.on(IPC.browserActivate, (_event, id: string) => browser?.activate(id));
-  ipcMain.on(IPC.browserNavigate, (_event, id: string, input: string) => browser?.navigate(id, input));
-  ipcMain.on(IPC.browserCommand, (_event, id: string, command: BrowserCommand) => browser?.command(id, command));
-  ipcMain.on(IPC.browserAnnotate, (_event, on: boolean) => browser?.setAnnotating(on));
-  ipcMain.on(IPC.browserInspect, (_event, id: string) => browser?.inspect(id));
-  ipcMain.handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
-  ipcMain.handle(IPC.browserGetState, () => browser?.snapshot());
+  on(IPC.browserLayout, (layout: BrowserLayout) => browser?.setLayout(layout));
+  on(IPC.browserNewTab, (url?: string) => browser?.createTab(url));
+  on(IPC.browserCloseTab, (id: string) => browser?.closeTab(id));
+  on(IPC.browserActivate, (id: string) => browser?.activate(id));
+  on(IPC.browserNavigate, (id: string, input: string) => browser?.navigate(id, input));
+  on(IPC.browserCommand, (id: string, command: BrowserCommand) => browser?.command(id, command));
+  on(IPC.browserAnnotate, (enabled: boolean) => browser?.setAnnotating(enabled));
+  on(IPC.browserInspect, (id: string) => browser?.inspect(id));
+  handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
+  handle(IPC.browserGetState, () => browser?.snapshot());
 }
 
 function buildMenu(): void {
@@ -146,29 +185,66 @@ function buildMenu(): void {
         ],
       },
       { role: "windowMenu" },
+      {
+        role: "help",
+        submenu: [
+          { label: "Show Logs", click: () => void shell.openPath(logFile) },
+          { type: "separator" },
+          { label: "pi Documentation", click: () => openExternal("https://pi.dev") },
+          { label: "Report an Issue", click: () => openExternal(bugs.url) },
+        ],
+      },
     ]),
   );
 }
 
-let quitting = false;
-app.on("before-quit", (event) => {
-  bridge.stop();
-  if (quitting || host.size === 0) return;
-  event.preventDefault();
-  quitting = true;
-  log.info("studio", `stopping ${host.size} pi session(s)`);
-  void host.closeAll().finally(() => app.quit());
-});
-app.on("window-all-closed", () => app.quit());
-for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
-
-void app.whenReady().then(async () => {
-  log.info("studio", `pi studio ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}`);
-  log.info("studio", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PI_STUDIO_DEBUG=1 logs RPC traffic)"}`);
-  const icon = join(app.getAppPath(), "resources", "icon.png");
-  if (process.platform === "darwin") app.dock?.setIcon(icon);
+function init(): void {
+  registerAppScheme();
+  // Set before ready so Electron never builds its default menu (performance checklist).
   buildMenu();
-  registerIpc();
-  await bridge.start();
-  createWindow();
-});
+  const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv() : Promise.resolve();
+
+  let quitting = false;
+  app.on("before-quit", (event) => {
+    bridge.stop();
+    if (quitting || host.size === 0) return;
+    event.preventDefault();
+    quitting = true;
+    log.info("studio", `stopping ${host.size} pi session(s)`);
+    void host.closeAll().finally(() => app.quit());
+  });
+  app.on("window-all-closed", () => app.quit());
+  for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
+  // A second launch on this profile (say `pi --studio` in another project) opens a chat here instead.
+  app.on("second-instance", (_event, _argv, _cwd, data) => {
+    if (!window) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    app.focus({ steal: true });
+    const cwd = (data as { cwd?: unknown } | null)?.cwd;
+    if (typeof cwd === "string") send(IPC.openProject, cwd);
+  });
+  // No <webview> tags anywhere (security checklist #12); the browser pane uses WebContentsView.
+  app.on("web-contents-created", (_event, contents) => contents.on("will-attach-webview", (event) => event.preventDefault()));
+
+  void app.whenReady().then(async () => {
+    log.info("studio", `${app.getName()} ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
+    log.info("studio", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PI_STUDIO_DEBUG=1 logs RPC traffic)"}`);
+    if (!app.isPackaged && process.platform === "darwin") app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
+    app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion(), credits: description });
+    // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
+    session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
+    if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));
+    registerIpc(shellEnv);
+    await bridge.start();
+    createWindow();
+  });
+}
+
+// One instance per profile: a second one hands its launch directory to the first and quits. Test instances use
+// their own PI_STUDIO_USER_DATA profile, so they run beside the app you work in.
+if (app.requestSingleInstanceLock({ cwd: process.env.PI_STUDIO_CWD })) init();
+else {
+  log.info("studio", `already running with this profile${process.env.PI_STUDIO_CWD ? `; opening a new chat in ${process.env.PI_STUDIO_CWD} there` : ""}`);
+  app.quit();
+}

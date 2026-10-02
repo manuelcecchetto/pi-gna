@@ -1,0 +1,33 @@
+# Push a tag matching package.json's version (`git tag v0.2.0 && git push origin v0.2.0`) to publish a release
+# with arm64 and x64 dmgs. Builds are ad-hoc signed and not notarized (see docs/DESIGN.md, Packaging and release).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Tag matches package.json
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm dist
+      - name: Fuses
+        run: pnpm dlx @electron/fuses read --app "$(ls -d dist/mac-arm64/*.app)"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg --title "$GITHUB_REF_NAME" --generate-notes

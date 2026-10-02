@@ -1,20 +1,41 @@
 // pi extension: `pi --studio` opens pi studio in the current directory instead of the terminal UI.
 // Installed through this repo's package.json `pi` manifest (`pi install ~/Code/personal/pi-studio`).
-// It hands the terminal to pi studio (which keeps logging there) and exits pi with studio's exit code.
+// It runs the installed app (/Applications or ~/Applications) when there is one, else this checkout's build
+// (PI_STUDIO_DEV=1 forces the checkout). Either way it hands the terminal to studio (which keeps logging there)
+// and exits pi with studio's exit code.
 // In every other pi process, including studio's own `pi --mode rpc` children, it only registers the flag.
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const here = typeof __dirname === "string" ? __dirname : dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..");
+
+function installedApp(productName: string): string | undefined {
+  if (process.env.PI_STUDIO_DEV === "1" || process.platform !== "darwin") return undefined;
+  return ["/Applications", join(homedir(), "Applications")]
+    .map((dir) => join(dir, `${productName}.app`, "Contents", "MacOS", productName))
+    .find((binary) => existsSync(binary));
+}
 
 export default async function (pi: ExtensionAPI) {
   pi.registerFlag("studio", { type: "boolean", description: "Open pi studio (desktop UI) in this directory instead of the terminal UI" });
   // Flag values are not available to factories yet, and the hand-off must happen before the TUI starts.
   if (!process.argv.slice(2).includes("--studio")) return;
 
-  const child = spawn(process.execPath, [join(here, "..", "bin", "pi-studio.mjs")], { cwd: process.cwd(), stdio: "inherit", env: process.env });
+  const { productName, homepage } = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { productName: string; homepage: string };
+  const app = installedApp(productName);
+  if (!app && !existsSync(join(root, "out", "main", "index.js"))) {
+    console.error(`pi --studio: install ${productName} from ${homepage}/releases, or build this checkout (pnpm install && pnpm build in ${root}).`);
+    process.exit(1);
+  }
+  const [command, args] = app ? [app, []] : [process.execPath, [join(root, "bin", "pi-studio.mjs")]];
+  const env: NodeJS.ProcessEnv = { ...process.env, PI_STUDIO_CWD: process.cwd() };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const child = spawn(command, args, { cwd: process.cwd(), stdio: "inherit", env });
   // Stay alive until studio has shut its pi sessions down; pass signals on (studio's quit is idempotent).
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => child.kill(signal));
   const code = await new Promise<number>((resolve) => {

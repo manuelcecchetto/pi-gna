@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Render resources/icon.png: the pi logo's 4x4 pixel grid on a dark macOS-style rounded square.
+"""Render resources/icon.png: the pi logo's 4x4 pixel grid on a dark macOS-style rounded square, and on macOS
+build/icon.icns from it for the packaged app (sips + iconutil, both built in).
 No dependencies; rerun after changing colors. Usage: python3 scripts/make-icon.py"""
-import os, struct, zlib
+import os, shutil, struct, subprocess, sys, tempfile, zlib
 
 SIZE = 1024
 BG_TOP, BG_BOTTOM = (36, 36, 40), (22, 22, 25)
@@ -49,6 +50,20 @@ def chunk(kind, data):
 
 png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", SIZE, SIZE, 8, 6, 0, 0, 0))
 png += chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b"")
-out = os.path.join(os.path.dirname(__file__), "..", "resources", "icon.png")
+root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+out = os.path.join(root, "resources", "icon.png")
 open(out, "wb").write(png)
 print(out, len(png), "bytes")
+
+if sys.platform == "darwin":
+    iconset = os.path.join(tempfile.mkdtemp(), "icon.iconset")
+    os.mkdir(iconset)
+    for size in (16, 32, 128, 256, 512):
+        for scale in (1, 2):
+            name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
+            subprocess.run(["sips", "-z", str(size * scale), str(size * scale), out, "--out", os.path.join(iconset, name)], check=True, capture_output=True)
+    icns = os.path.join(root, "build", "icon.icns")
+    os.makedirs(os.path.dirname(icns), exist_ok=True)
+    subprocess.run(["iconutil", "-c", "icns", iconset, "-o", icns], check=True)
+    shutil.rmtree(os.path.dirname(iconset))
+    print(icns, os.path.getsize(icns), "bytes")

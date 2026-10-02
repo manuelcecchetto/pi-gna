@@ -10,14 +10,16 @@ import { PiProcess } from "./pi-process";
 import { readActiveBranch } from "./session-file";
 
 const HANDLE = /^[a-z0-9]{6,32}$/;
+/** Files pi reads from disk. Packaged builds keep them beside app.asar, in app.asar.unpacked (electron-builder asarUnpack). */
+const onDisk = (...parts: string[]) => join(app.getAppPath().replace(/app\.asar$/, "app.asar.unpacked"), ...parts);
 /** Tools that would compete with the integrated browser (Stagehand's). Override with PI_STUDIO_EXCLUDE_TOOLS. */
 const EXCLUDED_TOOLS = process.env.PI_STUDIO_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();
-  private readonly extension = join(app.getAppPath(), "resources", "browser-extension.ts");
+  private readonly extension = onDisk("resources", "browser-extension.ts");
   /** Tells the model its replies render as Markdown in studio (studio sessions only, not the terminal UI). */
-  private readonly prompt = join(app.getAppPath(), "resources", "studio-prompt.md");
+  private readonly prompt = onDisk("resources", "studio-prompt.md");
 
   constructor(
     private readonly emit: (batch: HostEventBatch) => void,

@@ -26,6 +26,7 @@ const api: StudioApi = {
   windowFocused: () => ipcRenderer.invoke(IPC.windowFocused),
   onWindowFocus: (listener) => subscribe<boolean>(IPC.windowFocus, listener),
   onSidebarToggle: (listener) => subscribe<void>(IPC.sidebarToggle, listener),
+  onOpenProject: (listener) => subscribe<string>(IPC.openProject, listener),
   pathForFile: (file) => webUtils.getPathForFile(file),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
   onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),
