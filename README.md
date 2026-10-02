@@ -9,7 +9,8 @@ transcript, tool calls and extension dialogs, and the terminal you launch it fro
 ```sh
 pnpm install
 pnpm build
-node bin/pi-studio.mjs        # or `pnpm link --global` once, then `pi-studio` inside any project
+pi install ~/Code/personal/pi-studio   # once: adds the `--studio` flag to pi
+pi --studio                            # in any project; or `node bin/pi-studio.mjs`
 ```
 
 New sessions start in the directory you launch from. Ctrl-C in the terminal quits and stops every pi process.

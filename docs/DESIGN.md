@@ -29,7 +29,14 @@ terminal: pi-studio            -> logs (main + pi stderr), Ctrl-C quits
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
 resources/browser-extension.ts   pi extension loaded with `-e` into every studio session
+resources/studio-flag.ts         pi package extension (`pi install <repo>`): `pi --studio` launches studio
 ```
+
+`pi --studio`: the repo's `package.json` `pi` manifest exposes `resources/studio-flag.ts`. It registers the flag
+and, because flag values are not available to factories yet, checks `process.argv` in its (async) factory: pi
+loads extensions before starting the TUI, so the factory can run `bin/pi-studio.mjs` in the foreground with the
+terminal attached and `process.exit` with its code. Every other pi process (including studio's RPC children)
+only registers the flag.
 
 ## Browser (M2)
 

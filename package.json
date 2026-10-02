@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Desktop UI for the pi coding agent",
+  "keywords": [
+    "pi-package"
+  ],
   "type": "module",
   "main": "./out/main/index.js",
   "bin": {
@@ -37,6 +40,13 @@
     "vitest": "5.0.3"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "pi": {
+    "extensions": [
+      "./resources/studio-flag.ts"
+    ]
   }
 }
