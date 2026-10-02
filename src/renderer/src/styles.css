@@ -1,0 +1,321 @@
+@import "tailwindcss";
+
+/* Visual language: dark neutral surfaces, hairline borders, dashed dividers, system sans with
+   small mono labels, muted grays, one blue accent. Light theme follows the system. */
+:root {
+  --canvas: #1b1b1d;
+  --panel: #222225;
+  --raised: #2b2b2f;
+  --sunken: #161618;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.14);
+  --fg: #ececef;
+  --muted: #a1a1aa;
+  --faint: #6e6e78;
+  --accent: #5b8def;
+  --accent-soft: rgb(91 141 239 / 0.16);
+  --ok: #5fd38d;
+  --bad: #ff6b6b;
+  --warn: #e5c07b;
+  --add-bg: rgb(95 211 141 / 0.1);
+  --del-bg: rgb(255 107 107 / 0.1);
+  --sidebar: #161618;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --canvas: #fcfcfb;
+    --panel: #f4f4f3;
+    --raised: #ebebea;
+    --sunken: #f7f7f6;
+    --line: rgb(0 0 0 / 0.08);
+    --line-strong: rgb(0 0 0 / 0.14);
+    --fg: #1d1d20;
+    --muted: #63636b;
+    --faint: #9a9aa2;
+    --accent: #2f6fe4;
+    --accent-soft: rgb(47 111 228 / 0.1);
+    --ok: #1f9d55;
+    --bad: #d93b3b;
+    --warn: #a86b00;
+    --add-bg: rgb(31 157 85 / 0.09);
+    --del-bg: rgb(217 59 59 / 0.08);
+    --sidebar: #f1f1f0;
+    color-scheme: light;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-sunken: var(--sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--sidebar);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+.selectable,
+.selectable * {
+  user-select: text;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+.drag button,
+.drag input,
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashed-b {
+  border-bottom: 1px dashed var(--line-strong);
+}
+.dashed-t {
+  border-top: 1px dashed var(--line-strong);
+}
+
+/* Shimmer label for live states. */
+.shimmer {
+  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 40%, var(--fg) 50%, var(--muted) 60%, var(--muted) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* Pixel-grid loader: a 3x3 grid where one cell "drives" around the ring. */
+.pixel-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 4px);
+  gap: 1.5px;
+}
+.pixel-grid > i {
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--muted);
+  opacity: 0.22;
+  animation: pixel 1.2s steps(1) infinite;
+}
+@keyframes pixel {
+  0%,
+  12% {
+    opacity: 1;
+  }
+  13%,
+  100% {
+    opacity: 0.22;
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pulse-dot {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Markdown prose */
+.prose {
+  line-height: 1.65;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose > :last-child {
+  margin-bottom: 0;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote,
+.prose table,
+.prose .code-block {
+  margin: 0.7em 0;
+}
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.3em 0 0.5em;
+}
+.prose h1 {
+  font-size: 1.35em;
+}
+.prose h2 {
+  font-size: 1.2em;
+}
+.prose h3 {
+  font-size: 1.05em;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.4em;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.2em 0;
+}
+.prose li::marker {
+  color: var(--faint);
+}
+.prose a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.prose a:hover {
+  text-decoration: underline;
+}
+.prose strong {
+  font-weight: 600;
+}
+.prose blockquote {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 0.9em;
+  color: var(--muted);
+}
+.prose hr {
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+  margin: 1.4em 0;
+}
+.prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--raised);
+  border-radius: 5px;
+  padding: 0.12em 0.36em;
+}
+.prose table {
+  border-collapse: collapse;
+  font-size: 0.93em;
+  display: block;
+  overflow-x: auto;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--line);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+.prose th {
+  background: var(--panel);
+  font-weight: 600;
+}
+
+.code-block {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.code-block > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  border-bottom: 1px solid var(--line);
+}
+.code-block > header button {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.code-block > header button:hover {
+  background: var(--raised);
+  color: var(--fg);
+}
+.code-block pre,
+pre.code {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+/* Shiki dual themes (defaultColor: false) */
+code.hl span {
+  color: var(--shiki-dark);
+}
+@media (prefers-color-scheme: light) {
+  code.hl span {
+    color: var(--shiki-light);
+  }
+}

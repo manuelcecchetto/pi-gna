@@ -1,0 +1,103 @@
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type AnsiStyle, parseAnsi } from "../lib/ansi";
+import { formatDuration } from "../lib/format";
+
+export function Ansi({ text }: { text: string }) {
+  const spans = useMemo(() => parseAnsi(text), [text]);
+  return (
+    <>
+      {spans.map((span, index) => (
+        <span key={index} style={ansiStyle(span.style)}>
+          {span.text}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function ansiStyle(style: AnsiStyle): CSSProperties | undefined {
+  if (!style.color && !style.background && !style.bold && !style.dim && !style.italic && !style.underline) return undefined;
+  return {
+    color: style.color,
+    background: style.background,
+    fontWeight: style.bold ? 600 : undefined,
+    opacity: style.dim ? 0.6 : undefined,
+    fontStyle: style.italic ? "italic" : undefined,
+    textDecoration: style.underline ? "underline" : undefined,
+  };
+}
+
+const RING = [0, 1, 2, 5, 8, 7, 6, 3];
+
+/** 3x3 pixel grid; one lit cell drives around the ring. */
+export function PixelLoader({ className = "" }: { className?: string }) {
+  return (
+    <span className={`pixel-grid shrink-0 ${className}`} aria-hidden>
+      {Array.from({ length: 9 }, (_, cell) => {
+        const step = RING.indexOf(cell);
+        return <i key={cell} style={step === -1 ? { animation: "none", opacity: 0.12 } : { animationDelay: `${(step * 1.2) / 8 - 1.2}s` }} />;
+      })}
+    </span>
+  );
+}
+
+export function useNow(intervalMs: number, enabled = true): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs, enabled]);
+  return now;
+}
+
+export function Elapsed({ since }: { since: number }) {
+  const now = useNow(100);
+  return <span className="font-mono text-[11.5px] text-faint tabular-nums">{formatDuration(now - since)}</span>;
+}
+
+/** Click-outside popover anchored to its parent (which must be `relative`). */
+export function Popover({
+  open,
+  onClose,
+  children,
+  className = "",
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open, onClose]);
+  if (!open) return null;
+  return (
+    <div
+      ref={ref}
+      className={`absolute z-30 rounded-xl border border-line-strong bg-panel shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)] ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function Kbd({ children }: { children: ReactNode }) {
+  return <kbd className="rounded border border-line px-1 font-mono text-[10px] text-faint">{children}</kbd>;
+}
