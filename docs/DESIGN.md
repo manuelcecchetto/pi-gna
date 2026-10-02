@@ -135,7 +135,9 @@ light and dark themes, pixel-grid loaders with shimmer text, compact chips that 
 ## Verifying the UI
 
 `scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys); start it with
-`node bin/pi-studio.mjs --remote-debugging-port=9333`. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
+`node bin/pi-studio.mjs --remote-debugging-port=9333`. Stop test instances by their PID, never with
+`pkill -f bin/pi-studio.mjs`: the agent doing the testing may itself be running inside a pi studio session, and a
+pattern kill takes down the user's app and the agent with it. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
