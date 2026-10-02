@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
-import { attention, createSession, hydrate, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
+import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
 import { presentTool, summarizeTools } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
@@ -363,5 +363,96 @@ describe("isDraft (kept out of the sidebar)", () => {
     );
     expect(ready.sessionPath).toBe("/s/new.jsonl");
     expect(isDraft(ready)).toBe(true);
+  });
+});
+
+
+describe("compaction lifecycle", () => {
+  const finished: SessionEvent = { type: "compaction_end", reason: "manual", result: { summary: "Kept the important context.", tokensBefore: 120000 }, aborted: false, willRetry: false };
+  const ready: HostEvent = { kind: "ready", state: { thinkingLevel: "high", isStreaming: false, isCompacting: true, steeringMode: "all", followUpMode: "all", sessionId: "x", autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 } };
+
+  it.each([false, true])("immediately puts active compaction in the chat (agent running: %s)", (running) => {
+    const state = play([{ type: "compaction_start", reason: "manual" }], { ...createSession("h", "/repo"), running });
+    expect(state.compacting).toMatchObject({ kind: "compaction", status: "running", reason: "manual", startedAt: expect.any(Number) });
+    expect(state.items).toEqual([state.compacting]);
+    expect(deriveRuns(state)[0]?.blocks).toEqual([state.compacting]);
+    expect(attention(state)).toBe("running");
+    expect(isDisposable(state)).toBe(false);
+  });
+
+  it("completes the same inline record without moving or duplicating it", () => {
+    const state = play([{ type: "compaction_start", reason: "manual" }]);
+    const done = play([{ type: "message_end", message: assistant([{ type: "text", text: "Later activity" }]) }, finished], state);
+    expect(done.compacting).toBeUndefined();
+    expect(done.items).toHaveLength(2);
+    expect(done.items[0]).toMatchObject({ key: state.compacting?.key, status: "done", summary: "Kept the important context.", tokensBefore: 120000, endedAt: expect.any(Number) });
+  });
+
+  it.each([
+    { aborted: false, errorMessage: "Rate limit reached", status: "error" },
+    { aborted: true, errorMessage: undefined, status: "aborted" },
+  ])("records $status instead of leaving a spinner", ({ aborted, errorMessage, status }) => {
+    const state = play([{ type: "compaction_start", reason: "overflow" }]);
+    const done = play([{ type: "compaction_end", reason: "overflow", aborted, errorMessage, willRetry: false }], state);
+    expect(done.compacting).toBeUndefined();
+    expect(done.items).toHaveLength(1);
+    expect(done.items[0]).toMatchObject({ key: state.compacting?.key, status });
+    if (errorMessage) expect(runOutcome(done.items)).toBe("error");
+  });
+
+  it.each<SessionEvent | HostEvent>([
+    { type: "agent_settled" },
+    { kind: "exit", code: 1, signal: null, stderrTail: "crash" },
+  ])("finalizes pending compaction on interruption or process exit: %j", (event) => {
+    const state = play([{ type: "compaction_start", reason: "threshold" }]);
+    const done = play([event], state);
+    expect(done.compacting).toBeUndefined();
+    expect(done.items[0]).toMatchObject({ key: state.compacting?.key, status: "aborted", endedAt: expect.any(Number) });
+  });
+
+  it("recovers from ready.isCompacting and reuses it when start arrives", () => {
+    const state = play([ready]);
+    expect(state.compacting?.status).toBe("running");
+    const started = play([{ type: "compaction_start", reason: "manual" }, ready], state);
+    expect(started.items).toHaveLength(1);
+    expect(started.compacting).toMatchObject({ key: state.compacting?.key, reason: "manual", startedAt: state.compacting?.startedAt });
+    expect(play([finished], started).items[0]).toMatchObject({ status: "done" });
+  });
+
+  it("does not resurrect a finished compaction from a delayed ready snapshot", () => {
+    const state = play([{ type: "compaction_start", reason: "manual" }, finished]);
+    const recovered = play([ready], state);
+    expect(recovered.compacting).toBeUndefined();
+    expect(recovered.items).toEqual(state.items);
+  });
+
+  it("handles missing start events and successive compactions", () => {
+    const done = play([finished, { type: "compaction_start", reason: "threshold" }, { ...finished, reason: "threshold" }]);
+    expect(done.items.map((item) => item.kind === "compaction" && item.status)).toEqual(["done", "done"]);
+    expect(new Set(done.items.map((item) => item.key)).size).toBe(2);
+  });
+
+  it("hydrates completed records and retains a compaction already in progress", () => {
+    const state = play([ready]);
+    const hydrated = hydrate(state, [{ type: "compaction", id: "c", parentId: null, timestamp: "", summary: "Earlier summary", tokensBefore: 100, firstKeptEntryId: "u" }]);
+    expect(hydrated.items.map((item) => item.kind === "compaction" && item.status)).toEqual(["done", "running"]);
+    expect(hydrated.items.at(-1)).toBe(hydrated.compacting);
+    expect(new Set(hydrated.items.map((item) => item.key)).size).toBe(2);
+    expect(play([finished], hydrated).items.map((item) => item.kind === "compaction" && item.status)).toEqual(["done", "done"]);
+  });
+
+  it("shows summarization retries only within the active compaction", () => {
+    const scheduled: SessionEvent = { type: "summarization_retry_scheduled", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "429" };
+    expect(play([scheduled]).items).toEqual([]);
+    const state = play([{ type: "compaction_start", reason: "manual" }, scheduled]);
+    expect(state.compacting?.retry).toMatchObject({ attempt: 1, maxAttempts: 3, waiting: true, errorMessage: "429" });
+    const retrying = play([{ type: "summarization_retry_attempt_start", source: "compaction", reason: "manual" }], state);
+    expect(retrying.compacting?.retry?.waiting).toBe(false);
+    const unrelated = play([{ type: "summarization_retry_attempt_start", source: "branchSummary" }], state);
+    expect(unrelated.compacting).toBe(state.compacting);
+    const finishedRetry = play([{ type: "summarization_retry_finished" }], retrying);
+    expect(finishedRetry.compacting?.retry).toBeUndefined();
+    expect(finishedRetry.items).toHaveLength(1);
+    expect(finishedRetry.items[0]).toBe(finishedRetry.compacting);
   });
 });

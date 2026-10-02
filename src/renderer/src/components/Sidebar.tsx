@@ -1,32 +1,25 @@
-import { ChevronRight, Folder, PanelLeftClose, PanelLeftOpen, Plus, SquarePen } from "lucide-react";
+import { ChevronRight, Folder, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquarePen } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { baseName, relativeTime, tildify } from "../lib/format";
-import { type Attention, attention, isDraft, type SessionState, strongestAttention } from "../lib/session";
+import { type Attention, attention, isDraft, strongestAttention } from "../lib/session";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
+import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";
 import { activate, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 
 const SESSIONS_PER_PROJECT = 6;
-
-interface Row {
-  key: string;
-  title: string;
-  time?: number;
-  summary?: SessionSummary;
-  live?: SessionState;
-}
 
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
   const sessions = useApp((state) => state.sessions);
   const active = useApp((state) => state.active);
   const layout = useApp((state) => state.sidebar);
+  const pinned = usePinnedProjects();
   const [dragging, setDragging] = useState(false);
   const home = window.studio.homeDir;
   const activeCwd = active ? sessions[active]?.cwd : undefined;
 
-  const groups = useMemo(() => mergeOpenSessions(projects, Object.values(sessions)), [projects, sessions]);
+  const groups = useMemo(() => projectViews(projects, Object.values(sessions), pinned), [projects, sessions, pinned]);
   // You are in an empty new chat: highlight "New chat" instead of a row.
   const activeSession = active ? sessions[active] : undefined;
   const inDraft = Boolean(activeSession && isDraft(activeSession));
@@ -138,34 +131,13 @@ export function CollapsedSidebarControls() {
 /** Left padding for the leftmost header while the sidebar is hidden: the controls end at 137px. */
 export const COLLAPSED_INSET = 160;
 
-function mergeOpenSessions(projects: ProjectGroup[], open: SessionState[]): { cwd: string; rows: Row[] }[] {
-  const byCwd = new Map<string, Row[]>();
-  for (const project of projects) {
-    byCwd.set(
-      project.cwd,
-      project.sessions.map((summary) => ({ key: summary.path, title: summary.title, time: summary.modifiedAt, summary })),
-    );
-  }
-  for (const session of open) {
-    if (isDraft(session)) continue;
-    const rows = byCwd.get(session.cwd) ?? [];
-    const existing = rows.find((row) => row.summary && row.summary.path === session.sessionPath);
-    if (existing) existing.live = session;
-    else rows.unshift({ key: session.handle, title: sessionTitle(session), live: session });
-    byCwd.set(session.cwd, rows);
-  }
-  const groups = [...byCwd.entries()].map(([cwd, rows]) => ({ cwd, rows }));
-  // Projects with open sessions first, then by recency (projects arrive sorted).
-  return groups.sort((a, b) => Number(b.rows.some((r) => r.live)) - Number(a.rows.some((r) => r.live)));
-}
-
 function ProjectSection({
   group,
   home,
   active,
   defaultOpen,
 }: {
-  group: { cwd: string; rows: Row[] };
+  group: ProjectView;
   home: string;
   active?: string;
   defaultOpen: boolean;
@@ -183,6 +155,23 @@ function ProjectSection({
           <Folder size={13} className="shrink-0 text-faint" />
           <span className="truncate text-[13px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
           {rollup && <Indicator level={rollup} />}
+        </button>
+        {/* Pinned projects keep their pin visible; hovering it offers to unpin. */}
+        <button
+          type="button"
+          title={group.pinned ? "Unpin project" : "Pin project"}
+          aria-pressed={group.pinned}
+          onClick={() => togglePinnedProject(group.cwd)}
+          className={`group/pin rounded-md p-1 text-faint hover:bg-raised hover:text-fg focus-visible:opacity-100 ${group.pinned ? "" : "opacity-0 group-hover:opacity-100"}`}
+        >
+          {group.pinned ? (
+            <>
+              <Pin size={12} className="group-hover/pin:hidden" />
+              <PinOff size={12} className="hidden group-hover/pin:block" />
+            </>
+          ) : (
+            <Pin size={12} />
+          )}
         </button>
         <button
           type="button"
@@ -209,9 +198,9 @@ function ProjectSection({
   );
 }
 
-function SessionRow({ row, active }: { row: Row; active: boolean }) {
+function SessionRow({ row, active }: { row: ProjectRow; active: boolean }) {
   const live = row.live;
-  const title = live ? sessionTitle(live) : row.title;
+  const title = live ? sessionTitle(live) : (row.summary?.title ?? "New session");
   const level = live ? attention(live) : undefined;
   const needsYou = level === "waiting" || level === "failed" || level === "unread";
   const onClick = () => {

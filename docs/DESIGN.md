@@ -110,6 +110,11 @@ Verified live (pi 1.0.0, Oct 2026):
   Chromium blocks while a button inside still has focus). While collapsed, show-sidebar and
   new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
   header gets `COLLAPSED_INSET` left padding.
+- Sidebar order (`projectViews`): pinned projects first, in the order you pinned them (hover pin button; a pinned
+  project keeps its pin visible, studio-only state in localStorage), then the rest by latest activity: the index's
+  file times, raised by messages you send from studio so a chat and its project move up right away instead of
+  after the run. Opening or switching chats must never reorder projects or chats (opening leaves the file
+  untouched, and an opened chat closes again when you leave it, so "open chats first" made projects jump around).
 - Sidebar marks: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
   one still logo color for what needs you: yellow (pulsing) waiting for you, coral failed (the run errored while you
   were not looking, or pi exited), blue finished but not seen yet. Idle chats get no mark; the highlighted row is
@@ -141,10 +146,24 @@ Verified live (pi 1.0.0, Oct 2026):
   delivered after a text-only answer (e.g. the second of two queued steers in one-at-a-time mode) shows as a new
   turn when the session is reopened.
 - Scrolling (Codex-style, `useTurnScroll`): sending a message scrolls it to the top of the view and the answer
-  streams in below; nothing follows the stream after that. The newest turn gets a min-height of one viewport so
-  that is possible even for short answers (sessions opened from disk keep their natural height until you send).
-  Opening a session shows its end; "Show earlier turns" keeps your place; a ↓ button appears when content is
-  below the fold.
+  streams in below. The newest turn gets a min-height of one viewport so that is possible even for short answers
+  (sessions opened from disk keep their natural height until you send). Opening a session shows its end;
+  "Show earlier turns" keeps your place; a ↓ button appears when content is below the fold. While a run is live
+  the view follows it if you are at the end (`pinned`): opening a running chat, sending (your message at the top
+  is the end until the answer outgrows the view) and ↓ pin; wheel up or any upward scroll unpins; scrolling back
+  to the end re-pins. Following moves the view only when the content height changes, so it never fights the
+  send glide, and it does not depend on scroll events (hidden windows get none).
+- Turn rail (`TurnRail`, Codex's "user message navigation rail", read from the Codex app bundle's
+  `thread-user-message-navigation-rail-app` chunk and its CSS): a 2px line per message you sent, vertically
+  centered left of the transcript, shown from 4 messages on and only while the column leaves a 48px gutter.
+  Lines are 6px at rest and 26px under the pointer, the three neighbours on each side magnified (0.7/0.4/0.2),
+  Dock-style; lines of turns on screen (IntersectionObserver) are brighter. Hovering opens a 320px card with the
+  message on one line, a bookmark button and the first three lines of the final answer (`railItems`, tables as
+  fixed truncated columns). Click smooth-scrolls the turn to the jump position (`TOP_GAP`) and flashes its
+  bubble; dragging scrubs instantly; ⌥↑/⌥↓ jump to the start of the current/previous or the next message
+  (`adjacentTurn`; left to the caret while a text field has text). Turns on earlier pages are rendered first
+  (`reveal`). Bookmarks are studio-only state in localStorage, per session file, keyed by the message
+  timestamp because item keys change on every load.
 - Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
   strips `<input>`). Studio sessions get `--append-system-prompt resources/studio-prompt.md`, which tells the
   model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
@@ -158,10 +177,20 @@ Verified live (pi 1.0.0, Oct 2026):
   compaction is when context gets summarized. Stats refresh after every `turn_end` and `compaction_end`
   (`get_session_stats` takes a few ms even on a 40 MB session). Right after compaction pi does not know the
   size until the next response, shown as a dashed ring.
+- Compaction visibility: `compaction_start` adds a running transcript record; `compaction_end` updates that
+  same keyed record to completed, failed or interrupted. Show one live indicator with elapsed time in the
+  chat, including manual compaction outside an agent run; do not repeat it above the composer or beside the
+  work header. Compaction records remain visible when work is collapsed; successful summaries expand on
+  click. `tokensBefore` means **tokens before compaction**, not tokens summarized. Ready-state recovery and
+  hydration retain active compaction; exit/settle clear pending spinners, and delayed ready snapshots cannot
+  resurrect a finished compaction. Preview chats must not be disposed while compacting. Summarization retry
+  events update the active record (waiting/retrying), separately from model `auto_retry` events;
+  branch-summary retries do not start a compaction indicator. Stop/Esc aborts manual compaction through
+  the same RPC action as an agent run. Pi still owns all compaction behavior.
 - Live state: the loader is the pi logo with its three colors sweeping around the glyph (`PiSpinner`); it marks
   the "Working for" header, running tool rows and running chats in the sidebar. Waiting-for-you stays an amber
-  dot, exited red, idle green. "waiting for you", "compacting context" or "retrying" are called out next to the
-  header.
+  dot, exited red, idle green. "waiting for you" or model "retrying" are called out next to the header;
+  compaction has its own single inline record.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
   `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
 - Composer: always at least 2 lines tall (like beautifului.dev's Chat composer). A soft blurred glow in the pi
@@ -186,6 +215,8 @@ Verified live (pi 1.0.0, Oct 2026):
 Inspired by beautifului.dev (no code copied; it has no public source or license): dark neutral surfaces
 (~#1b1b1d), hairline borders, dashed dividers, system sans, mono only for code, paths and numbers, no eyebrow labels (small uppercase captions), muted grays, one blue accent,
 light and dark themes, the pi-logo spinner with shimmer text, compact chips that expand.
+Empty states sit on a painted sky whose clouds form the pi logo (`assets/sky-dusk.webp` dark, `sky-day.webp`
+light; generated with GPT Image 2.5 from `resources/icon.png`), masked into the canvas above the text and composer.
 
 ## Verifying the UI
 
@@ -197,10 +228,18 @@ debugging port with the studio you work in, and stop them by their PID, never wi
 pattern kill takes down the user's app and the agent with it. `PI_STUDIO_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
+The same starvation hits CDP tests of background windows: mouse moves are dispatched with the next frame (hover
+and IntersectionObserver lag until one is drawn), and a `drag` blocks waiting for frames. Force frames by taking
+screenshots (`shot`) after a `move`, and in a parallel loop while a `drag` runs.
+Background test windows are `document.visibilityState === "hidden"`: smooth scrolls never move, scroll events do not
+fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
+scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
+`Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
+`PI_STUDIO_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
 `click x y` sends real mouse input (useful for driving the annotation picker), `drag x1 y1 x2 y2` drags (resize
 handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
-styles render in a background test window. CDP screenshots of the app window
+styles render in a background test window; `CDP_SCHEME=light|dark` renders the other theme for that command. CDP screenshots of the app window
 do not include native tab views.
 
 Electron drag regions: `-webkit-app-region` rects are applied in document order, so a `no-drag` element that

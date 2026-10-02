@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { BrowserPane } from "./components/BrowserPane";
-import { PiLogo } from "./components/PiLogo";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { HeroBackdrop } from "./components/Transcript";
@@ -66,9 +65,8 @@ export function App() {
           {session ? (
             <SessionPane key={session.handle} session={session} />
           ) : (
-            <div className="drag relative flex h-full flex-col items-center justify-center gap-5 overflow-hidden">
+            <div className="drag relative flex h-full flex-col items-center justify-end overflow-hidden pb-[16vh]">
               <HeroBackdrop />
-              <PiLogo size={56} animate className="relative" />
               <div className="relative text-[13px] text-faint">Pick a session or start a new one (⌘N)</div>
             </div>
           )}

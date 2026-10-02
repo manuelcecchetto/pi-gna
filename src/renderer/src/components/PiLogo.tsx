@@ -1,5 +1,4 @@
-// The pi logo (pi.dev/logo-auto.svg) as its 4x4 pixel grid, so it can assemble cell by cell like
-// pi's terminal startup animation:
+// The pi logo (pi.dev/logo-auto.svg) as its 4x4 pixel grid:
 //   coral coral coral .
 //   blue  .     coral .
 //   blue  blue  .     yellow
@@ -24,20 +23,11 @@ export const PI_COLORS = [CORAL, BLUE, YELLOW];
 export const PI = { coral: CORAL, blue: BLUE, yellow: YELLOW };
 
 /** The logo; `color` paints every cell one color (sidebar state marks). */
-export function PiLogo({ size = 64, animate = false, color, className = "" }: { size?: number; animate?: boolean; color?: string; className?: string }) {
+export function PiLogo({ size = 64, color, className = "" }: { size?: number; color?: string; className?: string }) {
   return (
     <svg viewBox="0 0 4 4" width={size} height={size} shapeRendering="crispEdges" className={className} role="img" aria-label="pi">
-      {CELLS.map(([x, y, cellColor], index) => (
-        <rect
-          key={`${x}${y}`}
-          x={x}
-          y={y}
-          width={1.01}
-          height={1.01}
-          fill={color ?? cellColor}
-          className={animate ? "pi-cell" : undefined}
-          style={animate ? { animationDelay: `${120 + index * 70}ms` } : undefined}
-        />
+      {CELLS.map(([x, y, cellColor]) => (
+        <rect key={`${x}${y}`} x={x} y={y} width={1.01} height={1.01} fill={color ?? cellColor} />
       ))}
     </svg>
   );

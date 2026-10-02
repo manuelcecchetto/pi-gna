@@ -25,7 +25,7 @@ import {
 import type { CompactionSettings } from "../../../shared/compaction";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
-import { createSession, hydrate, isDraft, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
+import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
 
 export interface Toast {
@@ -166,11 +166,6 @@ async function start(cwd: string, sessionPath?: string): Promise<void> {
     toast(`Could not open session: ${(error as Error).message}`, "error");
     removeSession(handle);
   }
-}
-
-/** Sessions opened just to look at are closed again when you move on; prompted ones stay alive. */
-function isDisposable(session: SessionState): boolean {
-  return !session.prompted && !session.running && !session.unread && session.dialogs.length === 0;
 }
 
 let windowFocused = true;
@@ -431,10 +426,10 @@ export async function editQueue(handle: string, op: QueueOp): Promise<boolean> {
   return found;
 }
 
-/** Esc: pull queued messages back into the composer, then abort the run. */
+/** Esc: restore queued messages, then abort the agent run or manual compaction. */
 export async function interrupt(handle: string): Promise<string[]> {
   const session = store.get().sessions[handle];
-  if (!session?.running) return [];
+  if (!session || (!session.running && !session.compacting)) return [];
   let restored: string[] = [];
   if (session.queue.steering.length || session.queue.followUp.length) {
     const cleared = await command<{ steering: string[]; followUp: string[] }>(handle, { type: "clear_queue" }, true);

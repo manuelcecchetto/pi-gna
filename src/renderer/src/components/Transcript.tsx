@@ -17,13 +17,15 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "r
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
+import { railItems } from "../lib/rail";
 import type { SessionState } from "../lib/session";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
-import { openLightbox, prefill, setExpanded, useApp } from "../state/app";
+import { openLightbox, setExpanded, useApp } from "../state/app";
+import { CompactionProgress } from "./CompactionProgress";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
-import { PI_COLORS, PiLogo } from "./PiLogo";
 import { Ansi } from "./primitives";
+import { TurnRail } from "./TurnRail";
 
 const PAGE = 30;
 
@@ -36,9 +38,16 @@ export function Transcript({ session }: { session: SessionState }) {
   const home = window.studio.homeDir;
 
   const scroller = useRef<HTMLDivElement>(null);
-  const { viewport, jumped, restoreFromBottom, below, onScroll } = useTurnScroll(scroller, runs);
+  const content = useRef<HTMLDivElement>(null);
+  const { viewport, jumped, restoreFromBottom, below, onScroll, onWheel, jumpToLatest } = useTurnScroll(scroller, content, runs);
 
   if (!runs.length && !session.running) return <EmptyTranscript session={session} />;
+
+  /** Render a turn from an earlier page, for the turn rail to scroll to. */
+  const reveal = (key: string) => {
+    const index = runs.findIndex((run) => run.key === key);
+    if (index >= 0 && index < hidden) setLimit(runs.length - index);
+  };
 
   const last = visible.at(-1);
   // The newest turn gets at least a screen of height, so your message can sit at the top while the
@@ -48,8 +57,8 @@ export function Transcript({ session }: { session: SessionState }) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-[800px] flex-col gap-10 px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
+      <div ref={scroller} onScroll={onScroll} onWheel={onWheel} className="relative min-h-0 flex-1 overflow-y-auto">
+        <div ref={content} className="mx-auto flex max-w-[800px] flex-col gap-10 px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
           {hidden > 0 && (
             <button
               type="button"
@@ -76,11 +85,12 @@ export function Transcript({ session }: { session: SessionState }) {
           ))}
         </div>
       </div>
+      <TurnRail items={railItems(runs)} scroller={scroller} column={content} topGap={TOP_GAP} reveal={reveal} sessionPath={session.sessionPath} />
       {below && (
         <button
           type="button"
           title="Jump to latest"
-          onClick={() => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" })}
+          onClick={jumpToLatest}
           className="absolute bottom-3 left-1/2 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full border border-line-strong bg-panel text-muted shadow-[0_6px_20px_-6px_rgb(0_0_0/0.5)] hover:text-fg"
         >
           <ArrowDown size={15} />
@@ -92,23 +102,73 @@ export function Transcript({ session }: { session: SessionState }) {
 
 const TOP_GAP = 24;
 const BOTTOM_GAP = 40;
+/** How close to the end still counts as "at the end" (absorbs fractional scroll offsets). */
+const END_SLACK = 1;
+
+const distanceToEnd = (element: HTMLElement) => element.scrollHeight - element.scrollTop - element.clientHeight;
 
 /**
  * Codex-style turn scrolling. Sending a message scrolls it to the top of the view and the answer
- * streams in below; nothing follows the stream after that. Opening a session shows its end. A
- * jump-to-latest button appears when more content sits below the fold.
+ * streams in below. Opening a session shows its end. While a run streams, the view follows it as
+ * long as you are at the end (after sending, that is once the answer outgrows the view); scrolling
+ * up stops that until you scroll back down or jump to the latest. A jump-to-latest button appears
+ * when more content sits below the fold.
  */
-function useTurnScroll(scroller: React.RefObject<HTMLDivElement | null>, runs: Run[]) {
+function useTurnScroll(
+  scroller: React.RefObject<HTMLDivElement | null>,
+  content: React.RefObject<HTMLDivElement | null>,
+  runs: Run[],
+) {
   const [viewport, setViewport] = useState(0);
   const [below, setBelow] = useState(false);
   const seen = useRef<string | undefined>(undefined);
   const jumped = useRef<string | undefined>(undefined);
   const restoreFromBottom = useRef<number | null>(null);
+  /** You are at the end, so new output keeps you there. */
+  const pinned = useRef(true);
+  /** The newest run is live, so its growth is streaming output. */
+  const following = useRef(false);
+  /** Content height the view was last positioned for; only a change in it moves the view. */
+  const measured = useRef(0);
+  const lastScroll = useRef({ top: 0, height: 0 });
   const mounted = runs.length > 0;
 
-  const measureBelow = useCallback(() => {
+  const settle = useCallback(
+    (follow: boolean) => {
+      const element = scroller.current;
+      if (!element) return;
+      const changed = element.scrollHeight !== measured.current;
+      measured.current = element.scrollHeight;
+      if (pinned.current && changed) {
+        if (follow) element.scrollTop = element.scrollHeight;
+        else pinned.current = distanceToEnd(element) <= END_SLACK; // e.g. you expanded a step at the end
+      }
+      setBelow(distanceToEnd(element) > 160);
+    },
+    [scroller],
+  );
+
+  const onScroll = useCallback(() => {
     const element = scroller.current;
-    if (element) setBelow(element.scrollHeight - element.scrollTop - element.clientHeight > 160);
+    if (!element) return;
+    const { scrollTop: top, scrollHeight: height } = element;
+    // Moving up without the content shrinking is you scrolling up; shrinking content only clamps.
+    if (top < lastScroll.current.top && height >= lastScroll.current.height) pinned.current = false;
+    else if (distanceToEnd(element) <= END_SLACK) pinned.current = true;
+    lastScroll.current = { top, height };
+    setBelow(distanceToEnd(element) > 160);
+  }, [scroller]);
+
+  // Wheel input arrives before its scroll event, so streaming output cannot pull you back down first.
+  const onWheel = useCallback((event: React.WheelEvent) => {
+    if (event.deltaY < 0) pinned.current = false;
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    const element = scroller.current;
+    if (!element) return;
+    pinned.current = true;
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
   }, [scroller]);
 
   useLayoutEffect(() => {
@@ -116,12 +176,13 @@ function useTurnScroll(scroller: React.RefObject<HTMLDivElement | null>, runs: R
     if (!element) return;
     const observer = new ResizeObserver(() => {
       setViewport(element.clientHeight);
-      measureBelow();
+      settle(following.current); // async growth (images, code) and a resized view
     });
     observer.observe(element);
+    if (content.current) observer.observe(content.current);
     setViewport(element.clientHeight);
     return () => observer.disconnect();
-  }, [scroller, mounted, measureBelow]);
+  }, [scroller, content, mounted, settle]);
 
   const last = runs.at(-1);
   useLayoutEffect(() => {
@@ -134,74 +195,39 @@ function useTurnScroll(scroller: React.RefObject<HTMLDivElement | null>, runs: R
     if (last && last.key !== seen.current) {
       const first = seen.current === undefined;
       seen.current = last.key;
+      if (last.live) jumped.current = last.key;
       const section = element.querySelector<HTMLElement>(`[data-run="${CSS.escape(last.key)}"]`);
-      if (last.live && section) {
-        jumped.current = last.key;
-        element.scrollTo({ top: section.offsetTop - TOP_GAP, behavior: first ? "auto" : "smooth" });
+      pinned.current = true; // opening a session or sending a message puts you at the end
+      if (last.live && section && !first) {
+        // Your message glides to the top. The live turn is at least a view tall, so that is also the
+        // end and the view follows once the answer outgrows it. Recording the new height keeps the
+        // added turn itself from cutting the glide short.
+        measured.current = element.scrollHeight;
+        element.scrollTo({ top: section.offsetTop - TOP_GAP, behavior: "smooth" });
       } else {
         element.scrollTop = element.scrollHeight;
       }
     }
-    measureBelow();
+    const live = Boolean(last?.live);
+    settle(live || following.current); // also follow the render that ends the run (its footer appears)
+    following.current = live;
   });
 
-  return { viewport, jumped, restoreFromBottom, below, onScroll: measureBelow };
+  return { viewport, jumped, restoreFromBottom, below, onScroll, onWheel, jumpToLatest };
 }
 
-const SUGGESTIONS = [
-  "Explain how this project is structured",
-  "Review my uncommitted changes",
-  "Find and fix a failing test",
-  "Open the dev server in the browser and check the console",
-];
-
-// Deterministic "random" pixels for the backdrop.
-const PIXELS = Array.from({ length: 14 }, (_, i) => ({
-  left: `${8 + ((i * 37) % 84)}%`,
-  top: `${22 + ((i * 53) % 62)}%`,
-  size: 5 + ((i * 7) % 6),
-  color: PI_COLORS[i % 3],
-  delay: `${-((i * 1.7) % 11)}s`,
-}));
-
+/** Empty-state backdrop: a painted sky whose clouds form the pi logo (styles.css `.hero`). */
 export function HeroBackdrop() {
-  return (
-    <div className="hero" aria-hidden>
-      <div className="hero-grid" />
-      <div className="hero-glow" style={{ background: PI_COLORS[0], left: "calc(50% - 360px)", top: "14%" }} />
-      <div className="hero-glow" style={{ background: PI_COLORS[1], left: "calc(50% - 90px)", top: "34%", animationDelay: "-7s" }} />
-      <div className="hero-glow" style={{ background: PI_COLORS[2], left: "calc(50% + 40px)", top: "2%", opacity: 0.11, animationDelay: "-13s" }} />
-      {PIXELS.map((pixel, index) => (
-        <span
-          key={index}
-          className="hero-pixel"
-          style={{ left: pixel.left, top: pixel.top, width: pixel.size, height: pixel.size, background: pixel.color, animationDelay: pixel.delay }}
-        />
-      ))}
-    </div>
-  );
+  return <div className="hero" aria-hidden />;
 }
 
 function EmptyTranscript({ session }: { session: SessionState }) {
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-8">
+    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-end overflow-hidden px-8 pb-8">
       <HeroBackdrop />
       <div className="relative flex flex-col items-center">
-        <PiLogo size={68} animate />
-        <h1 className="mt-7 text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
+        <h1 className="text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
         <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, window.studio.homeDir)}</div>
-        <div className="mt-9 flex max-w-[600px] flex-wrap justify-center gap-2">
-          {SUGGESTIONS.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              onClick={() => prefill(session.handle, suggestion)}
-              className="rounded-full border border-line bg-panel/70 px-3.5 py-1.5 text-[12.5px] text-muted backdrop-blur hover:border-line-strong hover:text-fg"
-            >
-              {suggestion}
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -210,7 +236,6 @@ function EmptyTranscript({ session }: { session: SessionState }) {
 /** Live states worth calling out next to "Working for…". */
 function liveStatus(session: SessionState): string | undefined {
   if (session.dialogs.length) return "waiting for you";
-  if (session.compacting) return "compacting context";
   if (session.retry) return `retrying (${session.retry.attempt}/${session.retry.maxAttempts})`;
   return undefined;
 }
@@ -296,7 +321,7 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {text && (
         <div className="flex w-full items-center justify-end gap-3">
           {stamp}
-          <div className="max-w-[78%] rounded-[22px] bg-raised px-5 py-3 text-[14.5px] leading-relaxed text-fg">
+          <div data-user-bubble className="max-w-[78%] rounded-[22px] bg-raised px-5 py-3 text-[14.5px] leading-relaxed text-fg">
             <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
             {long && (
               <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
@@ -425,8 +450,20 @@ function BlockView({ block, cwd, home }: { block: Block; cwd: string; home: stri
       );
     }
     case "compaction":
+      if (block.status === "running") return <CompactionProgress item={block} />;
+      if (block.status === "error") return (
+        <div className="flex gap-2.5 rounded-xl border border-bad/30 bg-bad/5 px-3.5 py-2.5 text-[13px] text-bad" data-compaction="error">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <span className="selectable whitespace-pre-wrap break-words">Compaction failed: {block.errorMessage}</span>
+        </div>
+      );
+      if (block.status === "aborted") return (
+        <div className="flex items-center gap-2 text-[12.5px] text-faint" data-compaction="aborted">
+          <CircleSlash size={13} /> Context compaction interrupted
+        </div>
+      );
       return (
-        <Disclosure id={block.key} icon={<FoldVertical size={13} />} label={`Context compacted · ${formatTokens(block.tokensBefore)} tokens summarized`} divider>
+        <Disclosure id={block.key} icon={<FoldVertical size={13} />} label={`Context compacted · ${formatTokens(block.tokensBefore)} tokens before compaction`} divider>
           <div className="px-3.5 py-3">
             <Markdown text={block.summary} />
           </div>

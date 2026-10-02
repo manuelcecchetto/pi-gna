@@ -162,7 +162,7 @@ export function Composer({ session }: { session: SessionState }) {
     if (event.key === "Escape") {
       event.preventDefault();
       if (menu) setMenu(undefined);
-      else if (session.running) void stop();
+      else if (session.running || session.compacting) void stop();
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
@@ -192,6 +192,7 @@ export function Composer({ session }: { session: SessionState }) {
   const widgetsAbove = Object.entries(session.widgets).filter(([, w]) => w.placement === "aboveEditor");
   const widgetsBelow = Object.entries(session.widgets).filter(([, w]) => w.placement === "belowEditor");
   const exited = session.phase === "exited";
+  const busy = session.running || Boolean(session.compacting);
 
   return (
     <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2 px-8 pb-5">
@@ -274,12 +275,12 @@ export function Composer({ session }: { session: SessionState }) {
           <ThinkingPicker session={session} />
           <div className="ml-auto flex items-center gap-2">
             <ContextMeter session={session} />
-            {session.running && (
+            {busy && (
               <span className="hidden text-[11px] text-faint sm:inline">
                 <Kbd>esc</Kbd> stop
               </span>
             )}
-            {session.running && !text.trim() && !annotations.length && !attachments.length ? (
+            {busy && !text.trim() && !annotations.length && !attachments.length ? (
               <button type="button" onClick={() => void stop()} title="Stop (Esc)" className="grid h-8 w-8 place-items-center rounded-full bg-fg text-canvas hover:opacity-90">
                 <Square size={11} fill="currentColor" />
               </button>

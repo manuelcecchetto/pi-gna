@@ -10,6 +10,7 @@
 //   node scripts/cdp.mjs drop 600 400 /path/a /path/dir  # drop files from the OS at CSS px
 //   node scripts/cdp.mjs drag 268 400 360 400 [x y ...] # real mouse drag through waypoints (resize handles)
 //   CDP_URL=localhost:8765 node scripts/cdp.mjs shot    # target a browser tab instead of the app
+//   CDP_SCHEME=light node scripts/cdp.mjs shot          # render with prefers-color-scheme light (or dark)
 // Uses Node's built-in WebSocket; no dependencies.
 import { writeFileSync } from "node:fs";
 
@@ -47,6 +48,12 @@ const send = (method, params = {}) =>
 
 // CDP_FOCUS=1: the page behaves as focused (background test windows never are), so :focus styles render.
 if (process.env.CDP_FOCUS === "1") await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+// CDP_SCHEME=light|dark: emulate the system theme. Emulation ends when this script detaches, so it only
+// holds for the command it is set with.
+if (process.env.CDP_SCHEME) {
+  await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: process.env.CDP_SCHEME }] });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+}
 
 const KEYS = {
   Enter: { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" },

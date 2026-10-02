@@ -128,14 +128,22 @@ export const WorkAccordion = memo(function WorkAccordion({
             ),
           )}
         </div>
-      ) : run.live ? (
-        lastStep && (
-          <div className="mt-1">
-            <StepView step={lastStep} cwd={cwd} home={home} live />
-          </div>
-        )
       ) : (
-        <InlineImages images={tools.flatMap((step) => resultImages(step.run?.result ?? step.run?.partial))} />
+        <>
+          {/* Compaction is a lifecycle record, not hidden work; keep it visible after tools resume. */}
+          {layout.work.filter((block) => block.kind === "compaction").map((block) => (
+            <div key={block.key} className="mt-3">{renderBlock(block)}</div>
+          ))}
+          {run.live ? (
+            // Only show a tool if activity is actually the last block. A pending compaction or
+            // other newer record must not leave a stale tool row looking active.
+            layout.work.at(-1)?.kind === "activity" && run.blocks.at(-1)?.kind === "activity" && lastStep && (
+              <div className="mt-1"><StepView step={lastStep} cwd={cwd} home={home} live /></div>
+            )
+          ) : (
+            <InlineImages images={tools.flatMap((step) => resultImages(step.run?.result ?? step.run?.partial))} />
+          )}
+        </>
       )}
     </div>
   );

@@ -32,6 +32,23 @@ export interface BlockTime {
   end?: number;
 }
 
+type CompactionReason = Extract<SessionEvent, { type: "compaction_start" }>["reason"];
+
+interface CompactionBase {
+  kind: "compaction";
+  key: string;
+  reason?: CompactionReason;
+  startedAt?: number;
+  endedAt?: number;
+}
+
+export type CompactionItem = CompactionBase & (
+  | { status: "running"; startedAt: number; retry?: { attempt: number; maxAttempts: number; delayMs: number; errorMessage: string; waiting: boolean } }
+  | { status: "done"; summary: string; tokensBefore: number }
+  | { status: "error"; errorMessage: string }
+  | { status: "aborted" }
+);
+
 export type Item =
   /** `steer`: delivered into a running turn (pi's steering queue), so it belongs to that turn. */
   | { kind: "user"; key: string; message: UserMessage; steer?: boolean }
@@ -46,7 +63,7 @@ export type Item =
     }
   | { kind: "bash"; key: string; message: BashExecutionMessage }
   | { kind: "custom"; key: string; message: CustomMessage }
-  | { kind: "compaction"; key: string; summary: string; tokensBefore: number }
+  | CompactionItem
   | { kind: "branch"; key: string; summary: string }
   | { kind: "notice"; key: string; level: "info" | "error"; text: string };
 
@@ -68,7 +85,7 @@ export interface SessionState {
   autoCompaction?: boolean;
   running: boolean;
   runStartedAt?: number;
-  compacting?: string;
+  compacting?: Extract<CompactionItem, { status: "running" }>;
   retry?: { attempt: number; maxAttempts: number; delayMs: number; errorMessage: string; at: number };
   queue: { steering: string[]; followUp: string[] };
   /** Every text seen in the queues during this run, to tell a delivered steer from a follow-up. */
@@ -115,14 +132,14 @@ export function createSession(handle: string, cwd: string, sessionPath?: string)
 // ── Hydration ────────────────────────────────────────────────────────────────
 
 export function hydrate(state: SessionState, entries: SessionEntry[]): SessionState {
-  let next: SessionState = { ...state, items: [], tools: {}, seq: 0 };
+  let next: SessionState = { ...state, items: [], tools: {}, compacting: undefined, seq: 0 };
   for (const entry of entries) {
     switch (entry.type) {
       case "message":
         next = addMessage(next, entry.message, Date.parse(entry.timestamp) || entry.message.timestamp);
         break;
       case "compaction":
-        next = pushItem(next, { kind: "compaction", summary: entry.summary, tokensBefore: entry.tokensBefore });
+        next = pushItem(next, { kind: "compaction", status: "done", summary: entry.summary, tokensBefore: entry.tokensBefore });
         break;
       case "branch_summary":
         next = pushItem(next, { kind: "branch", summary: entry.summary });
@@ -143,6 +160,13 @@ export function hydrate(state: SessionState, entries: SessionEntry[]): SessionSt
         break;
     }
   }
+  // Ready/start can arrive before the session-file read completes. Keep that live record, with a
+  // fresh key after hydration so it cannot collide with the rebuilt history.
+  if (state.compacting) {
+    const { key: _key, ...pending } = state.compacting;
+    next = pushItem(next, pending);
+    next = { ...next, compacting: next.items.at(-1) as SessionState["compacting"] };
+  }
   return next;
 }
 
@@ -150,8 +174,8 @@ export function hydrate(state: SessionState, entries: SessionEntry[]): SessionSt
 
 export function reduceHostEvent(state: SessionState, event: HostEvent, now: number): SessionState {
   switch (event.kind) {
-    case "ready":
-      return {
+    case "ready": {
+      const next: SessionState = {
         ...state,
         phase: "ready",
         model: event.state.model,
@@ -162,9 +186,13 @@ export function reduceHostEvent(state: SessionState, event: HostEvent, now: numb
         name: event.state.sessionName ?? state.name,
         running: event.state.isStreaming || state.running,
       };
+      // get_state resolves asynchronously: a newer lifecycle end can already have been reduced.
+      const endedLiveCompaction = next.items.some((item) => item.kind === "compaction" && item.endedAt !== undefined);
+      return event.state.isCompacting && !next.compacting && !endedLiveCompaction ? startCompaction(next, now) : next;
+    }
     case "exit":
       return {
-        ...settle(state),
+        ...settle(state, now),
         phase: "exited",
         dialogs: [],
         exit: { code: event.code, signal: event.signal, error: event.error, stderrTail: event.stderrTail },
@@ -210,7 +238,7 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
     case "agent_start":
       return state.running ? { ...state, awaitingPrompt: true } : { ...state, running: true, runStartedAt: now, awaitingPrompt: true };
     case "agent_settled":
-      return settle(state);
+      return settle(state, now);
     case "message_start":
       return event.message.role === "assistant" ? startAssistant(state, event.message) : state;
     case "message_update":
@@ -242,13 +270,28 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
     case "thinking_level_changed":
       return { ...state, thinkingLevel: event.level };
     case "compaction_start":
-      return { ...state, compacting: event.reason };
+      return startCompaction(state, now, event.reason);
     case "compaction_end": {
+      const base = { kind: "compaction" as const, reason: event.reason, startedAt: state.compacting?.startedAt, endedAt: now };
+      const item: DistributiveOmit<CompactionItem, "key"> = event.aborted
+        ? { ...base, status: "aborted" }
+        : event.result
+          ? { ...base, status: "done", summary: event.result.summary, tokensBefore: event.result.tokensBefore }
+          : event.errorMessage
+            ? { ...base, status: "error", errorMessage: event.errorMessage }
+            : { ...base, status: "aborted" };
+      const index = state.items.findIndex((entry) => entry.key === state.compacting?.key);
       const next = { ...state, compacting: undefined };
-      if (event.result) return pushItem(next, { kind: "compaction", summary: event.result.summary, tokensBefore: event.result.tokensBefore });
-      if (event.errorMessage) return pushItem(next, { kind: "notice", level: "error", text: `Compaction failed: ${event.errorMessage}` });
-      return next;
+      return index < 0 ? pushItem(next, item) : replaceItem(next, index, { ...item, key: state.items[index]!.key });
     }
+    case "summarization_retry_scheduled":
+      return updateCompaction(state, (item) => ({ ...item, retry: { attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs, errorMessage: event.errorMessage, waiting: true } }));
+    case "summarization_retry_attempt_start":
+      return event.source === "compaction"
+        ? updateCompaction(state, (item) => item.retry ? { ...item, retry: { ...item.retry, waiting: false } } : item)
+        : state;
+    case "summarization_retry_finished":
+      return updateCompaction(state, (item) => ({ ...item, retry: undefined }));
     case "auto_retry_start":
       return { ...state, retry: { attempt: event.attempt, maxAttempts: event.maxAttempts, delayMs: event.delayMs, errorMessage: event.errorMessage, at: now } };
     case "auto_retry_end": {
@@ -262,9 +305,28 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
   }
 }
 
-function settle(state: SessionState): SessionState {
+function startCompaction(state: SessionState, now: number, reason?: CompactionReason): SessionState {
+  if (state.compacting) return reason ? updateCompaction(state, (item) => ({ ...item, reason })) : state;
+  const next = pushItem(state, { kind: "compaction", status: "running", reason, startedAt: now });
+  return { ...next, compacting: next.items.at(-1) as SessionState["compacting"] };
+}
+
+function updateCompaction(state: SessionState, update: (item: NonNullable<SessionState["compacting"]>) => NonNullable<SessionState["compacting"]>): SessionState {
+  const previous = state.compacting;
+  if (!previous) return state;
+  const index = state.items.findIndex((item) => item.key === previous.key);
+  if (index < 0) return state;
+  const compacting = update(previous);
+  return { ...replaceItem(state, index, compacting), compacting };
+}
+
+function settle(state: SessionState, now: number): SessionState {
   // A run that ends mid-stream (abort, crash) must not leave spinners behind.
-  const items = state.items.map((item) => (item.kind === "assistant" && item.streaming ? { ...item, streaming: false, partialArgs: undefined } : item));
+  const items: Item[] = state.items.map((item) => {
+    if (item.kind === "assistant" && item.streaming) return { ...item, streaming: false, partialArgs: undefined };
+    if (item.kind === "compaction" && item.status === "running") return { kind: "compaction", key: item.key, reason: item.reason, startedAt: item.startedAt, endedAt: now, status: "aborted" };
+    return item;
+  });
   const tools = { ...state.tools };
   for (const [id, run] of Object.entries(tools)) if (run.status === "running") tools[id] = { ...run, status: "error", endedAt: run.endedAt };
   return {
@@ -322,7 +384,7 @@ function addMessage(state: SessionState, message: AgentMessage, at: number, stee
     case "custom":
       return message.display ? pushItem(state, { kind: "custom", message }) : state;
     case "compactionSummary":
-      return pushItem(state, { kind: "compaction", summary: message.summary, tokensBefore: message.tokensBefore });
+      return pushItem(state, { kind: "compaction", status: "done", summary: message.summary, tokensBefore: message.tokensBefore });
     case "branchSummary":
       return pushItem(state, { kind: "branch", summary: message.summary });
     default:
@@ -440,6 +502,7 @@ export function runOutcome(items: Item[]): RunOutcome {
   const last = items.at(-1);
   if (last?.kind === "assistant" && last.message.stopReason === "error") return "error";
   if (last?.kind === "notice" && last.level === "error") return "error";
+  if (last?.kind === "compaction" && last.status === "error") return "error";
   return "done";
 }
 
@@ -451,11 +514,11 @@ export type Attention = "waiting" | "running" | "failed" | "unread" | "idle";
 
 const ATTENTION_RANK: Record<Attention, number> = { waiting: 4, running: 3, failed: 2, unread: 1, idle: 0 };
 
-type AttentionInput = Pick<SessionState, "dialogs" | "running" | "unread" | "phase">;
+type AttentionInput = Pick<SessionState, "dialogs" | "running" | "compacting" | "unread" | "phase">;
 
 export function attention(session: AttentionInput): Attention {
   if (session.dialogs.length) return "waiting";
-  if (session.running) return "running";
+  if (session.running || session.compacting) return "running";
   if (session.phase === "exited" || session.unread === "error") return "failed";
   if (session.unread) return "unread";
   return "idle";
@@ -469,6 +532,11 @@ export function strongestAttention(sessions: AttentionInput[]): Attention | unde
     if (level !== "idle" && (!best || ATTENTION_RANK[level] > ATTENTION_RANK[best])) best = level;
   }
   return best;
+}
+
+/** A preview must not be stopped by switching chats while pi is compacting it. */
+export function isDisposable(session: Pick<SessionState, "prompted" | "running" | "compacting" | "unread" | "dialogs">): boolean {
+  return !session.prompted && !session.running && !session.compacting && !session.unread && session.dialogs.length === 0;
 }
 
 /**

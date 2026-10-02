@@ -258,6 +258,9 @@ export type SessionEvent =
       willRetry: boolean;
       errorMessage?: string;
     }
+  | { type: "summarization_retry_scheduled"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
+  | { type: "summarization_retry_attempt_start"; source: "compaction" | "branchSummary"; reason?: "manual" | "threshold" | "overflow" }
+  | { type: "summarization_retry_finished" }
   | { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
   | { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
   | { type: "bash_execution_update"; id?: string; delta: string }

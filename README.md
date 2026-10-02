@@ -36,6 +36,7 @@ they are attached to your next prompt with a crop of each element.
 | Alt+Enter | Queue a follow-up while pi is working |
 | Esc | Pull queued messages back into the composer and stop the run |
 | Ctrl+O | Expand or collapse every tool call |
+| ⌥↑ / ⌥↓ | Jump to the previous / next message you sent (the rail left of the chat does the same by click or drag) |
 | Cmd+N | New session in the current project |
 | Cmd+B | Show or hide the browser |
 | Cmd+Shift+S | Show or hide the sidebar (drag its edge to resize) |

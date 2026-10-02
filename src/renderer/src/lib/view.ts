@@ -1,7 +1,7 @@
 // Transcript view model: items -> runs (one per user message) -> blocks. Consecutive thinking
 // and tool calls merge into one activity group so a long agent loop reads as a single line.
 import type { BashExecutionMessage, CustomMessage, StopReason, ToolCall, UserMessage } from "../../../shared/protocol";
-import type { Item, SessionState, ToolRun } from "./session";
+import type { CompactionItem, Item, SessionState, ToolRun } from "./session";
 
 export type Step =
   | { kind: "thinking"; key: string; text: string; redacted: boolean; streaming: boolean; durationMs?: number }
@@ -16,7 +16,7 @@ export type Block =
   | { kind: "aborted"; key: string }
   | { kind: "bash"; key: string; message: BashExecutionMessage }
   | { kind: "custom"; key: string; message: CustomMessage }
-  | { kind: "compaction"; key: string; summary: string; tokensBefore: number }
+  | CompactionItem
   | { kind: "branch"; key: string; summary: string }
   | { kind: "notice"; key: string; level: "info" | "error"; text: string };
 
@@ -164,7 +164,7 @@ function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, li
         break;
       case "compaction":
         close();
-        blocks.push({ kind: "compaction", key: item.key, summary: item.summary, tokensBefore: item.tokensBefore });
+        blocks.push(item);
         break;
       case "branch":
         close();
