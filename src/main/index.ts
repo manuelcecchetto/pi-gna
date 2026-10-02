@@ -9,6 +9,7 @@ import { AgentBridge } from "./browser/bridge";
 import { BrowserManager } from "./browser/manager";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { listFiles } from "./files";
+import { readCompactionSettings } from "./pi-settings";
 import { debugRpc, log } from "./log";
 import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
@@ -95,6 +96,7 @@ function registerIpc(): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   ipcMain.on(IPC.openExternal, (_event, url: string) => openExternal(url));
+  ipcMain.handle(IPC.compactionSettings, () => readCompactionSettings());
   ipcMain.handle(IPC.describePaths, (_event, paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));
   ipcMain.handle(IPC.pickAttachments, async (_event, kind: "photos" | "files") => {
     const options: Electron.OpenDialogOptions =

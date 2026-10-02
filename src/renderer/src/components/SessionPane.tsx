@@ -1,7 +1,7 @@
 import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { SessionState } from "../lib/session";
-import { formatCost, formatTokens, relativeTime, tildify } from "../lib/format";
+import { relativeTime, tildify } from "../lib/format";
 import { attachFiles, closeSession, dismissRecentWrite, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
 import { Composer } from "./Composer";
 import { Ansi } from "./primitives";
@@ -105,8 +105,6 @@ function ExitBanner({ session }: { session: SessionState }) {
 
 function StatusBar({ session }: { session: SessionState }) {
   const home = window.studio.homeDir;
-  const usage = session.stats?.contextUsage;
-  const percent = usage?.percent ?? undefined;
   const statuses = Object.entries(session.statuses);
   const phaseDot = session.phase === "starting" ? "bg-warn pulse-dot" : session.phase === "exited" ? "bg-bad" : "bg-ok";
   return (
@@ -122,15 +120,6 @@ function StatusBar({ session }: { session: SessionState }) {
           </span>
         ))}
       </span>
-      {percent !== undefined && percent !== null && (
-        <span className="flex items-center gap-1.5" title={`${formatTokens(usage?.tokens ?? 0)} / ${formatTokens(usage?.contextWindow ?? 0)} tokens in context`}>
-          <span className="h-1 w-12 overflow-hidden rounded-full bg-raised">
-            <span className={`block h-full ${percent > 80 ? "bg-warn" : "bg-muted"}`} style={{ width: `${Math.min(100, percent)}%` }} />
-          </span>
-          {Math.round(percent)}%
-        </span>
-      )}
-      {session.stats && session.stats.cost > 0 && <span>{formatCost(session.stats.cost)}</span>}
     </footer>
   );
 }

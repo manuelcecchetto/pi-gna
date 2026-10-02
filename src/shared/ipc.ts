@@ -1,5 +1,6 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
+import type { CompactionSettings } from "./compaction";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -20,6 +21,7 @@ export const IPC = {
   pickFolder: "studio:pick-folder",
   pickAttachments: "studio:pick-attachments",
   describePaths: "studio:describe-paths",
+  compactionSettings: "studio:compaction-settings",
   openExternal: "studio:open-external",
   events: "studio:events",
   browserLayout: "browser:layout",
@@ -118,6 +120,8 @@ export interface StudioApi {
   /** Native picker: "photos" for images, "files" for files and folders. */
   pickAttachments(kind: "photos" | "files"): Promise<PickedPath[]>;
   describePaths(paths: string[]): Promise<PickedPath[]>;
+  /** pi's global compaction settings (reserveTokens and per-model overrides), for the context meter. */
+  compactionSettings(): Promise<CompactionSettings>;
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
   pathForFile(file: File): string;
   openExternal(url: string): void;

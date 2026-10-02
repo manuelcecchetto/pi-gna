@@ -64,6 +64,8 @@ export interface SessionState {
   /** From the session file, until pi reports the live model. */
   modelRef?: { provider: string; modelId: string };
   thinkingLevel?: ThinkingLevel;
+  /** pi's autoCompactionEnabled (get_state). */
+  autoCompaction?: boolean;
   running: boolean;
   runStartedAt?: number;
   compacting?: string;
@@ -151,6 +153,7 @@ export function reduceHostEvent(state: SessionState, event: HostEvent, now: numb
         phase: "ready",
         model: event.state.model,
         thinkingLevel: event.state.thinkingLevel,
+        autoCompaction: event.state.autoCompactionEnabled,
         sessionId: event.state.sessionId,
         sessionPath: event.state.sessionFile ?? state.sessionPath,
         name: event.state.sessionName ?? state.name,

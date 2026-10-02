@@ -22,6 +22,7 @@ import {
   mergeAttachments,
   stripStudioBlocks,
 } from "../lib/attachments";
+import type { CompactionSettings } from "../../../shared/compaction";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
 import { createSession, hydrate, reduceHostEvent, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
@@ -53,6 +54,8 @@ export interface AppState {
   annotations: Annotation[];
   /** Composer attachments per session handle (picker, drag and drop, paste). */
   attachments: Record<string, Attachment[]>;
+  /** pi's compaction settings, for the context meter's auto-compaction point. */
+  compaction: CompactionSettings;
   /** Full-size image overlay (data URL). Hides the native browser view while open. */
   lightbox?: string;
 }
@@ -72,6 +75,7 @@ export const store = createStore<AppState>({
   pane: { open: false, full: false, split: 0.5 },
   annotations: [],
   attachments: {},
+  compaction: {},
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -218,6 +222,8 @@ export function handleBatch(batch: HostEventBatch): void {
       if (starting) seenStartupNotices.add(event.record.message);
       toast(event.record.message, level);
     } else if (event.record.type === "agent_settled") void onSettled(handle);
+    // Context grows every turn and shrinks on compaction; get_session_stats is cheap (ms, even at 40 MB).
+    else if (event.record.type === "turn_end" || event.record.type === "compaction_end") scheduleStats(handle);
   }
 }
 
@@ -240,9 +246,27 @@ async function onSettled(handle: string): Promise<void> {
   const [state] = await Promise.all([command<RpcSessionState>(handle, { type: "get_state" }, true), refreshStats(handle)]);
   if (state.data) {
     const data = state.data;
-    patchSession(handle, (s) => ({ ...s, sessionPath: data.sessionFile ?? s.sessionPath, name: data.sessionName ?? s.name, model: data.model ?? s.model }));
+    patchSession(handle, (s) => ({
+      ...s,
+      sessionPath: data.sessionFile ?? s.sessionPath,
+      name: data.sessionName ?? s.name,
+      model: data.model ?? s.model,
+      autoCompaction: data.autoCompactionEnabled,
+    }));
   }
   refreshProjects(300);
+}
+
+const statsTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function scheduleStats(handle: string): void {
+  clearTimeout(statsTimers.get(handle));
+  statsTimers.set(
+    handle,
+    setTimeout(() => {
+      statsTimers.delete(handle);
+      void refreshStats(handle);
+    }, 300),
+  );
 }
 
 async function refreshStats(handle: string): Promise<void> {
@@ -444,6 +468,9 @@ export function boot(): void {
   browser.onToggle(toggleBrowser);
   browser.onAnnotation((annotation) => store.set((s) => ({ ...s, annotations: [...s.annotations, annotation] })));
   void browser.state().then((state) => state && store.set((s) => ({ ...s, browser: state })));
+  void studio()
+    .compactionSettings()
+    .then((compaction) => store.set((s) => ({ ...s, compaction })));
   refreshProjects();
   newSession(studio().launchCwd || studio().homeDir);
 }

@@ -132,6 +132,14 @@ Verified live (pi 1.0.0, Oct 2026):
   model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
   footnotes or Mermaid). It only applies to studio sessions; opening a terminal session in studio adds that
   prompt section on its next request.
+- Context meter (`ContextMeter`, Codex-style): a ring with the percent next to the send button; hover for a
+  card with tokens in context / window, where pi auto-compacts (`contextWindow - reserveTokens`, read from
+  `~/.pi/agent/settings.json` including per-model overrides; project settings are not read), cache hit
+  (`cacheRead / (input + cacheRead + cacheWrite)` for the last request and the session), session token totals
+  and Compact now. Colored by distance to auto-compaction (70% warn, 90% high), not to the window, because
+  compaction is when context gets summarized. Stats refresh after every `turn_end` and `compaction_end`
+  (`get_session_stats` takes a few ms even on a 40 MB session). Right after compaction pi does not know the
+  size until the next response, shown as a dashed ring.
 - Live state: pixel-grid loader and shimmer on the "Working for" header, with "waiting for you", "compacting
   context" or "retrying" called out next to it.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,

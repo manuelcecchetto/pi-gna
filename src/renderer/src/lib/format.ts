@@ -20,7 +20,7 @@ export function formatClock(ms: number): string {
 export function formatTokens(count: number): string {
   if (count < 1000) return String(count);
   if (count < 1_000_000) return `${(count / 1000).toFixed(count < 10_000 ? 1 : 0)}k`;
-  return `${(count / 1_000_000).toFixed(1)}M`;
+  return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
 export function formatCost(dollars: number): string {

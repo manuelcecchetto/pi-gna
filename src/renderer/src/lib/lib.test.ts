@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
-import { formatStamp } from "./format";
+import { formatStamp, formatTokens } from "./format";
 import { markdownToHtml } from "./markdown";
 import { applyQueueOp } from "./queue";
+import { cacheHitRate, summarizeContext } from "./context";
+import { resolveReserveTokens } from "../../../shared/compaction";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
 import { parsePartialJson } from "./partial-json";
 
@@ -119,5 +121,44 @@ describe("applyQueueOp", () => {
 
   it("is a no-op when pi already delivered the item", () => {
     expect(applyQueueOp(queues, { type: "remove", kind: "steering", text: "gone" })).toEqual({ queues, found: false });
+  });
+});
+
+describe("context meter", () => {
+  const stats = (tokens: number | null, contextWindow = 1_000_000) => ({
+    sessionId: "s",
+    userMessages: 1,
+    assistantMessages: 1,
+    toolCalls: 0,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    cost: 0,
+    contextUsage: { tokens, contextWindow, percent: tokens === null ? null : (tokens / contextWindow) * 100 },
+  });
+
+  it("resolves pi's reserve: exact model override, then the ordinary setting, then the default", () => {
+    const settings = { reserveTokens: 32_768, modelOverrides: { "claude-bridge/claude-opus-5-5": { reserveTokens: 400_000 } } };
+    expect(resolveReserveTokens(settings, "claude-bridge", "claude-opus-5-5")).toBe(400_000);
+    expect(resolveReserveTokens(settings, "openai", "gpt")).toBe(32_768);
+    expect(resolveReserveTokens(undefined)).toBe(16_384);
+    expect(resolveReserveTokens({ reserveTokens: -1 })).toBe(16_384);
+  });
+
+  it("measures room until auto-compaction and colors by it", () => {
+    const at57 = summarizeContext(stats(569_362), 32_768, true);
+    expect(at57).toMatchObject({ used: 569_362, compactAt: 967_232, left: 397_870, level: "ok" });
+    expect(at57?.percent).toBeCloseTo(56.94, 1);
+    expect(summarizeContext(stats(700_000), 32_768, true)?.level).toBe("warn");
+    expect(summarizeContext(stats(900_000), 32_768, true)?.level).toBe("high");
+  });
+
+  it("uses the full window when auto-compaction is off, and is unknown right after compaction", () => {
+    expect(summarizeContext(stats(850_000), 32_768, false)).toMatchObject({ compactAt: null, left: 150_000, level: "warn" });
+    expect(summarizeContext(stats(null), 32_768, true)).toMatchObject({ used: null, percent: null, level: "unknown" });
+    expect(summarizeContext(undefined, 32_768, true)).toBeUndefined();
+    // This session's totals: almost every prompt token came from cache.
+    expect(cacheHitRate({ input: 684, cacheRead: 124_707_648, cacheWrite: 2_868_363 })).toBeCloseTo(0.9775, 3);
+    expect(cacheHitRate({ input: 0, cacheRead: 0, cacheWrite: 0 })).toBeNull();
+    expect(cacheHitRate({ input: 1000, cacheRead: 0, cacheWrite: 0 })).toBe(0);
+    expect([formatTokens(684), formatTokens(569_362), formatTokens(1_000_000), formatTokens(124_707_648)]).toEqual(["684", "569k", "1M", "124.7M"]);
   });
 });

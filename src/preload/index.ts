@@ -22,6 +22,7 @@ const api: StudioApi = {
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   pickAttachments: (kind) => ipcRenderer.invoke(IPC.pickAttachments, kind),
   describePaths: (paths) => ipcRenderer.invoke(IPC.describePaths, paths),
+  compactionSettings: () => ipcRenderer.invoke(IPC.compactionSettings),
   pathForFile: (file) => webUtils.getPathForFile(file),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
   onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),

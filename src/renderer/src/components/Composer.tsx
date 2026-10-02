@@ -17,6 +17,7 @@ import {
   setThinking,
   useApp,
 } from "../state/app";
+import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QueueCard } from "./QueueCard";
 import { Ansi, Kbd, Popover } from "./primitives";
@@ -269,6 +270,7 @@ export function Composer({ session }: { session: SessionState }) {
           <ModelPicker session={session} />
           <ThinkingPicker session={session} />
           <div className="ml-auto flex items-center gap-2">
+            <ContextMeter session={session} />
             {session.running && (
               <span className="hidden text-[11px] text-faint sm:inline">
                 <Kbd>esc</Kbd> stop
