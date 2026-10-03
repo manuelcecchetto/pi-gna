@@ -249,7 +249,9 @@ Verified live (pi 1.0.0, Oct 2026):
   get their path through `webUtils.getPathForFile` in the preload; in-memory clipboard images are read at paste
   time. The transcript folds the block back into path chips (`splitFileMentions`).
 - Empty state: the painted sky (see Visual language) above "What should we build?" and the project path; no
-  suggestion chips (nobody used them).
+  suggestion chips (nobody used them). Only for chats that are really empty: a chat opened from the sidebar is
+  shown before its file is read, so until then it is `loading` (blank transcript, the sidebar's title), never the
+  empty state, which would flash while clicking through chats.
 - Extension UI: `select`/`confirm`/`input`/`editor` become approval cards above the composer; `notify` -> toast;
   `setStatus` is tracked in session state but not shown (there is no status line); `setWidget` -> panel above the composer; `set_editor_text` -> composer text.
 

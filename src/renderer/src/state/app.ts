@@ -135,7 +135,7 @@ function newHandle(): string {
 export function openSession(summary: SessionSummary): void {
   const existing = Object.values(store.get().sessions).find((s) => s.sessionPath === summary.path);
   if (existing) return activate(existing.handle);
-  void start(summary.cwd, summary.path);
+  void start(summary.cwd, summary);
 }
 
 export function newSession(cwd: string): void {
@@ -148,20 +148,22 @@ export function newSession(cwd: string): void {
   void start(cwd);
 }
 
-async function start(cwd: string, sessionPath?: string): Promise<void> {
+async function start(cwd: string, summary?: SessionSummary): Promise<void> {
   const handle = newHandle();
-  const session = createSession(handle, cwd, sessionPath);
+  const sessionPath = summary?.path;
+  // It is shown right away, so it must not look like an empty new chat until its history arrives.
+  const session: SessionState = { ...createSession(handle, cwd, sessionPath), loading: summary && { title: summary.title } };
   store.set((state) => ({ ...state, sessions: { ...state.sessions, [handle]: session }, open: [...state.open, handle] }));
   activate(handle);
   try {
     const { entries } = await studio().openSession({ handle, cwd, sessionPath });
-    if (entries.length) {
+    patchSession(handle, (s) => {
+      const loaded = s.loading ? { ...s, loading: undefined } : s;
+      if (!entries.length) return loaded;
       // pi may already be ready (name, model) by the time the file is parsed; keep its live state.
-      patchSession(handle, (s) => {
-        const hydrated = hydrate(s, entries);
-        return { ...hydrated, name: s.name ?? hydrated.name, thinkingLevel: s.thinkingLevel ?? hydrated.thinkingLevel };
-      });
-    }
+      const hydrated = hydrate(loaded, entries);
+      return { ...hydrated, name: s.name ?? hydrated.name, thinkingLevel: s.thinkingLevel ?? hydrated.thinkingLevel };
+    });
   } catch (error) {
     toast(`Could not open session: ${(error as Error).message}`, "error");
     removeSession(handle);
@@ -512,9 +514,10 @@ export function boot(): void {
   newSession(studio().launchCwd || studio().homeDir);
 }
 
-/** Name, else first user message, else "New session". */
+/** Name, else the sidebar's title while loading, else first user message, else "New session". */
 export function sessionTitle(session: SessionState): string {
   if (session.name) return session.name;
+  if (session.loading) return session.loading.title;
   const first = session.items.find((item) => item.kind === "user");
   if (first?.kind === "user") {
     const content = first.message.content;

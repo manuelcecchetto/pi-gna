@@ -41,6 +41,7 @@ export function Transcript({ session }: { session: SessionState }) {
   const content = useRef<HTMLDivElement>(null);
   const { viewport, jumped, restoreFromBottom, below, onScroll, onWheel, jumpToLatest } = useTurnScroll(scroller, content, runs);
 
+  if (session.loading) return <div className="flex-1" />; // not the empty state: this chat has a history
   if (!runs.length && !session.running) return <EmptyTranscript session={session} />;
 
   /** Render a turn from an earlier page, for the turn rail to scroll to. */

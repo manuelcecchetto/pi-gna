@@ -100,6 +100,8 @@ export interface SessionState {
   stats?: SessionStats;
   /** Opened from an existing session file (as opposed to a new chat started in pi-gna). */
   fromDisk: boolean;
+  /** Opened from the sidebar and its history is still being read: the sidebar's title stands in meanwhile. */
+  loading?: { title: string };
   /** Set once the user prompts from pi-gna; such sessions stay alive when switching away. */
   prompted: boolean;
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
