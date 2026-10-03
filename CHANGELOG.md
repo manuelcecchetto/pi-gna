@@ -5,16 +5,23 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
-- Screenshots on new Kanban cards: paste, drop or pick them in the add-card box. They are saved with the card,
-  shown in its dialog, and read by its chats.
+- A Kanban board per project (Cmd+Shift+K): cards are tasks you drag across To do, In progress, In review and
+  Done. Describe a task to add a card, with screenshots pasted, dropped or picked if you like, and a quick chat
+  titles, tags and looks into it. Right-click a card to have a new chat investigate it, resolve it or, once it is
+  in review, QA it, or start a chat about it; pi gets `kanban_*` tools to take a card, move it and report on it.
+- Resolving a Kanban card runs its chat in a git worktree under `~/.pi-gna/worktrees`, on a branch of its own
+  (`pigna/<card>-…`), and leaves your checkout alone; the chat commits there for you to merge.
+- Right-click menus everywhere: copy or save images (screenshots pi took, attachments, pages in the browser),
+  copy and open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
 - A Lamenting board per project (Cmd+Shift+L): pi files a lament with its `lament` tool when a tool or capability it
   needs is missing, unavailable or failing, marked 😒 annoying, 😠 costly or 🤬 blocking, and you resolve it once fixed.
 - pi-gna checks GitHub for new releases and installs them: a row at the foot of the sidebar shows the release
   notes and an Update button, and pi-gna > Check for Updates… checks right away.
 - The sidebar shows pi-gna's version next to the logo.
 - Chats opened from the sidebar no longer flash the empty state while their history loads.
-- Resolving a Kanban card runs its chat in a git worktree under `~/.pi-gna/worktrees`, on a branch of its own
-  (`pigna/<card>-…`), and leaves your checkout alone; the chat commits there for you to merge.
+- Text put in a chat's composer no longer comes back when you switch away from the chat and back.
+- Run from a checkout, pi-gna shows as pi-gna in the Dock, ⌘Tab and the app menu, not as Electron, and says so
+  when the checkout was rebuilt under it, with a button to restart.
 
 ## 0.1.0 - 2026-10-03
 
