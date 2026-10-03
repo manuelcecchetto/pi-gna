@@ -31,6 +31,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
+    updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
 resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
@@ -70,8 +71,28 @@ itself always runs the checkout, so test instances test the code you are changin
   `resources/pigna-prompt.md`, and the `src/shared/browser.ts` and `src/shared/board.ts` they import), which are
   also unpacked to `app.asar.unpacked/` (session-host points pi there).
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
-  runtime, no notarization) and macOS asks once before opening a downloaded build (README). Without notarization
-  there is no Squirrel auto-update either.
+  runtime, no notarization) and macOS asks once before opening a downloaded build (README). Squirrel.Mac
+  (Electron's `autoUpdater`, electron-updater) cannot update such builds, so pi-gna has its own updater.
+- **Updates** (`src/main/updater.ts`). Squirrel checks an update against the running app's designated
+  requirement, which for an ad-hoc signature is that one build's cdhash, so every update would fail validation.
+  Instead, packaged builds ask `api.github.com/repos/<repo>/releases/latest` 15 s after launch and every 6 hours
+  (no token: 60 requests an hour per IP); pi-gna > Check for Updates… asks now, in a checkout too. A newer
+  `vX.Y.Z` puts a row at the foot of the sidebar; its dialog shows the release notes. Update downloads
+  `<name>-<arch>.dmg` (arm64 for an Intel build under Rosetta) with `net.fetch` into `<profile>/update/` and
+  checks its size and GitHub's `sha256:` asset digest (no digest, no in-app install), attaches it, copies the app
+  out with `ditto --noqtn` (no quarantine flag, so Gatekeeper does not stop the restart) and checks its bundle id,
+  version and `codesign --verify --deep --strict`. On `will-quit` a detached `/bin/sh` (`SWAP_SCRIPT`) waits for
+  the pid, moves the old app aside, moves the new one in (two renames on the Data volume; the old one goes back
+  if the second fails) and appends a line to main.log. A failure lands in `<profile>/update-failed.txt`, which
+  the next launch reports in the dialog. Restart now is the `relaunch` IPC: with an update staged, the script
+  starts the new executable directly with pi-gna's environment, as `app.relaunch()` would (so a test instance
+  keeps its `PIGNA_USER_DATA`). A checkout, a translocated copy (opened where it was downloaded) or an unwritable
+  folder gets a link to the release page instead. Trust: the download is as trustworthy as the GitHub account
+  and TLS; the digest catches broken downloads, not a tampered release (a Developer ID would). macOS App
+  Management only guards notarized apps, so the swap needs no permission. End to end: package this tree as an
+  older version (`electron-builder --mac --dir --arm64 -c.extraMetadata.version=0.0.1
+  -c.directories.output=/tmp/<dir>/build`), copy the app to `/tmp/<dir>/Applications`, and run its executable
+  as a test instance; it updates itself to the latest release and restarts as it.
 - **Fuses** (`electronFuses`): no `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` or `--inspect`; asar-only loading with
   integrity validation; encrypted cookies; no extra `file://` privileges. Check with
   `pnpm dlx @electron/fuses read --app "dist/mac-arm64/<name>.app"`. Cookie encryption keeps a key in the

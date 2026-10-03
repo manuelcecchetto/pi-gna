@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { Board } from "../shared/board";
 import type { Annotation, BrowserState } from "../shared/browser";
-import { type HostEventBatch, IPC, type Page, type StudioApi } from "../shared/ipc";
+import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const handler = (_event: unknown, value: T) => listener(value);
@@ -57,6 +57,12 @@ const api: StudioApi = {
     apply: (op) => ipcRenderer.invoke(IPC.boardApply, op),
     onChange: (listener) => subscribe<Board>(IPC.boardChanged, listener),
     saveImage: (card, image) => ipcRenderer.invoke(IPC.boardSaveImage, card, image),
+  },
+  update: {
+    state: () => ipcRenderer.invoke(IPC.updateGet),
+    onState: (listener) => subscribe<UpdateState>(IPC.updateState, listener),
+    download: () => ipcRenderer.invoke(IPC.updateDownload),
+    onReveal: (listener) => subscribe<void>(IPC.updateReveal, listener),
   },
 };
 

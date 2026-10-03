@@ -50,6 +50,10 @@ export const IPC = {
   boardChanged: "board:changed",
   boardSaveImage: "board:save-image",
   cardWorktree: "studio:card-worktree",
+  updateGet: "update:get",
+  updateState: "update:state",
+  updateDownload: "update:download",
+  updateReveal: "update:reveal",
 } as const;
 
 /** Full-window pages shown instead of a chat. */
@@ -74,6 +78,39 @@ export interface CardWorktree {
   created: boolean;
   /** The checkout has uncommitted changes, which the worktree does not have. */
   dirty: boolean;
+}
+
+/** A pi-gna release newer than the running one (GitHub's latest release). */
+export interface UpdateRelease {
+  version: string;
+  /** Markdown: the version's CHANGELOG.md section, then GitHub's generated notes. */
+  notes: string;
+  /** The release page, which also has the dmgs. */
+  url: string;
+  publishedAt: string;
+}
+
+/**
+ * pi-gna checks GitHub for a newer release (packaged builds, at launch and every few hours) and installs it
+ * itself: download, verify, stage, then swap when it quits (docs/DESIGN.md, Updates).
+ */
+export type UpdateState =
+  | { phase: "idle" }
+  /** `manual`: why pi-gna cannot install it itself (say a read-only location); the release page can. */
+  | { phase: "available"; release: UpdateRelease; manual?: string }
+  /** `progress` 0..1; 1 while the downloaded app is unpacked and checked. */
+  | { phase: "downloading"; release: UpdateRelease; progress: number }
+  /** Staged: installs when pi-gna quits, or now with `relaunch()`. */
+  | { phase: "ready"; release: UpdateRelease }
+  | { phase: "failed"; release: UpdateRelease; error: string };
+
+export interface UpdateApi {
+  state(): Promise<UpdateState>;
+  onState(listener: (state: UpdateState) => void): () => void;
+  /** Download, verify and stage the available release. */
+  download(): Promise<void>;
+  /** pi-gna > Check for Updates… found one: show it. */
+  onReveal(listener: () => void): () => void;
 }
 
 export interface BrowserApi {
@@ -153,7 +190,7 @@ export interface StudioApi {
   stale: boolean;
   /** The running pi-gna's version (package.json, `app.getVersion()`), as in the About panel. */
   version: string;
-  /** Quit and start pi-gna again from the build on disk; running chats stop. */
+  /** Quit and start pi-gna again from the build on disk, or as the staged update; running chats stop. */
   relaunch(): Promise<void>;
   listSessions(): Promise<ProjectGroup[]>;
   openSession(request: OpenSessionRequest): Promise<OpenSessionResult>;
@@ -190,4 +227,5 @@ export interface StudioApi {
   onEvents(listener: (batch: HostEventBatch) => void): () => void;
   browser: BrowserApi;
   board: BoardApi;
+  update: UpdateApi;
 }

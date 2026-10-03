@@ -49,6 +49,14 @@ Run these on the user's Mac and report what happened. Stop and tell the user if 
    terminal as its log. If `@` file mentions should work, `rg` ([ripgrep](https://github.com/BurntSushi/ripgrep))
    must be installed.
 
+## Updating
+
+pi-gna checks GitHub for a new release when it starts and every few hours (pi-gna > Check for Updates… checks
+now). A row at the foot of the sidebar announces it; open it for the release notes and click **Update**: pi-gna
+downloads and verifies the new version and installs it when you quit, or right away with **Restart now**. A copy
+that cannot replace itself, say one opened straight from Downloads, links to the download instead. `pi update`
+updates the `--pigna` flag.
+
 ## What you get
 
 - **The transcript, readable.** Markdown with highlighted code, tool calls grouped per run (Ctrl+O expands

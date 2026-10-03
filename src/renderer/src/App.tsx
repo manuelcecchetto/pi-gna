@@ -5,6 +5,7 @@ import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { HeroBackdrop } from "./components/Transcript";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
+import { UpdateDialog } from "./components/Update";
 import { boot, dismissToast, newChat, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
@@ -89,6 +90,7 @@ export function App() {
       </main>
       <CollapsedSidebarControls />
       <Lightbox />
+      <UpdateDialog />
     </div>
   );
 }

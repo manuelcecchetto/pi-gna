@@ -41,8 +41,9 @@ mac:
   identity: "-"
   hardenedRuntime: false
 dmg:
-  # Version-free names keep releases/latest/download/pi-gna-<arch>.dmg stable (the README's agent install).
+  # Version-free names keep releases/latest/download/pi-gna-<arch>.dmg stable (the README's agent install), and
+  # are the asset names the updater looks for (src/main/updater.ts).
   artifactName: ${name}-${arch}.${ext}
   format: ULFO
-  # No auto-updater, so no .blockmap files.
+  # pi-gna's updater downloads the whole dmg, so no .blockmap files.
   writeUpdateInfo: false

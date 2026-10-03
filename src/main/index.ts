@@ -23,6 +23,7 @@ import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
 import { loadShellEnv } from "./shell-env";
+import { Updater } from "./updater";
 
 // The app's name (menus, About, profile and log folders) is package.json's productName.
 // Test instances (scripts/cdp.mjs) get their own profile and logs so they never share a browser profile or history
@@ -62,6 +63,7 @@ function adoptProfile(oldName: string, oldPartition: string): void {
 let window: BrowserWindow | undefined;
 let browser: BrowserManager | undefined;
 let agent: BrowserAgent | undefined;
+let updater: Updater | undefined;
 const bridge = new AgentBridge();
 const send = (channel: string, ...args: unknown[]) => {
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
@@ -213,16 +215,42 @@ function registerIpc(shellEnv: Promise<void>): void {
     if (!card) throw new Error(`no card ${String(id)}`);
     return cardWorktree(card.cwd, card);
   });
-  handle(IPC.relaunch, () => {
-    app.relaunch();
-    app.quit();
-  });
+  handle(IPC.relaunch, () => updater?.restart());
+  handle(IPC.updateGet, () => updater?.get() ?? { phase: "idle" });
+  handle(IPC.updateDownload, () => updater?.download());
+}
+
+/** pi-gna > Check for Updates…: show what GitHub has, also in a checkout (which updates with git, though). */
+async function checkForUpdates(): Promise<void> {
+  const box = (options: Electron.MessageBoxOptions) => (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options));
+  try {
+    const state = await updater?.check();
+    if (state && state.phase !== "idle") send(IPC.updateReveal);
+    else await box({ message: `${app.getName()} is up to date`, detail: `${app.getVersion()} is the newest version.` });
+  } catch (error) {
+    await box({ type: "warning", message: "Could not check for updates", detail: (error as Error).message });
+  }
 }
 
 function buildMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { role: "appMenu" },
+      {
+        // Not role "appMenu", whose own submenu would replace this one.
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          { label: "Check for Updates…", click: () => void checkForUpdates() },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit" },
+        ],
+      },
       { role: "editMenu" },
       {
         label: "View",
@@ -260,6 +288,10 @@ function init(): void {
   // Set before ready so Electron never builds its default menu (performance checklist).
   buildMenu();
   const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv() : Promise.resolve();
+
+  updater = new Updater(logFile, (state) => send(IPC.updateState, state));
+  // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
+  app.on("will-quit", () => updater?.installOnQuit());
 
   let quitting = false;
   app.on("before-quit", (event) => {
@@ -299,6 +331,7 @@ function init(): void {
     registerIpc(shellEnv);
     await bridge.start();
     createWindow();
+    updater?.start();
   });
 }
 

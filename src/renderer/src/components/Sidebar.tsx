@@ -23,6 +23,7 @@ import {
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
+import { UpdateRow } from "./Update";
 
 const SESSIONS_PER_PROJECT = 6;
 
@@ -132,6 +133,7 @@ export function Sidebar() {
             />
           ))}
         </nav>
+        <UpdateRow />
       </div>
 
       {!layout.collapsed && (

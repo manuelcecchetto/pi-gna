@@ -2,7 +2,7 @@
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
-import type { HostEventBatch, Page, ProjectGroup, SessionSummary } from "../../../shared/ipc";
+import type { HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
   ImageContent,
@@ -70,6 +70,10 @@ export interface AppState {
   page?: PageState;
   /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
   overlay: boolean;
+  /** A newer pi-gna release and how far installing it got (main's Updater). */
+  update: UpdateState;
+  /** The update dialog is open. */
+  updateOpen: boolean;
 }
 
 /** A page of one project: its Kanban board, maybe with a card open. */
@@ -99,6 +103,8 @@ export const store = createStore<AppState>({
   sidebar: loadSidebar(),
   board: emptyBoard(),
   overlay: false,
+  update: { phase: "idle" },
+  updateOpen: false,
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -607,6 +613,10 @@ export function togglePage(page: Page): void {
   else showPage(page, current?.cwd); // from the other page: the same project
 }
 
+export function showUpdate(open: boolean): void {
+  store.set((s) => (s.updateOpen === open ? s : { ...s, updateOpen: open }));
+}
+
 export function setOverlay(overlay: boolean): void {
   store.set((s) => (s.overlay === overlay ? s : { ...s, overlay }));
 }
@@ -769,6 +779,10 @@ export function boot(): void {
   browser.onToggle(toggleBrowser);
   browser.onAnnotation((annotation) => store.set((s) => ({ ...s, annotations: [...s.annotations, annotation] })));
   void browser.state().then((state) => state && store.set((s) => ({ ...s, browser: state })));
+  const update = studio().update;
+  update.onState((state) => store.set((s) => ({ ...s, update: state })));
+  update.onReveal(() => showUpdate(true));
+  void update.state().then((state) => store.set((s) => ({ ...s, update: state })));
   void studio()
     .compactionSettings()
     .then((compaction) => store.set((s) => ({ ...s, compaction })));

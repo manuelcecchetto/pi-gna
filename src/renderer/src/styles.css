@@ -628,7 +628,7 @@ code.hl span {
   }
 }
 
-/* Kanban: the board settles in, a card's dialog rises over a dimmed page. */
+/* Kanban: the board settles in, a card's dialog (and the update dialog) rises over a dimmed page. */
 .page-enter {
   animation: page-in 180ms ease-out;
 }
