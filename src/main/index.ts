@@ -9,6 +9,7 @@ import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { BrowserAgent } from "./browser/agent";
 import { AgentBridge } from "./browser/bridge";
 import { BrowserManager, PARTITION } from "./browser/manager";
+import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { listFiles } from "./files";
@@ -116,6 +117,13 @@ function createWindow(): void {
     annotation: (annotation) => send(IPC.browserAnnotation, annotation),
   });
   agent = new BrowserAgent(browser);
+  attachContextMenu(window.webContents, {
+    page: false,
+    openTab: (url) => {
+      browser?.createTab(url);
+      send(IPC.browserReveal);
+    },
+  });
 
   void window.loadURL(devUrl ?? `${APP_ORIGIN}/index.html`);
 }

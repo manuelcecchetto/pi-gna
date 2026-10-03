@@ -7,9 +7,14 @@
 //   node scripts/cdp.mjs type "hello" [--enter]         # type into the focused element
 //   node scripts/cdp.mjs key Escape|Enter|ctrl+o        # press a key
 //   node scripts/cdp.mjs click 120 340                  # real mouse click at CSS px
+//   node scripts/cdp.mjs rightclick 120 340             # real right click (context menus)
 //   node scripts/cdp.mjs drop 600 400 /path/a /path/dir  # drop files from the OS at CSS px
 //   node scripts/cdp.mjs drag 268 400 360 400 [x y ...] # real mouse drag through waypoints (resize handles)
 //   CDP_URL=localhost:8765 node scripts/cdp.mjs shot    # target a browser tab instead of the app
+// The main process, through Node's inspector (start the app with --inspect=9334 too, CDP_MAIN=9334):
+//   node scripts/cdp.mjs main "require('electron').app.getName()"  # evaluate in main (`require` works)
+//   node scripts/cdp.mjs menus                          # record native menus instead of showing them; list them
+//   node scripts/cdp.mjs menu "Copy Image"              # click an item of the last recorded menu
 //   CDP_SCHEME=light node scripts/cdp.mjs shot          # render with prefers-color-scheme light (or dark)
 // Uses Node's built-in WebSocket; no dependencies.
 import { writeFileSync } from "node:fs";
@@ -18,11 +23,14 @@ const port = process.env.CDP_PORT || "9333";
 const [command, ...args] = process.argv.slice(2);
 
 // CDP_URL picks a target by URL substring (browser tabs are separate targets); default: the app window.
-const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+const inMain = ["main", "menus", "menu"].includes(command);
+const targets = await (await fetch(`http://127.0.0.1:${inMain ? process.env.CDP_MAIN || "9334" : port}/json/list`)).json();
 const match = process.env.CDP_URL;
-const page = targets.find((t) =>
-  t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /^app:\/\/pigna\/|localhost:5173\/?$/.test(t.url)),
-);
+const page = inMain
+  ? targets[0]
+  : targets.find((t) =>
+      t.type === "page" && !t.url.startsWith("devtools://") && (match ? t.url.includes(match) : /^app:\/\/pigna\/|localhost:5173\/?$/.test(t.url)),
+    );
 if (!page) throw new Error("no page target");
 
 const ws = new WebSocket(page.webSocketDebuggerUrl);
@@ -47,10 +55,10 @@ const send = (method, params = {}) =>
   });
 
 // CDP_FOCUS=1: the page behaves as focused (background test windows never are), so :focus styles render.
-if (process.env.CDP_FOCUS === "1") await send("Emulation.setFocusEmulationEnabled", { enabled: true });
+if (process.env.CDP_FOCUS === "1" && !inMain) await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 // CDP_SCHEME=light|dark: emulate the system theme. Emulation ends when this script detaches, so it only
 // holds for the command it is set with.
-if (process.env.CDP_SCHEME) {
+if (process.env.CDP_SCHEME && !inMain) {
   await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: process.env.CDP_SCHEME }] });
   await new Promise((resolve) => setTimeout(resolve, 300));
 }
@@ -62,6 +70,21 @@ const KEYS = {
   ArrowDown: { key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 },
   ArrowUp: { key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38 },
 };
+
+/** Evaluate in the target; in main, with the console's `require`. */
+async function evaluate(expression) {
+  const { result, exceptionDetails } = await send("Runtime.evaluate", { expression, includeCommandLineAPI: inMain, awaitPromise: true, returnByValue: true });
+  console.log(exceptionDetails ? exceptionDetails.exception?.description : JSON.stringify(result.value, null, 2));
+}
+
+// Native menus pop up on screen and CDP cannot reach them: Menu.popup records them instead, from the first `menus`.
+const RECORD_MENUS = `(() => {
+  if (!globalThis.__menus) {
+    globalThis.__menus = [];
+    require("electron").Menu.prototype.popup = function () { globalThis.__menus.push(this); };
+  }
+  return globalThis.__menus;
+})()`;
 
 async function press(spec) {
   const parts = spec.split("+");
@@ -82,11 +105,21 @@ switch (command) {
     console.log(args[0] ?? "/tmp/pigna.png");
     break;
   }
-  case "eval": {
-    const { result, exceptionDetails } = await send("Runtime.evaluate", { expression: args.join(" "), awaitPromise: true, returnByValue: true });
-    console.log(exceptionDetails ? exceptionDetails.exception?.description : JSON.stringify(result.value, null, 2));
+  case "eval":
+  case "main":
+    await evaluate(args.join(" "));
     break;
-  }
+  case "menus":
+    await evaluate(`${RECORD_MENUS}.map((menu) => menu.items.map((item) => item.type === "separator" ? "—" : item.enabled ? item.label : \`\${item.label} (disabled)\`).join(" | "))`);
+    break;
+  case "menu":
+    await evaluate(`(() => {
+      const item = ${RECORD_MENUS}.at(-1)?.items.find((other) => other.label === ${JSON.stringify(args.join(" "))});
+      if (!item) return "no such item in the last recorded menu";
+      item.click();
+      return \`clicked \${item.label}\`;
+    })()`);
+    break;
   case "type": {
     const enter = args.includes("--enter");
     await send("Input.insertText", { text: args.filter((a) => a !== "--enter").join(" ") });
@@ -96,10 +129,12 @@ switch (command) {
   case "key":
     await press(args[0]);
     break;
-  case "click": {
+  case "click":
+  case "rightclick": {
     const [x, y] = args.map(Number);
+    const button = command === "click" ? "left" : "right";
     for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
-      await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+      await send("Input.dispatchMouseEvent", { type, x, y, button, clickCount: 1 });
     }
     break;
   }

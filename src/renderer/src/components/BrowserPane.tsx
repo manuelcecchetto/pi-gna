@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Bot,
   Code2,
+  Copy,
   Globe,
   Maximize2,
   MessageSquarePlus,
@@ -18,6 +19,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { setPane, useApp } from "../state/app";
+import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { COLLAPSED_INSET } from "./Sidebar";
 
 const browser = () => window.studio.browser;
@@ -26,13 +28,15 @@ export function BrowserPane() {
   const state = useApp((s) => s.browser);
   const pane = useApp((s) => s.pane);
   const lightbox = useApp((s) => s.lightbox);
+  const overlay = useApp((s) => s.overlay);
   const sidebar = useApp((s) => s.sidebar);
   const sessions = useApp((s) => s.sessions);
   const active = state.tabs.find((tab) => tab.id === state.activeId);
   const [suggesting, setSuggesting] = useState(false);
+  const { open: openMenu, menu } = useContextMenu();
   const viewport = useRef<HTMLDivElement>(null);
   // Native views draw above the DOM, so hide the page while a DOM overlay must cover it.
-  const visible = pane.open && Boolean(active) && !lightbox && !suggesting;
+  const visible = pane.open && Boolean(active) && !lightbox && !suggesting && !overlay;
 
   useLayoutEffect(() => {
     const element = viewport.current;
@@ -62,7 +66,13 @@ export function BrowserPane() {
       >
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {state.tabs.map((tab) => (
-            <TabPill key={tab.id} tab={tab} active={tab.id === state.activeId} agentRunning={Boolean(tab.agent && sessions[tab.agent]?.running)} />
+            <TabPill
+              key={tab.id}
+              tab={tab}
+              active={tab.id === state.activeId}
+              agentRunning={Boolean(tab.agent && sessions[tab.agent]?.running)}
+              onContextMenu={(event) => openMenu(event, tabMenu(tab, state.tabs))}
+            />
           ))}
           <IconButton title="New tab" onClick={() => browser().newTab()}>
             <Plus size={14} />
@@ -113,14 +123,46 @@ export function BrowserPane() {
           Click an element in the page to comment on it. Comments are attached to your next prompt. Esc stops.
         </div>
       )}
+      {menu}
     </div>
   );
 }
 
-function TabPill({ tab, active, agentRunning }: { tab: BrowserTab; active: boolean; agentRunning: boolean }) {
+function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
+  return [
+    [
+      { label: "Reload", icon: <RotateCw size={13} />, onSelect: () => browser().command(tab.id, "reload") },
+      ...(tab.url && tab.url !== "about:blank"
+        ? [{ label: "Copy address", icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(tab.url) }]
+        : []),
+      ...(/^https?:/i.test(tab.url)
+        ? [{ label: "Open in default browser", icon: <SquareArrowOutUpRight size={13} />, onSelect: () => window.studio.openExternal(tab.url) }]
+        : []),
+    ],
+    [
+      { label: "Close tab", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) },
+      ...(tabs.length > 1
+        ? [{ label: "Close other tabs", onSelect: () => tabs.forEach((other) => other.id !== tab.id && browser().closeTab(other.id)) }]
+        : []),
+    ],
+  ];
+}
+
+function TabPill({
+  tab,
+  active,
+  agentRunning,
+  onContextMenu,
+}: {
+  tab: BrowserTab;
+  active: boolean;
+  agentRunning: boolean;
+  onContextMenu: (event: React.MouseEvent) => void;
+}) {
   const label = tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab";
   return (
     <div
+      onContextMenu={onContextMenu}
       className={`group flex h-8 max-w-48 min-w-24 shrink-0 items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[12px] ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/50"}`}
     >
       <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.url}>

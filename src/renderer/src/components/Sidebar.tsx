@@ -1,10 +1,11 @@
-import { ChevronRight, Folder, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquarePen } from "lucide-react";
+import { ChevronRight, Copy, Folder, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquarePen, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, isDraft, strongestAttention } from "../lib/session";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";
-import { activate, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
+import { activate, closeSession, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
+import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
 
@@ -17,6 +18,7 @@ export function Sidebar() {
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
   const [dragging, setDragging] = useState(false);
+  const { open: openMenu, menu } = useContextMenu();
   const home = window.studio.homeDir;
   const activeCwd = active ? sessions[active]?.cwd : undefined;
 
@@ -90,7 +92,14 @@ export function Sidebar() {
         </div>
         <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
           {groups.map((group, index) => (
-            <ProjectSection key={group.cwd} group={group} home={home} active={active} defaultOpen={index < 4 || group.cwd === activeCwd} />
+            <ProjectSection
+              key={group.cwd}
+              group={group}
+              home={home}
+              active={active}
+              defaultOpen={index < 4 || group.cwd === activeCwd}
+              onMenu={openMenu}
+            />
           ))}
         </nav>
       </div>
@@ -103,6 +112,7 @@ export function Sidebar() {
           className={`absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize transition-colors hover:bg-accent/40 ${dragging ? "bg-accent/50" : ""}`}
         />
       )}
+      {menu}
     </aside>
   );
 }
@@ -136,11 +146,13 @@ function ProjectSection({
   home,
   active,
   defaultOpen,
+  onMenu,
 }: {
   group: ProjectView;
   home: string;
   active?: string;
   defaultOpen: boolean;
+  onMenu: OpenMenu;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [showAll, setShowAll] = useState(false);
@@ -149,7 +161,7 @@ function ProjectSection({
   const rollup = open ? undefined : strongestAttention(group.rows.flatMap((row) => (row.live ? [row.live] : [])));
   return (
     <div className="mb-1">
-      <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50">
+      <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50" onContextMenu={(event) => onMenu(event, projectMenu(group))}>
         <button type="button" onClick={() => setOpen(!open)} title={tildify(group.cwd, home)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left">
           <ChevronRight size={12} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
           <Folder size={13} className="shrink-0 text-faint" />
@@ -185,7 +197,7 @@ function ProjectSection({
       {open && (
         <div className="ml-3 flex flex-col">
           {rows.map((row) => (
-            <SessionRow key={row.key} row={row} active={row.live?.handle === active && active !== undefined} />
+            <SessionRow key={row.key} row={row} active={row.live?.handle === active && active !== undefined} onMenu={onMenu} />
           ))}
           {group.rows.length > SESSIONS_PER_PROJECT && (
             <button type="button" onClick={() => setShowAll(!showAll)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
@@ -198,7 +210,29 @@ function ProjectSection({
   );
 }
 
-function SessionRow({ row, active }: { row: ProjectRow; active: boolean }) {
+type OpenMenu = (event: React.MouseEvent, sections: MenuItem[][]) => void;
+
+function projectMenu(group: ProjectView): MenuItem[][] {
+  return [
+    [{ label: "New chat here", icon: <SquarePen size={13} />, onSelect: () => newSession(group.cwd) }],
+    [
+      group.pinned
+        ? { label: "Unpin project", icon: <PinOff size={13} />, onSelect: () => togglePinnedProject(group.cwd) }
+        : { label: "Pin project", icon: <Pin size={13} />, onSelect: () => togglePinnedProject(group.cwd) },
+      { label: "Copy path", icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(group.cwd) },
+    ],
+  ];
+}
+
+function sessionMenu(row: ProjectRow, open: () => void, active: boolean): MenuItem[][] {
+  const live = row.live;
+  return [
+    active ? [] : [{ label: "Open", icon: <MessagesSquare size={13} />, onSelect: open }],
+    live ? [{ label: "Close chat", icon: <X size={13} />, hint: "Stops its pi process", onSelect: () => void closeSession(live.handle) }] : [],
+  ];
+}
+
+function SessionRow({ row, active, onMenu }: { row: ProjectRow; active: boolean; onMenu: OpenMenu }) {
   const live = row.live;
   const title = live ? sessionTitle(live) : (row.summary?.title ?? "New session");
   const level = live ? attention(live) : undefined;
@@ -211,6 +245,7 @@ function SessionRow({ row, active }: { row: ProjectRow; active: boolean }) {
     <button
       type="button"
       onClick={onClick}
+      onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active))}
       className={`group flex items-center gap-2 rounded-lg px-2.5 py-[5px] text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
     >
       <span className="grid w-3 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>

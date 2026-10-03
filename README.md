@@ -62,6 +62,8 @@ Run these on the user's Mac and report what happened. Stop and tell the user if 
   your dev server, clicks, types, reads the page and takes screenshots while you watch. Local URLs open without
   asking; other sites ask once per session. Comment on elements to hand pi notes with a crop of each.
 - **Attachments.** Drop, paste or pick files and folders (sent by path) and images (sent to the model).
+- **Right-click anything.** Copy or save images (screenshots pi took, attachments, pages in the browser), copy and
+  open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
 - **Context at a glance.** A meter shows context use, auto-compaction and cache hits; compaction shows its
   progress.
 

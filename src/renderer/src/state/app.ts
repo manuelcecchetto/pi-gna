@@ -60,6 +60,8 @@ export interface AppState {
   compaction: CompactionSettings;
   /** Full-size image overlay (data URL). Hides the native browser view while open. */
   lightbox?: string;
+  /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
+  overlay: boolean;
 }
 
 export const store = createStore<AppState>({
@@ -79,6 +81,7 @@ export const store = createStore<AppState>({
   attachments: {},
   compaction: {},
   sidebar: loadSidebar(),
+  overlay: false,
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -481,6 +484,10 @@ export function prefill(handle: string, text: string): void {
 
 export function setExpanded(key: string, open: boolean): void {
   store.set((state) => ({ ...state, expanded: { ...state.expanded, [key]: open } }));
+}
+
+export function setOverlay(overlay: boolean): void {
+  store.set((s) => (s.overlay === overlay ? s : { ...s, overlay }));
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────

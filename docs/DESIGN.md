@@ -88,7 +88,7 @@ itself always runs the checkout, so test instances test the code you are changin
   storage from the app; no camera, mic, location or notifications). The renderer draws the tab strip and toolbar
   and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views
   paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
-  image lightbox). History lives in `userData/browser-history.json`.
+  image lightbox, menus). History lives in `userData/browser-history.json`.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
   `browser_screenshot`, `browser_evaluate`, `browser_console`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
@@ -143,6 +143,15 @@ Verified live (pi 1.0.0, Oct 2026):
 
 ## UI model
 
+- **Right-click works everywhere.** Text, links, images and fields get a native menu from main
+  (`src/main/context-menu.ts`, on the app window and every browser tab): Copy Image, Save Image As… and the image
+  address; open or copy links (the app window opens them in your browser or the browser pane, pages in a new tab);
+  Copy, Look Up and Search Google for a selection; Undo to Select All and spelling guesses in fields; Back, Forward,
+  Reload and Inspect Element on pages. A spot with none of these shows nothing. The window's own objects
+  (sidebar projects and chats, browser tabs) open the DOM `ContextMenu` (`useContextMenu`) with their actions
+  instead; it cancels the DOM event, and Chromium then never asks main for a native menu. Chromium copies an SVG
+  image as an `<img>` tag only, with no pixels (Chrome does too), so Copy Image draws an SVG into a PNG in an
+  isolated world; a cross-origin SVG taints that canvas and keeps Chromium's copy.
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
@@ -291,16 +300,23 @@ scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollT
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
 `PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
-`click x y` sends real mouse input (useful for driving the annotation picker), `drag x1 y1 x2 y2` drags (resize
+`click x y` sends real mouse input (useful for driving the annotation picker), `rightclick x y` right-clicks, `drag x1 y1 x2 y2` drags (resize
 handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
 styles render in a background test window; `CDP_SCHEME=light|dark` renders the other theme for that command. CDP screenshots of the app window
 do not include native tab views.
+Native menus open on the real screen, where CDP cannot reach them: start the test instance with `--inspect=9334`
+as well, and `node scripts/cdp.mjs menus` makes its `Menu.popup` record menus instead of showing them (and lists
+what it recorded), `menu "Copy Image"` clicks an item of the last one, and `main "<expr>"` evaluates in the main
+process with `require` (for example to read the clipboard). Save the user's clipboard before an item writes to
+it and restore it afterwards.
 
 Electron drag regions: `-webkit-app-region` rects are applied in document order, so a `no-drag` element that
 overlaps a `drag` header must come later in the DOM (or be its descendant), or real clicks start a window drag.
 CDP clicks bypass the OS drag layer, so tests cannot catch this; check DOM order instead.
 
 Build notes: Electron 44 has no postinstall; it downloads its binary on the first `require("electron")`.
+Electron 44's `clipboard` is asynchronous and `ClipboardItem`-based (`read`, `write`, `readText`, `writeText`;
+no `readImage`/`writeImage`).
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.
 
 ## Milestones

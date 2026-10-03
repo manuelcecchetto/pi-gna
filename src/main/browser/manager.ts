@@ -12,6 +12,7 @@ import {
   type HistoryEntry,
   normalizeAddress,
 } from "../../shared/browser";
+import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 
@@ -147,6 +148,7 @@ export class BrowserManager {
     wc.on("will-navigate", (event, url) => {
       if (!/^(https?|file|about|data|blob):/i.test(url)) event.preventDefault();
     });
+    attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url) });
   }
 
   private pushConsole(tab: Tab, level: string, message: string, source: string): void {
