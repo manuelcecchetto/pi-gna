@@ -45,10 +45,15 @@ resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi 
 and, because flag values are not available to factories yet, checks `process.argv` in its (async) factory: pi
 loads extensions before starting the TUI, so the factory can run pi-gna in the foreground with the terminal
 attached and `process.exit` with its code. It runs the installed app (`/Applications/<productName>.app`, or
-`~/Applications`) so the menu bar and Dock show the real name, else this checkout's build through
-`bin/pi-gna.mjs` (Electron from node_modules, which macOS labels "Electron"); `PIGNA_DEV=1` forces the
+`~/Applications`) when there is one, else this checkout's build through `bin/pi-gna.mjs`; `PIGNA_DEV=1` forces the
 checkout. Every other pi process (including pi-gna's RPC children) only registers the flag. `bin/pi-gna.mjs`
 itself always runs the checkout, so test instances test the code you are changing.
+
+macOS labels a running app from its bundle's Info.plist, so Electron from node_modules shows as "Electron" in the
+Dock, ⌘Tab and the app menu. `bin/pi-gna.mjs` runs an APFS clone of Electron.app instead,
+`node_modules/.pigna/<productName>.app`, with that name, `<appId>.dev` and the icon: it takes no space, and the
+executable keeps its name (so `app.isPackaged` stays false) and its ad-hoc linker signature, which covers neither
+Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly still say "Electron".
 
 ## Packaging and release
 
