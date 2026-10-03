@@ -52,6 +52,15 @@ itself always runs the checkout, so test instances test the code you are changin
 `pnpm dist` builds `dist/<name>-<arch>.dmg` (no version, so `releases/latest/download/` URLs stay stable) with electron-builder (`electron-builder.yml`); pushing a
 `v*` tag makes `.github/workflows/release.yml` build arm64 and x64 dmgs and attach them to a GitHub release.
 
+- **Versioning.** Semver, chosen by hand when you release (while 0.x: minor for features, patch for fixes).
+  `pnpm release patch|minor|major` (or an explicit `X.Y.Z`; `--dry-run` previews) bumps `package.json`, moves
+  `CHANGELOG.md`'s Unreleased lines under `## X.Y.Z - <date>`, commits both as `release vX.Y.Z` and adds the
+  annotated tag `vX.Y.Z` with those lines (`scripts/release.mjs`). It refuses a dirty tree, an empty Unreleased
+  and an existing tag, and pushes nothing: it prints the `git push --atomic` that publishes. So a user-visible
+  change adds its line under Unreleased in the same commit. release.yml checks the tag against `package.json`
+  and puts `release.mjs notes <tag>` (that version's section) above GitHub's generated notes; a test keeps a
+  section for the current version. The version is `app.getVersion()`: the log's first line, the About panel and
+  the sidebar header (`--pigna-version`, `StudioApi.version`).
 - **Name.** `productName` in `package.json` is the app's name everywhere (menus, About, Dock, bundle, profile
   folder `~/Library/Application Support/<productName>`, logs). Renaming the app moves the profile, so carry
   the old folder over when you rename.

@@ -29,7 +29,8 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder --mac --publish never",
-    "icon": "electron scripts/make-icon.mjs"
+    "icon": "electron scripts/make-icon.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",

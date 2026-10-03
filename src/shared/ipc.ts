@@ -151,6 +151,8 @@ export interface StudioApi {
    * reloaded. Calls into main can fail (say "No handler registered") until pi-gna restarts.
    */
   stale: boolean;
+  /** The running pi-gna's version (package.json, `app.getVersion()`), as in the About panel. */
+  version: string;
   /** Quit and start pi-gna again from the build on disk; running chats stop. */
   relaunch(): Promise<void>;
   listSessions(): Promise<ProjectGroup[]>;

@@ -15,6 +15,7 @@ const api: StudioApi = {
   homeDir: arg("studio-home"),
   launchCwd: arg("studio-launch-cwd"),
   stale: arg("pigna-build") !== __PIGNA_BUILD__,
+  version: arg("pigna-version"),
   relaunch: () => ipcRenderer.invoke(IPC.relaunch),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
   openSession: (request) => ipcRenderer.invoke(IPC.openSession, request),

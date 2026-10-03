@@ -88,7 +88,7 @@ function createWindow(): void {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
-      additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`, `--pigna-build=${__PIGNA_BUILD__}`],
+      additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`, `--pigna-build=${__PIGNA_BUILD__}`, `--pigna-version=${app.getVersion()}`],
     },
   });
   // PIGNA_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the

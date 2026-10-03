@@ -1,5 +1,6 @@
-# Push a tag matching package.json's version (`git tag v0.2.0 && git push origin v0.2.0`) to publish a release
-# with arm64 and x64 dmgs. Builds are ad-hoc signed and not notarized (see docs/DESIGN.md, Packaging and release).
+# `pnpm release <patch|minor|major>` commits the bump and tags it; pushing the tag publishes a release with arm64
+# and x64 dmgs and the version's CHANGELOG.md entries as its notes. Builds are ad-hoc signed and not notarized
+# (see docs/DESIGN.md, Packaging and release).
 name: Release
 
 on:
@@ -22,6 +23,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/release.mjs notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm dist
@@ -30,4 +33,4 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes

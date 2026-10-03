@@ -132,11 +132,13 @@ pnpm dev                            # electron-vite with renderer HMR
 pnpm test && pnpm typecheck
 pnpm dist                           # dist/pi-gna-<arch>.dmg
 pnpm icon                           # rasterize resources/icon.svg into the app icons
+pnpm release minor                  # bump, move CHANGELOG.md's Unreleased lines under it, commit, tag v0.2.0
 ```
 
 `pi install ~/path/to/pi-gna` adds `--pigna` from a checkout; it runs the installed app when there is one and the
-checkout otherwise (`PIGNA_DEV=1` forces the checkout). Pushing a `v*` tag builds both dmgs and publishes a
-GitHub release. [docs/DESIGN.md](docs/DESIGN.md) covers the architecture, packaging and pi RPC notes.
+checkout otherwise (`PIGNA_DEV=1` forces the checkout). Pushing the tag `pnpm release` makes builds both dmgs and
+publishes a GitHub release with that version's changelog. [docs/DESIGN.md](docs/DESIGN.md) covers the
+architecture, packaging and pi RPC notes.
 
 ## License
 

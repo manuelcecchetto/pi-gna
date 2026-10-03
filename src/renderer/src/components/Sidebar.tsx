@@ -79,7 +79,10 @@ export function Sidebar() {
       {/* Fixed inner width, so collapsing slides the sidebar away instead of reflowing it. */}
       <div className="flex h-full flex-col" style={{ width }}>
         <div className="drag flex h-[52px] shrink-0 items-center pr-2.5 pl-[86px]">
-          <PignaMark className="flex-1 text-[13px] font-semibold tracking-tight text-muted" />
+          <span className="flex flex-1 items-baseline gap-1.5">
+            <PignaMark className="text-[13px] font-semibold tracking-tight text-muted" />
+            <span className="font-mono text-[10.5px] text-faint">{window.studio.version}</span>
+          </span>
           <IconButton title="Hide sidebar (⌘⇧S)" onClick={toggleSidebar}>
             <PanelLeftClose size={15} />
           </IconButton>
