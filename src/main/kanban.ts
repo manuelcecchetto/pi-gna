@@ -15,6 +15,7 @@ import {
   type KanbanRequest,
   type KanbanResponse,
 } from "../shared/board";
+import { refLabel, refLine } from "../shared/github";
 import type { BoardStore } from "./board";
 import { bridgeError, type Route } from "./bridge";
 
@@ -92,7 +93,11 @@ function overview(board: Board, only: Column | undefined, cwd: string, own: Card
 }
 
 function summary(card: Card, own: Card | undefined): string {
-  const marks = [card.id === own?.id ? "this chat's card" : "", card.chats.length ? `${card.chats.length} chat${card.chats.length === 1 ? "" : "s"}` : ""];
+  const marks = [
+    card.id === own?.id ? "this chat's card" : "",
+    card.chats.length ? `${card.chats.length} chat${card.chats.length === 1 ? "" : "s"}` : "",
+    ...card.github.map(refLabel),
+  ];
   const tags = card.tags.map((tag) => ` #${tag}`).join("");
   const latest = card.reports.findLast((report) => report.text)?.text || card.notes;
   const note = latest ? `\n  ${clip(latest.replace(/\s+/g, " "), 160)}` : "";
@@ -106,6 +111,7 @@ function detail(card: Card, path: string): string {
     `Chats: ${card.chats.length}${card.chats.some((ref) => ref.path === path) ? " (including this one)" : ""}`,
   ];
   if (card.tags.length) lines.push(`Tags: ${card.tags.join(", ")}`);
+  if (card.github.length) lines.push("GitHub:", ...card.github.map((ref) => `- ${refLine(ref)}`));
   if (card.notes) lines.push("", "Notes:", card.notes);
   if (card.reports.length) {
     lines.push("", "Reports, oldest first:");

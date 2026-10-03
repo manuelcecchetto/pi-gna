@@ -3,7 +3,8 @@
 // start a chat on it.
 import { Ellipsis, MessagesSquare, Paperclip, Pencil, Plus, SquareKanban, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { type Card, COLUMN_LABELS, COLUMNS, type Column } from "../../../shared/board";
+import { type Card, COLUMN_LABELS, COLUMNS, type Column, githubKey } from "../../../shared/board";
+import { refLabel } from "../../../shared/github";
 import { boardColumns, boardProjects, cardAttention, cardSnippet, chatSummary, chatTitle, splitAttachments } from "../lib/board";
 import { baseName, relativeTime } from "../lib/format";
 import { applyBoard, openCard, openSession, type PageState, sessionTitle, showBoard, useApp } from "../state/app";
@@ -12,6 +13,7 @@ import { CardDialog } from "./CardDialog";
 import { ColumnIcon } from "./ColumnIcon";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { AddCard } from "./AddCard";
+import { RefIcon } from "./GitHub";
 import { useNow } from "./primitives";
 import { ProjectSwitch } from "./ProjectSwitch";
 import { COLLAPSED_INSET, Indicator } from "./Sidebar";
@@ -159,6 +161,9 @@ export function KanbanPage({ page }: { page: PageState }) {
   );
 }
 
+/** A card's GitHub links shown as badges; the rest are counted. */
+const GITHUB_BADGES = 3;
+
 function DropLine() {
   return <div className="mx-1 mb-1.5 h-0.5 rounded-full bg-accent" />;
 }
@@ -232,6 +237,23 @@ function CardView({
             {attached}
           </span>
         )}
+        {card.github.slice(0, GITHUB_BADGES).map((ref) => (
+          <button
+            key={githubKey(ref)}
+            type="button"
+            title={`${refLabel(ref)} of ${ref.repo}${ref.title ? `: ${ref.title}` : ""}. Open on GitHub`}
+            onClick={(event) => {
+              event.stopPropagation();
+              window.studio.openExternal(ref.url);
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+            className="flex items-center gap-0.5 rounded px-0.5 font-mono text-[10.5px] hover:bg-raised hover:text-fg"
+          >
+            <RefIcon kind={ref.kind} />
+            {ref.number}
+          </button>
+        ))}
+        {card.github.length > GITHUB_BADGES && <span title={`${card.github.length} GitHub links`}>+{card.github.length - GITHUB_BADGES}</span>}
         <span className="ml-auto font-mono text-[10.5px]" title="Last change">
           {relativeTime(card.updatedAt)}
         </span>

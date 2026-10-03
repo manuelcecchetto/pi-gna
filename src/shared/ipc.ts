@@ -2,6 +2,7 @@
 import type { Board, BoardOp } from "./board";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
+import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { LamentOp, Laments } from "./laments";
 import type {
   ExtensionUiRequest,
@@ -53,6 +54,10 @@ export const IPC = {
   lamentsApply: "laments:apply",
   lamentsChanged: "laments:changed",
   boardSaveImage: "board:save-image",
+  githubProject: "github:project",
+  githubChoose: "github:choose",
+  githubList: "github:list",
+  githubLookup: "github:lookup",
   cardWorktree: "studio:card-worktree",
   updateGet: "update:get",
   updateState: "update:state",
@@ -61,7 +66,7 @@ export const IPC = {
 } as const;
 
 /** Full-window pages shown instead of a chat. */
-export type Page = "kanban" | "laments";
+export type Page = "kanban" | "laments" | "github";
 
 /** The laments live in main, which agents file them with; every change is pushed back. */
 export interface LamentsApi {
@@ -79,6 +84,20 @@ export interface BoardApi {
   onChange(listener: (board: Board) => void): () => void;
   /** Save an image for a card that was just added (AddCard) and return its path; deleted with the card. */
   saveImage(card: string, image: { mimeType: string; data: string }): Promise<string>;
+}
+
+/**
+ * A project's GitHub issues and pull requests, read with gh in main as the account that can see the project's
+ * repository (src/main/github.ts). What is in the way (no gh, no remote, no account) comes back as a `problem`.
+ */
+export interface GithubApi {
+  /** The project's repository and the account used for it; `refresh` asks gh for its accounts again. */
+  project(cwd: string, refresh?: boolean): Promise<GithubProject>;
+  /** Use this account for the project from now on, or let pi-gna pick it again (null). */
+  choose(cwd: string, login: string | null): Promise<GithubProject>;
+  list(cwd: string, kind: GithubKind, filter: GithubFilter): Promise<GithubList>;
+  /** An issue or pull request of the project's repository, from "#12" or its link, as a card's link. */
+  lookup(cwd: string, input: string): Promise<GithubLookup>;
 }
 
 /** The git worktree a card's Resolve chat works in, on a branch of its own (src/main/worktree.ts). */
@@ -229,7 +248,7 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
-  /** View > Kanban (⌘⇧K), View > Laments (⌘⇧L): page toggles from the menu. */
+  /** View > Kanban (⌘⇧K), View > Laments (⌘⇧L), View > GitHub (⌘⇧G): page toggles from the menu. */
   onPageToggle(listener: (page: Page) => void): () => void;
   /** Another launch (say `pi --pigna` in a different project) asks for a new chat in `cwd`. */
   onOpenProject(listener: (cwd: string) => void): () => void;
@@ -240,5 +259,6 @@ export interface StudioApi {
   browser: BrowserApi;
   board: BoardApi;
   laments: LamentsApi;
+  github: GithubApi;
   update: UpdateApi;
 }

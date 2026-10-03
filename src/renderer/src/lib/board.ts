@@ -1,6 +1,7 @@
 // The Kanban page's view of the board: one project's columns, what a card's chats are doing, and what the chats
 // a card starts are told.
 import { type Board, COLUMN_LABELS, COLUMNS, type Card, type ChatRef, type Column, projectCards, projectOf } from "../../../shared/board";
+import { refLine } from "../../../shared/github";
 import type { CardWorktree, ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import type { Model, ThinkingLevel } from "../../../shared/protocol";
 import { type Attention, type SessionState, strongestAttention } from "./session";
@@ -130,6 +131,7 @@ const REPORT_CHARS = 600;
 export function cardBlock(card: Card): string {
   const lines = [`Card ${card.id}: ${card.title}`, `Column: ${COLUMN_LABELS[card.column]}`];
   if (card.tags.length) lines.push(`Tags: ${card.tags.join(", ")}`);
+  if (card.github.length) lines.push("GitHub:", ...card.github.map((ref) => `- ${refLine(ref)}`));
   if (card.notes.trim()) lines.push("", "Notes:", card.notes.trim());
   const reports = card.reports.slice(-RECENT_REPORTS);
   if (reports.length) {

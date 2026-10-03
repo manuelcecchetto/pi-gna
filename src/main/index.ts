@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent,
 import { bugs, description } from "../../package.json";
 import type { BoardOp } from "../shared/board";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
+import type { GithubFilter, GithubKind } from "../shared/github";
 import type { LamentOp } from "../shared/laments";
 import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
@@ -17,6 +18,7 @@ import { BoardStore } from "./board";
 import { CardImages } from "./card-images";
 import { AgentBridge } from "./bridge";
 import { listFiles } from "./files";
+import { Github, GithubStore } from "./github";
 import { kanbanRoute } from "./kanban";
 import { LamentStore, lamentRoute } from "./laments";
 import { readCompactionSettings } from "./pi-settings";
@@ -77,6 +79,8 @@ bridge.route("/browser", browserRoute(() => agent));
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => send(IPC.lamentsChanged, next));
 bridge.route("/kanban", kanbanRoute(board, (handle) => host.identify(handle)));
 bridge.route("/lament", lamentRoute(laments, (handle) => host.identify(handle)));
+const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
+const github = new Github(githubSettings);
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -221,6 +225,19 @@ function registerIpc(shellEnv: Promise<void>): void {
     if (!card) throw new Error(`no card ${String(id)}`);
     return cardWorktree(card.cwd, card);
   });
+  // gh runs with the login shell's PATH; a project is an absolute folder.
+  const project = (cwd: unknown) => {
+    if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");
+    return cwd;
+  };
+  handle(IPC.githubProject, async (cwd: string, refresh?: boolean) => (await shellEnv, github.project(project(cwd), refresh === true)));
+  handle(IPC.githubChoose, async (cwd: string, login: string | null) => (await shellEnv, github.choose(project(cwd), typeof login === "string" ? login : null)));
+  handle(IPC.githubList, async (cwd: string, kind: GithubKind, filter: GithubFilter) => {
+    if ((kind !== "issue" && kind !== "pr") || (filter !== "open" && filter !== "closed")) throw new Error(`cannot list ${String(filter)} ${String(kind)}s`);
+    await shellEnv;
+    return github.list(project(cwd), kind, filter);
+  });
+  handle(IPC.githubLookup, async (cwd: string, input: string) => (await shellEnv, github.lookup(project(cwd), String(input).slice(0, 500))));
   handle(IPC.relaunch, () => updater?.restart());
   handle(IPC.updateGet, () => updater?.get() ?? { phase: "idle" });
   handle(IPC.updateDownload, () => updater?.download());
@@ -265,6 +282,7 @@ function buildMenu(): void {
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
           { label: "Kanban", accelerator: "CmdOrCtrl+Shift+K", click: () => send(IPC.pageToggle, "kanban") },
           { label: "Laments", accelerator: "CmdOrCtrl+Shift+L", click: () => send(IPC.pageToggle, "laments") },
+          { label: "GitHub", accelerator: "CmdOrCtrl+Shift+G", click: () => send(IPC.pageToggle, "github") },
           { type: "separator" },
           { role: "reload" },
           { role: "toggleDevTools" },
@@ -307,7 +325,7 @@ function init(): void {
     event.preventDefault();
     quitting = true;
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed()]).finally(() => app.quit());
+    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), githubSettings.flushed()]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());

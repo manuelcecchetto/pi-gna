@@ -1,15 +1,17 @@
 // A card's details in a native <dialog>: its title, tags and notes, its column, the chats it can start and the
 // chats on it, and what they reported. New cards are added on the board (AddCard), with their screenshots.
-import { MessagesSquare, Trash2, Unlink, X } from "lucide-react";
+import { Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Card, COLUMN_LABELS, COLUMNS, LIMITS } from "../../../shared/board";
+import { type Card, COLUMN_LABELS, COLUMNS, githubKey, LIMITS } from "../../../shared/board";
+import { refLabel } from "../../../shared/github";
 import type { PickedPath } from "../../../shared/ipc";
 import { chatSummary, chatTitle, splitAttachments } from "../lib/board";
 import { formatStamp, relativeTime } from "../lib/format";
 import { attention } from "../lib/session";
-import { applyBoard, openSession, sessionTitle, setOverlay, useApp } from "../state/app";
+import { applyBoard, openSession, remoteError, sessionTitle, setOverlay, useApp } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { ColumnIcon } from "./ColumnIcon";
+import { RefIcon } from "./GitHub";
 import { Indicator } from "./Sidebar";
 
 export function CardDialog({ card, onClose }: { card: Card; onClose: () => void }) {
@@ -127,6 +129,8 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
             ))}
           </div>
 
+          <GithubLinks card={card} />
+
           {card.chats.length > 0 && (
             <section className="mt-5">
               <h3 className="mb-1.5 text-[12px] font-medium text-faint">Chats</h3>
@@ -232,6 +236,78 @@ function Screenshots({ notes, onZoom }: { notes: string; onZoom: (src: string) =
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The issues and pull requests the card is about: open one on GitHub, unlink it, or link another of the project's
+ * repository by its number or link (main looks it up with gh, for its kind and title).
+ */
+function GithubLinks({ card }: { card: Card }) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const link = async () => {
+    const input = draft.trim();
+    if (!input || busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const found = await window.studio.github.lookup(card.cwd, input);
+      if (found.problem) setError(found.problem.message);
+      else if (await applyBoard({ type: "link", id: card.id, github: found.ref })) setDraft("");
+    } catch (failure) {
+      setError(remoteError(failure));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="mt-5">
+      <h3 className="mb-1.5 text-[12px] font-medium text-faint">GitHub</h3>
+      {card.github.map((ref) => (
+        <div key={githubKey(ref)} className="group flex items-center rounded-lg hover:bg-raised/60">
+          <button type="button" title={`Open ${ref.url}`} onClick={() => window.studio.openExternal(ref.url)} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left">
+            <span className="grid w-3 shrink-0 place-items-center text-faint">
+              <RefIcon kind={ref.kind} size={12} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-fg/90">{ref.title || refLabel(ref)}</span>
+            <span className="font-mono text-[10.5px] text-faint">
+              {ref.repo}#{ref.number}
+            </span>
+          </button>
+          <button
+            type="button"
+            title={`Unlink ${refLabel(ref)}`}
+            onClick={() => void applyBoard({ type: "unlink", id: card.id, github: ref })}
+            className="mr-1 rounded-md p-1 text-faint opacity-0 hover:bg-raised hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <Unlink size={12} />
+          </button>
+        </div>
+      ))}
+      {card.github.length < LIMITS.github && (
+        <div className="flex items-center gap-2 px-2 py-1">
+          <span className="grid w-3 shrink-0 place-items-center text-faint">{busy ? <LoaderCircle size={12} className="animate-spin" /> : <Link2 size={12} />}</span>
+          <input
+            value={draft}
+            maxLength={500}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setError(undefined);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              void link();
+            }}
+            placeholder="Link an issue or pull request: #12 or its link, then Enter"
+            className="selectable min-w-0 flex-1 bg-transparent py-0.5 text-[12.5px] text-fg outline-none placeholder:text-faint"
+          />
+        </div>
+      )}
+      {error && <p className="selectable pl-7 text-[12px] leading-relaxed text-bad">{error}</p>}
+    </section>
   );
 }
 

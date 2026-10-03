@@ -137,7 +137,7 @@ describe("a card's triage chat", () => {
 });
 
 describe("resolving a card and checking it in review", () => {
-  const card: Card = { id: "aaaaaa", title: "Fix the flash", notes: "", tags: [], cwd: "/repo", column: "todo", chats: [], reports: [], createdAt: 0, updatedAt: 0 };
+  const card: Card = { id: "aaaaaa", title: "Fix the flash", notes: "", tags: [], cwd: "/repo", column: "todo", github: [], chats: [], reports: [], createdAt: 0, updatedAt: 0 };
   const worktree = { cwd: "/home/.pi-gna/worktrees/aaaaaa/repo", branch: "pigna/aaaaaa-fix-the-flash", created: true, dirty: true };
   const cardWorktree = vi.fn();
   const apply = vi.fn(async () => undefined);
@@ -216,7 +216,7 @@ describe("resolving a card and checking it in review", () => {
 });
 
 describe("chatting about a card", () => {
-  const card: Card = { id: "bbbbbb", title: "Fix the flash", notes: "It flashes", tags: [], cwd: "/repo", column: "todo", chats: [], reports: [], createdAt: 0, updatedAt: 0 };
+  const card: Card = { id: "bbbbbb", title: "Fix the flash", notes: "It flashes", tags: [], cwd: "/repo", column: "todo", github: [], chats: [], reports: [], createdAt: 0, updatedAt: 0 };
   const apply = vi.fn(async () => undefined);
 
   /** Click "Chat about it" and let pi start; returns the new chat's handle. */

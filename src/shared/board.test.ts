@@ -115,6 +115,36 @@ describe("board ops", () => {
     }
   });
 
+  it("links issues and pull requests, once each, and checks them", () => {
+    const issue = { kind: "issue" as const, host: "GitHub.com", repo: "acme/tool", number: 12, url: "https://github.com/acme/tool/issues/12", title: " Crash\n on start " };
+    let board = run([{ ...add("aaaaaa"), github: [issue, issue] }]);
+    expect(board.cards[0]?.github).toEqual([{ ...issue, host: "github.com", title: "Crash on start" }]);
+    const pr = { kind: "pr" as const, host: "github.com", repo: "acme/tool", number: 13, url: "https://github.com/acme/tool/pull/13", title: "Fix the crash" };
+    board = applyOp(board, { type: "link", id: "aaaaaa", github: pr }, 5);
+    expect(board.cards[0]).toMatchObject({ github: [{ number: 12 }, { number: 13 }], updatedAt: 5 });
+    expect(applyOp(board, { type: "link", id: "aaaaaa", github: pr }, 6)).toBe(board);
+    // Linked again: the new title.
+    board = applyOp(board, { type: "link", id: "aaaaaa", github: { ...pr, title: "Fix the crash on start" } }, 7);
+    expect(board.cards[0]?.github.map((ref) => ref.title)).toEqual(["Crash on start", "Fix the crash on start"]);
+    board = applyOp(board, { type: "unlink", id: "aaaaaa", github: { host: "github.com", repo: "Acme/Tool", number: 12 } }, 8);
+    expect(board.cards[0]?.github.map((ref) => ref.number)).toEqual([13]);
+    expect(applyOp(board, { type: "unlink", id: "aaaaaa", github: { host: "github.com", repo: "acme/tool", number: 99 } }, 9)).toBe(board);
+    const bad: unknown[] = [
+      { ...pr, kind: "discussion" },
+      { ...pr, host: "not a host" },
+      { ...pr, repo: "acme" },
+      { ...pr, number: 0 },
+      { ...pr, number: 1.5 },
+      { ...pr, url: "javascript:alert(1)" },
+      { ...pr, url: "https://evil.example/acme/tool/pull/13" },
+      { ...pr, title: "t".repeat(LIMITS.title + 1) },
+      null,
+    ];
+    for (const github of bad) expect(() => applyOp(board, { type: "link", id: "aaaaaa", github } as BoardOp, 10), JSON.stringify(github)).toThrow(BoardError);
+    for (let number = 100; board.cards[0] && board.cards[0].github.length < LIMITS.github; number++) board = applyOp(board, { type: "link", id: "aaaaaa", github: { ...pr, number } }, 11);
+    expect(() => applyOp(board, { type: "link", id: "aaaaaa", github: { ...pr, number: 999 } }, 12)).toThrow(BoardError);
+  });
+
   it("removes cards", () => {
     const board = run([add("aaaaaa"), add("bbbbbb"), { type: "remove", id: "aaaaaa" }]);
     expect(board.cards.map((card) => card.id)).toEqual(["bbbbbb"]);
@@ -129,6 +159,9 @@ describe("parseBoard", () => {
     // Cards saved before tags existed.
     const { tags: _, ...old } = good ?? { tags: [] };
     expect(parseBoard({ cards: [old, { ...old, id: "bbbbbb", tags: [1] }] })).toEqual({ board: { version: 1, cards: [{ ...old, tags: [] }] }, dropped: 1 });
+    // And before GitHub links.
+    const { github: __, ...unlinked } = good ?? { github: [] };
+    expect(parseBoard({ cards: [unlinked, { ...unlinked, id: "bbbbbb", github: [{ kind: "issue" }] }] })).toEqual({ board: { version: 1, cards: [{ ...unlinked, github: [] }] }, dropped: 1 });
   });
 });
 

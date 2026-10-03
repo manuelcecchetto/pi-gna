@@ -8,7 +8,7 @@ export type Column = (typeof COLUMNS)[number];
 
 export const COLUMN_LABELS: Record<Column, string> = { todo: "To do", in_progress: "In progress", in_review: "In review", done: "Done" };
 
-export const LIMITS = { title: 300, notes: 20_000, report: 4_000, label: 200, reports: 50, tag: 24, tags: 6 } as const;
+export const LIMITS = { title: 300, notes: 20_000, report: 4_000, label: 200, reports: 50, tag: 24, tags: 6, github: 20 } as const;
 
 /** A pi session attached to a card, by its session file. */
 export interface ChatRef {
@@ -29,6 +29,22 @@ export interface Report {
   chat?: string;
 }
 
+/**
+ * A GitHub issue or pull request a card is about. Not the gh account that found it: pi-gna picks the account per
+ * project whenever it asks GitHub, so the link stays valid when that choice changes.
+ */
+export interface GithubRef {
+  kind: "issue" | "pr";
+  /** github.com, or a GitHub Enterprise host. */
+  host: string;
+  /** owner/name. */
+  repo: string;
+  number: number;
+  url: string;
+  /** Its title when it was linked. */
+  title: string;
+}
+
 export interface Card {
   id: string;
   title: string;
@@ -38,6 +54,8 @@ export interface Card {
   /** The project whose board the card is on; its chats run here. */
   cwd: string;
   column: Column;
+  /** Issues and pull requests it is about, at most LIMITS.github. */
+  github: GithubRef[];
   chats: ChatRef[];
   /** Oldest first, the last LIMITS.reports. */
   reports: Report[];
@@ -58,14 +76,17 @@ export interface Board {
 type Placement = { before?: string | null };
 
 export type BoardOp =
-  | ({ type: "add"; id?: string; title: string; notes?: string; tags?: string[]; cwd: string; column?: Column } & Placement)
+  | ({ type: "add"; id?: string; title: string; notes?: string; tags?: string[]; cwd: string; column?: Column; github?: GithubRef[] } & Placement)
   | { type: "edit"; id: string; title?: string; notes?: string; tags?: string[] }
   | ({ type: "move"; id: string; column: Column } & Placement)
   | { type: "remove"; id: string }
   /** Attach a chat of the card's project (projectOf); it leaves any other card first. */
   | { type: "attach"; id: string; chat: { path: string; cwd: string; label?: string } }
   | { type: "detach"; id: string; path: string }
-  | { type: "report"; id: string; text: string; column?: Column; chat?: string };
+  | { type: "report"; id: string; text: string; column?: Column; chat?: string }
+  /** Link an issue or pull request (again: a link it has gets the new title). */
+  | { type: "link"; id: string; github: GithubRef }
+  | { type: "unlink"; id: string; github: Pick<GithubRef, "host" | "repo" | "number"> };
 
 /**
  * POST /kanban on the agent bridge (resources/kanban-extension.ts). The calling chat is known from its token, and
@@ -147,6 +168,7 @@ export function applyOp(board: Board, op: BoardOp, now: number): Board {
         tags: normalizeTags(op.tags ?? []),
         cwd: path(op.cwd, "cwd"),
         column,
+        github: githubRefs(op.github ?? []),
         chats: [],
         reports: [],
         createdAt: now,
@@ -202,6 +224,21 @@ export function applyOp(board: Board, op: BoardOp, now: number): Board {
       if (!report.column) return update(board, next);
       return { ...board, cards: place(board.cards.filter((other) => other !== card), { ...next, column: report.column }, undefined) };
     }
+    case "link": {
+      const card = find(board, op.id);
+      const ref = githubRef(op.github);
+      const index = card.github.findIndex((other) => githubKey(other) === githubKey(ref));
+      if (index >= 0 && JSON.stringify(card.github[index]) === JSON.stringify(ref)) return board;
+      if (index < 0 && card.github.length >= LIMITS.github) throw new BoardError(`card ${card.id} already has ${LIMITS.github} GitHub links`);
+      const github = index < 0 ? [...card.github, ref] : card.github.map((other, at) => (at === index ? ref : other));
+      return update(board, { ...card, github, updatedAt: now });
+    }
+    case "unlink": {
+      const card = find(board, op.id);
+      const key = githubKey(op.github ?? { host: "", repo: "", number: 0 });
+      if (!card.github.some((other) => githubKey(other) === key)) return board;
+      return update(board, { ...card, github: card.github.filter((other) => githubKey(other) !== key), updatedAt: now });
+    }
     default:
       throw new BoardError(`unknown board op ${String((op as { type?: unknown })?.type)}`);
   }
@@ -221,6 +258,41 @@ export function normalizeTags(value: unknown): string[] {
   return [...tags];
 }
 
+/** Identifies an issue or pull request across cards and repositories: "github.com/owner/name#12", lowercase. */
+export const githubKey = (ref: Pick<GithubRef, "host" | "repo" | "number">): string => `${ref.host}/${ref.repo}#${ref.number}`.toLowerCase();
+
+const HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+const REPO = /^[\w.-]{1,100}\/[\w.-]{1,100}$/;
+
+/** A GitHub link from the renderer or an agent, checked: its url must be on its host, so it is safe to open. Throws BoardError. */
+export function githubRef(value: unknown): GithubRef {
+  const ref = value as Partial<GithubRef> | null;
+  if (ref?.kind !== "issue" && ref?.kind !== "pr") throw new BoardError("a GitHub link is to an issue or a pr");
+  if (typeof ref.host !== "string" || !HOST.test(ref.host)) throw new BoardError(`invalid GitHub host ${String(ref.host)}`);
+  if (typeof ref.repo !== "string" || !REPO.test(ref.repo)) throw new BoardError(`invalid GitHub repository ${String(ref.repo)}; use owner/name`);
+  if (typeof ref.number !== "number" || !Number.isSafeInteger(ref.number) || ref.number < 1) throw new BoardError(`invalid issue or pull request number ${String(ref.number)}`);
+  const host = ref.host.toLowerCase();
+  if (typeof ref.url !== "string" || !ref.url.toLowerCase().startsWith(`https://${host}/`) || ref.url.length > 2048) throw new BoardError(`a GitHub link's url must be on https://${host}/`);
+  const name = text(ref.title ?? "", "GitHub title", LIMITS.title).replace(/\s+/g, " ").trim();
+  return { kind: ref.kind, host, repo: ref.repo, number: ref.number, url: ref.url, title: name };
+}
+
+function githubRefs(value: unknown): GithubRef[] {
+  if (!Array.isArray(value)) throw new BoardError("github must be a list of links");
+  const refs = new Map(value.map((item) => githubRef(item)).map((ref) => [githubKey(ref), ref]));
+  if (refs.size > LIMITS.github) throw new BoardError(`too many GitHub links (${refs.size}, at most ${LIMITS.github})`);
+  return [...refs.values()];
+}
+
+const isGithubRef = (value: unknown): boolean => {
+  try {
+    githubRef(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const projectCards = (board: Board, cwd: string) => board.cards.filter((card) => card.cwd === cwd);
 
 /** The card a chat is attached to. */
@@ -232,8 +304,8 @@ export function cardOfChat(board: Board, path: string): Card | undefined {
 export function parseBoard(value: unknown): { board: Board; dropped: number } {
   const cards = (value as { cards?: unknown } | null)?.cards;
   if (!Array.isArray(cards)) throw new BoardError("not a board");
-  // Boards from before tags have cards without them.
-  const valid = cards.filter(isCard).map((card) => (card.tags ? card : { ...card, tags: [] }));
+  // Boards from before tags or GitHub links have cards without them.
+  const valid = cards.filter(isCard).map((card) => ({ ...card, tags: card.tags ?? [], github: card.github ?? [] }));
   return { board: { version: 1, cards: valid }, dropped: cards.length - valid.length };
 }
 
@@ -244,6 +316,7 @@ function isCard(value: unknown): value is Card {
     typeof card.title === "string" &&
     typeof card.notes === "string" &&
     (card.tags === undefined || (Array.isArray(card.tags) && card.tags.every((tag) => typeof tag === "string"))) &&
+    (card.github === undefined || (Array.isArray(card.github) && card.github.every(isGithubRef))) &&
     typeof card.cwd === "string" &&
     isColumn(card.column) &&
     Array.isArray(card.chats) &&

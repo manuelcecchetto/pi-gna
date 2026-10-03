@@ -5,6 +5,11 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- A GitHub page per project (Cmd+Shift+G): its issues and pull requests, open or closed, read with the GitHub CLI
+  as the gh account that can see the repository (a work and a personal account each get their own projects; your
+  active gh account is never switched). Make a Kanban card from an issue or PR, or link one to a card; cards show
+  their links, and their dialog links more by number or URL.
+
 ## 0.2.0 - 2026-10-03
 
 - A Kanban board per project (Cmd+Shift+K): cards are tasks you drag across To do, In progress, In review and

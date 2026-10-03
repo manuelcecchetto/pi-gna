@@ -59,6 +59,12 @@ const api: StudioApi = {
     onChange: (listener) => subscribe<Board>(IPC.boardChanged, listener),
     saveImage: (card, image) => ipcRenderer.invoke(IPC.boardSaveImage, card, image),
   },
+  github: {
+    project: (cwd, refresh) => ipcRenderer.invoke(IPC.githubProject, cwd, refresh),
+    choose: (cwd, login) => ipcRenderer.invoke(IPC.githubChoose, cwd, login),
+    list: (cwd, kind, filter) => ipcRenderer.invoke(IPC.githubList, cwd, kind, filter),
+    lookup: (cwd, input) => ipcRenderer.invoke(IPC.githubLookup, cwd, input),
+  },
   laments: {
     get: () => ipcRenderer.invoke(IPC.lamentsGet),
     apply: (op) => ipcRenderer.invoke(IPC.lamentsApply, op),

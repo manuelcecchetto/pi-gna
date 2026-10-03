@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserPane } from "./components/BrowserPane";
+import { GithubPage } from "./components/GitHub";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
 import { Ansi } from "./components/primitives";
@@ -68,6 +69,8 @@ export function App() {
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
           {page?.kind === "laments" ? (
             <LamentsPage key={page.cwd} page={page} />
+          ) : page?.kind === "github" ? (
+            <GithubPage key={page.cwd} page={page} />
           ) : page ? (
             <KanbanPage page={page} />
           ) : session ? (

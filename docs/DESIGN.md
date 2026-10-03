@@ -30,6 +30,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions)
     board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
     laments        LamentStore (userData/laments.json) and the lament tool's route; both stores are a JsonStore (store)
+    github         Github: a project's repository and gh account, its issues and PRs through gh (userData/github.json: logins only)
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
     updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
@@ -165,8 +166,8 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   (`cardAttention`, the strongest mark of its open chats), never as a column change.
 - **Main owns the board** (`userData/board.json`, `BoardStore`), because agents change it too. Every change, from the
   window or an agent, is a `BoardOp` applied by the pure `applyOp` (`src/shared/board.ts`), which checks every
-  field (ids, columns, absolute paths, title 300 / notes 20k / report 4k characters, at most 6 tags of 24; the last
-  50 reports are kept). Tags are spelled one way (`normalizeTags`: "#UI Bug" is `ui-bug`); cards saved before tags
+  field (ids, columns, absolute paths, title 300 / notes 20k / report 4k characters, at most 6 tags of 24 and 20
+  GitHub links; the last 50 reports are kept). Tags are spelled one way (`normalizeTags`: "#UI Bug" is `ui-bug`); cards saved before tags
   load with none. Writes are serialized, tmp + rename; a file that does not parse moves to `board.corrupt-<ts>.json`, and
   skipped malformed cards keep a copy there. The renderer applies an op locally first (a drop lands at once), main
   applies it again and pushes the whole board (`board:changed`).
@@ -187,7 +188,8 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   since a new worktree from HEAD would not have the change. "Chat about it"
   (`discussCard`) opens a new chat with the card as a chip in its composer (`AppState.composerCards`), not as text
   you write under: `send` puts the card's block before your first message (a slash command does not take it) and only
-  then attaches the chat. The chip's × drops both the details and the attach; a draft you leave is disposed with it. Later features (GitHub issues and PRs) add their actions here.
+  then attaches the chat. The chip's × drops both the details and the attach; a draft you leave is disposed with it. GitHub
+  links are not card actions: they are made on the GitHub page and in the card dialog (see GitHub).
 - **Resolve works in a git worktree** (`src/main/worktree.ts`, `studio:card-worktree`), on branch
   `pigna/<card id>-<title words>` from the checkout's HEAD, so its change stays off your checkout until you merge it;
   Investigate, Chat about it and triage stay in the checkout. The worktree is
@@ -227,8 +229,8 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   screenshot thumbnail is a temporary file). `splitAttachments` keeps the list out of the card's snippet (a
   paperclip count instead) and gives the card dialog its thumbnails; the dialog zooms them itself, since the app's
   lightbox would sit under the modal `<dialog>` (top layer).
-- **The card in a prompt** is a `<kanban-card>` block (title, column, tags, notes, the last 5 reports clipped to 600
-  characters). `stripStudioBlocks` (renderer) and `textOf` (session index) leave it out of chat titles; the
+- **The card in a prompt** is a `<kanban-card>` block (title, column, tags, its GitHub links as `refLine`, notes, the
+  last 5 reports clipped to 600 characters); `kanban_list` shows the links too. `stripStudioBlocks` (renderer) and `textOf` (session index) leave it out of chat titles; the
   transcript shows it as a chip that opens the card (`splitCardBlock`).
 - **Pages**: `AppState.page` replaces the chat area with the board of `page.cwd` (and `page.card` open). View >
   Kanban (⌘⇧K, a menu accelerator so it works while the browser has focus), the sidebar's Kanban row, a project's
@@ -265,6 +267,41 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   (Markdown) with the chat that filed it. Right-click, or the expanded row, resolves, reopens or deletes. View >
   Laments (⌘⇧L), the sidebar's Laments row (the worst open lament's emoji and the count, for the project it
   opens) and a project's context menu open it; switching between the two pages keeps the project (`showPage`).
+
+## GitHub
+
+- **A project's issues and pull requests, read with the GitHub CLI** (`src/main/github.ts`), beside Kanban and
+  Laments. Read-only for now (list, look up one); no polling: the page asks when it opens and on Refresh. Creating,
+  commenting and merging are later work.
+- **The repository** is the project's git remote as gh would pick it (`pickRemote`, `src/shared/github.ts`): the
+  remote `gh repo set-default` chose, else upstream, github or origin, on https, ssh or scp-style URLs; a GitHub
+  Enterprise host works like github.com.
+- **The account**: gh can be logged in to several accounts per host (here a work one for `CASUS-Tech` and a personal
+  one) but has one active account, shared with your terminals and agents. pi-gna never runs `gh auth switch`,
+  login or logout. It picks an account per repository, in order: the one you chose for the project (the page's
+  account menu), the one that read it last time, the login named like the owner, a member of the owner
+  organization (`user/orgs`), then any account that can read it (`repos/<owner>/<name>`; a 404 tries the next).
+  The choice and the last working login per repository live in `userData/github.json` (`GithubStore`): logins,
+  never tokens. A repository an account stops reading (GraphQL "Could not resolve to a Repository") is resolved
+  again once, unless you chose that account; a 401 fetches the token again once.
+- **Tokens stay in main**: each gh call gets its account's token in `GH_TOKEN` (`GH_ENTERPRISE_TOKEN` on Enterprise
+  Server hosts), from `gh auth token --hostname <host> --user <login>`, held in memory only. `ghEnv` drops inherited
+  token variables, `GH_HOST`, `GH_REPO` and `GH_DEBUG` (the shell's must not override the account or print
+  requests), and `scrub` masks anything token-shaped in errors and logs. The renderer gets logins, items and
+  problems (`GithubProblem`: no gh, no GitHub remote, no account on the host, no account can read it, failed).
+- **Card links** (`GithubRef` in `src/shared/board.ts`: kind, host, repo, number, url, title; not the account, which
+  is chosen whenever pi-gna asks) are `link`/`unlink` board ops, at most 20 per card, keyed by `githubKey`
+  (host/repo#number, lowercase); the url must be on its host. `add` takes links too.
+- **The page** (`components/GitHub.tsx`, `page.kind === "github"`, keyed by project): Issues and Pull requests tabs,
+  Open and Closed (closed PRs include merged ones), the latest 100 each (`GITHUB_LIST_LIMIT`; a link to the rest on
+  GitHub), the repository, the account in use and why (its menu: Automatic or an account), Refresh. A row shows the
+  state as GitHub draws it, number, author, branch and review for PRs, labels in their colors and the cards that
+  link it; it expands to the body (Markdown, images as links: `imagesAsLinks`, since the CSP blocks remote images)
+  with Open on GitHub, New card (a To do card with the body as notes, linked) and Link to card… (the project's
+  cards not done). View > GitHub (⌘⇧G), the sidebar's GitHub row and a project's context menu open it.
+- **On the board**: a card shows its links as badges (icon and number; a click opens it on GitHub), and the card
+  dialog lists them with unlink and takes `#12` or a link to add one (`github:lookup` checks it with gh for its
+  kind and title).
 
 ## pi RPC notes (pi 1.0.0)
 
@@ -313,7 +350,7 @@ Verified live (pi 1.0.0, Oct 2026):
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
-- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K) and "Laments" (⌘⇧L) rows, then a
+- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L) and "GitHub" (⌘⇧G) rows, then a
   "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
   pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
@@ -495,7 +532,9 @@ Electron drag regions: `-webkit-app-region` rects are applied in document order,
 overlaps a `drag` header must come later in the DOM (or be its descendant), or real clicks start a window drag.
 CDP clicks bypass the OS drag layer, so tests cannot catch this; check DOM order instead.
 
-Build notes: Electron 44 has no postinstall; it downloads its binary on the first `require("electron")`.
+Build notes: Electron 44 has no postinstall; it downloads its binary on the first `require("electron")`, which then
+also prints "Downloading Electron binary..." on stdout: in a fresh worktree, run `node -e 'require("electron")'` once
+before launching with `$(node -e 'console.log(require("electron"))')`, or the launch gets that line as the path.
 Electron 44's `clipboard` is asynchronous and `ClipboardItem`-based (`read`, `write`, `readText`, `writeText`;
 no `readImage`/`writeImage`).
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.

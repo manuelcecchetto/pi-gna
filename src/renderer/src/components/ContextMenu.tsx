@@ -81,9 +81,9 @@ export function ContextMenu({ at, sections, onClose }: { at: { x: number; y: num
     >
       {visible.map((section, index) => (
         <div key={index} className={index ? "mt-1 border-t border-line pt-1" : ""}>
-          {section.map((item) => (
+          {section.map((item, at) => (
             <button
-              key={item.label}
+              key={`${at}-${item.label}`}
               type="button"
               role="menuitem"
               title={item.hint}

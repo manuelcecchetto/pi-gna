@@ -41,7 +41,7 @@ describe("BoardStore", () => {
     const good = { id: "aaaaaa", title: "Ok", notes: "", cwd: "/repo", column: "todo", chats: [], reports: [], createdAt: 1, updatedAt: 1 };
     await writeFile(join(dir, "board.json"), JSON.stringify({ version: 1, cards: [good, { id: "broken" }] }));
     const store = new BoardStore(join(dir, "board.json"), () => undefined);
-    expect((await store.get()).cards).toEqual([{ ...good, tags: [] }]);
+    expect((await store.get()).cards).toEqual([{ ...good, tags: [], github: [] }]);
     const copy = (await readdir(dir)).find((file) => file.startsWith("board.corrupt-")) ?? "";
     expect(await readFile(join(dir, copy), "utf8")).toContain("broken");
   });

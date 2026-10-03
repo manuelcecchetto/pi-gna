@@ -1,4 +1,4 @@
-import { Angry, ChevronRight, Copy, Folder, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
+import { Angry, ChevronRight, Copy, Folder, GitPullRequest, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
@@ -32,7 +32,7 @@ const SESSIONS_PER_PROJECT = 6;
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
   const sessions = useApp((state) => state.sessions);
-  // A page (the board, the laments) covers the active chat: no chat row is highlighted then.
+  // A page (the board, the laments, GitHub) covers the active chat: no chat row is highlighted then.
   const page = useApp((state) => state.page);
   // The project a page row opens: the open page's, else the active chat's.
   const pageCwd = useApp((state) => {
@@ -132,6 +132,15 @@ export function Sidebar() {
               </span>
             )}
             <span className={`font-mono text-[11px] text-faint ${worst ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧L</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => page?.kind !== "github" && showPage("github", page?.cwd)}
+            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "github" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+          >
+            <GitPullRequest size={14} className="shrink-0 text-muted" />
+            <span className="flex-1">GitHub</span>
+            <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧G</span>
           </button>
         </div>
 
@@ -283,6 +292,7 @@ function projectMenu(group: ProjectView): MenuItem[][] {
       { label: "New chat here", icon: <SquarePen size={13} />, onSelect: () => newSession(group.cwd) },
       { label: "Kanban board", icon: <SquareKanban size={13} />, onSelect: () => showBoard(group.cwd) },
       { label: "Laments", icon: <Angry size={13} />, onSelect: () => showPage("laments", group.cwd) },
+      { label: "GitHub issues and PRs", icon: <GitPullRequest size={13} />, onSelect: () => showPage("github", group.cwd) },
     ],
     [
       group.pinned
