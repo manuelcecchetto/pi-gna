@@ -25,6 +25,7 @@ import { ColumnIcon } from "./ColumnIcon";
 import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QueueCard } from "./QueueCard";
+import { TokenRate } from "./TokenRate";
 import { Ansi, Kbd, Popover } from "./primitives";
 
 const drafts = new Map<string, string>();
@@ -284,6 +285,7 @@ export function Composer({ session }: { session: SessionState }) {
           <ModelPicker session={session} />
           <ThinkingPicker session={session} />
           <div className="ml-auto flex items-center gap-2">
+            <TokenRate session={session} />
             <ContextMeter session={session} />
             {busy && (
               <span className="hidden text-[11px] text-faint sm:inline">

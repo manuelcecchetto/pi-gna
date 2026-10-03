@@ -9,6 +9,8 @@ moves those lines under the new version, and they become its GitHub release note
   as the gh account that can see the repository (a work and a personal account each get their own projects; your
   active gh account is never switched). Make a Kanban card from an issue or PR, or link one to a card; cards show
   their links, and their dialog links more by number or URL.
+- The composer shows how fast the model writes, in tokens per second: live while a response streams (estimated
+  until the provider reports the count), then the last response's speed.
 
 ## 0.2.0 - 2026-10-03
 

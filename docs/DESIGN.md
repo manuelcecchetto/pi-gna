@@ -425,6 +425,12 @@ Verified live (pi 1.0.0, Oct 2026):
   compaction is when context gets summarized. Stats refresh after every `turn_end` and `compaction_end`
   (`get_session_stats` takes a few ms even on a 40 MB session). Right after compaction pi does not know the
   size until the next response, shown as a dashed ring.
+- Output speed (`TokenRate`, `lib/token-rate.ts`): tok/s beside the context meter, per response, from its first
+  streamed block to its last (time to first token and tool runs do not count). Providers report output tokens
+  only when a response ends (pi's `message_update` usage is not live), so while it streams the count is estimated
+  from the streamed text, thinking and tool arguments (4 characters a token, shown as `~`), and `message_end`'s
+  `usage.output` replaces it. The last response's rate stays, dimmed, after the run; responses read from a session
+  file have no timings, so they show none.
 - Compaction visibility: `compaction_start` adds a running transcript record; `compaction_end` updates that
   same keyed record to completed, failed or interrupted. Show one live indicator with elapsed time in the
   chat, including manual compaction outside an agent run; do not repeat it above the composer or beside the

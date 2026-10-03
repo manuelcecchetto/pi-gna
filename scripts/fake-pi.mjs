@@ -2,7 +2,7 @@
 // Dev tool: a stand-in for `pi --mode rpc` that streams a long text answer to every prompt, for
 // checking streaming UI (scrolling, live states) without a model. Point a test instance at it:
 //   PIGNA_PI_BIN=$PWD/scripts/fake-pi.mjs FAKE_LINES=400 FAKE_DELAY=100 node bin/pi-gna.mjs ...
-// FAKE_LINES paragraphs, one every FAKE_DELAY ms. No session file is written.
+// FAKE_LINES paragraphs, one every FAKE_DELAY ms (about 13 tokens each, so 150 ms is ~89 tok/s). No session file is written.
 import { createInterface } from "node:readline";
 
 const out = (record) => process.stdout.write(`${JSON.stringify(record)}\n`);
@@ -44,7 +44,9 @@ async function run(text) {
     out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta } });
   }
   out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_end", contentIndex: 0, content: body } });
-  out({ type: "message_end", message: { ...base, content: [{ type: "text", text: body }] } });
+  // Like providers, report the output token count only at the end.
+  const output = Math.round(body.length / 4);
+  out({ type: "message_end", message: { ...base, content: [{ type: "text", text: body }], usage: { ...usage, output, totalTokens: output } } });
   streaming = false;
   out({ type: "agent_end", messages: [] });
   out({ type: "agent_settled" });
