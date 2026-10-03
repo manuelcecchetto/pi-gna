@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-03
+
 - A Kanban board per project (Cmd+Shift+K): cards are tasks you drag across To do, In progress, In review and
   Done. Describe a task to add a card, with screenshots pasted, dropped or picked if you like, and a quick chat
   titles, tags and looks into it. Right-click a card to have a new chat investigate it, resolve it or, once it is
