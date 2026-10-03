@@ -7,6 +7,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 - Screenshots on new Kanban cards: paste, drop or pick them in the add-card box. They are saved with the card,
   shown in its dialog, and read by its chats.
+- A Lamenting board per project (Cmd+Shift+L): pi files a lament with its `lament` tool when a tool or capability it
+  needs is missing, unavailable or failing, marked 😒 annoying, 😠 costly or 🤬 blocking, and you resolve it once fixed.
 - pi-gna checks GitHub for new releases and installs them: a row at the foot of the sidebar shows the release
   notes and an Update button, and pi-gna > Check for Updates… checks right away.
 - The sidebar shows pi-gna's version next to the logo.

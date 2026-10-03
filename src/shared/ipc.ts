@@ -2,6 +2,7 @@
 import type { Board, BoardOp } from "./board";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
+import type { LamentOp, Laments } from "./laments";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -48,6 +49,9 @@ export const IPC = {
   boardGet: "board:get",
   boardApply: "board:apply",
   boardChanged: "board:changed",
+  lamentsGet: "laments:get",
+  lamentsApply: "laments:apply",
+  lamentsChanged: "laments:changed",
   boardSaveImage: "board:save-image",
   cardWorktree: "studio:card-worktree",
   updateGet: "update:get",
@@ -57,7 +61,15 @@ export const IPC = {
 } as const;
 
 /** Full-window pages shown instead of a chat. */
-export type Page = "kanban";
+export type Page = "kanban" | "laments";
+
+/** The laments live in main, which agents file them with; every change is pushed back. */
+export interface LamentsApi {
+  get(): Promise<Laments>;
+  /** Rejects with the reason for an invalid op (unknown lament). */
+  apply(op: LamentOp): Promise<Laments>;
+  onChange(listener: (laments: Laments) => void): () => void;
+}
 
 /** The Kanban boards live in main, which agents change too; every change is pushed back. */
 export interface BoardApi {
@@ -217,7 +229,7 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
-  /** View > Kanban (⌘⇧K): page toggles from the menu. */
+  /** View > Kanban (⌘⇧K), View > Laments (⌘⇧L): page toggles from the menu. */
   onPageToggle(listener: (page: Page) => void): () => void;
   /** Another launch (say `pi --pigna` in a different project) asks for a new chat in `cwd`. */
   onOpenProject(listener: (cwd: string) => void): () => void;
@@ -227,5 +239,6 @@ export interface StudioApi {
   onEvents(listener: (batch: HostEventBatch) => void): () => void;
   browser: BrowserApi;
   board: BoardApi;
+  laments: LamentsApi;
   update: UpdateApi;
 }

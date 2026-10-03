@@ -11,14 +11,16 @@ files:
   - resources/**
   - src/shared/browser.ts
   - src/shared/board.ts
+  - src/shared/laments.ts
   - "!resources/icon.png"
   - "!resources/pigna-flag.ts"
-# pi reads these from disk (`pi -e`, `--append-system-prompt`); the browser and kanban extensions import
-# src/shared/browser.ts and src/shared/board.ts.
+# pi reads these from disk (`pi -e`, `--append-system-prompt`); the browser, kanban and lament extensions import
+# src/shared/browser.ts, src/shared/board.ts and src/shared/laments.ts.
 asarUnpack:
   - resources/**
   - src/shared/browser.ts
   - src/shared/board.ts
+  - src/shared/laments.ts
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:

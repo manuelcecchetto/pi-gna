@@ -26,9 +26,10 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     files          `rg --files` for @ mentions
-    bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban)
+    bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions)
     board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
+    laments        LamentStore (userData/laments.json) and the lament tool's route; both stores are a JsonStore (store)
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
     updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
@@ -36,6 +37,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
   renderer         React + Tailwind v4
 resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
 resources/kanban-extension.ts    the same for the kanban_* tools
+resources/lament-extension.ts    the same for the lament tool
 resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
 
@@ -68,7 +70,8 @@ itself always runs the checkout, so test instances test the code you are changin
 - **No node_modules in the app.** Every runtime dependency is renderer code that Vite bundles, so they all sit in
   `devDependencies`; main and preload only import Node and Electron. The asar holds `out/`, `package.json` and
   the files pi reads from disk (`resources/browser-extension.ts`, `resources/kanban-extension.ts`,
-  `resources/pigna-prompt.md`, and the `src/shared/browser.ts` and `src/shared/board.ts` they import), which are
+  `resources/lament-extension.ts`, `resources/pigna-prompt.md`, and the `src/shared/browser.ts`, `src/shared/board.ts`
+  and `src/shared/laments.ts` they import), which are
   also unpacked to `app.asar.unpacked/` (session-host points pi there).
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
   runtime, no notarization) and macOS asks once before opening a downloaded build (README). Squirrel.Mac
@@ -231,6 +234,33 @@ itself always runs the checkout, so test instances test the code you are changin
 - **Drag and drop** is HTML5. A column cancels `dragenter` as well as `dragover`: a drop that follows entering
   without a `dragover` in between (CDP drags release at once) is refused otherwise.
 
+## Laments
+
+- **One Lamenting board per project**, beside Kanban: what agents could not do because a tool or capability was
+  missing, unavailable, hard to find or failing, and how they worked around it. You read it to fix your tooling.
+  The idea is Codex's lamenting reports (`~/.codex/lamenting-reports/`, a Markdown file per gap); pi-gna keeps
+  its own store per project and does not read or write those files.
+- **Agent tool** (`resources/lament-extension.ts`): `lament` with `title`, `body` (Markdown: the task, the
+  friction and evidence, the tools checked, the operation wanted, the workaround and its cost) and `severity`:
+  `annoying` 😒 (a workaround cost a few steps), `costly` 😠 (slow, manual or brittle) or `blocking` 🤬 (could not
+  be done or verified). Its `promptGuidelines` say when: at the point of meaningful friction, observed rather than
+  wished for, after looking for a tool, without secrets, then carry on; mention it to the user only when it blocks.
+  The reply names the project's other open laments with their ids, and `repeats: <id>` adds a report to one of
+  them instead of filing it twice (a resolved one reopens). It calls `POST /lament` on the bridge; the token gives
+  the chat, which is recorded on the report so the page can open it, and `projectOf` its cwd the board.
+- **Main owns the laments** (`userData/laments.json`, `LamentStore`). It and `BoardStore` are a `JsonStore`
+  (`src/main/store.ts`): ops applied by a pure function that checks every field (`applyLamentOp`,
+  `src/shared/laments.ts`: title 200 / report 8k characters, a known severity, absolute paths; the first report
+  and the latest 29 are kept), serialized tmp + rename writes, a file that does not parse moved to
+  `laments.corrupt-<ts>.json`. The whole value is pushed after each change (`laments:changed`); the renderer only
+  sends resolve, reopen and remove (`applyLament`) and waits for the push.
+- **The page** (`components/Laments.tsx`, `page.kind === "laments"`, keyed by project) lists open laments worst
+  first (a lament is as bad as its worst report), then the most recent, with Open and Resolved tabs. A row shows
+  the severity emoji, the title, ×n when it was hit again and the latest report; it expands to every report
+  (Markdown) with the chat that filed it. Right-click, or the expanded row, resolves, reopens or deletes. View >
+  Laments (⌘⇧L), the sidebar's Laments row (the worst open lament's emoji and the count, for the project it
+  opens) and a project's context menu open it; switching between the two pages keeps the project (`showPage`).
+
 ## pi RPC notes (pi 1.0.0)
 
 Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-agent/docs/` (`rpc.md`,
@@ -278,7 +308,7 @@ Verified live (pi 1.0.0, Oct 2026):
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
-- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N) and "Kanban" (⌘⇧K) rows, then a
+- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K) and "Laments" (⌘⇧L) rows, then a
   "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
   pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
@@ -374,6 +404,9 @@ Verified live (pi 1.0.0, Oct 2026):
   border brightens (beautifului.dev's only focus change, measured: `line` -> `line-strong`) and becomes a slowly
   flowing coral/grey/blue/yellow gradient with a stronger glow (the Gemini-like part, ours). `.composer*` in
   `styles.css`; motion stops with reduced motion.
+- `.prose` (Markdown) is plain CSS in `styles.css`, outside Tailwind's layers, so it beats any utility: a
+  `text-[13px]` on a wrapper or `[&_.prose]:` variant does not resize it. Size it with a contextual rule beside it
+  (`.thinking .prose`, `.lament-report .prose`).
 - Attachments (Codex-style, verified against the Codex app bundle): "+" menu with "Add photos" and "Attach files
   and folders" (⌘U, native picker with files and folders), drop anywhere on the session pane, ⌘V. Files and
   folders are sent by path in a `# Files mentioned by the user:` block of `## name: /path` lines (pi reads them

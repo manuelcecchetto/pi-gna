@@ -1,8 +1,10 @@
-import { ChevronRight, Copy, Folder, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
+import { Angry, ChevronRight, Copy, Folder, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
+import { projectLaments, SEVERITY } from "../../../shared/laments";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, isDraft, strongestAttention } from "../lib/session";
+import { worstSeverity } from "../lib/laments";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";
 import {
@@ -30,8 +32,16 @@ const SESSIONS_PER_PROJECT = 6;
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
   const sessions = useApp((state) => state.sessions);
-  // A page (the board) covers the active chat: no chat row is highlighted then.
+  // A page (the board, the laments) covers the active chat: no chat row is highlighted then.
   const page = useApp((state) => state.page);
+  // The project a page row opens: the open page's, else the active chat's.
+  const pageCwd = useApp((state) => {
+    const chat = state.active && state.sessions[state.active]?.cwd;
+    return state.page?.cwd ?? (chat ? projectOf(chat) : undefined);
+  });
+  const laments = useApp((state) => state.laments);
+  const openLaments = useMemo(() => (pageCwd ? projectLaments(laments, pageCwd) : []), [laments, pageCwd]);
+  const worst = worstSeverity(openLaments);
   const active = useApp((state) => (state.page ? undefined : state.active));
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
@@ -107,6 +117,21 @@ export function Sidebar() {
             <SquareKanban size={14} className="shrink-0 text-muted" />
             <span className="flex-1">Kanban</span>
             <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧K</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => page?.kind !== "laments" && showPage("laments", page?.cwd)}
+            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "laments" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+          >
+            <Angry size={14} className="shrink-0 text-muted" />
+            <span className="flex-1">Laments</span>
+            {worst && (
+              <span className="flex items-center gap-1 group-hover:hidden" title={`${openLaments.length} open, the worst ${SEVERITY[worst].label.toLowerCase()}`}>
+                <span className="text-[12px] leading-none">{SEVERITY[worst].emoji}</span>
+                <span className="font-mono text-[11px] text-faint">{openLaments.length}</span>
+              </span>
+            )}
+            <span className={`font-mono text-[11px] text-faint ${worst ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧L</span>
           </button>
         </div>
 
@@ -257,6 +282,7 @@ function projectMenu(group: ProjectView): MenuItem[][] {
     [
       { label: "New chat here", icon: <SquarePen size={13} />, onSelect: () => newSession(group.cwd) },
       { label: "Kanban board", icon: <SquareKanban size={13} />, onSelect: () => showBoard(group.cwd) },
+      { label: "Laments", icon: <Angry size={13} />, onSelect: () => showPage("laments", group.cwd) },
     ],
     [
       group.pinned

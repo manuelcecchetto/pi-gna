@@ -74,6 +74,9 @@ updates the `--pigna` flag.
   takes a first look. Right-click a card to have a new chat investigate it, resolve it (in a git worktree, on a
   branch of its own, so your checkout is left alone) or, once it is in review, QA it; or start a chat about it.
   Chats on a card show their mark on it, and pi gets `kanban_*` tools to take a card, move it and report on it.
+- **Laments.** When pi needs a tool or capability that is missing, unavailable or failing, it files a lament on the
+  project's Lamenting board with its `lament` tool, then carries on with a workaround: 😒 annoying, 😠 costly or
+  🤬 blocking. Read them (Cmd+Shift+L) to see what your setup lacks; resolve one once it is fixed.
 - **Attachments.** Drop, paste or pick files and folders (sent by path) and images (sent to the model).
 - **Right-click anything.** Copy or save images (screenshots pi took, attachments, pages in the browser), copy and
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
@@ -111,6 +114,7 @@ environment if an extension wants to know where it runs.
 | Cmd+N | New session in the current project |
 | Cmd+B | Show or hide the browser |
 | Cmd+Shift+K | Show or hide the project's Kanban board |
+| Cmd+Shift+L | Show or hide the project's laments |
 | Cmd+Shift+S | Show or hide the sidebar (drag its edge to resize) |
 | `/` and `@` | Commands, skills and prompt templates / project files |
 | Cmd+U, "+", drop, Cmd+V | Attach files and folders (sent by path) or images (sent to the model) |

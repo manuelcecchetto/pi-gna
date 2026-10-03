@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { Board } from "../shared/board";
 import type { Annotation, BrowserState } from "../shared/browser";
+import type { Laments } from "../shared/laments";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -57,6 +58,11 @@ const api: StudioApi = {
     apply: (op) => ipcRenderer.invoke(IPC.boardApply, op),
     onChange: (listener) => subscribe<Board>(IPC.boardChanged, listener),
     saveImage: (card, image) => ipcRenderer.invoke(IPC.boardSaveImage, card, image),
+  },
+  laments: {
+    get: () => ipcRenderer.invoke(IPC.lamentsGet),
+    apply: (op) => ipcRenderer.invoke(IPC.lamentsApply, op),
+    onChange: (listener) => subscribe<Laments>(IPC.lamentsChanged, listener),
   },
   update: {
     state: () => ipcRenderer.invoke(IPC.updateGet),

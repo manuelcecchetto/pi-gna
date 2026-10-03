@@ -1,10 +1,10 @@
-// A page header's project picker: the same page (the board) of another project.
+// A page header's project picker: the same page (board, laments) of another project.
 import { ChevronDown, Folder } from "lucide-react";
 import { useCallback, useState } from "react";
 import { baseName, tildify } from "../lib/format";
 import { Popover } from "./primitives";
 
-/** A project to switch to, with how many of its items are open (cards not done). */
+/** A project to switch to, with how many of its items are open (cards not done, laments not resolved). */
 export interface ProjectOption {
   cwd: string;
   open: number;

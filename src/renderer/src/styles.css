@@ -384,6 +384,12 @@ code.hl span {
   font-style: normal;
 }
 
+/* A lament's reports read at the size of the card text around them. */
+.lament-report .prose {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 /* Composer: grey hairline with faint pi-logo tints and a soft blurred pi glow behind it. On focus the border
    brightens (beautifului.dev) and becomes a slowly flowing coral/blue/yellow gradient (Gemini-like). */
 .composer {

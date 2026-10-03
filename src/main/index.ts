@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent,
 import { bugs, description } from "../../package.json";
 import type { BoardOp } from "../shared/board";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
+import type { LamentOp } from "../shared/laments";
 import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { BrowserAgent, browserRoute } from "./browser/agent";
@@ -17,6 +18,7 @@ import { CardImages } from "./card-images";
 import { AgentBridge } from "./bridge";
 import { listFiles } from "./files";
 import { kanbanRoute } from "./kanban";
+import { LamentStore, lamentRoute } from "./laments";
 import { readCompactionSettings } from "./pi-settings";
 import { cardWorktree } from "./worktree";
 import { debugRpc, log, logToFile } from "./log";
@@ -72,7 +74,9 @@ const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch),
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));
+const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => send(IPC.lamentsChanged, next));
 bridge.route("/kanban", kanbanRoute(board, (handle) => host.identify(handle)));
+bridge.route("/lament", lamentRoute(laments, (handle) => host.identify(handle)));
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -200,6 +204,8 @@ function registerIpc(shellEnv: Promise<void>): void {
   handle(IPC.browserGetState, () => browser?.snapshot());
 
   handle(IPC.boardGet, () => board.get());
+  handle(IPC.lamentsGet, () => laments.get());
+  handle(IPC.lamentsApply, (op: LamentOp) => laments.apply(op));
   handle(IPC.boardApply, async (op: BoardOp) => {
     const next = await board.apply(op);
     if (op.type === "remove") void cardImages.remove(op.id).catch((error: Error) => log.warn("board", `could not delete the images of card ${op.id}: ${error.message}`));
@@ -258,6 +264,7 @@ function buildMenu(): void {
           { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+Shift+S", click: () => send(IPC.sidebarToggle) },
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
           { label: "Kanban", accelerator: "CmdOrCtrl+Shift+K", click: () => send(IPC.pageToggle, "kanban") },
+          { label: "Laments", accelerator: "CmdOrCtrl+Shift+L", click: () => send(IPC.pageToggle, "laments") },
           { type: "separator" },
           { role: "reload" },
           { role: "toggleDevTools" },
@@ -300,7 +307,7 @@ function init(): void {
     event.preventDefault();
     quitting = true;
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed()]).finally(() => app.quit());
+    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed()]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());

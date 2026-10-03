@@ -1,5 +1,6 @@
-// A JSON file that main owns and both the window and agents (through the bridge) change: the Kanban board. Every
-// change is an op applied by a pure function that checks it; the window gets the whole value after each one.
+// A JSON file that main owns and both the window and agents (through the bridge) change: the Kanban board and the
+// laments. Every change is an op applied by a pure function that checks it; the window gets the whole value after
+// each one.
 import { copyFile, readFile, rename, writeFile } from "node:fs/promises";
 import { log } from "./log";
 
@@ -7,7 +8,7 @@ import { log } from "./log";
 export interface StoreModel<T, Op> {
   /** For the log: "board". */
   name: string;
-  /** For the log: "card". */
+  /** For the log: "card", "lament". */
   item: string;
   empty(): T;
   /** Returns the same value when the op changes nothing; throws for an invalid op. */

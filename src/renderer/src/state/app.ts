@@ -2,6 +2,7 @@
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
+import { emptyLaments, type LamentOp, type Laments } from "../../../shared/laments";
 import type { HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
@@ -66,6 +67,8 @@ export interface AppState {
   lightbox?: string;
   /** Every project's Kanban cards. Main owns them (agents change them too) and pushes each change. */
   board: Board;
+  /** Every project's laments, which agents file; main owns them and pushes each change. */
+  laments: Laments;
   /** A full-window page shown instead of the active chat. */
   page?: PageState;
   /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
@@ -76,7 +79,7 @@ export interface AppState {
   updateOpen: boolean;
 }
 
-/** A page of one project: its Kanban board, maybe with a card open. */
+/** A page of one project: its Kanban board (maybe with a card open) or its laments. */
 export interface PageState {
   kind: Page;
   cwd: string;
@@ -102,6 +105,7 @@ export const store = createStore<AppState>({
   compaction: {},
   sidebar: loadSidebar(),
   board: emptyBoard(),
+  laments: emptyLaments(),
   overlay: false,
   update: { phase: "idle" },
   updateOpen: false,
@@ -613,6 +617,19 @@ export function togglePage(page: Page): void {
   else showPage(page, current?.cwd); // from the other page: the same project
 }
 
+// ── Laments ──────────────────────────────────────────────────────────────────
+
+/** Resolve, reopen or delete a lament. Main applies it and pushes the laments back. */
+export async function applyLament(op: LamentOp): Promise<boolean> {
+  try {
+    await studio().laments.apply(op);
+    return true;
+  } catch (error) {
+    toast(remoteError(error), "error");
+    return false;
+  }
+}
+
 export function showUpdate(open: boolean): void {
   store.set((s) => (s.updateOpen === open ? s : { ...s, updateOpen: open }));
 }
@@ -770,6 +787,10 @@ export function boot(): void {
     if (focused && !store.get().page) markRead(store.get().active);
   });
   studio().board.onChange((board) => store.set((s) => ({ ...s, board })));
+  studio().laments.onChange((laments) => store.set((s) => ({ ...s, laments })));
+  void studio()
+    .laments.get()
+    .then((laments) => store.set((s) => ({ ...s, laments })));
   void studio()
     .board.get()
     .then((board) => store.set((s) => ({ ...s, board })));

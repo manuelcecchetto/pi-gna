@@ -20,8 +20,8 @@ const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screensh
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();
   private readonly cwds = new Map<string, string>();
-  /** The browser_* and kanban_* tools, which reach pi-gna through the bridge. */
-  private readonly extensions = ["browser-extension.ts", "kanban-extension.ts"].map((name) => onDisk("resources", name));
+  /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
+  private readonly extensions = ["browser-extension.ts", "kanban-extension.ts", "lament-extension.ts"].map((name) => onDisk("resources", name));
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
 
