@@ -23,6 +23,8 @@ import { QueueCard } from "./QueueCard";
 import { Ansi, Kbd, Popover } from "./primitives";
 
 const drafts = new Map<string, string>();
+/** The editor text injection each chat has applied, so a remount (switching back to the chat) does not apply it again. */
+const injections = new Map<string, number>();
 const NO_ATTACHMENTS: Attachment[] = [];
 const fileLists = new Map<string, Promise<string[]>>();
 
@@ -68,13 +70,14 @@ export function Composer({ session }: { session: SessionState }) {
     [handle],
   );
 
-  // Extensions can prefill the editor (set_editor_text).
+  // Extensions can prefill the editor (set_editor_text), and so can pi-gna (prefill).
   const injected = session.editorText;
   useEffect(() => {
-    if (!injected) return;
+    if (!injected || injections.get(handle) === injected.nonce) return;
+    injections.set(handle, injected.nonce);
     setText(injected.text);
     area.current?.focus();
-  }, [injected, setText]);
+  }, [injected, handle, setText]);
 
   useLayoutEffect(() => {
     const element = area.current;
