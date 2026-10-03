@@ -444,7 +444,11 @@ tile with blurred coral, blue and yellow glows in the corners; `pnpm icon` raste
 focused test window once swallowed the user's typing) and their own port, so they never share a profile, focus or
 debugging port with the pi-gna you work in, and stop them by their PID, never with
 `pkill -f bin/pi-gna.mjs`: the agent doing the testing may itself be running inside a pi-gna session, and a
-pattern kill takes down the user's app and the agent with it. `PIGNA_PI_BIN` can point at a wrapper that adds
+pattern kill takes down the user's app and the agent with it. The main process is the one listening on the debugging
+port (`lsof -nP -iTCP:<port> -sTCP:LISTEN -t`); `--user-data-dir` is only on its helpers, and a launch while it still
+runs just opens a chat in it (old build and all). Check that the port is free first: other agents run test instances
+too, and on a taken port Electron only logs "Cannot start http server for devtools" and runs without one, so
+`scripts/cdp.mjs` would drive the other agent's window. `PIGNA_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
 The same starvation hits CDP tests of background windows: mouse moves are dispatched with the next frame (hover
@@ -457,15 +461,25 @@ scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollT
 `PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model. For board checks, seed
 `$PIGNA_USER_DATA/board.json` (`{ "version": 1, "cards": [...] }`) with cards of a throwaway git project under `/tmp`
 (give cards its real path, `/private/tmp/…`: the launch cwd is resolved, so `/tmp/…` cards sit on another board):
-the board's project picker lists every project with cards, and card actions then start fake-pi chats there.
-A pasted screenshot is a File without a path: dispatch `new ClipboardEvent("paste", { clipboardData })`
+the board's project picker lists every project with cards, and card actions then start fake-pi chats there. Tests with the real
+pi write real session files: pi 1.0.0 ignores `PI_CODING_AGENT_SESSION_DIR` (only pi-gna's index reads it), so run
+them in a throwaway project under `/tmp` and delete its folder in `~/.pi/agent/sessions` afterwards.
+Your pi-gna may run from this checkout's `out/`, and other chats may build there too: test a change from a build of its
+own (`npx electron-vite build --outDir /tmp/<dir>/app/out`, copy `package.json` and symlink `node_modules` and
+`resources` into `/tmp/<dir>/app`, then start `$(node -e 'console.log(require("electron"))') /tmp/<dir>/app` with the
+test-instance env). A pasted screenshot is a File without a path: dispatch `new ClipboardEvent("paste", { clipboardData })`
 with a `DataTransfer` holding a canvas `File` in `eval`, so the test does not touch your clipboard; `drop` covers
 Finder files.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
 `click x y` sends real mouse input (useful for driving the annotation picker), `rightclick x y` right-clicks, `drag x1 y1 x2 y2` drags (resize
 handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
 styles render in a background test window; `CDP_SCHEME=light|dark` renders the other theme for that command. CDP screenshots of the app window
-do not include native tab views.
+do not include native tab views. `type … --enter` goes to whatever has focus, and a test instance starts in a new
+chat: check `document.activeElement` first, or the text is sent to a model as a prompt.
+CDP `shot` hung on background test windows (a packaged build, and a dev build after a few page switches) even
+though `requestAnimationFrame` ran;
+`screencapture -x -o -l <CGWindowID>` captures that window instead (the id is `kCGWindowNumber` from
+`CGWindowListCopyWindowInfo` for the app's pid, for example through `osascript -l JavaScript`).
 Native menus open on the real screen, where CDP cannot reach them: start the test instance with `--inspect=9334`
 as well, and `node scripts/cdp.mjs menus` makes its `Menu.popup` record menus instead of showing them (and lists
 what it recorded), `menu "Copy Image"` clicks an item of the last one, and `main "<expr>"` evaluates in the main
@@ -480,6 +494,10 @@ Build notes: Electron 44 has no postinstall; it downloads its binary on the firs
 Electron 44's `clipboard` is asynchronous and `ClipboardItem`-based (`read`, `write`, `readText`, `writeText`;
 no `readImage`/`writeImage`).
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.
+The checks are `pnpm typecheck` and `pnpm test`; the repo has no formatter or linter config (`npx biome` fetches an
+unrelated npm package). To build and test without rewriting the `out/` a running pi-gna reloads from, build with
+`npx electron-vite build --outDir /tmp/<dir>/out`, give `/tmp/<dir>` a copy of `package.json` and symlinks to
+`resources`, `src` and `node_modules`, and launch Electron (`node -e 'console.log(require("electron"))'`) on it.
 
 ## Milestones
 
