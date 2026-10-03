@@ -14,6 +14,8 @@ const arg = (name: string) => process.argv.find((value) => value.startsWith(`--$
 const api: StudioApi = {
   homeDir: arg("studio-home"),
   launchCwd: arg("studio-launch-cwd"),
+  stale: arg("pigna-build") !== __PIGNA_BUILD__,
+  relaunch: () => ipcRenderer.invoke(IPC.relaunch),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
   openSession: (request) => ipcRenderer.invoke(IPC.openSession, request),
   closeSession: (handle) => ipcRenderer.invoke(IPC.closeSession, handle),

@@ -44,6 +44,7 @@ export const IPC = {
   sidebarToggle: "studio:sidebar-toggle",
   pageToggle: "studio:page-toggle",
   openProject: "studio:open-project",
+  relaunch: "studio:relaunch",
   boardGet: "board:get",
   boardApply: "board:apply",
   boardChanged: "board:changed",
@@ -145,6 +146,13 @@ export interface StudioApi {
   homeDir: string;
   /** Directory pi-gna was launched from (home when opened from Finder); new sessions default to it. */
   launchCwd: string;
+  /**
+   * This page is a newer build than the running main process: a checkout's `out/` was rebuilt and the window
+   * reloaded. Calls into main can fail (say "No handler registered") until pi-gna restarts.
+   */
+  stale: boolean;
+  /** Quit and start pi-gna again from the build on disk; running chats stop. */
+  relaunch(): Promise<void>;
   listSessions(): Promise<ProjectGroup[]>;
   openSession(request: OpenSessionRequest): Promise<OpenSessionResult>;
   closeSession(handle: string): Promise<void>;

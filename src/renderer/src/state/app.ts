@@ -560,8 +560,8 @@ export async function applyBoard(op: BoardOp): Promise<boolean> {
     await studio().board.apply(local);
     return true;
   } catch (error) {
-    // Main refused it (or the card changed meanwhile): its board is the truth. When main cannot answer either,
-    // undo the change so nothing looks saved that is not.
+    // Main refused it (or the card changed meanwhile): its board is the truth. When main cannot answer either (a
+    // window newer than main, StudioApi.stale), undo the change so nothing looks saved that is not.
     if (!(error instanceof BoardError)) {
       void studio()
         .board.get()

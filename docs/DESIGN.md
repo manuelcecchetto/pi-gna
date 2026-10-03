@@ -81,6 +81,12 @@ itself always runs the checkout, so test instances test the code you are changin
 - **One instance per profile.** A second launch (another `pi --pigna`) passes its `PIGNA_CWD` to the
   running app, which opens a new chat there, and exits 0. Test instances have their own profile, so they are
   unaffected.
+- **Rebuilding under a running checkout.** `bin/pi-gna.mjs` runs from `out/`, which every `pnpm build` (agents
+  verifying a change) rewrites. Main is loaded once, but a reload reads the preload and renderer from `out/` again,
+  so the page can call IPC the running main lacks ("No handler registered for 'board:get'"). Main and the preload
+  share a build id (`__PIGNA_BUILD__`, stamped in `electron.vite.config.ts`, logged at launch); on a mismatch
+  `studio.stale` is true and the window shows a notice with Restart (`app.relaunch()`). `pnpm start` while
+  pi-gna runs does not restart it either: it rebuilds `out/`, then hands its cwd to the running (old) instance.
 - **Measured** with `scripts/measure-startup.mjs` (Oct 2026, M-series, machine under heavy load, median of 7
   launches, spawn to first contentful paint / RSS of the app's processes): packaged 561 ms / 435 MB; the same code
   unpackaged 768 ms / 551 MB; before packaging (file://, node launcher) ~620 ms / ~500 MB. The main log prints

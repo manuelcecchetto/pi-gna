@@ -88,7 +88,7 @@ function createWindow(): void {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
-      additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`],
+      additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`, `--pigna-build=${__PIGNA_BUILD__}`],
     },
   });
   // PIGNA_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the
@@ -213,6 +213,10 @@ function registerIpc(shellEnv: Promise<void>): void {
     if (!card) throw new Error(`no card ${String(id)}`);
     return cardWorktree(card.cwd, card);
   });
+  handle(IPC.relaunch, () => {
+    app.relaunch();
+    app.quit();
+  });
 }
 
 function buildMenu(): void {
@@ -281,7 +285,7 @@ function init(): void {
   app.on("web-contents-created", (_event, contents) => contents.on("will-attach-webview", (event) => event.preventDefault()));
 
   void app.whenReady().then(async () => {
-    log.info("pigna", `${app.getName()} ${app.getVersion()}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
+    log.info("pigna", `${app.getName()} ${app.getVersion()} build ${__PIGNA_BUILD__}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
     log.info("pigna", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PIGNA_DEBUG=1 logs RPC traffic)"}`);
     if (!app.isPackaged && process.platform === "darwin") app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
     app.setAboutPanelOptions({
