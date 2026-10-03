@@ -71,7 +71,20 @@ export function splitFileMentions(text: string): [string, FileMention[]] {
   return [[text.slice(0, index).trimEnd(), rest].filter(Boolean).join("\n\n"), mentions];
 }
 
-/** Message text without the blocks pi-gna appends (file mentions, browser comments). */
+export interface CardMention {
+  id: string;
+  title: string;
+}
+
+/** Pull a Kanban card's details (cardBlock) out of a sent message, so the transcript can show a chip instead. */
+export function splitCardBlock(text: string): [string, CardMention | undefined] {
+  const block = text.match(/\n*<kanban-card>\n?([\s\S]*?)\n?<\/kanban-card>\n*/);
+  const head = block?.[1]?.match(/^Card (\S+): (.*)$/m);
+  if (!block || !head?.[1]) return [text, undefined];
+  return [text.replace(block[0], "\n\n").trim(), { id: head[1], title: head[2] ?? "" }];
+}
+
+/** Message text without the blocks pi-gna adds (file mentions, browser comments, a Kanban card's details). */
 export function stripStudioBlocks(text: string): string {
-  return splitFileMentions(text)[0].replace(/\n*<browser-comments>[\s\S]*?<\/browser-comments>/g, "").trim();
+  return splitFileMentions(text)[0].replace(/\n*<(browser-comments|kanban-card)>[\s\S]*?<\/\1>\n*/g, "\n").trim();
 }

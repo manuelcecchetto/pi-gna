@@ -10,6 +10,7 @@ import {
   type LucideIcon,
   Search,
   Sparkles,
+  SquareKanban,
   SquareTerminal,
   Wrench,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const ICONS: Record<ToolCategory, LucideIcon> = {
   search: Search,
   web: Globe,
   browser: AppWindow,
+  board: SquareKanban,
   agent: Bot,
   think: Sparkles,
   other: Wrench,

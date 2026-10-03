@@ -8,7 +8,7 @@ import { Composer } from "./Composer";
 import { Transcript } from "./Transcript";
 
 const app = vi.hoisted(() => ({ expanded: {} as Record<string, boolean>, expandAll: false, commands: {}, annotations: [], attachments: {}, models: [], levels: {}, compaction: {} }));
-vi.mock("../state/app", () => ({ useApp: (selector: (state: typeof app) => unknown) => selector(app) }));
+vi.mock("../state/app", () => ({ useApp: (selector: (state: typeof app) => unknown) => selector(app), composerCard: () => undefined }));
 vi.mock("./Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", {}, text) }));
 vi.mock("./ContextMeter", () => ({ ContextMeter: () => null }));
 vi.mock("./Dialogs", () => ({ Dialogs: () => null }));

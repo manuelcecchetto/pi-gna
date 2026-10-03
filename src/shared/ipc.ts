@@ -1,4 +1,5 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
+import type { Board, BoardOp } from "./board";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
 import type {
@@ -41,8 +42,38 @@ export const IPC = {
   browserAnnotation: "browser:annotation",
   browserToggle: "browser:toggle",
   sidebarToggle: "studio:sidebar-toggle",
+  pageToggle: "studio:page-toggle",
   openProject: "studio:open-project",
+  boardGet: "board:get",
+  boardApply: "board:apply",
+  boardChanged: "board:changed",
+  boardSaveImage: "board:save-image",
+  cardWorktree: "studio:card-worktree",
 } as const;
+
+/** Full-window pages shown instead of a chat. */
+export type Page = "kanban";
+
+/** The Kanban boards live in main, which agents change too; every change is pushed back. */
+export interface BoardApi {
+  get(): Promise<Board>;
+  /** Rejects with the reason for an invalid op (unknown card, title too long). */
+  apply(op: BoardOp): Promise<Board>;
+  onChange(listener: (board: Board) => void): () => void;
+  /** Save an image for a card that was just added (AddCard) and return its path; deleted with the card. */
+  saveImage(card: string, image: { mimeType: string; data: string }): Promise<string>;
+}
+
+/** The git worktree a card's Resolve chat works in, on a branch of its own (src/main/worktree.ts). */
+export interface CardWorktree {
+  /** Where the chat runs: the project's folder in the worktree (worktreeCwd). */
+  cwd: string;
+  branch: string;
+  /** Made now, not left from an earlier Resolve of the card. */
+  created: boolean;
+  /** The checkout has uncommitted changes, which the worktree does not have. */
+  dirty: boolean;
+}
 
 export interface BrowserApi {
   layout(layout: BrowserLayout): void;
@@ -120,6 +151,11 @@ export interface StudioApi {
   command<T = unknown>(handle: string, command: RpcCommand): Promise<RpcResponse<T>>;
   respondUi(handle: string, response: ExtensionUiResponse): void;
   listFiles(cwd: string): Promise<string[]>;
+  /**
+   * The git worktree to resolve a card in: made on first use, then reused. Null when the card's project is not in a
+   * git repository; rejects when git fails.
+   */
+  cardWorktree(card: string): Promise<CardWorktree | null>;
   pickFolder(): Promise<string | null>;
   /** Native picker: "photos" for images, "files" for files and folders. */
   pickAttachments(kind: "photos" | "files"): Promise<PickedPath[]>;
@@ -134,6 +170,8 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
+  /** View > Kanban (⌘⇧K): page toggles from the menu. */
+  onPageToggle(listener: (page: Page) => void): () => void;
   /** Another launch (say `pi --pigna` in a different project) asks for a new chat in `cwd`. */
   onOpenProject(listener: (cwd: string) => void): () => void;
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
@@ -141,4 +179,5 @@ export interface StudioApi {
   openExternal(url: string): void;
   onEvents(listener: (batch: HostEventBatch) => void): () => void;
   browser: BrowserApi;
+  board: BoardApi;
 }

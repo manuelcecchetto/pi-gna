@@ -11,16 +11,18 @@ import {
   GitBranch,
   ImageIcon,
   MessageSquare,
+  SquareKanban,
   SquareTerminal,
 } from "lucide-react";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
-import { splitFileMentions } from "../lib/attachments";
+import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { railItems } from "../lib/rail";
 import type { SessionState } from "../lib/session";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
-import { openLightbox, setExpanded, useApp } from "../state/app";
+import { openLightbox, setExpanded, showBoard, useApp } from "../state/app";
+import { ColumnIcon } from "./ColumnIcon";
 import { CompactionProgress } from "./CompactionProgress";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
@@ -294,7 +296,8 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
 function UserMessageView({ message, divider }: { message: UserMessage; divider: boolean }) {
   const parts = userParts(message);
   const [withoutFiles, mentions] = splitFileMentions(parts.text);
-  const [text, comments] = splitComments(withoutFiles);
+  const [withoutCard, card] = splitCardBlock(withoutFiles);
+  const [text, comments] = splitComments(withoutCard);
   const images = parts.images;
   const [expanded, setOpen] = useState(false);
   const long = text.split("\n").length > 14 || text.length > 1400;
@@ -304,6 +307,12 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {divider && (
         <div title={new Date(message.timestamp).toLocaleString()} className="self-center pb-2 text-[12px] text-faint">
           {formatStamp(message.timestamp)}
+        </div>
+      )}
+      {card && (
+        <div className="flex w-full items-center justify-end gap-3">
+          {!text && !images.length && stamp}
+          <SentCard mention={card} />
         </div>
       )}
       {images.length > 0 && (
@@ -357,6 +366,26 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
         </div>
       )}
     </div>
+  );
+}
+
+/** The card a message was about (its <kanban-card> block): opens it on the board while it is there. */
+function SentCard({ mention }: { mention: CardMention }) {
+  const card = useApp((state) => state.board.cards.find((other) => other.id === mention.id));
+  const chip = "flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 text-[12px] text-muted";
+  if (!card) {
+    return (
+      <span title="No longer on the board" className={chip}>
+        <SquareKanban size={12} className="shrink-0 text-faint" />
+        <span className="truncate">{mention.title}</span>
+      </span>
+    );
+  }
+  return (
+    <button type="button" onClick={() => showBoard(card.cwd, card.id)} title={`On the board: ${card.title}`} className={`${chip} hover:bg-raised hover:text-fg`}>
+      <ColumnIcon column={card.column} size={12} />
+      <span className="truncate">{card.title}</span>
+    </button>
   );
 }
 

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { Board } from "../shared/board";
 import type { Annotation, BrowserState } from "../shared/browser";
-import { type HostEventBatch, IPC, type StudioApi } from "../shared/ipc";
+import { type HostEventBatch, IPC, type Page, type StudioApi } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const handler = (_event: unknown, value: T) => listener(value);
@@ -23,9 +24,11 @@ const api: StudioApi = {
   pickAttachments: (kind) => ipcRenderer.invoke(IPC.pickAttachments, kind),
   describePaths: (paths) => ipcRenderer.invoke(IPC.describePaths, paths),
   compactionSettings: () => ipcRenderer.invoke(IPC.compactionSettings),
+  cardWorktree: (card) => ipcRenderer.invoke(IPC.cardWorktree, card),
   windowFocused: () => ipcRenderer.invoke(IPC.windowFocused),
   onWindowFocus: (listener) => subscribe<boolean>(IPC.windowFocus, listener),
   onSidebarToggle: (listener) => subscribe<void>(IPC.sidebarToggle, listener),
+  onPageToggle: (listener) => subscribe<Page>(IPC.pageToggle, listener),
   onOpenProject: (listener) => subscribe<string>(IPC.openProject, listener),
   pathForFile: (file) => webUtils.getPathForFile(file),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
@@ -45,6 +48,12 @@ const api: StudioApi = {
     onReveal: (listener) => subscribe<void>(IPC.browserReveal, listener),
     onAnnotation: (listener) => subscribe<Annotation>(IPC.browserAnnotation, listener),
     onToggle: (listener) => subscribe<void>(IPC.browserToggle, listener),
+  },
+  board: {
+    get: () => ipcRenderer.invoke(IPC.boardGet),
+    apply: (op) => ipcRenderer.invoke(IPC.boardApply, op),
+    onChange: (listener) => subscribe<Board>(IPC.boardChanged, listener),
+    saveImage: (card, image) => ipcRenderer.invoke(IPC.boardSaveImage, card, image),
   },
 };
 

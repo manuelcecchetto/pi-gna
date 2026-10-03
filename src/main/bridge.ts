@@ -1,21 +1,26 @@
-// Localhost bridge for the pi browser extension. Each pi process gets its own token, and the
-// token (never the request body) decides which session is acting.
+// Localhost bridge for the pi extensions pi-gna loads (browser_* and kanban_* tools). Each pi process gets its
+// own token, and the token (never the request body) decides which session is acting.
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { AgentAction } from "../../shared/browser";
-import { log } from "../log";
-import type { BrowserAgent } from "./agent";
+import { log } from "./log";
 
 const MAX_BODY = 1024 * 1024;
-const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state"]);
+
+/** Handles one POST for the session `handle`; throw bridgeError for a status other than 400. */
+export type Route = (handle: string, body: unknown) => Promise<unknown>;
+
+export const bridgeError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
 export class AgentBridge {
   private server?: Server;
   private readonly tokens = new Map<string, string>();
+  private readonly routes = new Map<string, Route>();
   url = "";
 
-  constructor(private readonly agent: () => BrowserAgent | undefined) {}
+  route(path: string, route: Route): void {
+    this.routes.set(path, route);
+  }
 
   async start(): Promise<void> {
     const server = createServer((request, response) => {
@@ -33,7 +38,7 @@ export class AgentBridge {
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     this.server = server;
     this.url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    log.info("browser", `agent bridge on ${this.url}`);
+    log.info("bridge", `agent bridge on ${this.url}`);
   }
 
   register(handle: string): string {
@@ -51,24 +56,20 @@ export class AgentBridge {
   }
 
   private async handle(request: IncomingMessage): Promise<unknown> {
-    const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
     // Reject anything not addressed to the loopback bridge (DNS rebinding) or without a session token.
-    if (request.headers.host !== this.url.slice("http://".length)) throw fail(403, "bad host");
+    if (request.headers.host !== this.url.slice("http://".length)) throw bridgeError(403, "bad host");
     const handle = this.tokens.get((request.headers.authorization ?? "").replace(/^Bearer /, ""));
-    if (!handle) throw fail(401, "unauthorized");
-    if (request.method !== "POST" || request.url !== "/browser") throw fail(404, "not found");
+    if (!handle) throw bridgeError(401, "unauthorized");
+    const route = request.method === "POST" ? this.routes.get(request.url ?? "") : undefined;
+    if (!route) throw bridgeError(404, "not found");
 
     let size = 0;
     const chunks: Buffer[] = [];
     for await (const chunk of request) {
       size += (chunk as Buffer).length;
-      if (size > MAX_BODY) throw fail(413, "request too large");
+      if (size > MAX_BODY) throw bridgeError(413, "request too large");
       chunks.push(chunk as Buffer);
     }
-    const action = JSON.parse(Buffer.concat(chunks).toString("utf8")) as AgentAction;
-    if (!ACTIONS.has(action?.action)) throw fail(400, `unknown action ${String(action?.action)}`);
-    const agent = this.agent();
-    if (!agent) throw fail(503, "the browser is not ready");
-    return agent.run(handle, action);
+    return route(handle, JSON.parse(Buffer.concat(chunks).toString("utf8")));
   }
 }

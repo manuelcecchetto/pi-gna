@@ -26,12 +26,15 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     files          `rg --files` for @ mentions
-    browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), AgentBridge (localhost)
+    bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban)
+    browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions)
+    board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
-resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session
+resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
+resources/kanban-extension.ts    the same for the kanban_* tools
 resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
 
@@ -54,8 +57,9 @@ itself always runs the checkout, so test instances test the code you are changin
   the old folder over when you rename.
 - **No node_modules in the app.** Every runtime dependency is renderer code that Vite bundles, so they all sit in
   `devDependencies`; main and preload only import Node and Electron. The asar holds `out/`, `package.json` and
-  the three files pi reads from disk (`resources/browser-extension.ts`, `resources/pigna-prompt.md`,
-  `src/shared/browser.ts`), which are also unpacked to `app.asar.unpacked/` (session-host points pi there).
+  the files pi reads from disk (`resources/browser-extension.ts`, `resources/kanban-extension.ts`,
+  `resources/pigna-prompt.md`, and the `src/shared/browser.ts` and `src/shared/board.ts` they import), which are
+  also unpacked to `app.asar.unpacked/` (session-host points pi there).
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
   runtime, no notarization) and macOS asks once before opening a downloaded build (README). Without notarization
   there is no Squirrel auto-update either.
@@ -88,7 +92,7 @@ itself always runs the checkout, so test instances test the code you are changin
   storage from the app; no camera, mic, location or notifications). The renderer draws the tab strip and toolbar
   and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views
   paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
-  image lightbox, menus). History lives in `userData/browser-history.json`.
+  image lightbox, the Kanban card dialog and menus). History lives in `userData/browser-history.json`.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
   `browser_screenshot`, `browser_evaluate`, `browser_console`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
@@ -107,6 +111,89 @@ itself always runs the checkout, so test instances test the code you are changin
 - **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab; a
   long-pending promise resolves with the element, selector, HTML and comment, main crops the element, and the
   renderer shows it as a chip. The next prompt carries a `<browser-comments>` block plus the crops as images.
+
+## Kanban (M3)
+
+- **One board per project** (cwd). Cards are tasks (title, notes, tags, column, attached chats, reports), not threads: a
+  chat is on at most one card, a card can have several chats, and a chat only joins cards of its own project.
+  Columns are To do, In progress, In review and Done. A card moves only when you move it (drag, its menu, its
+  dialog) or an agent does; what its chats are doing shows as the sidebar's pi-logo mark on the card
+  (`cardAttention`, the strongest mark of its open chats), never as a column change.
+- **Main owns the board** (`userData/board.json`, `BoardStore`), because agents change it too. Every change, from the
+  window or an agent, is a `BoardOp` applied by the pure `applyOp` (`src/shared/board.ts`), which checks every
+  field (ids, columns, absolute paths, title 300 / notes 20k / report 4k characters, at most 6 tags of 24; the last
+  50 reports are kept). Tags are spelled one way (`normalizeTags`: "#UI Bug" is `ui-bug`); cards saved before tags
+  load with none. Writes are serialized, tmp + rename; a file that does not parse moves to `board.corrupt-<ts>.json`, and
+  skipped malformed cards keep a copy there. The renderer applies an op locally first (a drop lands at once), main
+  applies it again and pushes the whole board (`board:changed`).
+- **Agent tools** (`resources/kanban-extension.ts`): `kanban_list` (the chat's project; `card` shows one in full),
+  `kanban_claim` (take a card by id or create one; the chat leaves its previous card) and `kanban_update` (move the
+  chat's card, report, and/or rename and retag it). They call `POST /kanban` on the browser tools' bridge (`src/main/bridge.ts`, a route
+  per path). The token gives the session; its card is found through pi's current session file, asked live with
+  `get_state` (`/new` and forks switch files; pi answers RPC commands while one of its tools awaits the bridge,
+  verified live), and its project is `projectOf` the cwd SessionHost started it in (a card's worktree counts as its
+  project).
+- **Card actions** (`state/card-actions.ts`, `registerCardAction`) fill the right-click menu, the card's "…" button
+  and its dialog. Investigate, Resolve and QA start a chat in the background (you stay on the board), attach it when
+  pi is ready (a new chat's session file is named before anything is written) and only then send the prompt, so
+  the agent's first `kanban_update` finds its card; `set_session_name` names it "Investigate: …". QA (cards in
+  In review, `qaPrompt`) reviews, tests and tries the change without fixing it, leaves a passing card in review and
+  moves a failing one back to In progress. It runs where the change is: the card's worktree when a chat on the card
+  worked in one (`hasWorktree`; `cardWorktree` reuses it or brings back the card's branch), else the project folder,
+  since a new worktree from HEAD would not have the change. "Chat about it"
+  (`discussCard`) opens a new chat with the card as a chip in its composer (`AppState.composerCards`), not as text
+  you write under: `send` puts the card's block before your first message (a slash command does not take it) and only
+  then attaches the chat. The chip's × drops both the details and the attach; a draft you leave is disposed with it. Later features (GitHub issues and PRs) add their actions here.
+- **Resolve works in a git worktree** (`src/main/worktree.ts`, `studio:card-worktree`), on branch
+  `pigna/<card id>-<title words>` from the checkout's HEAD, so its change stays off your checkout until you merge it;
+  Investigate, Chat about it and triage stay in the checkout. The worktree is
+  `~/.pi-gna/worktrees/<card id><repository path>` (`worktreeCwd`), and the chat runs in the project's folder in it
+  (a project can be a subfolder of its repository). It is outside the project because pi loads the AGENTS.md of the
+  cwd's parent folders too (twice, in a worktree inside the project) and test runners would find the copy.
+  `projectOf` maps a worktree path back to its project for everything keyed by project: the attach check, the
+  bridge's board, the session index's groups, the sidebar and the board page. A chat's own cwd stays the worktree, so
+  it reopens there. pi keys project trust by the cwd's folders, which a worktree outside the project does not
+  share: SessionHost passes `--approve`/`--no-approve` from your decision for the project (`projectTrust`, pi's
+  `trust.json`). A second Resolve of the card reuses its worktree (main makes one at a time per card); after
+  `git worktree remove`, the next one brings back the card's branch. The prompt says what the worktree lacks
+  (ignored files such as dependencies and `.env`; the checkout's uncommitted changes, also a warning toast) and asks
+  for a commit on the branch, no push or merge. A project outside git resolves in its folder; a git error starts no
+  chat. Worktrees are never removed for you (the chat reopens there, and the branch may hold unmerged work): remove
+  one with `git worktree remove <path>`.
+- **Adding a card** takes one description in your own words (the inline input at a column's foot; the header's "New
+  card" opens To do's), because a title has to be short. `addCard` puts it in the notes, titles the card with its
+  start (`draftTitle`, 80 characters at a word) and starts a triage chat in the background like Investigate: a
+  quick read-only look, then one `kanban_update` with a real title, one to three tags (reusing the board's,
+  `boardTags`) and a short report. It runs on `TRIAGE_MODEL` (Sonnet 5.5, low thinking): `linkCard` sends
+  `set_model` and `set_thinking_level` before the prompt, which pi applies to that session only (RPC never saves
+  them as your defaults; checked in pi's `rpc-mode.js`). `pickModel` prefers the provider the chat started on, and
+  a missing model leaves your default with a warning toast. Tags are edited in the card dialog. Triage chats are
+  not listed in the sidebar: `projectViews` leaves out chats named `triageName` (live or indexed; `linkCard` names
+  the live chat before pi confirms it), and projects with only triage chats; they are reached from their card.
+  A triage that ends well closes (`CardLink.closeWhenDone`; its result is the card's report), so the card is not
+  left marked unread. A failed run stays open, marked on the card; a triage you opened is not closed under you.
+- **Screenshots on a new card** (`AddCard.tsx`): paste (⌘V), drop or pick ("Add screenshots") them into the add-card
+  box, read like the composer's attachments (`readFiles`, `pickFiles`). `addCard` adds the card, saves each image
+  with `board:save-image` (main checks the card exists, the type and 25 MB, `CardImages`), then lists them by path
+  under `Attachments:` in the notes (`cardNotes`); dropped files that are not images keep their own path. Chats on
+  the card get the notes, and pi's read tool shows an image file as an image, the way pi's own Ctrl+V puts a
+  `pi-clipboard-*.png` path in the prompt; the triage prompt says to read them first. Images go to
+  `userData/card-images/<card id>/`, not pi's `os.tmpdir()`, which macOS empties after three days, and are deleted
+  with the card; a failed save removes the card again and keeps your input. Finder images are copied too (a dragged
+  screenshot thumbnail is a temporary file). `splitAttachments` keeps the list out of the card's snippet (a
+  paperclip count instead) and gives the card dialog its thumbnails; the dialog zooms them itself, since the app's
+  lightbox would sit under the modal `<dialog>` (top layer).
+- **The card in a prompt** is a `<kanban-card>` block (title, column, tags, notes, the last 5 reports clipped to 600
+  characters). `stripStudioBlocks` (renderer) and `textOf` (session index) leave it out of chat titles; the
+  transcript shows it as a chip that opens the card (`splitCardBlock`).
+- **Pages**: `AppState.page` replaces the chat area with the board of `page.cwd` (and `page.card` open). View >
+  Kanban (⌘⇧K, a menu accelerator so it works while the browser has focus), the sidebar's Kanban row, a project's
+  hover button and a chat's card chip open it; opening a chat leaves it. A chat under a page is not being looked
+  at, so a run that settles meanwhile is marked unread. The card dialog is a native `<dialog>` (React's `autoFocus` runs before
+  `showModal()`, which then focuses the first button: focus explicitly after it); it and the context menu set
+  `overlay`, which hides the native browser view.
+- **Drag and drop** is HTML5. A column cancels `dragenter` as well as `dragover`: a drop that follows entering
+  without a `dragover` in between (CDP drags release at once) is refused otherwise.
 
 ## pi RPC notes (pi 1.0.0)
 
@@ -147,15 +234,15 @@ Verified live (pi 1.0.0, Oct 2026):
   (`src/main/context-menu.ts`, on the app window and every browser tab): Copy Image, Save Image As… and the image
   address; open or copy links (the app window opens them in your browser or the browser pane, pages in a new tab);
   Copy, Look Up and Search Google for a selection; Undo to Select All and spelling guesses in fields; Back, Forward,
-  Reload and Inspect Element on pages. A spot with none of these shows nothing. The window's own objects
-  (sidebar projects and chats, browser tabs) open the DOM `ContextMenu` (`useContextMenu`) with their actions
+  Reload and Inspect Element on pages. A spot with none of these shows nothing. The window's own objects (cards,
+  sidebar projects and chats, browser tabs) open the DOM `ContextMenu` (`useContextMenu`) with their actions
   instead; it cancels the DOM event, and Chromium then never asks main for a native menu. Chromium copies an SVG
   image as an `<img>` tag only, with no pixels (Chrome does too), so Copy Image draws an SVG into a PNG in an
   isolated world; a cross-origin SVG taints that canvas and keeps Chromium's copy.
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
-- Sidebar layout (Codex-style): header with the logo and a hide button, a "New chat" row (⌘N), then a
+- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N) and "Kanban" (⌘⇧K) rows, then a
   "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
   pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
@@ -298,7 +385,13 @@ Background test windows are `document.visibilityState === "hidden"`: smooth scro
 fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
-`PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model.
+`PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model. For board checks, seed
+`$PIGNA_USER_DATA/board.json` (`{ "version": 1, "cards": [...] }`) with cards of a throwaway git project under `/tmp`
+(give cards its real path, `/private/tmp/…`: the launch cwd is resolved, so `/tmp/…` cards sit on another board):
+the board's project picker lists every project with cards, and card actions then start fake-pi chats there.
+A pasted screenshot is a File without a path: dispatch `new ClipboardEvent("paste", { clipboardData })`
+with a `DataTransfer` holding a canvas `File` in `eval`, so the test does not touch your clipboard; `drop` covers
+Finder files.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and
 `click x y` sends real mouse input (useful for driving the annotation picker), `rightclick x y` right-clicks, `drag x1 y1 x2 y2` drags (resize
 handles), `shot <path> x y w h scale` captures a close-up, and `CDP_FOCUS=1` emulates window focus so `:focus`
@@ -327,5 +420,7 @@ electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandb
    agent `browser_*` tools via a pi extension loaded with `-e` that calls a token-gated localhost bridge (CDP through
    `webContents.debugger`), annotation mode whose comments attach to the next prompt. Stagehand tools are excluded in
    pi-gna sessions; localhost is allowed, other sites ask once.
-3. **Polish:** session tree, changed-files review, Cmd-K, usage insights, selection actions, Adjust panel,
+3. **Kanban (done):** a board per project of task cards that chats attach to, `kanban_*` tools for agents to take,
+   move and report on their card, and card actions that start chats (investigate, resolve, chat about it).
+4. **Polish:** session tree, changed-files review, Cmd-K, usage insights, selection actions, Adjust panel,
    dictation, task rows for subagents and workflows.

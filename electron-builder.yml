@@ -10,12 +10,15 @@ files:
   - out/**
   - resources/**
   - src/shared/browser.ts
+  - src/shared/board.ts
   - "!resources/icon.png"
   - "!resources/pigna-flag.ts"
-# pi reads these from disk (`pi -e`, `--append-system-prompt`); browser-extension.ts imports src/shared/browser.ts.
+# pi reads these from disk (`pi -e`, `--append-system-prompt`); the browser and kanban extensions import
+# src/shared/browser.ts and src/shared/board.ts.
 asarUnpack:
   - resources/**
   - src/shared/browser.ts
+  - src/shared/board.ts
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:

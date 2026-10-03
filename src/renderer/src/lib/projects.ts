@@ -1,7 +1,9 @@
 // Sidebar projects: pinned folders first (in the order you pinned them), then the rest by latest activity.
 // Opening or switching chats never reorders anything; only pinning and sending a message do. Pins are
 // app-only state in localStorage, like the sidebar layout.
+import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
+import { isTriage } from "./board";
 import { isDraft, type SessionState } from "./session";
 import { createStore, useStore } from "./store";
 
@@ -18,16 +20,22 @@ export interface ProjectView {
   rows: ProjectRow[];
 }
 
-/** Indexed projects plus open chats (matched by session file), ordered for the sidebar. */
+/**
+ * Indexed projects plus open chats (matched by session file, grouped by projectOf), ordered for the sidebar; card
+ * triage chats are left out.
+ */
 export function projectViews(projects: ProjectGroup[], open: SessionState[], pinned: string[]): ProjectView[] {
   const groups = new Map<string, { cwd: string; activeAt: number; rows: ProjectRow[] }>();
   for (const project of projects) {
-    const rows = project.sessions.map((summary) => ({ key: summary.path, time: summary.modifiedAt, summary }));
-    groups.set(project.cwd, { cwd: project.cwd, activeAt: project.modifiedAt, rows });
+    const sessions = project.sessions.filter((summary) => !(summary.named && isTriage(summary.title)));
+    if (!sessions.length) continue;
+    const rows = sessions.map((summary) => ({ key: summary.path, time: summary.modifiedAt, summary }));
+    groups.set(project.cwd, { cwd: project.cwd, activeAt: Math.max(...sessions.map((summary) => summary.modifiedAt)), rows });
   }
   for (const session of open) {
-    if (isDraft(session)) continue;
-    const group = groups.get(session.cwd) ?? { cwd: session.cwd, activeAt: 0, rows: [] };
+    if (isDraft(session) || isTriage(session.name)) continue;
+    const cwd = projectOf(session.cwd);
+    const group = groups.get(cwd) ?? { cwd, activeAt: 0, rows: [] };
     const sent = sentAt(session);
     const row = group.rows.find((r) => r.summary && r.summary.path === session.sessionPath);
     if (row) {
@@ -35,7 +43,7 @@ export function projectViews(projects: ProjectGroup[], open: SessionState[], pin
       if (sent) row.time = Math.max(row.time ?? 0, sent);
     } else group.rows.push({ key: session.handle, time: sent, live: session });
     if (sent) group.activeAt = Math.max(group.activeAt, sent);
-    groups.set(session.cwd, group);
+    groups.set(cwd, group);
   }
   const rank = (cwd: string) => {
     const index = pinned.indexOf(cwd);

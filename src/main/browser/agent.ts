@@ -3,6 +3,7 @@
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
 import { nativeImage, type WebContents } from "electron";
 import { type AgentAction, type AgentResult, normalizeAddress } from "../../shared/browser";
+import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import type { BrowserManager, Tab } from "./manager";
 import { focusForTyping, ISOLATED_WORLD, locate, SNAPSHOT } from "./page-scripts";
@@ -46,6 +47,19 @@ function keyDef(name: string): KeyDef {
 }
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state"]);
+
+/** POST /browser on the agent bridge: the browser_* tools. */
+export function browserRoute(agent: () => BrowserAgent | undefined): Route {
+  return async (handle, body) => {
+    const action = body as AgentAction;
+    if (!ACTIONS.has(action?.action)) throw bridgeError(400, `unknown action ${String(action?.action)}`);
+    const current = agent();
+    if (!current) throw bridgeError(503, "the browser is not ready");
+    return current.run(handle, action);
+  };
+}
 
 export class BrowserAgent {
   /** Per-session queue: pi runs one message's tool calls in parallel, but a page is sequential. */

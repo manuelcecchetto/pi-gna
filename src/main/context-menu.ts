@@ -1,5 +1,5 @@
 // Native right-click menus for the app window and the browser pane's pages: links, images, selected text and
-// fields. The window's own objects (chats, projects, tabs) open DOM menus and cancel the event, so
+// fields. The window's own objects (cards, chats, projects, tabs) open DOM menus and cancel the event, so
 // Chromium never asks for these there.
 import { ClipboardItem, type ContextMenuParams, clipboard, Menu, type MenuItemConstructorOptions, shell, type WebContents } from "electron";
 

@@ -627,3 +627,38 @@ code.hl span {
     animation: none;
   }
 }
+
+/* Kanban: the board settles in, a card's dialog rises over a dimmed page. */
+.page-enter {
+  animation: page-in 180ms ease-out;
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+.card-dialog[open] {
+  animation: dialog-in 160ms ease-out;
+}
+.card-dialog[open]::backdrop {
+  animation: backdrop-in 160ms ease-out;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter,
+  .card-dialog[open],
+  .card-dialog[open]::backdrop {
+    animation: none;
+  }
+}

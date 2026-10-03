@@ -128,7 +128,7 @@ function safeParse(line: string): FileRecord | undefined {
 
 export function textOf(content: string | { type: string; text?: string }[]): string {
   const full = typeof content === "string" ? content : content.find((block) => block.type === "text")?.text ?? "";
-  // Drop the blocks pi-gna appends to prompts (file mentions, browser comments).
-  const raw = full.split(/\n*(?:# Files mentioned by the user:|<browser-comments>)/)[0] ?? full;
+  // Drop the blocks pi-gna adds to prompts: a Kanban card's details before, file mentions and browser comments after.
+  const raw = full.replace(/<kanban-card>[\s\S]*?<\/kanban-card>/g, "").split(/\n*(?:# Files mentioned by the user:|<browser-comments>)/)[0] ?? full;
   return raw.replace(/\s+/g, " ").trim().slice(0, 160);
 }

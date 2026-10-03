@@ -181,6 +181,13 @@ describe("hydrate + view", () => {
     expect(presentTool("read", { path: "/repo/a.ts", offset: 10, limit: 5 }, "/repo")).toMatchObject({ target: "a.ts", meta: "L10–14" });
     expect(presentTool("edit", { path: "/repo/b.ts" }, "/repo", { diff: "+1 a\n-1 b\n+2 c" }).meta).toBe("+2 −1");
     expect(presentTool("apply_patch", { input: "*** Begin Patch\n*** Update File: x.ts\n*** Add File: y.ts\n" }, "/repo").target).toBe("x.ts +1 more");
+    const board = summarizeTools(
+      [presentTool("kanban_list", {}, "/repo"), presentTool("kanban_claim", { card: "k3x9a2" }, "/repo"), presentTool("kanban_update", { column: "in_review", report: "Fixed" }, "/repo")].map(
+        (presentation) => ({ presentation, failed: false }),
+      ),
+    );
+    expect(board).toBe("3 board actions");
+    expect(presentTool("kanban_update", { column: "in_review", report: "Fixed" }, "/repo")).toMatchObject({ verb: "Moved its card", target: "to in_review" });
   });
 });
 

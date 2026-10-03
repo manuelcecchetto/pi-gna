@@ -1,10 +1,25 @@
-import { ChevronRight, Copy, Folder, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquarePen, X } from "lucide-react";
+import { ChevronRight, Copy, Folder, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
 import { useMemo, useState } from "react";
+import { cardOfChat, projectOf } from "../../../shared/board";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, isDraft, strongestAttention } from "../lib/session";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";
-import { activate, closeSession, newChat, newSession, openSession, sessionTitle, setSidebar, toggleSidebar, useApp } from "../state/app";
+import {
+  activate,
+  addChatToBoard,
+  closeSession,
+  newChat,
+  newSession,
+  openSession,
+  sessionTitle,
+  setSidebar,
+  showBoard,
+  showPage,
+  store,
+  toggleSidebar,
+  useApp,
+} from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
@@ -14,13 +29,16 @@ const SESSIONS_PER_PROJECT = 6;
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
   const sessions = useApp((state) => state.sessions);
-  const active = useApp((state) => state.active);
+  // A page (the board) covers the active chat: no chat row is highlighted then.
+  const page = useApp((state) => state.page);
+  const active = useApp((state) => (state.page ? undefined : state.active));
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
   const [dragging, setDragging] = useState(false);
   const { open: openMenu, menu } = useContextMenu();
   const home = window.studio.homeDir;
-  const activeCwd = active ? sessions[active]?.cwd : undefined;
+  const activeChat = active ? sessions[active]?.cwd : undefined;
+  const activeCwd = activeChat && projectOf(activeChat);
 
   const groups = useMemo(() => projectViews(projects, Object.values(sessions), pinned), [projects, sessions, pinned]);
   // You are in an empty new chat: highlight "New chat" instead of a row.
@@ -76,6 +94,15 @@ export function Sidebar() {
             <SquarePen size={14} className="shrink-0 text-muted" />
             <span className="flex-1">New chat</span>
             <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘N</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => page?.kind !== "kanban" && showPage("kanban", page?.cwd)}
+            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "kanban" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+          >
+            <SquareKanban size={14} className="shrink-0 text-muted" />
+            <span className="flex-1">Kanban</span>
+            <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧K</span>
           </button>
         </div>
 
@@ -168,6 +195,14 @@ function ProjectSection({
           <span className="truncate text-[13px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
           {rollup && <Indicator level={rollup} />}
         </button>
+        <button
+          type="button"
+          title="Kanban board"
+          onClick={() => showBoard(group.cwd)}
+          className="rounded-md p-1 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover:opacity-100"
+        >
+          <SquareKanban size={12} />
+        </button>
         {/* Pinned projects keep their pin visible; hovering it offers to unpin. */}
         <button
           type="button"
@@ -214,7 +249,10 @@ type OpenMenu = (event: React.MouseEvent, sections: MenuItem[][]) => void;
 
 function projectMenu(group: ProjectView): MenuItem[][] {
   return [
-    [{ label: "New chat here", icon: <SquarePen size={13} />, onSelect: () => newSession(group.cwd) }],
+    [
+      { label: "New chat here", icon: <SquarePen size={13} />, onSelect: () => newSession(group.cwd) },
+      { label: "Kanban board", icon: <SquareKanban size={13} />, onSelect: () => showBoard(group.cwd) },
+    ],
     [
       group.pinned
         ? { label: "Unpin project", icon: <PinOff size={13} />, onSelect: () => togglePinnedProject(group.cwd) }
@@ -226,8 +264,17 @@ function projectMenu(group: ProjectView): MenuItem[][] {
 
 function sessionMenu(row: ProjectRow, open: () => void, active: boolean): MenuItem[][] {
   const live = row.live;
+  const path = live?.sessionPath ?? row.summary?.path;
+  const card = path ? cardOfChat(store.get().board, path) : undefined;
+  // As the chat header's card chip: an exited chat or an empty draft has nothing to put on the board.
+  const addable = live && !card && live.sessionPath && !isDraft(live) && live.phase !== "exited" ? live : undefined;
   return [
     active ? [] : [{ label: "Open", icon: <MessagesSquare size={13} />, onSelect: open }],
+    card
+      ? [{ label: "Show on the board", icon: <SquareKanban size={13} />, hint: card.title, onSelect: () => showBoard(card.cwd, card.id) }]
+      : addable
+        ? [{ label: "Add to the Kanban board", icon: <SquareKanban size={13} />, onSelect: () => void addChatToBoard(addable.handle) }]
+        : [],
     live ? [{ label: "Close chat", icon: <X size={13} />, hint: "Stops its pi process", onSelect: () => void closeSession(live.handle) }] : [],
   ];
 }
@@ -262,7 +309,7 @@ const MARKS: Record<Exclude<Attention, "idle" | "running">, { color: string; tit
   unread: { color: PI.blue, title: "Finished, not seen yet" },
 };
 
-function Indicator({ level }: { level: Attention }) {
+export function Indicator({ level }: { level: Attention }) {
   if (level === "idle") return null;
   if (level === "running") return <PiSpinner size={12} />;
   const mark = MARKS[level];

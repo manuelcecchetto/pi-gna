@@ -4,7 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname, isAbsolute } from "node:path";
 import type { PickedPath } from "../shared/ipc";
 
-const IMAGE_TYPES: Record<string, string> = {
+export const IMAGE_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
@@ -12,7 +12,7 @@ const IMAGE_TYPES: Record<string, string> = {
   ".webp": "image/webp",
 };
 /** pi downsizes images itself (images.autoResize); this only guards against absurd files. */
-const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
 export async function describePaths(paths: string[]): Promise<PickedPath[]> {
   const described = await Promise.all(

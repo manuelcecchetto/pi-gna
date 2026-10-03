@@ -1,7 +1,9 @@
-import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, X } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, SquareKanban, X } from "lucide-react";
 import { useRef, useState } from "react";
-import type { SessionState } from "../lib/session";
-import { attachFiles, closeSession, sessionTitle, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
+import { cardOfChat } from "../../../shared/board";
+import { isDraft, type SessionState } from "../lib/session";
+import { addChatToBoard, attachFiles, closeSession, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
+import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";
 import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
@@ -53,6 +55,7 @@ export function SessionPane({ session }: { session: SessionState }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-fg">{sessionTitle(session)}</div>
         </div>
+        <CardChip session={session} />
         <button
           type="button"
           onClick={toggleBrowser}
@@ -77,6 +80,30 @@ export function SessionPane({ session }: { session: SessionState }) {
       <Transcript session={session} />
       <Composer session={session} />
     </div>
+  );
+}
+
+/** The card this chat works on (opens it on the board), or a button to put the chat on the board. */
+function CardChip({ session }: { session: SessionState }) {
+  const card = useApp((state) => (session.sessionPath ? cardOfChat(state.board, session.sessionPath) : undefined));
+  if (card) {
+    return (
+      <button
+        type="button"
+        onClick={() => showBoard(card.cwd, card.id)}
+        title={`On the board: ${card.title}`}
+        className="flex max-w-60 min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-fg"
+      >
+        <ColumnIcon column={card.column} size={12} />
+        <span className="truncate">{card.title}</span>
+      </button>
+    );
+  }
+  if (!session.sessionPath || isDraft(session) || session.phase === "exited") return null;
+  return (
+    <button type="button" onClick={() => void addChatToBoard(session.handle)} title="Add to the Kanban board" className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg">
+      <SquareKanban size={15} />
+    </button>
   );
 }
 

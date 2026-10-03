@@ -3,17 +3,22 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, session, shell } from "electron";
 import { bugs, description } from "../../package.json";
+import type { BoardOp } from "../shared/board";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
 import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
-import { BrowserAgent } from "./browser/agent";
-import { AgentBridge } from "./browser/bridge";
+import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
+import { BoardStore } from "./board";
+import { CardImages } from "./card-images";
+import { AgentBridge } from "./bridge";
 import { listFiles } from "./files";
+import { kanbanRoute } from "./kanban";
 import { readCompactionSettings } from "./pi-settings";
+import { cardWorktree } from "./worktree";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
@@ -57,11 +62,15 @@ function adoptProfile(oldName: string, oldPartition: string): void {
 let window: BrowserWindow | undefined;
 let browser: BrowserManager | undefined;
 let agent: BrowserAgent | undefined;
-const bridge = new AgentBridge(() => agent);
+const bridge = new AgentBridge();
 const send = (channel: string, ...args: unknown[]) => {
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
 };
 const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge);
+const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
+const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
+bridge.route("/browser", browserRoute(() => agent));
+bridge.route("/kanban", kanbanRoute(board, (handle) => host.identify(handle)));
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -187,6 +196,23 @@ function registerIpc(shellEnv: Promise<void>): void {
   on(IPC.browserInspect, (id: string) => browser?.inspect(id));
   handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
   handle(IPC.browserGetState, () => browser?.snapshot());
+
+  handle(IPC.boardGet, () => board.get());
+  handle(IPC.boardApply, async (op: BoardOp) => {
+    const next = await board.apply(op);
+    if (op.type === "remove") void cardImages.remove(op.id).catch((error: Error) => log.warn("board", `could not delete the images of card ${op.id}: ${error.message}`));
+    return next;
+  });
+  handle(IPC.boardSaveImage, async (card: string, image: { mimeType: string; data: string }) => {
+    if (!(await board.get()).cards.some((other) => other.id === card)) throw new Error(`no card ${String(card)}`);
+    return cardImages.save(card, image);
+  });
+  handle(IPC.cardWorktree, async (id: string) => {
+    await shellEnv;
+    const card = (await board.get()).cards.find((other) => other.id === id);
+    if (!card) throw new Error(`no card ${String(id)}`);
+    return cardWorktree(card.cwd, card);
+  });
 }
 
 function buildMenu(): void {
@@ -199,6 +225,7 @@ function buildMenu(): void {
         submenu: [
           { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+Shift+S", click: () => send(IPC.sidebarToggle) },
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
+          { label: "Kanban", accelerator: "CmdOrCtrl+Shift+K", click: () => send(IPC.pageToggle, "kanban") },
           { type: "separator" },
           { role: "reload" },
           { role: "toggleDevTools" },
@@ -233,11 +260,11 @@ function init(): void {
   let quitting = false;
   app.on("before-quit", (event) => {
     bridge.stop();
-    if (quitting || host.size === 0) return;
+    if (quitting) return;
     event.preventDefault();
     quitting = true;
-    log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void host.closeAll().finally(() => app.quit());
+    if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
+    void Promise.allSettled([host.closeAll(), board.flushed()]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());

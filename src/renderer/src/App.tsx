@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { BrowserPane } from "./components/BrowserPane";
+import { KanbanPage } from "./components/Kanban";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { HeroBackdrop } from "./components/Transcript";
@@ -36,6 +37,7 @@ export function App() {
   }, []);
 
   const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
+  const page = useApp((state) => state.page);
   const pane = useApp((state) => state.pane);
   const collapsed = useApp((state) => state.sidebar.collapsed);
   const main = useRef<HTMLElement>(null);
@@ -62,7 +64,9 @@ export function App() {
       <Sidebar />
       <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
-          {session ? (
+          {page ? (
+            <KanbanPage page={page} />
+          ) : session ? (
             <SessionPane key={session.handle} session={session} />
           ) : (
             <div className="drag relative flex h-full flex-col items-center justify-end overflow-hidden pb-[16vh]">

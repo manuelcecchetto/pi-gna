@@ -1,7 +1,9 @@
-// Lists pi sessions grouped by project (cwd). Summaries are cached by path + mtime + size.
+// Lists pi sessions grouped by project (projectOf their cwd: a card's worktree counts as its project). Summaries
+// are cached by path + mtime + size.
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
+import { projectOf } from "../shared/board";
 import type { ProjectGroup, SessionSummary } from "../shared/ipc";
 import { log } from "./log";
 import { summarizeSessionFile } from "./session-file";
@@ -42,10 +44,11 @@ export async function listSessions(): Promise<ProjectGroup[]> {
   const groups = new Map<string, ProjectGroup>();
   for (const summary of summaries) {
     if (!summary) continue;
-    const group = groups.get(summary.cwd) ?? { cwd: summary.cwd, modifiedAt: 0, sessions: [] };
+    const cwd = projectOf(summary.cwd);
+    const group = groups.get(cwd) ?? { cwd, modifiedAt: 0, sessions: [] };
     group.sessions.push(summary);
     group.modifiedAt = Math.max(group.modifiedAt, summary.modifiedAt);
-    groups.set(summary.cwd, group);
+    groups.set(cwd, group);
   }
   for (const group of groups.values()) group.sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
   const result = [...groups.values()].sort((a, b) => b.modifiedAt - a.modifiedAt);

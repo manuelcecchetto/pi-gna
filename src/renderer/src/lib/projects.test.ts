@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { worktreeCwd } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { projectViews } from "./projects";
 import { createSession, type SessionState } from "./session";
@@ -41,6 +42,13 @@ describe("projectViews", () => {
     expect(views[2]?.rows[1]?.live?.handle).toBe("h1");
   });
 
+  it("lists a chat in a card's worktree under its project", () => {
+    const resolving: SessionState = { ...createSession("h1", worktreeCwd("/home", "abc123", "/b")), prompted: true, items: [user("fix it", 500)] };
+    const views = projectViews(projects, [resolving], []);
+    expect(order(views)).toEqual(["/b", "/a", "/c"]);
+    expect(views[0]?.rows.map((r) => r.live?.handle ?? r.summary?.id)).toEqual(["h1", "b1"]);
+  });
+
   it("puts pinned projects first, in the order they were pinned", () => {
     expect(order(projectViews(projects, [], ["/c", "/b"]))).toEqual(["/c", "/b", "/a"]);
     expect(projectViews(projects, [], ["/c"]).map((v) => v.pinned)).toEqual([true, false, false]);
@@ -62,6 +70,17 @@ describe("projectViews", () => {
     const c2 = projects[2]?.sessions[1] as SessionSummary;
     const sent: SessionState = { ...opened("h1", c2), prompted: true, items: [user("new", 400)] };
     expect(order(projectViews(projects, [sent], ["/b"]))).toEqual(["/b", "/c", "/a"]);
+  });
+
+  it("leaves out card triage chats, and projects that only have those", () => {
+    const triage = { ...summary("/c", "t", 900), named: true, title: "Triage: fix the flash" };
+    const onlyTriage = { ...summary("/t", "t", 950), named: true, title: "Triage: other" };
+    const running: SessionState = { ...createSession("t1", "/b"), prompted: true, name: "Triage: new card" };
+    const withTriage = [project("/t", onlyTriage), ...projects.slice(0, 2), project("/c", triage, ...(projects[2]?.sessions ?? []))];
+    const views = projectViews(withTriage, [running], []);
+    expect(order(views)).toEqual(["/a", "/b", "/c"]); // a triage does not move its project up either
+    expect(views[1]?.rows.map((r) => r.key)).toEqual(["/b/b1.jsonl"]);
+    expect(views[2]?.rows.map((r) => r.key)).toEqual(["/c/c1.jsonl", "/c/c2.jsonl"]);
   });
 
   it("shows a new chat on top of its project, and a new project, but never a draft", () => {

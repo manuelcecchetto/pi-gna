@@ -1,7 +1,7 @@
 // How tool calls read in the transcript: a category, a verb and a target. Pure, so the
 // collapsed one-liners and the activity summaries stay consistent and testable.
 
-export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "agent" | "think" | "other";
+export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "board" | "agent" | "think" | "other";
 
 export interface ToolPresentation {
   category: ToolCategory;
@@ -109,6 +109,17 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       return { category: "browser", verb: "Evaluated", activeVerb: "Evaluating", target: firstLine(str(args.expression), 80) };
     case "browser_console":
       return { category: "browser", verb: "Read the console", activeVerb: "Reading the console", target: "" };
+    case "kanban_list":
+      return { category: "board", verb: "Read the board", activeVerb: "Reading the board", target: str(args.card) || str(args.column) };
+    case "kanban_claim":
+      return { category: "board", verb: "Took the card", activeVerb: "Taking the card", target: str(args.card) || firstLine(str(args.title), 80) };
+    case "kanban_update":
+      return {
+        category: "board",
+        verb: args.column ? "Moved its card" : "Reported on its card",
+        activeVerb: args.column ? "Moving its card" : "Reporting on its card",
+        target: args.column ? `to ${str(args.column)}` : firstLine(str(args.report), 80),
+      };
     case "run":
     case "snapshot":
     case "screenshot":
@@ -152,6 +163,7 @@ export function summarizeTools(tools: SummaryInput[]): string | undefined {
   if (editedFiles.size) parts.push(`edited ${plural(editedFiles.size, "file", "files")}`);
   if (counts.web) parts.push(`${plural(counts.web, "web lookup", "web lookups")}`);
   if (counts.browser) parts.push(`${plural(counts.browser, "browser action", "browser actions")}`);
+  if (counts.board) parts.push(`${plural(counts.board, "board action", "board actions")}`);
   if (counts.agent) parts.push(`${plural(counts.agent, "delegation", "delegations")}`);
   if (counts.other) parts.push(`${plural(counts.other, "tool call", "tool calls")}`);
   if (failed) parts.push(`${failed} failed`);

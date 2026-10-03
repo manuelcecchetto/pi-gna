@@ -1,22 +1,27 @@
-import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageSquare, Paperclip, Plus, Square, X } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageSquare, Paperclip, Plus, Square, SquareKanban, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
 import type { SessionState } from "../lib/session";
 import {
   attachFiles,
+  composerCard,
   interrupt,
   openLightbox,
   pickAttachments,
   removeAnnotation,
   removeAttachment,
+  removeComposerCard,
   type SendMode,
   send,
   setModel,
   setThinking,
+  showBoard,
   useApp,
 } from "../state/app";
+import { ColumnIcon } from "./ColumnIcon";
 import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QueueCard } from "./QueueCard";
@@ -61,6 +66,9 @@ export function Composer({ session }: { session: SessionState }) {
   const commands = useApp((state) => state.commands[handle]);
   const annotations = useApp((state) => state.annotations);
   const attachments = useApp((state) => state.attachments[handle]) ?? NO_ATTACHMENTS;
+  const card = useApp((state) => composerCard(state, handle));
+  /** Nothing to send: no text, attachment, browser comment or card. */
+  const empty = !text.trim() && !attachments.length && !annotations.length && !card;
 
   const setText = useCallback(
     (value: string) => {
@@ -132,12 +140,11 @@ export function Composer({ session }: { session: SessionState }) {
   };
 
   const submit = async (mode: SendMode) => {
-    const message = text.trim();
-    if (!message && !attachments.length && !annotations.length) return;
+    if (empty) return;
     const sentText = text;
     setText("");
-    // Attachments and comments clear in the store once pi accepts the prompt.
-    const ok = await send(handle, message, mode);
+    // Attachments, comments and the card clear in the store once pi accepts the prompt.
+    const ok = await send(handle, text.trim(), mode);
     if (!ok) setText(sentText);
   };
 
@@ -254,7 +261,7 @@ export function Composer({ session }: { session: SessionState }) {
           </div>
         )}
 
-        <AttachmentChips handle={handle} attachments={attachments} />
+        <AttachmentChips handle={handle} attachments={attachments} card={card} />
 
         <textarea
           ref={area}
@@ -283,14 +290,14 @@ export function Composer({ session }: { session: SessionState }) {
                 <Kbd>esc</Kbd> stop
               </span>
             )}
-            {busy && !text.trim() && !annotations.length && !attachments.length ? (
+            {busy && empty ? (
               <button type="button" onClick={() => void stop()} title="Stop (Esc)" className="grid h-8 w-8 place-items-center rounded-full bg-fg text-canvas hover:opacity-90">
                 <Square size={11} fill="currentColor" />
               </button>
             ) : (
               <button
                 type="button"
-                disabled={(!text.trim() && !attachments.length && !annotations.length) || exited}
+                disabled={empty || exited}
                 onClick={() => void submit("send")}
                 title={session.running ? "Steer (Enter)" : "Send (Enter)"}
                 className="grid h-8 w-8 place-items-center rounded-full bg-accent text-white transition enabled:hover:opacity-90 disabled:bg-raised disabled:text-faint"
@@ -443,10 +450,11 @@ function AttachMenu({ handle, disabled }: { handle: string; disabled: boolean })
   );
 }
 
-function AttachmentChips({ handle, attachments }: { handle: string; attachments: Attachment[] }) {
-  if (!attachments.length) return null;
+function AttachmentChips({ handle, attachments, card }: { handle: string; attachments: Attachment[]; card: Card | undefined }) {
+  if (!attachments.length && !card) return null;
   return (
     <div className="flex flex-wrap gap-2 px-3 pt-3">
+      {card && <CardChip handle={handle} card={card} />}
       {attachments.map((attachment) => (
         <div key={attachment.id} className="group relative" title={attachment.path ?? attachment.name}>
           {attachment.kind === "image" ? (
@@ -472,6 +480,37 @@ function AttachmentChips({ handle, attachments }: { handle: string; attachments:
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** The card a chat is about ("Chat about it"): its details go with your message, so they stay out of the text. */
+function CardChip({ handle, card }: { handle: string; card: Card }) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={() => showBoard(card.cwd, card.id)}
+        title={`${card.title}\nIts details go with your message, and this chat joins the card. Click to open it on the board.`}
+        className="flex h-14 max-w-72 min-w-0 items-center gap-2.5 rounded-lg border border-line bg-sunken px-3 text-left hover:border-line-strong"
+      >
+        <SquareKanban size={15} className="shrink-0 text-muted" />
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate text-[12.5px] text-fg">{card.title}</span>
+          <span className="flex items-center gap-1 text-[11px] text-faint">
+            <ColumnIcon column={card.column} size={11} />
+            {COLUMN_LABELS[card.column]}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        title="Remove the card: this chat is not told about it and does not join it"
+        onClick={() => removeComposerCard(handle)}
+        className="absolute -top-1.5 -right-1.5 hidden rounded-full border border-line bg-panel p-0.5 text-muted hover:text-fg group-hover:block"
+      >
+        <X size={11} />
+      </button>
     </div>
   );
 }

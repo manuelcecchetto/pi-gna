@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { activeBranch, parseRecords, summarizeSessionFile } from "./session-file";
+import { activeBranch, parseRecords, summarizeSessionFile, textOf } from "./session-file";
 
 const header = { type: "session", version: 3, id: "sid", timestamp: "2026-10-01T10:00:00.000Z", cwd: "/repo" };
 const msg = (id: string, parentId: string | null, role: string, content: unknown) => ({
@@ -59,5 +59,12 @@ describe("summarizeSessionFile", () => {
     expect(summary?.header.cwd).toBe("/repo");
     expect(summary?.title).toBe("Fix the login bug");
     expect(summary?.name).toBe("Login fix");
+  });
+});
+
+describe("textOf (titles from session files)", () => {
+  it("leaves out the blocks pi-gna adds to a prompt", () => {
+    expect(textOf("<kanban-card>\nCard aaaaaa: Fix it\n</kanban-card>\n\nWhy does it fail?")).toBe("Why does it fail?");
+    expect(textOf([{ type: "text", text: "Look at this\n\n<browser-comments>\n1. here\n</browser-comments>" }])).toBe("Look at this");
   });
 });

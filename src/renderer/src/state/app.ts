@@ -1,7 +1,8 @@
 // App state and actions. Session state transitions live in lib/session.ts (pure); this module
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
+import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
-import type { HostEventBatch, ProjectGroup, SessionSummary } from "../../../shared/ipc";
+import type { HostEventBatch, Page, ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
   ImageContent,
@@ -23,6 +24,7 @@ import {
   stripStudioBlocks,
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
+import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, type TaskModel, TRIAGE_MODEL, triageName, triagePrompt } from "../lib/board";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
 import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
@@ -55,13 +57,26 @@ export interface AppState {
   annotations: Annotation[];
   /** Composer attachments per session handle (picker, drag and drop, paste). */
   attachments: Record<string, Attachment[]>;
+  /** The card in a chat's composer, per session handle ("Chat about it"): it goes with the chat's first message. */
+  composerCards: Record<string, string>;
   sidebar: SidebarLayout;
   /** pi's compaction settings, for the context meter's auto-compaction point. */
   compaction: CompactionSettings;
   /** Full-size image overlay (data URL). Hides the native browser view while open. */
   lightbox?: string;
+  /** Every project's Kanban cards. Main owns them (agents change them too) and pushes each change. */
+  board: Board;
+  /** A full-window page shown instead of the active chat. */
+  page?: PageState;
   /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
   overlay: boolean;
+}
+
+/** A page of one project: its Kanban board, maybe with a card open. */
+export interface PageState {
+  kind: Page;
+  cwd: string;
+  card?: string;
 }
 
 export const store = createStore<AppState>({
@@ -79,8 +94,10 @@ export const store = createStore<AppState>({
   pane: { open: false, full: false, split: 0.5 },
   annotations: [],
   attachments: {},
+  composerCards: {},
   compaction: {},
   sidebar: loadSidebar(),
+  board: emptyBoard(),
   overlay: false,
 });
 
@@ -98,6 +115,9 @@ function patchSession(handle: string, update: (session: SessionState) => Session
 }
 
 // ── Toasts ───────────────────────────────────────────────────────────────────
+
+/** An error from main without Electron's "Error invoking remote method '…': Error: " in front. */
+export const remoteError = (error: unknown): string => (error as Error).message.replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, "");
 
 let toastSeq = 0;
 export function toast(text: string, level: Toast["level"] = "info"): void {
@@ -138,26 +158,34 @@ function newHandle(): string {
 export function openSession(summary: SessionSummary): void {
   const existing = Object.values(store.get().sessions).find((s) => s.sessionPath === summary.path);
   if (existing) return activate(existing.handle);
-  void start(summary.cwd, summary);
+  start(summary.cwd, summary);
 }
 
 export function newSession(cwd: string): void {
   const { active, sessions } = store.get();
   const current = active ? sessions[active] : undefined;
   if (current && current.cwd === cwd && current.phase !== "exited" && isDraft(current)) {
+    activate(current.handle); // leaves a page
     prefill(current.handle, ""); // already in an empty chat here: just focus its composer
+    removeComposerCard(current.handle); // a new chat is about no card
     return;
   }
-  void start(cwd);
+  start(cwd);
 }
 
-async function start(cwd: string, summary?: SessionSummary): Promise<void> {
+/** Start pi for a new chat or a session file; background chats (from a card) are not shown. */
+function start(cwd: string, summary?: SessionSummary, show = true): string {
   const handle = newHandle();
   const sessionPath = summary?.path;
   // It is shown right away, so it must not look like an empty new chat until its history arrives.
   const session: SessionState = { ...createSession(handle, cwd, sessionPath), loading: summary && { title: summary.title } };
   store.set((state) => ({ ...state, sessions: { ...state.sessions, [handle]: session }, open: [...state.open, handle] }));
-  activate(handle);
+  if (show) activate(handle);
+  void load(handle, cwd, sessionPath);
+  return handle;
+}
+
+async function load(handle: string, cwd: string, sessionPath: string | undefined): Promise<void> {
   try {
     const { entries } = await studio().openSession({ handle, cwd, sessionPath });
     patchSession(handle, (s) => {
@@ -175,13 +203,19 @@ async function start(cwd: string, summary?: SessionSummary): Promise<void> {
 
 let windowFocused = true;
 
+/** The chat is on screen: active, no page over it, and the window focused. */
+const viewing = (handle: string) => store.get().active === handle && !store.get().page && windowFocused;
+
 /** You are looking at this chat: clear its unread mark. */
 function markRead(handle: string | undefined): void {
   if (handle && store.get().sessions[handle]?.unread) patchSession(handle, (s) => ({ ...s, unread: undefined }));
 }
 
+/** Show a chat (leaving any page). */
 export function activate(handle: string | undefined): void {
   const previous = store.get().active;
+  if (handle) backgroundChats.delete(handle); // you opened it: it stays open like any chat
+  if (store.get().page) store.set((state) => ({ ...state, page: undefined }));
   markRead(handle);
   if (previous === handle) return;
   store.set((state) => ({ ...state, active: handle }));
@@ -201,6 +235,9 @@ export async function closeSession(handle: string, pickNext = true): Promise<voi
 }
 
 function removeSession(handle: string): void {
+  cardLinks.delete(handle);
+  backgroundChats.delete(handle);
+  removeComposerCard(handle);
   store.set((state) => {
     const { [handle]: _removed, ...sessions } = state.sessions;
     return {
@@ -237,9 +274,14 @@ export function handleBatch(batch: HostEventBatch): void {
       if (starting) seenStartupNotices.add(event.record.message);
       toast(event.record.message, level);
     } else if (event.record.type === "agent_settled") {
-      // Finished while you were not looking: another chat was open, or the window was in the background.
-      if (store.get().active !== handle || !windowFocused) patchSession(handle, (s) => ({ ...s, unread: runOutcome(s.items) }));
-      void onSettled(handle);
+      const outcome = runOutcome(store.get().sessions[handle]?.items ?? []);
+      // A card's background chat that ended well: what it found is on the card, so it closes instead of waiting to be read.
+      if (backgroundChats.delete(handle) && outcome === "done" && store.get().active !== handle) void closeSession(handle, false);
+      else {
+        // Finished while you were not looking: another chat or a page was open, or the window was in the background.
+        if (!viewing(handle)) patchSession(handle, (s) => ({ ...s, unread: outcome }));
+        void onSettled(handle);
+      }
     }
     // Context grows every turn and shrinks on compaction; get_session_stats is cheap (ms, even at 40 MB).
     else if (event.record.type === "turn_end" || event.record.type === "compaction_end") scheduleStats(handle);
@@ -259,6 +301,7 @@ async function onReady(handle: string, state: RpcSessionState): Promise<void> {
     models: models?.data?.models ?? s.models,
   }));
   if (state.messageCount > 0) void refreshStats(handle);
+  if (cardLinks.has(handle)) void linkCard(handle);
 }
 
 async function onSettled(handle: string): Promise<void> {
@@ -306,7 +349,9 @@ export async function send(handle: string, text: string, mode: SendMode): Promis
   const isCommand = text.startsWith("/");
   const annotations = isCommand ? [] : store.get().annotations;
   const attachments = store.get().attachments[handle] ?? [];
-  const message = [text, formatAnnotations(annotations), formatFileMentions(attachments)].filter(Boolean).join("\n\n");
+  // A command is not a message about the card: the card waits for the next one.
+  const card = isCommand ? undefined : composerCard(store.get(), handle);
+  const message = [card && cardBlock(card), text, formatAnnotations(annotations), formatFileMentions(attachments)].filter(Boolean).join("\n\n");
   const images: ImageContent[] = [
     ...attachmentImages(attachments),
     ...annotations.flatMap((a) => (a.image ? [{ type: "image" as const, data: a.image, mimeType: "image/jpeg" }] : [])),
@@ -315,6 +360,10 @@ export async function send(handle: string, text: string, mode: SendMode): Promis
   if (session.running && !isCommand) cmd.streamingBehavior = mode === "followUp" ? "followUp" : "steer";
   patchSession(handle, (s) => ({ ...s, prompted: true }));
   const response = await command<{ disposition: string }>(handle, cmd);
+  if (response.success && card) {
+    removeComposerCard(handle);
+    void attachChat(handle, card.id);
+  }
   if (response.success && attachments.length) {
     const sent = new Set(attachments.map((a) => a.id));
     store.set((s) => ({ ...s, attachments: { ...s.attachments, [handle]: (s.attachments[handle] ?? []).filter((a) => !sent.has(a.id)) } }));
@@ -339,15 +388,24 @@ export function removeAttachment(handle: string, id: string): void {
 }
 
 export async function pickAttachments(handle: string, kind: "photos" | "files"): Promise<void> {
-  addAttachments(handle, (await studio().pickAttachments(kind)).map(fromPicked));
+  addAttachments(handle, await pickFiles(kind));
+}
+
+/** The native picker's choice as attachments. */
+export async function pickFiles(kind: "photos" | "files"): Promise<Attachment[]> {
+  return (await studio().pickAttachments(kind)).map(fromPicked);
+}
+
+export async function attachFiles(handle: string, files: File[]): Promise<void> {
+  addAttachments(handle, await readFiles(files));
 }
 
 /**
- * Dropped or pasted Files: anything with a path (Finder files and folders) is described by main;
+ * Dropped or pasted Files as attachments: anything with a path (Finder files and folders) is described by main;
  * in-memory images (a screenshot copied to the clipboard) are read right away, since clipboard
  * data does not outlive the event.
  */
-export async function attachFiles(handle: string, files: File[]): Promise<void> {
+export async function readFiles(files: File[]): Promise<Attachment[]> {
   const paths: string[] = [];
   const pending: Promise<Attachment>[] = [];
   for (const file of files) {
@@ -356,7 +414,7 @@ export async function attachFiles(handle: string, files: File[]): Promise<void> 
     else if (file.type.startsWith("image/")) pending.push(readImage(file));
   }
   const [described, images] = await Promise.all([paths.length ? studio().describePaths(paths) : [], Promise.all(pending)]);
-  addAttachments(handle, [...described.map(fromPicked), ...images]);
+  return [...described.map(fromPicked), ...images];
 }
 
 function readImage(file: File): Promise<Attachment> {
@@ -412,7 +470,8 @@ export function toggleSidebar(): void {
 
 export function newChat(): void {
   const { active, sessions } = store.get();
-  newSession((active && sessions[active]?.cwd) || studio().launchCwd || studio().homeDir);
+  const cwd = active && sessions[active]?.cwd;
+  newSession((cwd && projectOf(cwd)) || studio().launchCwd || studio().homeDir);
 }
 
 export function openLightbox(src: string | undefined): void {
@@ -486,8 +545,199 @@ export function setExpanded(key: string, open: boolean): void {
   store.set((state) => ({ ...state, expanded: { ...state.expanded, [key]: open } }));
 }
 
+// ── Kanban ───────────────────────────────────────────────────────────────────
+
+/**
+ * Change the board. Applied here first, so a drop lands without waiting for main; main checks the op again,
+ * saves it and pushes the board back. Returns false (after a toast) when the op is refused.
+ */
+export async function applyBoard(op: BoardOp): Promise<boolean> {
+  const local = op.type === "add" && !op.id ? { ...op, id: freshId(store.get().board) } : op;
+  const before = store.get().board;
+  try {
+    const board = applyOp(before, local, Date.now());
+    store.set((s) => ({ ...s, board }));
+    await studio().board.apply(local);
+    return true;
+  } catch (error) {
+    // Main refused it (or the card changed meanwhile): its board is the truth. When main cannot answer either,
+    // undo the change so nothing looks saved that is not.
+    if (!(error instanceof BoardError)) {
+      void studio()
+        .board.get()
+        .then(
+          (board) => store.set((s) => ({ ...s, board })),
+          () => store.set((s) => ({ ...s, board: before })),
+        );
+    }
+    toast(remoteError(error), "error");
+    return false;
+  }
+}
+
+const PAGE_PROJECT = "pigna:kanban-project";
+
+/** Open a project's page: by default the active chat's project, else the project of the page you looked at last. */
+export function showPage(kind: Page, cwd?: string, card?: string): void {
+  const { active, sessions } = store.get();
+  const chat = active && sessions[active]?.cwd;
+  const project = cwd ?? (chat && projectOf(chat)) ?? localStorage.getItem(PAGE_PROJECT) ?? (studio().launchCwd || studio().homeDir);
+  localStorage.setItem(PAGE_PROJECT, project);
+  store.set((s) => ({ ...s, page: { kind, cwd: project, card } }));
+}
+
+/** Open a project's board, maybe with a card open. */
+export const showBoard = (cwd?: string, card?: string): void => showPage("kanban", cwd, card);
+
+/** Open a card's details on the board page, or close them. */
+export function openCard(card: string | undefined): void {
+  store.set((s) => (s.page ? { ...s, page: { ...s.page, card } } : s));
+}
+
+/** Back to the active chat. */
+export function closePage(): void {
+  if (!store.get().page) return;
+  store.set((s) => ({ ...s, page: undefined }));
+  markRead(store.get().active);
+}
+
+export function togglePage(page: Page): void {
+  const current = store.get().page;
+  if (current?.kind === page) closePage();
+  else showPage(page, current?.cwd); // from the other page: the same project
+}
+
 export function setOverlay(overlay: boolean): void {
   store.set((s) => (s.overlay === overlay ? s : { ...s, overlay }));
+}
+
+/** Put a chat on its project's board, as a new card in progress that the chat works on. */
+export async function addChatToBoard(handle: string): Promise<void> {
+  const session = store.get().sessions[handle];
+  if (!session?.sessionPath) return;
+  const id = freshId(store.get().board);
+  const title = sessionTitle(session).slice(0, LIMITS.title);
+  if (!(await applyBoard({ type: "add", id, title, cwd: projectOf(session.cwd), column: "in_progress" }))) return;
+  await applyBoard({ type: "attach", id, chat: { path: session.sessionPath, cwd: session.cwd, label: title } });
+}
+
+/**
+ * Add a card from one description and what you attached, at the bottom of `column`: titled with the description's
+ * start until a quick chat in the background (TRIAGE_MODEL) names, tags and briefly investigates it.
+ */
+export async function addCard(cwd: string, column: Column, description: string, attachments: Attachment[] = []): Promise<boolean> {
+  const text = description.trim();
+  if (!text && !attachments.length) return false;
+  const id = freshId(store.get().board);
+  if (!(await applyBoard({ type: "add", id, title: draftTitle(text) || "See the attachments", notes: text, cwd, column, before: null }))) return false;
+  if (attachments.length && !(await attachToCard(id, text, attachments))) {
+    void applyBoard({ type: "remove", id }); // main deletes the images saved for it
+    return false;
+  }
+  const card = store.get().board.cards.find((other) => other.id === id);
+  if (card) {
+    const prompt = triagePrompt(card, boardTags(store.get().board, cwd));
+    startCardChat(cwd, { card: id, name: triageName(card), prompt, model: TRIAGE_MODEL, closeWhenDone: true });
+  }
+  return true;
+}
+
+/**
+ * Save a new card's images (board.saveImage: main checks the card exists, so the card is added first) and list
+ * them in its notes with the paths of attached files (cardNotes). False after a toast.
+ */
+async function attachToCard(id: string, text: string, attachments: Attachment[]): Promise<boolean> {
+  try {
+    const paths: string[] = [];
+    // One at a time: when one fails, none is still being written as the card is removed.
+    for (const a of attachments) paths.push(a.kind === "image" ? await studio().board.saveImage(id, { mimeType: a.mimeType, data: a.data }) : a.path);
+    return await applyBoard({ type: "edit", id, notes: cardNotes(text, paths) });
+  } catch (error) {
+    toast(`Could not attach that to the card: ${remoteError(error)}`, "error");
+    return false;
+  }
+}
+
+/** A chat a card starts in the background, attached to it once pi knows its session file. */
+interface CardLink {
+  card: string;
+  /** Session name, and the chat's label on the card. */
+  name?: string;
+  /** Sent once the chat is attached. */
+  prompt: string;
+  /** Run the prompt on this model instead of your default. */
+  model?: TaskModel;
+  /** Close the chat once its prompt's run ends well, unless you opened it; a failed run stays marked. */
+  closeWhenDone?: boolean;
+}
+const cardLinks = new Map<string, CardLink>();
+/** Background chats to close when their run ends well (CardLink.closeWhenDone) until you open them. */
+const backgroundChats = new Set<string>();
+
+/** Start a chat for a card in its project, in the background: attached to the card and sent its prompt when pi is ready. */
+export function startCardChat(cwd: string, link: CardLink): string {
+  const handle = start(cwd, undefined, false);
+  cardLinks.set(handle, link);
+  return handle;
+}
+
+/**
+ * "Chat about it": a new chat with the card in its composer, shown as a chip rather than as text you write under.
+ * The card's details (cardBlock) go before your first message, and the chat joins the card then (see send).
+ */
+export function discussCard(card: Card): void {
+  const handle = start(card.cwd);
+  store.set((s) => ({ ...s, composerCards: { ...s.composerCards, [handle]: card.id } }));
+}
+
+/** The card in a chat's composer, while it is on the board. */
+export function composerCard(state: AppState, handle: string): Card | undefined {
+  const id = state.composerCards[handle];
+  return id === undefined ? undefined : state.board.cards.find((card) => card.id === id);
+}
+
+/** Take the card out of a chat's composer: the chat is not told about it and does not join it. */
+export function removeComposerCard(handle: string): void {
+  store.set((s) => {
+    if (!(handle in s.composerCards)) return s;
+    const { [handle]: _removed, ...composerCards } = s.composerCards;
+    return { ...s, composerCards };
+  });
+}
+
+async function linkCard(handle: string): Promise<void> {
+  const link = cardLinks.get(handle);
+  if (!link || !store.get().sessions[handle]) return;
+  cardLinks.delete(handle);
+  await attachChat(handle, link.card, link.name);
+  if (link.model) await useModel(handle, link.model);
+  // Written by pi-gna, not the composer: no attachments or browser comments ride along. Named right away, before
+  // pi confirms it, so the sidebar never shows it under another title (or a triage chat at all).
+  patchSession(handle, (s) => ({ ...s, prompted: true, name: link.name ?? s.name }));
+  if (link.closeWhenDone && store.get().active !== handle) backgroundChats.add(handle);
+  const sent = await command(handle, { type: "prompt", message: link.prompt });
+  if (sent.success && link.name) await command(handle, { type: "set_session_name", name: link.name }, true);
+}
+
+/** Put a chat on a card, by its session file. */
+async function attachChat(handle: string, card: string, label?: string): Promise<void> {
+  const session = store.get().sessions[handle];
+  if (!session) return;
+  // Set by the ready event; a new chat's file is named before anything is written to it.
+  const path = session.sessionPath ?? (await command<RpcSessionState>(handle, { type: "get_state" }, true)).data?.sessionFile;
+  if (path) await applyBoard({ type: "attach", id: card, chat: { path, cwd: session.cwd, label } });
+  else toast("This chat has no session file, so it cannot be put on the card", "warning");
+}
+
+/** Switch a new chat to a card task's model. For this chat only: pi keeps your default model and thinking level. */
+async function useModel(handle: string, want: TaskModel): Promise<void> {
+  const model = pickModel(store.get().models, want.id, store.get().sessions[handle]?.model?.provider);
+  if (!model) {
+    toast(`${want.id} is not available, so the card's chat runs on your default model`, "warning");
+    return;
+  }
+  await setModel(handle, model);
+  await setThinking(handle, want.thinking);
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -503,11 +753,16 @@ export function boot(): void {
       windowFocused = focused;
     });
   studio().onSidebarToggle(toggleSidebar);
+  studio().onPageToggle(togglePage);
   studio().onOpenProject(newSession);
   studio().onWindowFocus((focused) => {
     windowFocused = focused;
-    if (focused) markRead(store.get().active);
+    if (focused && !store.get().page) markRead(store.get().active);
   });
+  studio().board.onChange((board) => store.set((s) => ({ ...s, board })));
+  void studio()
+    .board.get()
+    .then((board) => store.set((s) => ({ ...s, board })));
   const browser = studio().browser;
   browser.onState((state) => store.set((s) => ({ ...s, browser: state })));
   browser.onReveal(() => setPane({ open: true }));

@@ -61,6 +61,11 @@ Run these on the user's Mac and report what happened. Stop and tell the user if 
 - **A browser you share with pi.** Cmd+B opens a browser pane, and pi gets `browser_*` tools for it: it opens
   your dev server, clicks, types, reads the page and takes screenshots while you watch. Local URLs open without
   asking; other sites ask once per session. Comment on elements to hand pi notes with a crop of each.
+- **A Kanban board per project.** Cards are tasks you drag across To do, In progress, In review and Done.
+  Add one by describing the task in your own words: a quick Sonnet chat in the background titles it, tags it and
+  takes a first look. Right-click a card to have a new chat investigate it, resolve it (in a git worktree, on a
+  branch of its own, so your checkout is left alone) or, once it is in review, QA it; or start a chat about it.
+  Chats on a card show their mark on it, and pi gets `kanban_*` tools to take a card, move it and report on it.
 - **Attachments.** Drop, paste or pick files and folders (sent by path) and images (sent to the model).
 - **Right-click anything.** Copy or save images (screenshots pi took, attachments, pages in the browser), copy and
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
@@ -97,6 +102,7 @@ environment if an extension wants to know where it runs.
 | ⌥↑ / ⌥↓ | Jump to the previous / next message you sent (the rail left of the chat does the same by click or drag) |
 | Cmd+N | New session in the current project |
 | Cmd+B | Show or hide the browser |
+| Cmd+Shift+K | Show or hide the project's Kanban board |
 | Cmd+Shift+S | Show or hide the sidebar (drag its edge to resize) |
 | `/` and `@` | Commands, skills and prompt templates / project files |
 | Cmd+U, "+", drop, Cmd+V | Attach files and folders (sent by path) or images (sent to the model) |
