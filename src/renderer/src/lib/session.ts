@@ -1,5 +1,6 @@
 // Pure session reducer: pi RPC events (and session-file hydration) -> renderable session state.
 // Immutable updates so unchanged transcript items keep their identity for memoized rendering.
+import type { AtpSession } from "../../../shared/atp";
 import type { HostEvent } from "../../../shared/ipc";
 import type {
   AgentMessage,
@@ -72,6 +73,8 @@ export type AssistantItem = Extract<Item, { kind: "assistant" }>;
 export interface SessionState {
   handle: string;
   cwd: string;
+  /** An ATP worker or orchestrator: started by the ATP page, kept off the sidebar (src/shared/atp.ts). */
+  atp?: AtpSession;
   sessionPath?: string;
   sessionId?: string;
   name?: string;
@@ -111,10 +114,11 @@ export interface SessionState {
   seq: number;
 }
 
-export function createSession(handle: string, cwd: string, sessionPath?: string): SessionState {
+export function createSession(handle: string, cwd: string, sessionPath?: string, atp?: AtpSession): SessionState {
   return {
     handle,
     cwd,
+    atp,
     sessionPath,
     phase: "starting",
     running: false,

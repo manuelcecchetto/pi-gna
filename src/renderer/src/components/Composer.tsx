@@ -57,7 +57,8 @@ function detectMenu(text: string, caret: number): MenuState | undefined {
   return undefined;
 }
 
-export function Composer({ session }: { session: SessionState }) {
+/** `placeholder`: what the empty composer suggests while pi is idle (the ATP page's orchestrator has its own). */
+export function Composer({ session, placeholder }: { session: SessionState; placeholder?: string }) {
   const { handle } = session;
   const [text, setTextState] = useState(() => drafts.get(handle) ?? "");
   const [menu, setMenu] = useState<MenuState>();
@@ -269,7 +270,7 @@ export function Composer({ session }: { session: SessionState }) {
           value={text}
           rows={2}
           disabled={exited}
-          placeholder={exited ? "pi exited" : session.phase === "starting" ? "Starting pi…" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : "Ask pi anything…  @ for files, / for commands"}
+          placeholder={exited ? "pi exited" : session.phase === "starting" ? "Starting pi…" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : (placeholder ?? "Ask pi anything…  @ for files, / for commands")}
           onChange={onChange}
           onKeyDown={onKeyDown}
           onPaste={onPaste}

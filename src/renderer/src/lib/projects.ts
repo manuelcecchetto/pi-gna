@@ -22,7 +22,7 @@ export interface ProjectView {
 
 /**
  * Indexed projects plus open chats (matched by session file, grouped by projectOf), ordered for the sidebar; card
- * triage chats are left out.
+ * triage chats and ATP chats (reached from the ATP page) are left out.
  */
 export function projectViews(projects: ProjectGroup[], open: SessionState[], pinned: string[]): ProjectView[] {
   const groups = new Map<string, { cwd: string; activeAt: number; rows: ProjectRow[] }>();
@@ -33,7 +33,7 @@ export function projectViews(projects: ProjectGroup[], open: SessionState[], pin
     groups.set(project.cwd, { cwd: project.cwd, activeAt: Math.max(...sessions.map((summary) => summary.modifiedAt)), rows });
   }
   for (const session of open) {
-    if (isDraft(session) || isTriage(session.name)) continue;
+    if (isDraft(session) || isTriage(session.name) || session.atp) continue;
     const cwd = projectOf(session.cwd);
     const group = groups.get(cwd) ?? { cwd, activeAt: 0, rows: [] };
     const sent = sentAt(session);

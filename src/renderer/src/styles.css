@@ -669,3 +669,195 @@ code.hl span {
     animation: none;
   }
 }
+
+/* ATP page graph (AtpGraph): a dot grid that pans with the plan, cards per node, edges that march into running nodes. */
+.atp-viewport {
+  background-image: radial-gradient(circle, var(--line-strong) 1px, transparent 1.3px);
+  background-size: 24px 24px;
+}
+/* A card's status color (--s) drives its rail, its state text and, zoomed out, its whole block (--far). The layer
+   sets --k to the zoom, so outlines and the glow keep their size on screen at any zoom. */
+.atp-node {
+  --s: var(--faint);
+  --far: color-mix(in srgb, var(--faint) 30%, transparent);
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.16);
+  transition:
+    opacity 160ms ease-out,
+    border-color 200ms ease-out,
+    background-color 200ms ease-out;
+}
+.atp-node::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--s);
+}
+.atp-node:hover {
+  border-color: var(--muted);
+}
+.atp-state {
+  color: var(--s);
+}
+.atp-node[data-look="done"] {
+  --s: var(--ok);
+  --far: color-mix(in srgb, var(--ok) 62%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 22%, var(--line-strong));
+  background: color-mix(in srgb, var(--ok) 4%, var(--panel));
+}
+.atp-node[data-look="failed"] {
+  --s: var(--bad);
+  --far: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 60%, transparent);
+  background: color-mix(in srgb, var(--bad) 9%, var(--panel));
+}
+.atp-node[data-look="stalled"] {
+  --s: var(--warn);
+  --far: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 60%, transparent);
+  background: color-mix(in srgb, var(--warn) 7%, var(--panel));
+}
+.atp-node[data-look="ready"] {
+  --s: var(--accent);
+  --far: color-mix(in srgb, var(--accent) 45%, transparent);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.atp-node[data-look="locked"] {
+  --s: var(--line-strong);
+  background: var(--sunken);
+}
+.atp-node[data-look="locked"] .atp-title {
+  color: var(--muted);
+}
+.atp-node[data-look="locked"] .atp-state {
+  color: var(--faint);
+}
+/* A running node glows. */
+.atp-node[data-look="running"] {
+  --s: var(--accent);
+  --far: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, var(--panel));
+  animation: atp-glow 2.4s ease-in-out infinite;
+}
+@keyframes atp-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 calc(1px / var(--k, 1)) var(--accent),
+      0 0 calc(14px / var(--k, 1)) calc(1px / var(--k, 1)) color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 calc(1px / var(--k, 1)) var(--accent),
+      0 0 calc(34px / var(--k, 1)) calc(8px / var(--k, 1)) color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+/* A split node (a scope, CLAIMED until its subtasks are done) reads as a stack of cards. */
+.atp-node[data-look="scope"] {
+  --s: color-mix(in srgb, var(--accent) 70%, transparent);
+  --far: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow:
+    4px 4px 0 -1px var(--panel),
+    4px 4px 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.atp-node[data-look="closed"] {
+  --far: color-mix(in srgb, var(--faint) 12%, transparent);
+  opacity: 0.45;
+}
+.atp-node[data-look="closed"] .atp-title {
+  text-decoration: line-through;
+}
+.atp-node[data-match] {
+  outline: calc(2px / var(--k, 1)) solid var(--warn);
+  outline-offset: calc(3px / var(--k, 1));
+}
+.atp-node[data-selected] {
+  outline: calc(2px / var(--k, 1)) solid var(--fg);
+  outline-offset: calc(3px / var(--k, 1));
+}
+.atp-node[data-dim] {
+  opacity: 0.32;
+}
+.atp-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+  transition: opacity 160ms ease-out;
+}
+.atp-edge[data-done] {
+  stroke: color-mix(in srgb, var(--ok) 32%, transparent);
+}
+.atp-edge[data-scope] {
+  stroke-dasharray: 1 5;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.atp-edge[data-lit] {
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+.atp-edge[data-live] {
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 7 6;
+  animation: atp-march 0.9s linear infinite;
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+@keyframes atp-march {
+  to {
+    stroke-dashoffset: -13;
+  }
+}
+.atp-edge[data-dim] {
+  opacity: 0.1;
+}
+/* Zoomed out: bigger titles only, then status-colored blocks. */
+[data-lod="mid"] .atp-meta {
+  display: none;
+}
+[data-lod="mid"] .atp-title {
+  font-size: 19px;
+  line-height: 23px;
+  font-weight: 500;
+}
+[data-lod="far"] .atp-node {
+  border-color: transparent;
+  border-radius: 14px;
+  background: var(--far);
+}
+[data-lod="far"] .atp-node:not([data-look="running"]) {
+  box-shadow: none;
+}
+[data-lod="far"] .atp-node::before,
+[data-lod="far"] .atp-node > * {
+  display: none;
+}
+/* Reports and instructions in the node panel: their "# Outcome" headings are section labels, not titles. */
+.atp-doc .prose :is(h1, h2, h3, h4) {
+  margin: 1.1em 0 0.3em;
+  font-size: 12px;
+  color: var(--muted);
+}
+.atp-doc .prose > :first-child {
+  margin-top: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .atp-node,
+  .atp-edge {
+    animation: none !important;
+  }
+}

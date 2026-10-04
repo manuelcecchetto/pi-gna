@@ -6,6 +6,7 @@ import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
 import type { HostEventBatch, OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
+import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
 import { log } from "./log";
 import { PiProcess } from "./pi-process";
@@ -33,19 +34,30 @@ export class SessionHost {
   constructor(
     private readonly emit: (batch: HostEventBatch) => void,
     private readonly bridge: AgentBridge,
-  ) {}
     /** Where ATP chats keep their session files, apart from pi's, so they stay out of the sidebar. */
     private readonly atpSessions: string,
     /** Read at spawn: the computer_* tools exist only in chats opened while Computer Use is enabled. */
     private readonly computerEnabled: () => Promise<boolean> = async () => false,
+  ) {}
 
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
   private piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, computer: boolean): { args: string[]; env: Record<string, string> } {
     const args = [...this.extensions.flatMap((path) => ["-e", path]), "--append-system-prompt", this.prompt];
-    if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
     if (computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
+    if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
     if (trust !== undefined) args.push(trust ? "--approve" : "--no-approve");
+    if (atp) args.push(...this.atpArgs(atp));
     return { args, env: { PIGNA_BRIDGE: this.bridge.url, PIGNA_TOKEN: this.bridge.register(handle) } };
+  }
+
+  /** An ATP chat: its own session folder, the ATP skills of its role, and its role's prompt (src/shared/atp.ts). */
+  private atpArgs(atp: AtpSession): string[] {
+    const args = ["--session-dir", this.atpSessions, ...atpSkills(atp.role).flatMap((path) => ["--skill", path])];
+    args.push("--append-system-prompt", onDisk("resources", "atp", `${atp.role}.md`));
+    if (atp.role === "orchestrator") args.push("-e", onDisk("resources", "atp-extension.ts"));
+    const plan = atp.plan ? `This chat's ATP plan: ${atp.plan}` : "This chat has no ATP plan yet: the user is about to create one.";
+    args.push("--append-system-prompt", `${plan}\nThe librarian CLI: python3 '${librarianPath()}' <command> --plan-path <absolute plan path> ...`);
+    return args;
   }
 
   get size(): number {
@@ -53,8 +65,9 @@ export class SessionHost {
   }
 
   async open(request: OpenSessionRequest): Promise<OpenSessionResult> {
-    const { handle, cwd, sessionPath } = request;
+    const { handle, cwd, sessionPath, atp } = request;
     if (!HANDLE.test(handle) || this.sessions.has(handle)) throw new Error("invalid session handle");
+    if (atp && ((atp.role !== "worker" && atp.role !== "orchestrator") || (atp.plan !== undefined && !isPlanPath(atp.plan)))) throw new Error("invalid ATP session");
     if (!isAbsolute(cwd) || !(await stat(cwd).catch(() => undefined))?.isDirectory()) throw new Error(`not a directory: ${cwd}`);
     if (sessionPath !== undefined && (!isAbsolute(sessionPath) || !sessionPath.endsWith(".jsonl"))) throw new Error("invalid session path");
 
@@ -66,8 +79,9 @@ export class SessionHost {
     const project = projectOf(cwd);
     const trust = project === cwd ? undefined : await projectTrust(project);
 
+    const computer = await this.computerEnabled().catch(() => false);
     const pi = new PiProcess(
-      { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp) },
+      { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, computer) },
       {
         onRecords: (records) => {
           this.emit({ handle, events: records.map((record) => ({ kind: "rpc", record })) });
@@ -79,7 +93,6 @@ export class SessionHost {
           this.sessions.delete(handle);
           this.cwds.delete(handle);
           this.bridge.unregister(handle);
-    const computer = await this.computerEnabled().catch(() => false);
           this.emit({ handle, events: [{ kind: "exit", ...exit }] });
         },
       },

@@ -1,10 +1,11 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
+import type { AtpClaim, AtpHead, AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp } from "./board";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
-import type { LamentOp, Laments } from "./laments";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
+import type { LamentOp, Laments } from "./laments";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -54,7 +55,6 @@ export const IPC = {
   lamentsGet: "laments:get",
   lamentsApply: "laments:apply",
   lamentsChanged: "laments:changed",
-  boardSaveImage: "board:save-image",
   computerGet: "computer:get",
   computerApply: "computer:apply",
   computerChanged: "computer:changed",
@@ -66,6 +66,18 @@ export const IPC = {
   githubChoose: "github:choose",
   githubList: "github:list",
   githubLookup: "github:lookup",
+  atpWatch: "atp:watch",
+  atpPlans: "atp:plans",
+  atpRead: "atp:read",
+  atpActivate: "atp:activate",
+  atpClaim: "atp:claim",
+  atpRelease: "atp:release",
+  atpHead: "atp:head",
+  atpCommit: "atp:commit",
+  atpHeld: "atp:held",
+  atpGetHeld: "atp:get-held",
+  atpSetHeld: "atp:set-held",
+  atpInfo: "atp:info",
   cardWorktree: "studio:card-worktree",
   updateGet: "update:get",
   updateState: "update:state",
@@ -80,6 +92,11 @@ export interface ComputerApi {
   /** Rejects with the reason for an invalid op. */
   apply(op: ComputerOp): Promise<ComputerSettings>;
   onChange(listener: (settings: ComputerSettings) => void): () => void;
+  /** Live Accessibility and Screen Recording status from the helper (starts it); rejects with the reason it cannot. */
+  permissions(): Promise<Permissions>;
+  /** Ask macOS for the missing permissions (shows its prompts), then report the status. */
+  requestPermissions(): Promise<Permissions>;
+  openSettings(pane: "accessibility" | "screen_recording"): Promise<void>;
 }
 
 export type Page = "kanban" | "laments" | "github" | "atp" | "computer";
@@ -114,6 +131,33 @@ export interface GithubApi {
   list(cwd: string, kind: GithubKind, filter: GithubFilter): Promise<GithubList>;
   /** An issue or pull request of the project's repository, from "#12" or its link, as a card's link. */
   lookup(cwd: string, input: string): Promise<GithubLookup>;
+}
+
+/**
+ * ATP plans (src/shared/atp.ts): main finds a project's `*.atp.json` files and pushes them as they change, runs the
+ * librarian CLI the runner claims nodes with, and git around each node. The runner itself is the window's
+ * (state/atp.ts): it starts the worker chats.
+ */
+export interface AtpApi {
+  /** The project's plans, pushed again (onPlans) whenever one changes, until another project is watched (or null). */
+  watch(cwd: string | null): Promise<AtpProjectPlans | null>;
+  onPlans(listener: (plans: AtpProjectPlans) => void): () => void;
+  read(plan: string): Promise<AtpPlan>;
+  /** DRAFT or PAUSED -> ACTIVE. */
+  activate(plan: string): Promise<string>;
+  claim(plan: string, agent: string): Promise<AtpClaim>;
+  release(plan: string, node: string, agent: string, reason: string): Promise<string>;
+  /** The project's branch and commit; null outside a git repository. */
+  head(cwd: string): Promise<AtpHead | null>;
+  /** Commit what a node's worker left uncommitted (atp-runner's fallback); says who committed. */
+  commit(cwd: string, node: string, title: string, before: AtpHead | null): Promise<{ kind: "committed"; sha: string } | { kind: "worker" | "clean" | "no-repo" }>;
+  /** Plans an orchestrator paused (atp_pause); the runner claims none of their nodes. */
+  held(): Promise<string[]>;
+  onHeld(listener: (plans: string[]) => void): () => void;
+  /** Lift (or set) a plan's pause from the page. */
+  setHeld(plan: string, held: boolean): Promise<void>;
+  /** The bundled librarian CLI (a Python script), for the workers' prompts. */
+  info(): Promise<{ librarian: string }>;
 }
 
 /** The git worktree a card's Resolve chat works in, on a branch of its own (src/main/worktree.ts). */
@@ -208,6 +252,8 @@ export interface OpenSessionRequest {
   cwd: string;
   /** Existing session file; omit to start a new session in `cwd`. */
   sessionPath?: string;
+  /** An ATP worker or orchestrator: its own session folder, skills and prompt. */
+  atp?: AtpSession;
 }
 
 export interface OpenSessionResult {
@@ -275,7 +321,8 @@ export interface StudioApi {
   browser: BrowserApi;
   board: BoardApi;
   laments: LamentsApi;
+  computer: ComputerApi;
   github: GithubApi;
+  atp: AtpApi;
   update: UpdateApi;
 }
-  computer: ComputerApi;

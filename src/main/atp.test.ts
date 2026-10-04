@@ -1,0 +1,137 @@
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Atp } from "./atp";
+
+vi.mock("./log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+// The bundled librarian, from the checkout.
+vi.mock("./resources", () => ({ onDisk: (...parts: string[]) => join(process.cwd(), ...parts) }));
+
+const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
+
+const plan = {
+  meta: { project_name: "Tiny", version: "1.3", project_status: "DRAFT" },
+  nodes: {
+    T1: { title: "First", instruction: "Write a.txt", dependencies: [], status: "READY" },
+    T2: { title: "Second", instruction: "Write b.txt", dependencies: ["T1"], status: "LOCKED" },
+  },
+};
+
+// Real git, python3 and rg in a temporary folder, with a git config of its own.
+let root: string;
+let repo: string;
+let path: string;
+let atp: Atp;
+const pushed: string[][] = [];
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "pigna-atp-"));
+  repo = join(root, "repo");
+  await writeFile(join(root, "gitconfig"), "[user]\n\tname = Test\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n");
+  vi.stubEnv("GIT_CONFIG_GLOBAL", join(root, "gitconfig"));
+  vi.stubEnv("GIT_CONFIG_NOSYSTEM", "1");
+  await mkdir(join(repo, "plans"), { recursive: true });
+  await mkdir(join(repo, "node_modules", "dep"), { recursive: true });
+  path = join(repo, "plans", "tiny.atp.json");
+  await writeFile(path, JSON.stringify(plan));
+  await writeFile(join(repo, "node_modules", "dep", "fixture.atp.json"), JSON.stringify(plan));
+  await writeFile(join(repo, "broken.atp.json"), "{");
+  git(repo, "init", "-q");
+  git(repo, "add", ".");
+  git(repo, "commit", "-qm", "start");
+  pushed.length = 0;
+  atp = new Atp(
+    () => undefined,
+    (held) => pushed.push(held),
+  );
+});
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  await atp.watch(null);
+  await rm(root, { recursive: true, force: true });
+});
+
+describe("Atp", () => {
+  it("finds the project's plans, not those in dependencies, and reports the ones it cannot read", async () => {
+    const found = await atp.scan(repo);
+    expect(found.plans.map((file) => file.path)).toEqual([join(repo, "broken.atp.json"), path]);
+    expect(found.plans[0]?.error).toBeTruthy();
+    expect(found.plans[1]?.plan?.name).toBe("Tiny");
+  });
+
+  it("activates, claims, gets the same node back for the same agent, and releases it", async () => {
+    expect((await atp.claim(path, "pigna-w1")).kind).toBe("inactive");
+    await atp.activate(path);
+    const claim = await atp.claim(path, "pigna-w1");
+    expect(claim).toMatchObject({ kind: "assigned", node: "T1", title: "First" });
+    expect(await atp.claim(path, "pigna-w1")).toMatchObject({ kind: "assigned", node: "T1" });
+    expect((await atp.claim(path, "someone-else")).kind).toBe("none");
+    await atp.release(path, "T1", "pigna-w1", "stopped");
+    expect((await atp.read(path)).nodes.find((node) => node.id === "T1")?.status).toBe("READY");
+    await expect(atp.release(path, "T1", "pigna-w1", "again")).rejects.toThrow(/not CLAIMED/);
+  });
+
+  it("keeps the librarian's lock file out of git, in the repository's local excludes", async () => {
+    await atp.activate(path);
+    await atp.activate(path);
+    // The plan the librarian activated (" M", trimmed), and no "?? plans/tiny.atp.json.lock".
+    expect(git(repo, "status", "--porcelain")).toBe("M plans/tiny.atp.json");
+    const exclude = await readFile(join(repo, ".git", "info", "exclude"), "utf8");
+    expect(exclude.split("\n").filter((line) => line === "*.atp.json.lock")).toHaveLength(1);
+  });
+
+  it("claims nothing while an orchestrator holds the plan", async () => {
+    await atp.activate(path);
+    atp.setHeld(path, true);
+    expect((await atp.claim(path, "pigna-w1")).kind).toBe("held");
+    atp.setHeld(path, false);
+    expect((await atp.claim(path, "pigna-w1")).kind).toBe("assigned");
+    expect(pushed).toEqual([[path], []]);
+  });
+
+  it("commits what a worker left, but not when it committed itself or changed nothing", async () => {
+    const before = await atp.head(repo);
+    expect(before?.branch).toBe("main");
+    expect(await atp.commit(repo, "T1", "First", before)).toEqual({ kind: "clean" });
+
+    await writeFile(join(repo, "a.txt"), "a\n");
+    await writeFile(join(repo, "plans", "tiny.atp.json.lock"), "");
+    const committed = await atp.commit(repo, "T1", "First   thing", before);
+    expect(committed.kind).toBe("committed");
+    expect(git(repo, "log", "-1", "--format=%s")).toBe("node(T1): First thing");
+    expect(git(repo, "status", "--porcelain")).toBe("?? plans/tiny.atp.json.lock");
+
+    const next = await atp.head(repo);
+    await writeFile(join(repo, "b.txt"), "b\n");
+    git(repo, "add", "b.txt");
+    git(repo, "commit", "-qm", "node(T2): Second");
+    await writeFile(join(repo, "c.txt"), "c\n");
+    expect(await atp.commit(repo, "T2", "Second", next)).toEqual({ kind: "worker" });
+    expect(await readFile(join(repo, "c.txt"), "utf8")).toBe("c\n");
+  });
+
+  it("has no head outside git", async () => {
+    const outside = join(root, "plain");
+    await mkdir(outside);
+    expect(await atp.head(outside)).toBeNull();
+    expect(await atp.commit(outside, "T1", "First", null)).toEqual({ kind: "no-repo" });
+  });
+
+  it("pauses through the bridge once no worker holds a node", async () => {
+    const route = atp.route();
+    await atp.activate(path);
+    const claim = await atp.claim(path, "pigna-w1");
+    expect(claim.kind).toBe("assigned");
+    const pausing = route("h", { action: "pause", plan: path }) as Promise<{ text: string }>;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((await atp.claim(path, "pigna-w1")).kind).toBe("held");
+    await atp.release(path, "T1", "pigna-w1", "done for the test");
+    expect((await pausing).text).toMatch(/^Paused: no worker holds a node/);
+    await route("h", { action: "resume", plan: path });
+    expect(atp.heldPlans()).toEqual([]);
+    await expect(route("h", { action: "pause", plan: "relative.atp.json" })).rejects.toThrow(/absolute path/);
+  });
+});

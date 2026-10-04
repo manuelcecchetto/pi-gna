@@ -1,4 +1,4 @@
-import { Angry, ChevronRight, Copy, Folder, GitPullRequest, MessagesSquare, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
+import { Angry, ChevronRight, Copy, Folder, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
@@ -22,6 +22,7 @@ import {
   toggleSidebar,
   useApp,
 } from "../state/app";
+import { useAtp } from "../state/atp";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
@@ -42,6 +43,7 @@ export function Sidebar() {
   const laments = useApp((state) => state.laments);
   const openLaments = useMemo(() => (pageCwd ? projectLaments(laments, pageCwd) : []), [laments, pageCwd]);
   const worst = worstSeverity(openLaments);
+  const runningPlans = useAtp((state) => Object.keys(state.runners).length);
   const active = useApp((state) => (state.page ? undefined : state.active));
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
@@ -141,6 +143,21 @@ export function Sidebar() {
             <GitPullRequest size={14} className="shrink-0 text-muted" />
             <span className="flex-1">GitHub</span>
             <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧G</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => page?.kind !== "atp" && showPage("atp", page?.cwd)}
+            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "atp" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+          >
+            <Network size={14} className="shrink-0 text-muted" />
+            <span className="flex-1">ATP</span>
+            {runningPlans > 0 && (
+              <span className="flex items-center gap-1 group-hover:hidden" title={`${runningPlans} plan${runningPlans === 1 ? "" : "s"} running`}>
+                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" />
+                <span className="font-mono text-[11px] text-faint">{runningPlans}</span>
+              </span>
+            )}
+            <span className={`font-mono text-[11px] text-faint ${runningPlans > 0 ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧A</span>
           </button>
         </div>
 

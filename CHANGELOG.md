@@ -11,6 +11,12 @@ moves those lines under the new version, and they become its GitHub release note
   their links, and their dialog links more by number or URL.
 - The composer shows how fast the model writes, in tokens per second: live while a response streams (estimated
   until the provider reports the count), then the last response's speed.
+- An ATP page per project (Cmd+Shift+A) for big projects run with ATP plans (`*.atp.json`, github.com/manuelcecchetto/atp):
+  create a plan with the bundled macro or micro architect, then Start runs it node by node, each in a fresh hidden
+  worker chat that completes, fails or splits its node with the ATP librarian and commits it as `node(<ID>): …`;
+  Stop gives the node back. The plan draws as a live graph (300+ nodes, zoomable, running nodes glowing) with each
+  node's instruction, report and chats, and an orchestrator chat under it tells you how it is going and can edit or
+  extend the plan. ATP is separate from Kanban.
 
 ## 0.2.0 - 2026-10-03
 

@@ -1,5 +1,6 @@
 // App state and actions. Session state transitions live in lib/session.ts (pure); this module
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
+import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
 import { emptyLaments, type LamentOp, type Laments } from "../../../shared/laments";
@@ -28,7 +29,7 @@ import type { CompactionSettings } from "../../../shared/compaction";
 import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, type TaskModel, TRIAGE_MODEL, triageName, triagePrompt } from "../lib/board";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
-import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState } from "../lib/session";
+import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../lib/session";
 import { createStore, useStore } from "../lib/store";
 
 export interface Toast {
@@ -183,21 +184,21 @@ export function newSession(cwd: string): void {
   start(cwd);
 }
 
-/** Start pi for a new chat or a session file; background chats (from a card) are not shown. */
-function start(cwd: string, summary?: SessionSummary, show = true): string {
+/** Start pi for a new chat or a session file; background chats (from a card, ATP's) are not shown. */
+function start(cwd: string, summary?: Pick<SessionSummary, "path" | "title">, show = true, atp?: AtpSession): string {
   const handle = newHandle();
   const sessionPath = summary?.path;
   // It is shown right away, so it must not look like an empty new chat until its history arrives.
-  const session: SessionState = { ...createSession(handle, cwd, sessionPath), loading: summary && { title: summary.title } };
+  const session: SessionState = { ...createSession(handle, cwd, sessionPath, atp), loading: summary && { title: summary.title } };
   store.set((state) => ({ ...state, sessions: { ...state.sessions, [handle]: session }, open: [...state.open, handle] }));
   if (show) activate(handle);
-  void load(handle, cwd, sessionPath);
+  void load(handle, cwd, sessionPath, atp);
   return handle;
 }
 
-async function load(handle: string, cwd: string, sessionPath: string | undefined): Promise<void> {
+async function load(handle: string, cwd: string, sessionPath: string | undefined, atp: AtpSession | undefined): Promise<void> {
   try {
-    const { entries } = await studio().openSession({ handle, cwd, sessionPath });
+    const { entries } = await studio().openSession({ handle, cwd, sessionPath, atp });
     patchSession(handle, (s) => {
       const loaded = s.loading ? { ...s, loading: undefined } : s;
       if (!entries.length) return loaded;
@@ -234,10 +235,12 @@ export function activate(handle: string | undefined): void {
 }
 
 export async function closeSession(handle: string, pickNext = true): Promise<void> {
-  const { open, active } = store.get();
+  const { open, active, sessions } = store.get();
   if (pickNext && active === handle) {
-    const index = open.indexOf(handle);
-    const next = open[index + 1] ?? open[index - 1];
+    // The next chat the sidebar shows: ATP chats are not on it.
+    const shown = open.filter((other) => other === handle || !sessions[other]?.atp);
+    const index = shown.indexOf(handle);
+    const next = shown[index + 1] ?? shown[index - 1];
     store.set((state) => ({ ...state, active: next }));
   }
   removeSession(handle);
@@ -245,7 +248,11 @@ export async function closeSession(handle: string, pickNext = true): Promise<voi
 }
 
 function removeSession(handle: string): void {
+  // Its exit event finds no session any more: whoever waits for its run hears it now.
+  if (store.get().sessions[handle]) settled(handle, "exited");
+  settleListeners.delete(handle);
   cardLinks.delete(handle);
+  setups.delete(handle);
   backgroundChats.delete(handle);
   removeComposerCard(handle);
   store.set((state) => {
@@ -274,6 +281,7 @@ export function handleBatch(batch: HostEventBatch): void {
       // A spawn failure (pi not installed) is explained in the session's banner; keep the toast short.
       if (event.error) toast("pi could not start", "error");
       else if (event.code !== 0 && event.signal !== "SIGTERM") toast(`pi exited (${event.signal ?? `code ${event.code}`})`, "error");
+      settled(handle, "exited");
     } else if (event.record.type === "extension_ui_request" && event.record.method === "notify") {
       const level = event.record.notifyType === "error" ? "error" : event.record.notifyType === "warning" ? "warning" : "info";
       // Every pi process repeats the same extension startup notices; show each one once per app run.
@@ -285,6 +293,7 @@ export function handleBatch(batch: HostEventBatch): void {
       toast(event.record.message, level);
     } else if (event.record.type === "agent_settled") {
       const outcome = runOutcome(store.get().sessions[handle]?.items ?? []);
+      settled(handle, outcome);
       // A card's background chat that ended well: what it found is on the card, so it closes instead of waiting to be read.
       if (backgroundChats.delete(handle) && outcome === "done" && store.get().active !== handle) void closeSession(handle, false);
       else {
@@ -312,6 +321,30 @@ async function onReady(handle: string, state: RpcSessionState): Promise<void> {
   }));
   if (state.messageCount > 0) void refreshStats(handle);
   if (cardLinks.has(handle)) void linkCard(handle);
+  const setup = setups.get(handle);
+  if (setup) {
+    setups.delete(handle);
+    void setUp(handle, setup);
+  }
+}
+
+/** How a chat's run ended, or that its pi exited. */
+export type Settled = RunOutcome | "exited";
+const settleListeners = new Map<string, Set<(how: Settled) => void>>();
+
+/** Listen for a chat's runs ending (agent_settled) and for its pi exiting. */
+export function onSettle(handle: string, listener: (how: Settled) => void): () => void {
+  const listeners = settleListeners.get(handle) ?? new Set();
+  listeners.add(listener);
+  settleListeners.set(handle, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) settleListeners.delete(handle);
+  };
+}
+
+function settled(handle: string, how: Settled): void {
+  for (const listener of [...(settleListeners.get(handle) ?? [])]) listener(how);
 }
 
 async function onSettled(handle: string): Promise<void> {
@@ -737,13 +770,40 @@ async function linkCard(handle: string): Promise<void> {
   if (!link || !store.get().sessions[handle]) return;
   cardLinks.delete(handle);
   await attachChat(handle, link.card, link.name);
-  if (link.model) await useModel(handle, link.model);
+  if (link.closeWhenDone && store.get().active !== handle) backgroundChats.add(handle);
+  await setUp(handle, link);
+}
+
+/** What pi-gna does with a chat it starts itself, once pi is ready: switch its model, then send it a first prompt. */
+export interface ChatSetup {
+  /** Session name, set with the prompt. */
+  name?: string;
+  /** For this chat only: pi keeps your default model and thinking level. */
+  model?: TaskModel;
+  prompt?: string;
+}
+const setups = new Map<string, ChatSetup>();
+
+async function setUp(handle: string, setup: ChatSetup): Promise<void> {
+  if (setup.model) await useModel(handle, setup.model);
+  if (setup.prompt === undefined || !store.get().sessions[handle]) return;
   // Written by pi-gna, not the composer: no attachments or browser comments ride along. Named right away, before
   // pi confirms it, so the sidebar never shows it under another title (or a triage chat at all).
-  patchSession(handle, (s) => ({ ...s, prompted: true, name: link.name ?? s.name }));
-  if (link.closeWhenDone && store.get().active !== handle) backgroundChats.add(handle);
-  const sent = await command(handle, { type: "prompt", message: link.prompt });
-  if (sent.success && link.name) await command(handle, { type: "set_session_name", name: link.name }, true);
+  patchSession(handle, (s) => ({ ...s, prompted: true, name: setup.name ?? s.name }));
+  const sent = await command(handle, { type: "prompt", message: setup.prompt });
+  if (sent.success && setup.name) await command(handle, { type: "set_session_name", name: setup.name }, true);
+  // No run started, so none will settle: tell whoever waits for it (the ATP runner).
+  if (!sent.success) settled(handle, "error");
+}
+
+/**
+ * Start an ATP chat in the background (ATP page): new, or an earlier one from its session file. It never shows in
+ * the sidebar; the ATP page opens it.
+ */
+export function startAtpChat(cwd: string, atp: AtpSession, options: { resume?: { path: string; title: string }; setup?: ChatSetup } = {}): string {
+  const handle = start(cwd, options.resume, false, atp);
+  if (options.setup) setups.set(handle, options.setup);
+  return handle;
 }
 
 /** Put a chat on a card, by its session file. */
@@ -760,7 +820,7 @@ async function attachChat(handle: string, card: string, label?: string): Promise
 async function useModel(handle: string, want: TaskModel): Promise<void> {
   const model = pickModel(store.get().models, want.id, store.get().sessions[handle]?.model?.provider);
   if (!model) {
-    toast(`${want.id} is not available, so the card's chat runs on your default model`, "warning");
+    toast(`${want.id} is not available, so this chat runs on your default model`, "warning");
     return;
   }
   await setModel(handle, model);

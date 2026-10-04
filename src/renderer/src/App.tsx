@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { AtpPage } from "./components/Atp";
 import { BrowserPane } from "./components/BrowserPane";
-import { GithubPage } from "./components/GitHub";
 import { ComputerPage } from "./components/Computer";
+import { GithubPage } from "./components/GitHub";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
 import { Ansi } from "./components/primitives";
@@ -74,6 +75,8 @@ export function App() {
             <LamentsPage key={page.cwd} page={page} />
           ) : page?.kind === "github" ? (
             <GithubPage key={page.cwd} page={page} />
+          ) : page?.kind === "atp" ? (
+            <AtpPage key={page.cwd} page={page} />
           ) : page ? (
             <KanbanPage page={page} />
           ) : session ? (

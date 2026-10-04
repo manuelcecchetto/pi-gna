@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { Board } from "../shared/board";
+import type { AtpProjectPlans } from "../shared/atp";
 import type { Annotation, BrowserState } from "../shared/browser";
-import type { Laments } from "../shared/laments";
 import type { ComputerSettings } from "../shared/computer";
+import type { Laments } from "../shared/laments";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -66,10 +67,32 @@ const api: StudioApi = {
     list: (cwd, kind, filter) => ipcRenderer.invoke(IPC.githubList, cwd, kind, filter),
     lookup: (cwd, input) => ipcRenderer.invoke(IPC.githubLookup, cwd, input),
   },
+  atp: {
+    watch: (cwd) => ipcRenderer.invoke(IPC.atpWatch, cwd),
+    onPlans: (listener) => subscribe<AtpProjectPlans>(IPC.atpPlans, listener),
+    read: (plan) => ipcRenderer.invoke(IPC.atpRead, plan),
+    activate: (plan) => ipcRenderer.invoke(IPC.atpActivate, plan),
+    claim: (plan, agent) => ipcRenderer.invoke(IPC.atpClaim, plan, agent),
+    release: (plan, node, agent, reason) => ipcRenderer.invoke(IPC.atpRelease, plan, node, agent, reason),
+    head: (cwd) => ipcRenderer.invoke(IPC.atpHead, cwd),
+    commit: (cwd, node, title, before) => ipcRenderer.invoke(IPC.atpCommit, cwd, node, title, before),
+    held: () => ipcRenderer.invoke(IPC.atpGetHeld),
+    onHeld: (listener) => subscribe<string[]>(IPC.atpHeld, listener),
+    setHeld: (plan, held) => ipcRenderer.invoke(IPC.atpSetHeld, plan, held),
+    info: () => ipcRenderer.invoke(IPC.atpInfo),
+  },
   laments: {
     get: () => ipcRenderer.invoke(IPC.lamentsGet),
     apply: (op) => ipcRenderer.invoke(IPC.lamentsApply, op),
     onChange: (listener) => subscribe<Laments>(IPC.lamentsChanged, listener),
+  },
+  computer: {
+    get: () => ipcRenderer.invoke(IPC.computerGet),
+    apply: (op) => ipcRenderer.invoke(IPC.computerApply, op),
+    onChange: (listener) => subscribe<ComputerSettings>(IPC.computerChanged, listener),
+    permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
+    requestPermissions: () => ipcRenderer.invoke(IPC.computerRequest),
+    openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
   },
   update: {
     state: () => ipcRenderer.invoke(IPC.updateGet),
@@ -80,11 +103,3 @@ const api: StudioApi = {
 };
 
 contextBridge.exposeInMainWorld("studio", api);
-  computer: {
-    get: () => ipcRenderer.invoke(IPC.computerGet),
-    apply: (op) => ipcRenderer.invoke(IPC.computerApply, op),
-    onChange: (listener) => subscribe<ComputerSettings>(IPC.computerChanged, listener),
-    permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
-    requestPermissions: () => ipcRenderer.invoke(IPC.computerRequest),
-    openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
-  },

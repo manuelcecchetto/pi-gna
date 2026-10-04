@@ -3,13 +3,15 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, session, shell } from "electron";
 import { bugs, description } from "../../package.json";
+import type { AtpHead } from "../shared/atp";
 import type { BoardOp } from "../shared/board";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
 import type { GithubFilter, GithubKind } from "../shared/github";
-import type { LamentOp } from "../shared/laments";
 import type { ComputerOp } from "../shared/computer";
+import type { LamentOp } from "../shared/laments";
 import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
+import { Atp, librarianPath } from "./atp";
 import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
 import { attachContextMenu } from "./context-menu";
@@ -80,9 +82,9 @@ const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch),
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));
+const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => send(IPC.computerChanged, next));
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => send(IPC.lamentsChanged, next));
 bridge.route("/kanban", kanbanRoute(board, (handle) => host.identify(handle)));
-const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => send(IPC.computerChanged, next));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
   defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
@@ -102,6 +104,11 @@ host.onRunEnd((handle) => void computerAgent.release(handle));
 bridge.route("/lament", lamentRoute(laments, (handle) => host.identify(handle)));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
+const atp = new Atp(
+  (plans) => send(IPC.atpPlans, plans),
+  (held) => send(IPC.atpHeld, held),
+);
+bridge.route("/atp", atp.route());
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -229,13 +236,6 @@ function registerIpc(shellEnv: Promise<void>): void {
   handle(IPC.browserGetState, () => browser?.snapshot());
 
   handle(IPC.boardGet, () => board.get());
-  handle(IPC.lamentsGet, () => laments.get());
-  handle(IPC.lamentsApply, (op: LamentOp) => laments.apply(op));
-  handle(IPC.boardApply, async (op: BoardOp) => {
-    const next = await board.apply(op);
-    if (op.type === "remove") void cardImages.remove(op.id).catch((error: Error) => log.warn("board", `could not delete the images of card ${op.id}: ${error.message}`));
-    return next;
-  });
   handle(IPC.computerGet, () => computerPolicy.get());
   handle(IPC.computerApply, (op: ComputerOp) => computerPolicy.apply(op));
   handle(IPC.computerPermissions, () => computerHelper.call("permissions", {}));
@@ -246,6 +246,13 @@ function registerIpc(shellEnv: Promise<void>): void {
   handle(IPC.computerOpenSettings, async (pane: "accessibility" | "screen_recording") => {
     if (pane !== "accessibility" && pane !== "screen_recording") throw new Error("Unknown settings pane");
     await computerHelper.call("open_settings", { pane });
+  });
+  handle(IPC.lamentsGet, () => laments.get());
+  handle(IPC.lamentsApply, (op: LamentOp) => laments.apply(op));
+  handle(IPC.boardApply, async (op: BoardOp) => {
+    const next = await board.apply(op);
+    if (op.type === "remove") void cardImages.remove(op.id).catch((error: Error) => log.warn("board", `could not delete the images of card ${op.id}: ${error.message}`));
+    return next;
   });
   handle(IPC.boardSaveImage, async (card: string, image: { mimeType: string; data: string }) => {
     if (!(await board.get()).cards.some((other) => other.id === card)) throw new Error(`no card ${String(card)}`);
@@ -270,6 +277,17 @@ function registerIpc(shellEnv: Promise<void>): void {
     return github.list(project(cwd), kind, filter);
   });
   handle(IPC.githubLookup, async (cwd: string, input: string) => (await shellEnv, github.lookup(project(cwd), String(input).slice(0, 500))));
+  // python3, rg and git come from the login shell's PATH.
+  handle(IPC.atpWatch, async (cwd: string | null) => (await shellEnv, atp.watch(cwd === null ? null : project(cwd))));
+  handle(IPC.atpRead, (plan: string) => atp.read(plan));
+  handle(IPC.atpActivate, async (plan: string) => (await shellEnv, atp.activate(plan)));
+  handle(IPC.atpClaim, async (plan: string, agent: string) => (await shellEnv, atp.claim(plan, String(agent))));
+  handle(IPC.atpRelease, async (plan: string, node: string, agent: string, reason: string) => (await shellEnv, atp.release(plan, String(node), String(agent), String(reason))));
+  handle(IPC.atpHead, async (cwd: string) => (await shellEnv, atp.head(project(cwd))));
+  handle(IPC.atpCommit, async (cwd: string, node: string, title: string, before: AtpHead | null) => (await shellEnv, atp.commit(project(cwd), String(node), String(title), before)));
+  handle(IPC.atpGetHeld, () => atp.heldPlans());
+  handle(IPC.atpSetHeld, (plan: string, held: boolean) => atp.setHeld(plan, held === true));
+  handle(IPC.atpInfo, () => ({ librarian: librarianPath() }));
   handle(IPC.relaunch, () => updater?.restart());
   handle(IPC.updateGet, () => updater?.get() ?? { phase: "idle" });
   handle(IPC.updateDownload, () => updater?.download());
@@ -296,6 +314,7 @@ function buildMenu(): void {
         submenu: [
           { role: "about" },
           { label: "Check for Updates…", click: () => void checkForUpdates() },
+          { label: "Computer Use Settings…", click: () => send(IPC.pageToggle, "computer") },
           { type: "separator" },
           { role: "services" },
           { type: "separator" },
@@ -314,8 +333,9 @@ function buildMenu(): void {
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
           { label: "Kanban", accelerator: "CmdOrCtrl+Shift+K", click: () => send(IPC.pageToggle, "kanban") },
           { label: "Laments", accelerator: "CmdOrCtrl+Shift+L", click: () => send(IPC.pageToggle, "laments") },
-          { label: "Computer Use Settings…", click: () => send(IPC.pageToggle, "computer") },
           { label: "GitHub", accelerator: "CmdOrCtrl+Shift+G", click: () => send(IPC.pageToggle, "github") },
+          { label: "ATP", accelerator: "CmdOrCtrl+Shift+A", click: () => send(IPC.pageToggle, "atp") },
+          { label: "Computer Use", accelerator: "CmdOrCtrl+Shift+U", click: () => send(IPC.pageToggle, "computer") },
           { type: "separator" },
           { role: "reload" },
           { role: "toggleDevTools" },
@@ -334,8 +354,6 @@ function buildMenu(): void {
           { label: "Show Logs", click: () => void shell.openPath(logFile) },
           { type: "separator" },
           { label: "pi Documentation", click: () => openExternal("https://pi.dev") },
-          { label: "ATP", accelerator: "CmdOrCtrl+Shift+A", click: () => send(IPC.pageToggle, "atp") },
-          { label: "Computer Use", accelerator: "CmdOrCtrl+Shift+U", click: () => send(IPC.pageToggle, "computer") },
           { label: "Report an Issue", click: () => openExternal(bugs.url) },
         ],
       },
