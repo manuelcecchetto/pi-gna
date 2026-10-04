@@ -76,7 +76,7 @@ const bridge = new AgentBridge();
 const send = (channel: string, ...args: unknown[]) => {
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
 };
-const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge);
+const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge, join(app.getPath("userData"), "atp-sessions"), async () => (await computerPolicy.get()).enabled);
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));

@@ -34,11 +34,16 @@ export class SessionHost {
     private readonly emit: (batch: HostEventBatch) => void,
     private readonly bridge: AgentBridge,
   ) {}
+    /** Where ATP chats keep their session files, apart from pi's, so they stay out of the sidebar. */
+    private readonly atpSessions: string,
+    /** Read at spawn: the computer_* tools exist only in chats opened while Computer Use is enabled. */
+    private readonly computerEnabled: () => Promise<boolean> = async () => false,
 
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
-  private piArgs(handle: string, trust: boolean | undefined): { args: string[]; env: Record<string, string> } {
+  private piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, computer: boolean): { args: string[]; env: Record<string, string> } {
     const args = [...this.extensions.flatMap((path) => ["-e", path]), "--append-system-prompt", this.prompt];
     if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
+    if (computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
     if (trust !== undefined) args.push(trust ? "--approve" : "--no-approve");
     return { args, env: { PIGNA_BRIDGE: this.bridge.url, PIGNA_TOKEN: this.bridge.register(handle) } };
   }
@@ -74,6 +79,7 @@ export class SessionHost {
           this.sessions.delete(handle);
           this.cwds.delete(handle);
           this.bridge.unregister(handle);
+    const computer = await this.computerEnabled().catch(() => false);
           this.emit({ handle, events: [{ kind: "exit", ...exit }] });
         },
       },
