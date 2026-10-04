@@ -1,316 +1,556 @@
-# Computer Use (design)
+# Computer Use design (spec)
 
-pi-gna gives pi a Codex-Computer-Use-like ability to see and operate native macOS apps in the background: read an
-app's accessibility tree and a screenshot of its window, then click, type and press keys in it, through pi's own
-virtual cursor — never the user's real mouse. This document is the design, grounded in spikes run on this Mac
-(macOS 26.4.1, Apple M2, Swift 6.3.1); it is folded into `docs/DESIGN.md` once implementation starts. Read
-`docs/DESIGN.md` first (principles, bridge, `JsonStore`, packaging) — this feature follows the same shape as the
-Browser (M2) tools: a native backend behind pi-gna's bridge, discrete `computer_*` tools, policy enforced in main.
+Status: design spec from node T01 of the Computer Use ATP plan. The docs node later folds the settled parts into
+`docs/DESIGN.md`. Every later node implements from this file; if reality contradicts it, change this file in the
+same commit.
 
-Codex's own shipped service was inspected for API shape only (never copy or ship its code or binaries):
-`~/.codex/computer-use/Codex Computer Use.app`, bundle id `com.openai.sky.CUAService`, an `LSUIElement` app
-installed under `~/.codex` (outside `ChatGPT.app`) so a TCC grant survives an app update, built with
-`AXUIElement`/`AXObserver`, `ScreenCaptureKit`, and overlay windows (`CUALockScreenGuardian.app` suggests it also
-hides itself during a locked screen). The `@oai/sky` and `@oai/cua` doc paths named in this node's packet
-(`docs/skills/oai_sky_lib/macos/SKILL.md`, `sky-window2-api.md`, `tinysky-alt-core-cua-repl.md`,
-`tinysky-alt-confirmations.md`) do not exist on this machine — only the installed `.app` bundle and its
-`AppInstructions/*.md` (per-app usage notes for Slack, Notion, Spotify, etc., not an API reference) are present.
-The tool surface and semantics below come from the packet's own description of Codex's tools (`list_apps`,
-`get_app_state`, `click`, `drag`, `scroll`, `type_text`, `press_key`, `set_value`, `select_text`,
-`perform_secondary_action`, `paste`, the ~1 s/5 s auto-wait, and the hard limits on terminals/security prompts/the
-agent's own app), not from reading those missing files; this is recorded as a gap, not papered over.
+pi can see and operate native macOS apps in the background (accessibility tree, window screenshots, clicks and
+typing) with its own virtual cursor, per-app approvals and an Esc-to-cancel, without taking over the user's mouse.
+macOS only. The Codex app's Computer Use is the behavioral reference (API shape and policy); no OpenAI code or
+binary is copied or shipped.
 
-## Evidence (spikes)
-
-All spikes ran as throwaway Swift scripts under `/tmp/cu-spike` (not committed), with TextEdit and Calculator as
-target apps, this process AX-trusted (`AXIsProcessTrusted() == true`). Every probe used `CGEvent(...).postToPid`
-or `AXUIElement*`, never `CGEvent(...).post(tap:)`, which would hit the real event stream and the user's frontmost
-app.
-
-- **(a) `CGEventPostToPid` on a backgrounded, fully occluded window — confirmed working.**
-  With TextEdit running but Finder (then Calculator, moved to fully overlap TextEdit's window) frontmost,
-  `CGEvent(keyboardEventSource:virtualKey:keyDown:).postToPid(textEditPid)` delivered `a`, `b`, `c` into
-  TextEdit's `AXTextArea` (read back via `AXUIElementCopyAttributeValue(kAXValueAttribute)` as `"abc"`), and a
-  `leftMouseDown`/`leftMouseUp` pair posted to a point inside TextEdit's window moved AX focus to its
-  `AXTextArea` (`AXFocusedUIElementAttribute` read `AXTextArea` afterwards). In every case `NSEvent.mouseLocation`
-  was unchanged and `NSWorkspace.shared.frontmostApplication` stayed the other app throughout — the real cursor
-  never moved and TextEdit was never raised. Repeated with Calculator's window moved on top of TextEdit's exact
-  frame (so TextEdit was 100% covered on screen, `SCWindow.isOnScreen` still read `true` — that flag means "not
-  minimized", not "not covered"): clicking and typing into the covered window still worked (`"tdf"` landed in the
-  text area). `CGEventPostToPid` routes to the pid's own window/responder, not through the window server's z-order
-  hit-testing, so occlusion by other apps is irrelevant to delivery.
-  No menu-bar/system-UI app was spiked (Codex's own denylist already excludes `SecurityAgent`-class prompts); treat
-  "which apps ignore postToPid" as unresolved beyond this: **hypothesis** — apps with their own low-level input
-  filtering (games, some DRM'd media apps, remote-desktop clients) may ignore synthetic events the same way they
-  block real ones, and Electron/Chromium-hosted apps (not tested here) may need the window frontmost because they
-  gate input on `isKeyWindow`/focus rather than `postToPid`'s target pid; verify per-app at implementation time, and
-  fall back to a brief, reversible activate-and-restore when an app visibly ignores background input.
-- **(b) `AXUIElementPerformAction(kAXPressAction)` and `AXUIElementSetAttributeValue(kAXValueAttribute)` on a
-  background app — confirmed working.** With Finder frontmost, `AXUIElementSetAttributeValue` on TextEdit's
-  `AXTextArea` set its value to `"AX background test"`, confirmed by read-back, with TextEdit never raised.
-  `AXUIElementPerformAction(kAXPressAction)` on a button was exercised in the same backgrounded state (see
-  `ax_probe2.swift`); it returned `kAXErrorSuccess` (`0`) without raising the app. AX actions are therefore the
-  preferred first path (instant, immune to window position/occlusion, cheap to target by `AXUIElement` reference)
-  with `CGEventPostToPid` as the fallback when an element exposes no useful AX action (custom-drawn controls,
-  canvases, most Electron/Chromium content) or when AX write access errors (`kAXErrorAttributeUnsupported` for
-  read-only controls).
-- **(c) `SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow:))` on an
-  occluded window — confirmed working, with one sharp edge.** `SCShareableContent.excludingDesktopWindows(false,
-  onScreenWindowsOnly: false)` lists every window of a pid, including off-screen phantom windows (an invisible
-  `Untitled` window at `(0, 33, 1470, 923)`, likely a cached/background scene) alongside the real, visible one
-  (`"Untitled 2"` at `(175, 100, 586, 488)`); picking the largest by area is wrong — filter to `isOnScreen == true`
-  and prefer the window whose AX frame (`kAXPositionAttribute`/`kAXSizeAttribute` on the matching `AXUIElement`)
-  matches, since `SCWindow.frame` and the AX frame are both **points, top-left origin**, and agree exactly (both
-  read `(175.0, 100.0, 586.0, 488.0)` for the same window) — no coordinate conversion is needed between AX and
-  ScreenCaptureKit. The sharp edge: `SCScreenshotManager.captureImage` with a default `SCStreamConfiguration()`
-  (no explicit `width`/`height`) returned a **1920×1080** image for a 586×488-point window — an unrelated default
-  size, not the window's content. Setting `config.width`/`config.height` explicitly to
-  `window.frame.width/height * NSScreen.main!.backingScaleFactor` (`2.0` on this Retina display) produced the
-  correct `1172×976` pixel image (exactly `2×` the point size). **Always set `width`/`height` on the
-  `SCStreamConfiguration`**; never rely on its default. Capturing the same window while it was fully covered on
-  screen by Calculator's window (moved to the identical frame) succeeded identically (`1172×976`), confirming
-  capture is independent of on-screen occlusion, matching (a). A bare CLI process must call
-  `_ = NSApplication.shared` before using ScreenCaptureKit (`CGS_REQUIRE_INIT` otherwise aborts); the shipped
-  helper is a full `.app` (`LSUIElement = true`, has an `NSApplication`), so this is a non-issue there, but
-  matters for any throwaway spike or a future unit-test harness.
-- **(d) TCC attribution (direct spawn vs `open -g -a`, ad-hoc signing and rebuilds) — labeled hypothesis, not
-  directly observed.** This spike was not run: it needs clicking a real Accessibility/Screen Recording grant in
-  System Settings and would mutate this dev machine's TCC database, which is a real, shared, hard-to-reverse
-  system change for a throwaway test, not local file state. The design below instead relies on two things that
-  are each independently solid:
-  1. Apple's documented TCC model attributes a permission request to the "responsible" process for events
-     generated by code that has no bundle identity of its own (scripts, raw executables spawned as a child), and
-     to the app bundle itself for a process launched through LaunchServices with its own `Info.plist`
-     (`CFBundleIdentifier`). Spawning the helper directly from Electron main (`child_process.spawn` on its Mach-O
-     binary) risks the "responsible" app resolving to pi-gna itself (or being ambiguous) rather than the helper's
-     own bundle id; launching it through LaunchServices (`open -g -a "<path>/pi-gna Computer Use.app"`, or
-     `NSWorkspace.openApplication` from a small Swift/ObjC shim if main needs the result) is the documented way to
-     make System Settings list a distinct helper app with its own Accessibility/Screen Recording row — exactly
-     why Codex's own service ships as a separate `.app` outside `ChatGPT.app` rather than a spawned binary.
-  2. This repository's own `docs/DESIGN.md` **already verifies** that an ad-hoc signature's designated requirement
-     is the build's own `cdhash` (`electron-builder.yml` `identity: "-"`, no Developer ID; see DESIGN.md's Updates
-     section: "Squirrel checks an update against the running app's designated requirement, which for an ad-hoc
-     signature is that one build's cdhash, so every update would fail validation"). TCC grants are keyed to a
-     requesting app's code identity the same way code-signing requirements are; an ad-hoc-signed helper's grant is
-     tied to its current `cdhash` (confirmed here: `codesign -dv` on the installed Codex helper shows
-     `CDHash=f3f22a62...`, `TeamIdentifier=2DC432GLL2` — Codex ships with a real Developer ID team, which is why
-     *its* grants survive updates; pi-gna's ad-hoc helper does not have that luxury).
-     **Consequence for this design:** rebuilding the helper binary changes its `cdhash`, which a TCC grant is
-     keyed to, so **the helper must only be reinstalled into `~/.pi-gna/computer-use/` when its own embedded
-     version changes** (a version file next to the binary, compared before copying), never on every pi-gna launch
-     or app update — otherwise every pi-gna update would silently revoke the user's Accessibility/Screen Recording
-     grant and the feature would stop working with no clear error. This mirrors the project's updater problem
-     exactly (ad-hoc cdhash churn) and should be verified for real once the helper exists, by granting it
-     Accessibility, rebuilding it, and checking whether System Settings still shows it as granted (expected: no,
-     confirming the hypothesis) before shipping.
+> **Evidence contradicts one plan-wide assumption.** The plan assumed "AX action first, `CGEventPostToPid` as the
+> fallback" would cover clicks without touching the user's cursor. On this Mac (macOS 26.4.1, arm64) a
+> `CGEventPostToPid` **left click is ignored by TextEdit even when TextEdit is frontmost** (also with
+> `SLEventPostToPid`, window-number fields, a preceding mouseMoved, and the SkyLight focus-without-raise record).
+> Only a real HID-tap click (which moves the cursor) worked. Keyboard events through `CGEventPostToPid` **do**
+> work in the background. So pointer clicks need a third rung (see "Input strategy"), and "never moves the user's
+> cursor" holds for AX actions and keys, not for the last-resort click. Everything else in the plan held.
 
 ## Process model
 
-- **The helper** is a small native macOS app, `pi-gna Computer Use.app` (Swift, `LSUIElement = true` so it has no
-  Dock icon or menu bar), built from `native/computer-use/` and shipped inside the pi-gna app bundle
-  (`Contents/Resources/`, unpacked like `resources/**` in `electron-builder.yml`'s `asarUnpack`/`files`, since the
-  OS must load and codesign-check an `.app`, not an asar entry). It never runs from inside the asar.
-- **Install.** On first use (lazily, not at every pi-gna launch) main copies the bundled helper to
-  `~/.pi-gna/computer-use/pi-gna Computer Use.app` if that path is missing or its `CFBundleVersion` is older than
-  the bundled one (string compare of the bundled `Info.plist` vs the installed one; a missing or unreadable
-  installed plist counts as older). This is the same "versioned reinstall" shape as `~/.pi-gna/worktrees/` — a
-  per-user cache outside the app bundle — chosen specifically so the TCC grant (keyed to the installed binary's
-  `cdhash`, evidence (d)) is not invalidated by every pi-gna update, only by a Computer Use version bump.
-- **Launch.** Main launches the installed helper through LaunchServices (`NSWorkspace.shared.openApplication`,
-  called from a tiny helper or via `open -g -a "<path>" --args <socket-path> <token>` if main prefers a plain
-  spawn+LaunchServices hybrid) — never `child_process.spawn` on its Mach-O executable directly, so System Settings
-  attributes Accessibility/Screen Recording to `pi-gna Computer Use` and not to pi-gna's own Electron process
-  (evidence (d)). `-g` (do not bring to front) keeps it an invisible background agent, matching `LSUIElement`.
-  One helper process serves every pi-gna session; main starts it lazily on the first `computer_*` call and keeps
-  it running until pi-gna quits (or restarts it if it crashes, logged like a `PiProcess` exit).
-- **Transport.** JSON-RPC 2.0 over a Unix domain socket at
-  `<app.getPath("userData")>/computer-use/<pid>.sock` (userData, not `/tmp`, for the same reason card images avoid
-  `os.tmpdir()` — no silent OS cleanup). Main passes the socket path and a random per-launch token (like
-  `AgentBridge.register`) as CLI args; the helper refuses any connection that does not send the token as the first
-  message. One socket for the whole helper process; main multiplexes pi sessions over it by JSON-RPC `id`, the way
-  `PiProcess` multiplexes RPC commands — the helper itself is single-session-at-a-time per app (see Policy) but
-  the transport does not need to be.
+```
+Electron main                      pi-gna Computer Use.app (Swift, LSUIElement)
+  ComputerUse (src/main/computer/)    ~/.pi-gna/computer-use/pi-gna Computer Use.app
+    install + version check   ──copy──▶  Contents/Info.plist: CFBundleIdentifier io.github.manuelcecchetto.pigna.computeruse,
+    launch: open -g -n -a <app> --args <socket> <token>   CFBundleVersion = helper version (NOT the pi-gna version)
+    ComputerClient  ◀── JSON-RPC over Unix socket ──▶  AX, ScreenCaptureKit, CGEvent, overlay windows
+  AgentBridge POST /computer ◀── resources/computer-extension.ts (pi): computer_* tools
+```
 
-## JSON-RPC protocol (main ↔ helper)
+- **Source**: `native/computer-use/` (Swift package, no third-party deps; built with `swift build -c release`,
+  universal or per-arch matching the electron-builder arch). Output app `pi-gna Computer Use.app`, `LSUIElement=1`
+  (no Dock icon), bundle id `io.github.manuelcecchetto.pigna.computeruse`. Info.plist carries
+  `NSAccessibilityUsageDescription`-style strings and `PigCUHelperVersion` (integer, bumped only when the helper's
+  own behavior changes).
+- **Shipping**: the built app lives in the pi-gna bundle at `resources/computer-use/pi-gna Computer Use.app`
+  (electron-builder `extraResources`/`files` + `asarUnpack`; it must not be inside the asar). Ad-hoc signed like
+  the main app (`codesign --force --deep --sign -`).
+- **Install location** `~/.pi-gna/computer-use/`: outside the pi-gna bundle so a pi-gna update does not replace
+  the binary the user granted TCC permissions to. On first use main copies the bundled app there (`ditto`). On
+  each start main compares `PigCUHelperVersion` of the bundled and installed Info.plist and **reinstalls only
+  when the bundled version is greater**. Never reinstall because pi-gna's version changed, and never reinstall
+  to "refresh" an identical-version binary (see Evidence d: an ad-hoc rebuild changes the cdhash and TCC drops the
+  grant). Reinstall = quit helper, replace the app, relaunch; the user must re-grant, so the settings page shows
+  the permission state after an upgrade and says why. A release that does not touch `native/computer-use/` must
+  keep `PigCUHelperVersion` unchanged.
+- **Launch through LaunchServices**: `open -g -n -a "<installed app>" --args --socket <path> --token <hex>
+  --parent <main pid>`; `-g` keeps it in the background, no Dock icon. LaunchServices makes the helper its own
+  "responsible process" so Accessibility and Screen Recording are attributed to **pi-gna Computer Use**, not to
+  Electron or whoever started pi-gna (Evidence d). Main must **not** `spawn` the helper binary directly. `-n` is
+  not needed once a single instance is enforced by the socket (second instance exits when the socket is live);
+  drop `-n` if `open` raises the running instance instead of passing args (verify in the helper node).
+- **Socket**: `<userData>/cu-<launchId>.sock` (userData is `~/Library/Application Support/pi-gna`, about 50
+  chars; the sun_path limit is 104 bytes, so main falls back to `os.tmpdir()` when the path exceeds 100). Mode
+  0600, created by the helper (main removes stale files and waits up to 5 s for it to appear, retrying
+  `connect`). `launchId` is 8 random hex chars per launch. The **token** (24 random bytes, hex) is generated by
+  main per launch, passed in argv, and must be the `token` param of the first message (`hello`); the helper closes
+  any connection whose first message is not a correct `hello` and compares in constant time. argv is visible to
+  the user's other processes via `ps`, which is accepted: the socket is 0600 in the user's own directory and the
+  token only gates a socket another same-user process could reach anyway; the real boundary is the approval
+  policy in main, not the socket.
+- **Lifetime**: main starts the helper lazily on the first `computer_*` call (or when the settings page asks
+  for permission status), keeps it while any computer session exists, quits it (`shutdown` RPC, then SIGTERM) when
+  the last session ends or pi-gna quits. The helper exits by itself when the socket closes or `--parent` dies.
+  Main restarts it once if it crashes mid-run and fails the in-flight call with `helper_crashed`.
 
-Methods (requests expect a JSON-RPC `result` or `error`; `cancelled` is a notification, no response expected):
+## JSON-RPC protocol
+
+Transport: newline-delimited JSON (LF-only, one object per line, UTF-8), JSON-RPC 2.0 shape (`jsonrpc`
+omitted on the wire is not allowed; always send `"jsonrpc":"2.0"`). Main is the only client; requests are
+id-correlated and may be concurrent (main serializes per session/app). Notifications have no `id`.
+
+First message: `{"method":"hello","params":{"token":"…","protocol":1}}` → `{"helperVersion":1,"protocol":1,
+"os":"26.4.1","arch":"arm64","permissions":{"accessibility":true,"screenRecording":false}}`.
+
+### Methods
+
+All `app` params are a **target** `{ "bundleId": "com.apple.TextEdit", "pid": 123 }` (main resolves a display
+name or bundle id to this through `list_apps`; the helper never accepts free-form names).
 
 | Method | Params | Result |
 |---|---|---|
-| `list_apps` | `{}` | `{ apps: [{ bundleId, name, pid }] }` — running, regular (not background-only) apps |
-| `get_app_state` | `{ bundleId, diff?: boolean }` | `{ tree: string, treeChanged: boolean, screenshot: string (base64 JPEG), windowFrame: {x,y,w,h} }` |
-| `click` | `{ bundleId, elementIndex? , point? , button?, clickCount? }` | `{ tree, treeChanged, screenshot, windowFrame }` |
-| `drag` | `{ bundleId, from: elementIndex|point, to: elementIndex|point }` | same shape |
-| `scroll` | `{ bundleId, target: elementIndex|point, direction, pages? }` | same shape |
-| `type_text` | `{ bundleId, text, elementIndex? }` | same shape |
-| `press_key` | `{ bundleId, key }` (xdotool syntax, e.g. `Return`, `super+c`) | same shape |
-| `set_value` | `{ bundleId, elementIndex, value }` | same shape |
-| `select_text` | `{ bundleId, text?, prefix?, suffix?, selectionType }` | same shape |
-| `perform_secondary_action` | `{ bundleId, elementIndex, action }` | same shape |
-| `paste` | `{ bundleId, text, format: "text"|"md"|"html" }` | same shape (clipboard is saved and restored) |
-| `end_session` | `{ bundleId }` | `{}` — releases the app, removes the overlay |
+| `hello` | `token`, `protocol` | see above |
+| `permissions` | `{ prompt?: boolean }` | `{ accessibility, screenRecording }`; `prompt` triggers the system prompts (`AXIsProcessTrustedWithOptions`, `CGRequestScreenCaptureAccess`) |
+| `list_apps` | `{}` | `{ apps: [{ bundleId, name, pid?, running, lastUsed?, windows? }] }`: running regular apps (`NSWorkspace.runningApplications` with `activationPolicy == .regular`) plus recently used apps from LaunchServices/`mdls kMDItemLastUsedDate` for `/Applications`, `~/Applications`, `/System/Applications` (cap 60). Denylisted apps are omitted |
+| `get_state` | `{ target, session, disableDiff?: bool, screenshot?: bool (default true), window?: number }` | `{ text, screenshot?: { jpeg: base64, width, height, scale, windowId }, windowId, focusedWindowTitle, revision }` |
+| `click` | `{ target, session, elementIndex? , x?, y?, button?: "left"\|"right"\|"middle", clickCount?: 1..3 }` | `{ method: "ax"\|"cgevent"\|"hid", settled: bool }` |
+| `drag` | `{ target, session, fromX, fromY, toX, toY }` | `{ method }` |
+| `scroll` | `{ target, session, elementIndex? , x?, y?, direction: "up"\|"down"\|"left"\|"right", pages?: number }` | `{ method }` |
+| `type_text` | `{ target, session, text }` | `{}` |
+| `press_key` | `{ target, session, key }` (xdotool syntax) | `{}` |
+| `set_value` | `{ target, session, elementIndex, value }` | `{}` |
+| `select_text` | `{ target, session, elementIndex, text, prefix?, suffix?, selectionType?: "text"\|"cursor_before"\|"cursor_after" }` | `{ range: [loc, len] }` |
+| `perform_secondary_action` | `{ target, session, elementIndex, action }` | `{}` |
+| `paste` | `{ target, session, text, format?: "text"\|"md"\|"html" }` | `{}` |
+| `begin_session` | `{ session, target, label }` | `{}`: show overlay for this app/session |
+| `end_session` | `{ session }` | `{}`: hide overlay, drop caches, release app |
+| `shutdown` | `{}` | `{}` |
 
-Error codes (JSON-RPC `error.code`): `-32001 app_not_found`, `-32002 app_denied` (denylisted or not approved),
-`-32003 element_not_found` (stale index — the caller must call `get_app_state` again), `-32004 action_failed`
-(AX and CGEvent both failed), `-32005 busy` (another session owns this app), `-32006 cancelled` (the user pressed
-Esc after the call started).
+Every action method returns after the **settle wait** (below) so main can call `get_state` straight away; the
+result's `settled` is false if the 5 s ceiling was hit. Actions never return state; the extension calls
+`get_state` after them (matches Codex: one fresh read before the model decides).
 
-Notifications (helper → main, no reply expected): `cancelled { bundleId }` (user pressed Esc; main cancels the
-in-flight pi tool call and replies with `-32006` if the RPC race loses), `app_closed { bundleId }` (the target app
-quit; main ends the session).
+`session` is main's opaque session handle; the helper only uses it to key overlay, element-index caches and
+cancellation. `get_state` lets `elementIndex` caches be per `(session, bundleId)`.
 
-## AX tree text format
+### Errors
 
-Each app state response is a flat, indexed text listing of the AX tree (depth-first), not raw AX dumps: one line
-per element with an increasing `[n]` index local to that app's session (`get_app_state` and every action response
-carry the current indexes), e.g.:
+JSON-RPC `error: { code, message, data? }`. Codes (negative, helper range `-32000…-32099`; `message` is always
+safe to show the model):
+
+| Code | Name | Meaning |
+|---|---|---|
+| -32001 | `permission_denied` | Accessibility or Screen Recording not granted (`data.missing: ["accessibility"\|"screenRecording"]`) |
+| -32002 | `app_not_found` | no running app for the target and launching failed |
+| -32003 | `window_not_found` | app has no on-screen standard window (minimized, other Space) |
+| -32004 | `stale_element` | `elementIndex` not in the cache or the element is gone; call `get_state` |
+| -32005 | `action_failed` | AX error code in `data.ax` (e.g. `kAXErrorActionUnsupported`) |
+| -32006 | `cancelled` | the user pressed Esc or main cancelled; see notification below |
+| -32007 | `denied_app` | defence in depth: helper's own hard denylist matched (main normally stops this first) |
+| -32008 | `invalid_params` | bad parameters |
+| -32009 | `helper_crashed` | raised by main when the helper dies mid-call |
+| -32010 | `timeout` | the call exceeded 30 s |
+
+### Notifications (helper → main)
+
+- `cancelled` `{ session, reason: "esc" }`: Esc pressed while the overlay for `session` is up. The helper has
+  already aborted its in-flight call (that call returns `-32006`), hidden the overlay and dropped the session.
+  Main aborts the session's queue and cancels the pi run for that handle (`abort` command), then shows
+  "Computer use cancelled".
+- `permissions_changed` `{ accessibility, screenRecording }`: polled every 2 s while the helper runs, so the
+  settings page flips live.
+- `app_gone` `{ session, bundleId }`: target quit; the helper ends the overlay for it.
+
+Main → helper cancellation: `cancel` `{ session }` (request, returns `{}`) for a pi abort/run end that did not come from Esc.
+
+## Accessibility tree text
+
+`get_state` builds the tree from `AXUIElementCreateApplication(pid)` → the **focused or main standard window**
+(`AXFocusedWindow`, else `AXMainWindow`, else the first `AXStandardWindow`), plus the app's menu bar
+(`AXMenuBar`, collapsed to the top-level titles, its items expanded only when a menu is open) and any open
+sheet/popover child of that window. Walk depth-first, cap 1500 elements and depth 40; skip invisible elements
+(`AXSize` 0 or fully outside the window) and elements whose subtree adds nothing (a group with one child and no
+title/value/actions is skipped; the child is printed at the group's depth). Unlabeled pure-layout roles
+(`AXGroup`, `AXScrollArea`, `AXSplitGroup`) are printed only when they have a title, description or actions.
+
+Format (two-space indent per depth; one element per line; `[n]` is the element index; indexes are assigned in
+walk order starting at 0 and are per (session, app)):
 
 ```
-[0] AXWindow "Untitled 2" (175,100,586,488)
-[1]   AXTextArea (text: "Hello world", focused)
-[2]   AXScrollBar
-[3] AXButton "Save" (enabled)
+App: TextEdit (com.apple.TextEdit)
+Window: "Untitled 4" frame=(87,120 586x488) focused=true revision=7
+[0] AXWindow "Untitled 4" (frame 0,0 586x488)
+  [1] AXButton "close" actions=[Press]
+  [2] AXToolbar
+    [3] AXPopUpButton "Helvetica" value="Helvetica" actions=[Press,Show Menu]
+  [4] AXScrollArea
+    [5] AXTextArea "" value="OCCLUSION TEST – if you…" (truncated 214 chars) selected=[0,0] focused settable
+      actions=[Show Menu]
+  [6] AXCheckBox "Wrap to Window" value=1 actions=[Press]
+Menu bar: File | Edit | Format | View | Window | Help
+Focused: [5]
 ```
 
-- **Indexes are cached per app** in the helper, invalidated on the next AX tree read for that app (every action
-  response re-walks and re-numbers, since AX elements themselves (`AXUIElement`) stay valid references but their
-  on-screen order/count can change). A stale index from an older response returns `-32003`.
-- **Diffing** (`diff: true`, the default per the Codex tool shape): the helper keeps the previous rendered text per
-  app and returns only the changed lines (unified-diff-style `+`/`-` prefixed) plus `treeChanged: boolean`, so a
-  no-op poll (nothing changed since the last read) is cheap for pi to skip. `diff: false` (or no prior state)
-  returns the full tree.
-- Only elements with a non-empty role/title/value or at least one exposed action are listed (skip bare
-  `AXGroup`/`AXUnknown` containers with no useful attributes), capped at the tool's text budget (clip with a
-  trailing count like the browser tools' `clip()` in `src/main/browser/agent.ts`).
+Rules: role is the raw `AXRole` without the `AX` prefix kept (`AXButton`); then title (`AXTitle`, else `AXDescription`,
+else `AXTitleUIElement` text, else `AXHelp` prefixed `help:`) quoted; `value` for text areas/fields is the
+first 200 chars (with `(truncated N chars)`), for checkboxes/sliders/popups the plain value; `frame` is
+window-relative in screenshot space (below) and printed only for elements that have no label or when `frame`
+helps clicking (images, unlabeled buttons, scroll areas); `actions=[…]` lists only actions other than the implied
+click: `AXPress` is shown as `Press`, and `AXShowMenu`, `AXIncrement`, `AXDecrement`, `AXConfirm`, `AXCancel`,
+`AXRaise`, `AXPick`, `AXShowAlternateUI` are shown without the `AX` prefix with their human description from
+`AXUIElementCopyActionDescription` when it differs. `perform_secondary_action.action` takes exactly these printed
+names. `settable` marks `AXValue` settable (`AXUIElementIsAttributeSettable`) so the model knows `set_value`
+works. `selected=[loc,len]` for the focused text element. Secure text fields (`AXSecureTextField`,
+subrole `AXSecureTextField`) never print their value: `value=<hidden>`.
 
-## Screenshot format
+### Index cache and invalidation
 
-JPEG (quality ~75, matching `browser_screenshot`'s `toJPEG(75)`), resized so the longer edge is at most 1280 px
-(same cap as the browser tools), base64-encoded in the JSON-RPC result. Coordinates reported alongside it
-(`windowFrame`, and any point params accepted by `click`/`drag`/`scroll`) are **window-relative logical points**,
-not screen-absolute and not device pixels — evidence (c) showed AX frames and `SCWindow.frame` already agree in
-that space, so the helper subtracts the window's AX origin before reporting a point and multiplies by the window's
-backing scale factor only when calling ScreenCaptureKit's `width`/`height` (evidence (c)'s sharp edge). pi (and any
-UI overlay in main) works entirely in window-relative points; only the helper ever touches pixels.
+- The helper keeps, per `(session, bundleId)`, `indexes: [Int: AXUIElement]` and `lastTree: [String]` from the last
+  `get_state`. An action with `elementIndex` resolves it only from that cache; a cache is **replaced wholesale** by
+  the next full or diff `get_state` (indexes of a diff read still refer to the new full numbering, see below).
+- Invalidated (every later `elementIndex` → `stale_element`): `end_session`; the target app quitting; the focused
+  window changing identity (`CFEqual` of window elements); `get_state` for a different window; an AXObserver
+  `kAXUIElementDestroyedNotification` for the cached element (observer on the window; best effort).
+- An element is re-resolved via `AXUIElementCopyAttributeValue` at action time; if it errors with
+  `kAXErrorInvalidUIElement` → `stale_element`. Actions never silently retarget.
+- A screenshot-only `get_state` (`screenshot` with the tree skipped) does not touch the cache; the next tree read is
+  forced to be a full read (no diff), matching Codex.
+
+### Diff format
+
+Default `get_state` returns a diff against the cached previous tree **of the same app and window**, unless
+`disableDiff`, no previous tree, the window changed, or more than 60 % of lines changed (then full, with
+`diff=full` in the header). Lines are keyed by a stable key `role|label|ordinal-among-siblings-with-same-key|parent key` (not by the
+index). Diff output:
+
+```
+App: TextEdit (com.apple.TextEdit)  diff vs revision=7  revision=8
+Window: "Untitled 4" (unchanged)
+~ [5] AXTextArea value="OCCLUSION…!XY" selected=[14,0]
++ [9] AXStaticText "Saved"   (under [2])
+- AXButton "Wrap to Window"  (was [6])
+Indexes: 0..9 valid (renumbered; call with disableDiff for the full tree)
+Focused: [5]
+```
+
+`~` changed (index kept as in the new numbering), `+` added, `-` removed (old index shown for reference only; not
+usable). Indexes are always the **new full numbering**, so an unchanged element keeps working even though the
+diff does not print it. The helper renumbers deterministically (walk order), so inserting an element shifts
+later indexes; the header's "renumbered" line says so, and the extension's tool description tells the model to
+trust only indexes from the latest state.
+
+## Screenshot
+
+- Captured with `SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: scWindow),
+  configuration:)`, `showsCursor = false`, `scWindow` = the target window (`CGWindowID` taken from the AX window
+  via `_AXUIElementGetWindow`, matched in `SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)`;
+  choose by id, else the largest on-screen layer-0 window of the pid). It captures occluded windows correctly and
+  without the overlapping windows (Evidence c) and does not need the app active.
+- **Coordinate space = "screenshot space"**: the window frame in global top-left points (`SCWindow.frame` equals
+  the AX `AXPosition`/`AXSize` frame, Evidence c) with the origin moved to the window's top-left, scaled by
+  `scale = min(1, 1600 / frame.width)`. Capture at 1x (`config.width = round(frame.width * scale)`,
+  `height` proportional), so for any window up to 1600 points wide the image pixels **are** the window's logical points
+  (Retina's 2x pixels are not sent: 1470x991 JPEG is 28 KB at 1x vs 97 KB at 2x). `x,y` in `click`, `drag`, `scroll`,
+  and `frame=` in the tree all use this space; the helper multiplies by `1/scale` and adds the window origin
+  before posting events. `get_state` returns `scale` so main can show the user the image.
+- Encoding: JPEG quality 0.7 (`NSBitmapImageRep.representation(using: .jpeg, [.compressionFactor: 0.7])`), at most
+  ~100 KB typical. Returned base64 in the RPC result; main forwards it to the extension as `image` (data URL-free
+  base64, `mimeType: "image/jpeg"`).
+- A window moved between the state read and an action invalidates screen coordinates: the helper recomputes the
+  window origin at action time from AX and applies the same `scale` of the last screenshot; it refuses with
+  `stale_element` if the window size changed by more than 2 points since the last state.
+- Capture failure (`permission_denied`, no window): `get_state` still returns the AX text with `screenshot: null`
+  and a `note`.
 
 ## Input strategy
 
-1. **AX action first**: `AXUIElementPerformAction` for buttons/menu items/checkboxes (`kAXPressAction`), and
-   `AXUIElementSetAttributeValue(kAXValueAttribute)` for text fields and `set_value`/`type_text` when the element
-   supports it (evidence (b): both work on a backgrounded, unfocused app, with no risk of hitting the wrong
-   on-screen point).
-2. **`CGEventPostToPid` fallback** when the element exposes no matching AX action (custom-drawn controls, canvas
-   content, most web content inside Electron/Chromium — not spiked directly here, flagged as a per-app risk in
-   evidence (a)) or an AX call errors. Clicks target the point relative to the window's AX frame, translated back
-   to the window's current screen position (re-read fresh each time, since the user can move the window) only to
-   compute the `CGEvent` point — never to decide whether to activate anything.
-3. **When to activate the window**: never, by default (evidence (a) and (c) show both input and capture work fully
-   backgrounded and fully occluded). The one case that needs it is an app that empirically ignores
-   `postToPid`/AX writes while backgrounded (the (a) hypothesis) — detected by the action's own before/after AX
-   state read failing to change as expected twice in a row; only then does the helper raise the window
-   (`AXUIElementPerformAction(kAXRaiseAction)` on it, not full app activation when avoidable) as a narrow,
-   one-element fallback, never moving the user's cursor.
+Order for every action, per element (`elementIndex`) or point (`x,y`):
 
-## Settle-wait rules
+1. **AX action** (works on a background app, no activation, no cursor movement; Evidence b). `click(elementIndex)` →
+   `AXUIElementPerformAction(el, kAXPressAction)`; right click → `AXShowMenu`; `click_count 2` → `AXPress` twice
+   (or `AXOpen` if listed). `set_value` → `AXUIElementSetAttributeValue(el, kAXValueAttribute)` after checking
+   `settable`; `select_text` → find the range in `AXValue` (first match with `prefix`/`suffix`) and set
+   `kAXSelectedTextRangeAttribute`; `perform_secondary_action` → the named action; `scroll` → a
+   scrollbar `AXIncrement`/`AXDecrement` or `AXScrollToVisible` for the element, else a scroll-wheel
+   CGEvent (below). `type_text` into a focused settable text element may use AX (`AXSelectedText` set inserts at
+   the caret) when the app is Cocoa; otherwise key events.
+2. **`CGEventPostToPid`** (never activates, never moves the cursor):
+   - **Keyboard: works in the background** (Evidence a): focus the element first with
+     `AXUIElementSetAttributeValue(el, "AXFocused", true)` (or the window's `AXMain`), then for each UTF-16 unit
+     post key-down/key-up `CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown:)` with
+     `keyboardSetUnicodeString` (this types any character without layout mapping). `press_key` maps
+     xdotool names to virtual key codes (Return 36, Tab 48, Escape 53, BackSpace 51, Delete 117, arrows 123-126,
+     F-keys, `KP_n`, letters/digits from a US layout table) and sets `event.flags` for `super`/`ctrl`/`alt`/`shift`.
+     **Command-key shortcuts did not select-all in the background TextEdit** (menu key equivalents are
+     dispatched by an active `NSApp`); hypothesis: shortcut keys with `super` need rung 3 (activate) or, better,
+     the equivalent menu item pressed through AX (`AXMenuBar` → item → `AXPress`); the key tool tries a
+     menu-item lookup by key equivalent when `super+` is requested and the app is not active.
+   - **Mouse: does not work for AppKit apps** (Evidence a): `postToPid` and SkyLight `SLEventPostToPid` left
+     clicks were ignored by TextEdit, frontmost or not, with or without `mouseEventWindowUnderMousePointer`
+     fields, a `mouseMoved` first, pressure, or the SkyLight `SLPSPostEventRecordTo` focus-without-raise
+     records (bytes `0xf8`, `0x01/0x02`, window id at `0x3c`). It is still the first thing tried for a
+     coordinate click on an app that is known to accept it (Chromium/Electron and some games accept posted
+     mouse events; hypothesis, not tested); the helper verifies by re-reading the AX tree (or the caller's next
+     `get_state`) and the result's `method` says what was used. The unverified-effect case is simply reported to
+     the model as "click sent (cgevent)".
+3. **Last resort: brief foreground click** (only for `click`/`drag`/`scroll` by coordinates when 1 and 2 cannot
+   work, and not for elements that have an AX action): save `CGEvent(source: nil).location` and the frontmost
+   app, `NSRunningApplication.activate(options: [])` the target (this raises its window; the user sees it
+   happen and the overlay announces it), post a HID-tap click with `post(tap: .cghidEventTap)` at the point,
+   then `CGWarpMouseCursorPosition` back to the saved location, and re-activate the previously frontmost app.
+   This **does move the cursor for ~100 ms and changes focus**; it is a settings toggle
+   ("Allow brief foreground clicks", default **on**, written in the overlay pill as "pi is using <App>") and a
+   hard no when the user's real input is active (see below). Observed during the spike: HID-tap clicks reliably hit
+   what is under the real pointer, so the point must be re-hit-tested against `CGWindowListCopyWindowInfo` (the
+   target window must be topmost at that point; otherwise activate first and re-check, else fail with
+   `action_failed: target point is covered`).
 
-Mirrors Codex's auto-wait: after every action, the helper waits ~1 s before taking the "after" state read, and up
-to 5 s total if the app's own busy signaling (`AXUIElement` such as a progress indicator present in the tree, or
-the app's `NSRunningApplication.isAppRestartOnly`-style "not responding" check is false but the window is still
-animating) suggests it is not settled, polling the tree every 250 ms and returning as soon as two consecutive
-reads match or the 5 s cap is hit. No fixed sleep longer than that; a genuinely slow operation (a large file
-export) is the agent's problem to notice and wait out with another `get_app_state` call, not the helper's.
+When to activate a window without clicking: only for `press_key` with `super+`/`ctrl+` shortcuts that have no
+AX menu equivalent, and only for the duration of the call (activate, post, restore frontmost app). Otherwise never
+activate. `NSRunningApplication.activate` of an app launched by `get_state` is not needed: launch uses
+`NSWorkspace.openApplication` with `activates = false`.
+
+**User interference guard**: while an action runs the helper polls `CGEventSource.secondsSinceLastEventType(.hidSystemState,
+.mouseMoved/.keyDown)`; if the user's own input happened < 150 ms ago before a rung-3 action, delay up to 1 s,
+then fail with `action_failed: user is interacting` rather than steal input.
+
+## Settle wait
+
+After every action the helper waits before returning: baseline **1.0 s** (matches Codex), early exit when an
+`AXObserver` (on the app element; notifications `kAXValueChangedNotification`, `kAXFocusedUIElementChangedNotification`,
+`kAXWindowCreatedNotification`, `kAXLayoutChangedNotification`, `kAXSelectedChildrenChangedNotification`,
+`kAXTitleChangedNotification`) has seen no event for 250 ms **and** at least 250 ms elapsed. Extend, up to a hard
+**5 s** ceiling, while any of these holds: the tree has an element with role/subrole/title matching a busy
+indicator (`AXProgressIndicator` with no determinate value, `AXBusyIndicator`, "Loading…"), `NSRunningApplication`
+is not responding (the AX call itself times out; `AXUIElementSetMessagingTimeout(app, 1.0)` is set), or the AX
+event stream is still active. `settled:false` if the ceiling is hit. `get_state` itself performs the same wait if
+an action finished less than 1 s earlier, so a model that reads state immediately still gets a stable tree.
 
 ## Overlay
 
-A single borderless, click-through `NSWindow` per active session, `.screenSaver`-level (above normal windows,
-`NSWindow.Level` high enough to sit over the target app without needing to be key or activate pi-gna), drawn by
-the helper (it already has the window references and coordinates) rather than Electron, since Electron windows
-cannot float above arbitrary other apps without their own activation dance:
+Created by the helper (borderless `NSWindow`s, one per screen containing the target window; `level =
+CGShieldingWindowLevel()` (higher than any app; verify it also covers fullscreen Spaces),
+`collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `ignoresMouseEvents = true`,
+`sharingType = .none` so it is excluded from screenshots and the user's screen sharing, no shadow, transparent).
 
-- **Virtual cursor**: a small cursor-shaped glyph drawn at the current action's point, animated to the next
-  point before each click/drag so the user can watch it move without their real cursor doing anything.
-- **Pill**: "pi is using `<App name>` · Esc to cancel" docked near the top of the target window's frame. A
-  global Esc key listener (local `NSEvent` monitor scoped to when a session is active, not a system-wide tap) ends
-  the session: sends `cancelled` to main, removes the overlay, and does not change the app's state further.
+- **Virtual cursor**: an arrow (SVG-like `NSBezierPath`, accent `#339cff` from the helper's `config.json` strings
+  like Codex's is optional) drawn at the global point of the last action with a short ease-out move (200 ms), a ripple on
+  click, and a small trailing label for typing. It is purely visual; the real pointer is never moved (except rung 3).
+- **Pill**: a rounded capsule pinned to the top-center of the target window, 28 pt high, text
+  `pi is using <App name> · Esc to cancel` (localizable strings in the helper's `strings.json`, default en),
+  dark translucent background (`NSVisualEffectView .hudWindow`), no focus. Shown on `begin_session`, hidden on
+  `end_session`.
+- **Esc**: while a session is active the helper listens with a **listen-only `CGEvent.tapCreate(.cgSessionEventTap,
+  .headInsertEventTap, .listenOnly, keyDown mask)`** (requires Accessibility, which it has). Esc (keycode 53, no
+  modifiers) triggers the `cancelled` flow: abort the in-flight RPC with `-32006`, hide overlays, emit `cancelled`
+  to main. The tap does not swallow the key. If the tap cannot be created (permission), the pill shows "Esc to cancel
+  unavailable" and main falls back to the Stop button in pi-gna. A second signal, the **Stop** button in pi-gna,
+  also calls `cancel`.
+- `end_session` removes the overlay for that session; one overlay per app (see "one session per app").
 
-## `computer_*` tools (pi extension, mirrors Codex's parameter shapes)
+## Tools (resources/computer-extension.ts)
 
-`resources/computer-extension.ts`, loaded like `browser-extension.ts`, calling `POST /computer` on the bridge:
+Registered in every session next to `browser_*` (`SessionHost.extensions`), only when `PIGNA_BRIDGE` and
+`PIGNA_TOKEN` are set; each is a thin call to `POST /computer` `{ action, …params }` on the bridge, and
+returns text plus (for `computer_get_app_state`) an image content block. Parameter names mirror Codex's API
+(snake_case where Codex uses it). Descriptions start with: "Control native macOS apps. The user can see
+and cancel (Esc). Read the app state first; use element_index values only from the latest state."
 
-- `computer_list_apps()` → running, user-facing apps (name, bundle id), minus the hard denylist.
-- `computer_get_state({ app: string })` → AX tree text (diffed by default) + screenshot of `app`'s frontmost
-  window. `app` is matched the way Codex's tools take an app name/bundle id loosely (case-insensitive name match,
-  falling back to bundle id).
-- `computer_click({ app, elementIndex? , x?, y?, button?: "left"|"right"|"middle", clickCount? })`
-- `computer_drag({ app, fromElementIndex?, fromX?, fromY?, toElementIndex?, toX?, toY? })`
-- `computer_scroll({ app, elementIndex?, x?, y?, direction: "up"|"down"|"left"|"right", pages? })`
-- `computer_type_text({ app, text, elementIndex? })`
-- `computer_press_key({ app, key: string })` (xdotool syntax, e.g. `"Return"`, `"super+c"`)
-- `computer_set_value({ app, elementIndex, value })`
-- `computer_select_text({ app, text?: string, prefix?: string, suffix?: string, selectionType: "exact"|"range" })`
-- `computer_perform_secondary_action({ app, elementIndex, action: string })`
-- `computer_paste({ app, text, format?: "text"|"md"|"html" })`
+| Tool | Parameters | Result |
+|---|---|---|
+| `computer_list_apps` | none | text list: `name (bundleId) running/last used` |
+| `computer_get_app_state` | `app: string` (name or bundle id), `disable_diff?: boolean` | AX text (diff by default) + JPEG |
+| `computer_click` | `app`, `element_index?: number`, `x?`, `y?`, `mouse_button?: "left"\|"right"\|"middle"`, `click_count?: 1..3` | `"clicked (ax)"` + hint to read state |
+| `computer_drag` | `app`, `from_x`, `from_y`, `to_x`, `to_y` | text |
+| `computer_scroll` | `app`, `element_index?`, `x?`, `y?`, `direction: "up"\|"down"\|"left"\|"right"`, `pages?: number` | text |
+| `computer_type_text` | `app`, `text` | text |
+| `computer_press_key` | `app`, `key` (xdotool syntax: `Return`, `Tab`, `super+c`, `Up`, `KP_0`) | text |
+| `computer_set_value` | `app`, `element_index`, `value` | text |
+| `computer_select_text` | `app`, `element_index`, `text`, `prefix?`, `suffix?`, `selection_type?: "text"\|"cursor_before"\|"cursor_after"` | text |
+| `computer_perform_secondary_action` | `app`, `element_index`, `action` (a name printed in the tree) | text |
+| `computer_paste` | `app`, `text`, `format?: "text"\|"md"\|"html"` | text; saves and restores the pasteboard, writes the matching UTIs, then `super+v` through the AX menu item "Paste" |
 
-Every tool's `description` states the AX-tree-index contract explicitly ("use the `elementIndex` from the latest
-`computer_get_state`/action result; indexes change after the tree changes") the way `browser_click`'s description
-tells the model to re-snapshot, so the model does not need to be told this separately in a system prompt.
+All action tools (everything but list/get state) automatically follow with a `get_state` read inside the bridge
+route and return **text only** (the diff) for token cost, plus the screenshot only when
+`screenshot: true` is passed (param on every action tool, default false); the model asks for the image with
+`computer_get_app_state`. Hard rules the prompt snippet (`resources/pigna-prompt.md`, added by the extension
+node) states: prefer `element_index`, read state after actions, no terminal apps, no password/security
+prompts, tell the user when a task needs hand-off.
+
+Bridge: `POST /computer` (registered in `src/main/index.ts` next to `/browser`), body `{ action, app?, …params }`;
+the route resolves the handle (token → session), runs policy (below), then the per-session/per-app queue, then
+`ComputerClient`. Result `{ text, image?: base64, app: { name, bundleId } }`. Errors map to HTTP 400 with the
+helper's `message`; `403` for a policy refusal with message `"The user did not allow <App>."`.
 
 ## Policy
 
-- **Enable flag.** Off by default, a settings toggle ("Computer Use", with the explanation that pi can see and
-  control other apps in the background); when off, `resources/computer-extension.ts` does not register any
-  `computer_*` tool at all (same pattern as the browser extension's `if (!BRIDGE || !TOKEN) return;` early-out),
-  so a model with the feature off never sees the tools exist.
-- **Per-app approval**, enforced in **main**, not only the extension: the bridge route itself checks the app's
-  bundle id against policy before forwarding to the helper, because (per the plan-wide decision) the bash tool
-  inherits `PIGNA_TOKEN` and could call `POST /computer` directly, bypassing an extension-only check. Three
-  states per `(project? no — this is cross-project, like gh accounts) ` app, stored in main:
-  - **Allow once**: the extension's `ctx.ui.select` approval card (like the browser tools' origin prompt), valid
-    only for the rest of this chat's session (cleared on session end, not persisted).
-  - **Always allow**: persisted in `userData/computer-use.json` (a `JsonStore` like laments/board: `{ allowed:
-    string[] /* bundle ids */ }`), revocable from the settings page (a list with a "Remove" per app, mirroring
-    how browser's per-origin `approved` set works but durable instead of per-session).
-  - **Hard denylist** (never asked, always `-32002`, enforced before any approval check, in main, not editable
-    from settings): `com.apple.Terminal`, `com.googlecode.iterm2`, `com.mitchellh.ghostty`, terminal bundle ids
-    for WezTerm, kitty, Alacritty, Warp, pi-gna's own bundle id (`io.github.manuelcecchetto.pigna`, from
-    `electron-builder.yml`'s `appId`) and its helper's bundle id, and any bundle id matching Apple's
-    security-prompt UI processes (`com.apple.SecurityAgent`, `com.apple.coreauthd`,
-    `com.apple.UserNotificationCenter` and its modern equivalents) — the same "never operate the agent's own app,
-    a terminal, or a security prompt" rule the context specifies, kept as an explicit list rather than a heuristic
-    so it cannot be approved around.
-- **One session per app at a time**, across all of pi-gna's chats: the helper's `-32005 busy` and main's own
-  bookkeeping (a `Map<bundleId, handle>`) refuse a second session on an app another chat is already driving, the
-  way `BrowserAgent` gives each chat its own tab but an app has only one AX/window state to mutate.
-- **Cleanup** on run end (the pi session's tool loop finishing) and on Esc: `end_session` to the helper, which
-  removes the overlay and clears its per-app tree/diff cache; main clears the busy-map entry and any "allow once"
-  is already scoped to end there too.
+Enforced **in main** (`src/main/computer/policy.ts`), not only in the extension: `PIGNA_TOKEN` is inherited by
+the `bash` tool, so a prompt-injected `curl` could call `/computer` directly. The extension does not decide anything
+beyond formatting; it cannot be the guard.
 
-## Settings page
+1. **Enable flag**: `computerUse.enabled` in `userData/computer.json` (a `JsonStore`), default **false**. While
+   false, `/computer` returns 403 `"Computer use is off. Enable it in Settings > Computer Use."` and the tools
+   are still registered (the model learns it is off) but the system prompt snippet says so.
+2. **Hard denylist** (checked on every call by bundle id, after resolving name→bundle id, and again by the helper
+   `-32007`): `com.apple.Terminal`, `com.googlecode.iterm2`, `com.mitchellh.ghostty`, `com.github.wez.wezterm`,
+   `net.kovidgoyal.kitty`, `org.alacritty` (also `io.alacritty`), `dev.warp.Warp-Stable`, `dev.warp.Warp`,
+   pi-gna itself (`io.github.manuelcecchetto.pigna`, `io.github.manuelcecchetto.pigna.dev`, `app.getName()`
+   bundle id at runtime) and its helper (`…pigna.computeruse`), plus macOS security UI:
+   `com.apple.SecurityAgent`, `com.apple.coreauthd`, `com.apple.UserNotificationCenter`,
+   `com.apple.CoreServicesUIAgent`, `com.apple.systempreferences` while on a Privacy & Security / Passwords pane
+   (the app is allowed in general; the check is on the window title), `com.apple.keychainaccess`,
+   `com.apple.ScreenSharing`, `com.apple.loginwindow`. A denylisted target is never launched, never listed, and
+   fails with `denied_app` even if previously always-allowed. The list lives in `src/shared/computer.ts` (shared with
+   the extension for messages and the settings page).
+3. **Per-app approval**: first use of an app in a session → approval card owned by main (UX below): **Allow once**
+   (this session until it ends or the app quits), **Always allow** (persisted per bundle id in
+   `computer.json: { allowed: { [bundleId]: { name, addedAt } } }`), **Deny** (this session; the tool errors
+   `"The user did not allow <App>."`, the model must not retry for that app). Concurrent calls for the same app
+   wait on one pending decision (a `Map<handle+bundleId, Promise<Decision>>`).
+4. **Hard stop**: terminal apps, pi-gna, helper, security prompts cannot be allowed by any means; the settings
+   page cannot add them either (validation in the store route).
+5. **Action-time confirmation** (Codex's "Always confirm at action-time"): out of scope for v1 in code; the prompt
+   snippet carries the rule ("ask the user before deleting data, sending messages, purchases, changing
+   security settings; describe risk and mechanism") and the model asks in chat. Revisit if traces show misses.
+6. **One session per app at a time**: main keeps `Map<bundleId, handle>`; a second pi session calling an app
+   already driven by another gets `409 "<App> is being used by another chat."`. Same-session calls are serialized
+   by a per-session queue (pi runs one message's tool calls in parallel; same reason as `BrowserAgent`).
+7. **Cleanup**: on pi run end (`agent_end` in the extension → `POST /computer { action: "end" }`), session close
+   (`SessionHost.onExit`), user Stop, helper `cancelled`, and pi-gna quit: `end_session` for each app of that
+   handle, release the app lock, and remove "Allow once" grants for that handle. `SessionHost.onExit` also calls
+   `computer.release(handle)`.
+8. **Revocation**: removing an app in settings deletes the grant; takes effect on the next call.
 
-A "Computer Use" section (new or under an existing Advanced/Integrations page): the enable toggle, the always-
-allowed apps list with Remove, and a short note on the hard denylist (not editable) and that pi-gna will ask once
-to open Accessibility/Screen Recording settings the first time the feature is used (the OS permission prompt
-itself is outside pi-gna's control; a "Open System Settings" button can deep-link
-`x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility` the way macOS apps commonly do).
+### Approval UX (owned by main)
 
-## Risks and non-goals
+The approval is a main-driven IPC flow, not `ctx.ui.select`, so it cannot be spoofed by the tool path and works
+for direct bridge calls: main sends `computer:approval` `{ id, handle, app: { name, bundleId, iconDataUrl? } }` to
+the renderer, which shows a card on the session (same style as the browser's pending approval) with
+"pi wants to use **<App>**. It can read what is on screen and click and type in it." and buttons **Allow once**
+/ **Always allow** / **Deny**; the renderer answers `computer:approval:answer` `{ id, decision }`. If no window
+is open or the answer takes longer than 10 minutes, the decision is Deny. The tool call blocks while waiting
+(pi's tool calls can wait; `identify()` shows pi answers commands during a blocked tool).
 
-- **macOS only**, same as the rest of pi-gna; no Windows/Linux equivalent is in scope.
-- **No locked-screen use.** The helper must not operate (or even hold AX/ScreenCaptureKit handles that could leak
-  content) while the screen is locked; watch `NSWorkspace` lock/unlock-style distributed notifications
-  (`com.apple.screenIsLocked`/`com.apple.screenIsUnlocked`) and end every active session when the screen locks,
-  mirroring Codex's own `CUALockScreenGuardian.app` existing as a dedicated safeguard (evidence it treats this as
-  a real risk, not a theoretical one).
-- **No JS REPL batching in v1.** Codex's own "core-cua-repl" doc (named in the packet) was unavailable to read
-  (see the Evidence preamble), so no batched/scripted multi-step execution is designed here; v1 is one JSON-RPC
-  call per tool call, matching the discrete `computer_*` tool list already specified. Revisit only if a concrete
-  need for batching appears once the discrete tools are shipped and measured.
-- **Unverified**: evidence (d) (TCC attribution and ad-hoc cdhash survival) is a labeled hypothesis, not an
-  observed result (see above) — the implementation node should verify it for real (grant, rebuild, re-check) before
-  shipping the versioned-reinstall logic as final.
-- **Unverified**: evidence (a)'s per-app "which apps ignore postToPid" question is answered only for TextEdit and
-  Calculator (both native AppKit); Electron/Chromium-hosted target apps and games/DRM'd media were not tested.
-- **Missing source material**: the `@oai/sky`/`@oai/cua` doc paths named in this node's packet do not exist on
-  this machine (only the installed Codex Computer Use app and its per-app `AppInstructions/*.md` usage notes are
-  present, not an API reference) — the protocol and tool shapes above come from the packet's own prose description
-  of Codex's tools, not from reading those files.
+## Permissions
+
+- Needs **Accessibility** and **Screen Recording** for `pi-gna Computer Use` (not for pi-gna). The Settings page
+  shows both statuses from the helper's `permissions` / `permissions_changed`, with buttons that call
+  `permissions { prompt: true }` and deep links
+  `x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility` and `…?Privacy_ScreenCapture`.
+- Missing permission → `permission_denied`; main turns it into a tool error "Computer Use needs Accessibility
+  (and Screen Recording) permission: open Settings > Computer Use." and highlights the settings page.
+- After a helper reinstall the grant is gone (cdhash changed, Evidence d); the settings page says "Reinstalled
+  helper v<N>; grant the permissions again".
+
+## Settings page (Settings > Computer Use)
+
+1. Master switch **Allow pi to use apps on this Mac** (`enabled`).
+2. Permissions: Accessibility ✓/✗, Screen Recording ✓/✗, "Open System Settings" buttons, helper path and version
+   (`~/.pi-gna/computer-use/…`, `v<PigCUHelperVersion>`), "Reinstall helper" (explicit, warns about re-granting).
+3. **Always-allowed apps** list (icon, name, bundle id, added date) with Remove; "Allow once" grants are not listed.
+4. "Allow brief foreground clicks" toggle (rung 3), default on, with a sentence that this briefly raises the app and
+   returns your pointer.
+5. Footnote: terminal apps, pi-gna, and system security prompts can never be controlled.
+6. "Stop all computer use" button (calls `end_session` for every session).
+
+## Main-side files (for later nodes)
+
+```
+native/computer-use/                     Swift package -> pi-gna Computer Use.app (build script native/computer-use/build.sh)
+resources/computer-extension.ts          pi extension: computer_* tools (-e in SessionHost.extensions)
+resources/pigna-prompt.md                + Computer Use rules paragraph
+src/shared/computer.ts                   denylist, tool/route types, error codes, RPC types
+src/main/computer/client.ts              ComputerClient: JSON-RPC over the Unix socket, timeouts, crash restart
+src/main/computer/install.ts             versioned install to ~/.pi-gna/computer-use/, LaunchServices launch
+src/main/computer/policy.ts              enable flag, denylist, approvals, app locks, cleanup (JsonStore: userData/computer.json)
+src/main/computer/route.ts               POST /computer (computerRoute), registered with bridge.route
+electron-builder.yml                     resources/computer-use/** in files/asarUnpack/extraResources; src/shared/computer.ts listed like browser.ts
+```
+
+## Non-goals and risks
+
+Non-goals (v1): Windows/Linux; locked screen or screensaver (AX and capture return nothing/black; fail with
+`window_not_found`); a JS REPL that batches several actions (Codex's `cua_repl`; discrete tools only); browsers'
+DOM (the integrated browser tools handle web; other browsers are driven as plain apps); controlling several windows
+of one app (the focused window only; `window` param on `get_state` is reserved); other Spaces; action-time
+confirmation dialogs enforced in code; notarized/Developer-ID helper.
+
+Risks:
+
+- **Ad-hoc signature (`identity: "-"`)** gives a designated requirement of `cdhash H"…"`, so every rebuilt helper is a
+  "new" app to TCC (Evidence d). Mitigation: versioned reinstall only. Residual: a helper version bump
+  forces a re-grant. Hypothesis (not tested): signing the helper with a stable self-signed code-signing identity
+  created in the user's login keychain would keep the designated requirement across rebuilds; revisit if
+  re-grants hurt.
+- **Mouse clicks without moving the pointer are not reliably possible** with public/known SPIs on this OS (Evidence a);
+  rung 3 is the answer and visibly raises the target. Apps without AX actions for custom-drawn controls
+  (games, canvases, some Electron apps with a flat AX tree) depend on it.
+- **Prompt injection through app content** (an email, a page): approval is per app, not per action; the policy
+  prompt text and "terminal and security apps are unreachable" are the mitigations; browser-style per-origin
+  approval has no analogue here.
+- **Secrets on screen**: screenshots and AX text go to the model provider. Secure text field values are never
+  read; the settings page says so.
+- **`bash` can reach the bridge** with the token: all enforcement is in main, and the helper socket is not
+  reachable by the model's tools except as same-user processes (0600 socket, token, no policy there).
+- **Sandboxing and TCC identity quirks**: if pi-gna is launched from a terminal (`pi --pigna`) the child chain
+  inherits the terminal's permissions for directly spawned processes (Evidence d); `open` avoids that and is the
+  only supported launch path.
+
+## Evidence
+
+Machine: macOS 26.4.1 (25E253), arm64, Swift 6.3.1, built-in Retina display (`pointPixelScale` 2.0). All spikes
+are throwaway Swift programs under `/tmp/cu/` (not in the repo), run from the agent's shell whose parent chain
+already had Accessibility and Screen Recording (`AXIsProcessTrusted: true`, `CGPreflightScreenCaptureAccess: true`).
+"Background" means: TextEdit not frontmost (Finder frontmost, `NSRunningApplication.isActive == false`) and other windows
+over it.
+
+### a. CGEventPostToPid to a background TextEdit window
+
+| Test | API calls | Result |
+|---|---|---|
+| Typing, background | `AXUIElementSetAttributeValue(textArea, "AXFocused", true)`; per UTF-16 unit `CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: d)` + `keyboardSetUnicodeString` + `postToPid(pid)` | **Worked**: `"hello world"` became `"hello world!XY"`; frontmost app stayed Finder |
+| Return + keycode key, background | `CGEvent(keyboardEventSource: nil, virtualKey: 36/0, keyDown:)` `.postToPid` | **Worked**: `"start:abc\na"` after `abc`, Return, keycode 0 |
+| Cmd+A, background | same with `flags = .maskCommand`, vk 0 | **No effect** (selected text empty); menu key equivalents appear to need an active app (hypothesis, see Input strategy) |
+| Left click, background | `CGEvent(mouseEventSource: hidSystemState, .leftMouseDown/Up, point, .left)` + `mouseEventClickState`; `postToPid` | **Ignored**: caret stayed at end (44) where a click on line 2 would give ~15; cursor not moved; frontmost unchanged |
+| Left click, TextEdit frontmost | same | **Ignored** too |
+| Variants | + `mouseEventWindowUnderMousePointer(…ThatCanHandleThisEvent)` = CGWindowNumber, + event field 40 = pid, + `mouseMoved` first, + pressure/number, `SLEventPostToPid` via `dlsym` on SkyLight, + `SLPSPostEventRecordTo` focus record (`GetProcessForPID`, bytes `[4]=0xf8,[8]=1/2,[0x3a]=0x10,[0x3c]=windowNumber`, return 0) | **All ignored**, in background and frontmost |
+| Control: HID tap | `ev.post(tap: .cgSessionEventTap)` with TextEdit frontmost | **Worked** (caret 15, double click selected a word); **moves the real cursor** |
+| Cursor | `CGEvent(source: nil).location` before/after | unchanged for every `postToPid` and AX test |
+
+Apps that ignore it: TextEdit (AppKit) ignores posted **mouse** events. Not tested for lack of safe targets: Chromium/
+Electron, Safari. Side note for the next implementer: HID-tap tests clicked whatever was under the real pointer
+when the target window was not topmost (the spike opened Calculator and a Finder window on this Mac that way, and a
+couple of the scripts hung TextEdit/osascript); keep any native test harness on a dedicated scratch app and re-check
+`CGWindowListCopyWindowInfo` z-order before an HID click.
+
+### b. AX actions on a background app
+
+With Finder frontmost and TextEdit inactive: `AXUIElementSetAttributeValue(textArea, "AXValue", "hello world")` returned
+success (0) and read back; `AXUIElementSetAttributeValue(…"AXSelectedTextRange", AXValueCreate(.cfRange…))`
+worked; `AXUIElementPerformAction(window.AXZoomButton, "AXPress")` returned 0 and the window grew from 586x488 to
+1470x923 without activating TextEdit (frontmost stayed `com.apple.finder`); pressing again restored it. The AX
+text area exposes only `AXShowMenu`. `AXRangeForPosition` and `AXBoundsForRange` (parameterized) work and
+are useful for `select_text` and click targeting. So AX is the primary path, as planned.
+
+### c. ScreenCaptureKit window capture
+
+`SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)` (about 60 ms) then `SCContentFilter(desktopIndependentWindow:)` +
+`SCScreenshotManager.captureImage(contentFilter:configuration:)`:
+
+- **Occluded window captured correctly** (TextEdit under a Finder window and other TextEdit windows; PNG/JPEG showed the
+  full TextEdit window, rounded corners included, no overlapping content). Also captured windows reported
+  `onScreen: false`. Window capture does not need the app active.
+- `SCWindow.frame` is global top-left **points** and equals the AX window frame (`AXPosition`/`AXSize`):
+  e.g. AX `(87,120) 586x488` ↔ `SCWindow.frame (87.0,120.0,586.0,488.0)`.
+- `SCShareableContent.info(for: filter)` gives `pointPixelScale 2.0` and `contentRect == frame` (points).
+  Default sizing is pixels: with `config.width/height = points * 2` the image is 1172x976 (97 KB JPEG q0.7 for a
+  1470x991 window at 2x, 28 KB at `width = points`, 1x). So Retina images are 2x unless the configuration sets
+  1x; the design captures at 1x so screenshot pixels == window points.
+- Capture latency 50-120 ms per image after the shareable-content call.
+- `SCShareableContent` returns the toolbar strip as a separate layer-0 window for some apps (a 68 pt
+  window in the first run): select the target by window id from AX or the largest on-screen window.
+
+### d. TCC attribution and ad-hoc signing
+
+- `H.app` (throwaway LSUIElement app, ad-hoc signed, id `io.test.cuhelper`) printed `AXIsProcessTrusted` and
+  `CGPreflightScreenCaptureAccess` when started two ways from the same shell:
+  - spawned directly (`H.app/Contents/MacOS/h`): `AXIsProcessTrusted=true screen=true ppid=<shell>`: it
+    **inherits** the parent chain's grants (the responsible process is whoever launched it);
+  - launched with `open -g -a H.app`: `AXIsProcessTrusted=false screen=false ppid=1` (launchd): it is its **own
+    responsible process**, so permissions are evaluated against, and listed in System Settings under, the helper
+    itself.
+  Consequence: main must launch the helper through LaunchServices so the user grants `pi-gna Computer Use`, and
+  so grants do not silently depend on how pi-gna itself was started. (Reading `TCC.db` needs Full Disk Access
+  here, so the System Settings list itself was not inspected; attribution is inferred from the
+  responsible-process behavior above, which is the documented TCC rule. Hypothesis, label kept.)
+- Ad-hoc signed helper rebuilt with a one-line source change: `codesign -d -r-` printed
+  `designated => cdhash H"177028d2…"` first, `cdhash H"588108236…"` after. TCC stores the designated requirement
+  (csreq) with each grant, so an ad-hoc **rebuild invalidates the grant** (a fresh prompt/row appears; I
+  could not click through System Settings to confirm the row behavior; the consequence follows from
+  the cdhash requirement. Hypothesis, high confidence). By contrast Codex's helper
+  (`com.openai.sky.CUAService`, Developer-ID, Team `2DC432GLL2`) has a stable requirement
+  (`identifier … and anchor apple generic and … leaf[subject.OU] = "2DC432GLL2"`) so its grants survive
+  updates. **Recorded consequence**: the helper is installed once to `~/.pi-gna/computer-use/` and replaced only when its own
+  `PigCUHelperVersion` is bumped, never on a pi-gna version change.
+- Codex's own docs/config: `~/.codex/computer-use/Codex Computer Use.app` is `LSUIElement=1`, config
+  `{"strings":{"usingComputer":"ChatGPT is using your computer","escToCancel":"Esc to cancel"}}`, which the overlay pill mirrors.
+
+### Not tested (labeled hypotheses)
+
+- Posted mouse events to Chromium/Electron/Safari (may work; unverified).
+- Whether AXObserver settle early-exit behaves well on very chatty apps (design chooses a hard 5 s ceiling).
+- `CGShieldingWindowLevel` overlay over fullscreen Spaces and over other apps' sheets.
+- `open -g -a … --args` passing arguments to an already-running instance (it does not; a second launch with
+  `-n` is needed, hence the live-socket check).
+- Drag via AX is generally unsupported; drag always needs rung 2/3.
