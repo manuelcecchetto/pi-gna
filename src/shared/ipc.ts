@@ -4,6 +4,7 @@ import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEn
 import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { LamentOp, Laments } from "./laments";
+import type { ComputerOp, ComputerSettings } from "./computer";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -54,6 +55,9 @@ export const IPC = {
   lamentsApply: "laments:apply",
   lamentsChanged: "laments:changed",
   boardSaveImage: "board:save-image",
+  computerGet: "computer:get",
+  computerApply: "computer:apply",
+  computerChanged: "computer:changed",
   githubProject: "github:project",
   githubChoose: "github:choose",
   githubList: "github:list",
@@ -66,7 +70,15 @@ export const IPC = {
 } as const;
 
 /** Full-window pages shown instead of a chat. */
-export type Page = "kanban" | "laments" | "github";
+/** The Computer Use policy lives in main; every change is pushed back. */
+export interface ComputerApi {
+  get(): Promise<ComputerSettings>;
+  /** Rejects with the reason for an invalid op. */
+  apply(op: ComputerOp): Promise<ComputerSettings>;
+  onChange(listener: (settings: ComputerSettings) => void): () => void;
+}
+
+export type Page = "kanban" | "laments" | "github" | "atp";
 
 /** The laments live in main, which agents file them with; every change is pushed back. */
 export interface LamentsApi {
@@ -262,3 +274,4 @@ export interface StudioApi {
   github: GithubApi;
   update: UpdateApi;
 }
+  computer: ComputerApi;

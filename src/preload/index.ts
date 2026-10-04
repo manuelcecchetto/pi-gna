@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { Board } from "../shared/board";
 import type { Annotation, BrowserState } from "../shared/browser";
 import type { Laments } from "../shared/laments";
+import type { ComputerSettings } from "../shared/computer";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -79,3 +80,8 @@ const api: StudioApi = {
 };
 
 contextBridge.exposeInMainWorld("studio", api);
+  computer: {
+    get: () => ipcRenderer.invoke(IPC.computerGet),
+    apply: (op) => ipcRenderer.invoke(IPC.computerApply, op),
+    onChange: (listener) => subscribe<ComputerSettings>(IPC.computerChanged, listener),
+  },

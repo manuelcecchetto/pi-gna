@@ -101,3 +101,142 @@ export class ComputerError extends Error {
     this.name = "ComputerError";
   }
 }
+
+// ---- Policy: enable flag, always-allowed apps, hard denylist --------------------------------------------------------
+// Main owns this (src/main/computer/store.ts) and applies every change through applyComputerOp, from the window and
+// anywhere else, so every field is checked. Computer Use is off until the user turns it on.
+
+export const COMPUTER_LIMITS = { name: 200, allowed: 200 } as const;
+
+export interface AllowedApp {
+  bundleId: string;
+  name: string;
+  /** When the user chose "Always allow". */
+  at: number;
+}
+
+export interface ComputerSettings {
+  version: 1;
+  enabled: boolean;
+  alwaysAllowed: AllowedApp[];
+}
+
+export type ComputerOp =
+  | { type: "enable" }
+  | { type: "disable" }
+  | { type: "allow-always"; bundleId: string; name: string }
+  | { type: "revoke"; bundleId: string };
+
+export class ComputerPolicyError extends Error {}
+
+export const emptyComputerSettings = (): ComputerSettings => ({ version: 1, enabled: false, alwaysAllowed: [] });
+
+const BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
+
+export const isBundleId = (value: unknown): value is string => typeof value === "string" && value.includes(".") && BUNDLE_ID.test(value);
+
+export const PIGNA_BUNDLE_IDS = ["io.github.manuelcecchetto.pigna", "io.github.manuelcecchetto.pigna.dev"] as const;
+export const HELPER_BUNDLE_ID = "io.github.manuelcecchetto.pigna.computeruse";
+
+const TERMINAL = "Terminals can run anything; Computer Use never operates them";
+const SECURITY = "macOS security and authentication prompts are never operated";
+const OWN = "pi-gna and its helper are never operated by the agent";
+
+/** Apps no approval can unlock, with the reason shown to the model and the user. */
+export const DENYLIST: Readonly<Record<string, string>> = {
+  "com.apple.Terminal": TERMINAL,
+  "com.googlecode.iterm2": TERMINAL,
+  "com.mitchellh.ghostty": TERMINAL,
+  "com.github.wez.wezterm": TERMINAL,
+  "net.kovidgoyal.kitty": TERMINAL,
+  "org.alacritty": TERMINAL,
+  "io.alacritty": TERMINAL,
+  "dev.warp.Warp-Stable": TERMINAL,
+  "dev.warp.Warp": TERMINAL,
+  ...Object.fromEntries(PIGNA_BUNDLE_IDS.map((id) => [id, OWN])),
+  [HELPER_BUNDLE_ID]: OWN,
+  "com.apple.SecurityAgent": SECURITY,
+  "com.apple.coreauthd": SECURITY,
+  "com.apple.UserNotificationCenter": SECURITY,
+  "com.apple.coreservices.uiagent": SECURITY,
+  "com.apple.CoreServicesUIAgent": SECURITY,
+  "com.apple.keychainaccess": SECURITY,
+  "com.apple.ScreenSharing": SECURITY,
+  "com.apple.loginwindow": SECURITY,
+};
+
+const DENIED_LOWER = new Map(Object.entries(DENYLIST).map(([id, reason]) => [id.toLowerCase(), reason]));
+
+/** Why an app is off limits, or undefined. `extra` are runtime bundle ids (pi-gna's own, whatever app.getName() says);
+ * `appPath` denies apps living inside pi-gna or the helper bundle (a renamed or dev build whose id is unknown). */
+export function denyReason(bundleId: string, appPath?: string, extra: readonly string[] = []): string | undefined {
+  const id = bundleId.toLowerCase();
+  const known = DENIED_LOWER.get(id);
+  if (known) return known;
+  if (extra.some((other) => other.toLowerCase() === id)) return OWN;
+  if (appPath && /(^|\/)(pi-gna[^/]*|pi-gna Computer Use)\.app(\/|$)/i.test(appPath)) return OWN;
+  return undefined;
+}
+
+export const isDenied = (bundleId: string, appPath?: string, extra: readonly string[] = []): boolean => denyReason(bundleId, appPath, extra) !== undefined;
+
+function appName(value: unknown): string {
+  if (typeof value !== "string") throw new ComputerPolicyError("app name must be a string");
+  const name = value.trim();
+  if (!name || name.length > COMPUTER_LIMITS.name || /[\u0000-\u001f]/.test(name)) throw new ComputerPolicyError(`app name must be 1-${COMPUTER_LIMITS.name} printable characters`);
+  return name;
+}
+
+function bundle(value: unknown): string {
+  if (!isBundleId(value)) throw new ComputerPolicyError("invalid bundle id");
+  return value;
+}
+
+/** Apply one change. Returns the same value when nothing changes. Throws ComputerPolicyError for an invalid op. */
+export function applyComputerOp(settings: ComputerSettings, op: ComputerOp, now: number): ComputerSettings {
+  switch (op?.type) {
+    case "enable":
+    case "disable": {
+      const enabled = op.type === "enable";
+      return settings.enabled === enabled ? settings : { ...settings, enabled };
+    }
+    case "allow-always": {
+      const bundleId = bundle(op.bundleId);
+      const name = appName(op.name);
+      const reason = denyReason(bundleId);
+      if (reason) throw new ComputerPolicyError(`${bundleId} cannot be allowed: ${reason}`);
+      const existing = settings.alwaysAllowed.find((app) => app.bundleId === bundleId);
+      if (existing) return existing.name === name ? settings : { ...settings, alwaysAllowed: settings.alwaysAllowed.map((app) => (app === existing ? { ...app, name } : app)) };
+      if (settings.alwaysAllowed.length >= COMPUTER_LIMITS.allowed) throw new ComputerPolicyError(`at most ${COMPUTER_LIMITS.allowed} always-allowed apps`);
+      return { ...settings, alwaysAllowed: [...settings.alwaysAllowed, { bundleId, name, at: now }] };
+    }
+    case "revoke": {
+      const bundleId = bundle(op.bundleId);
+      if (!settings.alwaysAllowed.some((app) => app.bundleId === bundleId)) return settings;
+      return { ...settings, alwaysAllowed: settings.alwaysAllowed.filter((app) => app.bundleId !== bundleId) };
+    }
+    default:
+      throw new ComputerPolicyError(`unknown op ${(op as { type?: unknown })?.type}`);
+  }
+}
+
+/** Read settings back from disk. Throws when the file is not a settings object; skips malformed or denied apps. */
+export function parseComputerSettings(raw: unknown): { settings: ComputerSettings; dropped: number } {
+  const file = raw as { enabled?: unknown; alwaysAllowed?: unknown } | null;
+  if (!file || typeof file !== "object" || Array.isArray(file)) throw new ComputerPolicyError("not a Computer Use settings object");
+  const list = Array.isArray(file.alwaysAllowed) ? file.alwaysAllowed : [];
+  const seen = new Set<string>();
+  const alwaysAllowed: AllowedApp[] = [];
+  let dropped = 0;
+  for (const item of list as Partial<AllowedApp>[]) {
+    try {
+      const bundleId = bundle(item?.bundleId);
+      if (denyReason(bundleId) || seen.has(bundleId) || alwaysAllowed.length >= COMPUTER_LIMITS.allowed) throw new ComputerPolicyError("skipped");
+      seen.add(bundleId);
+      alwaysAllowed.push({ bundleId, name: appName(item.name), at: typeof item.at === "number" && Number.isFinite(item.at) ? item.at : 0 });
+    } catch {
+      dropped++;
+    }
+  }
+  return { settings: { version: 1, enabled: file.enabled === true, alwaysAllowed }, dropped };
+}
