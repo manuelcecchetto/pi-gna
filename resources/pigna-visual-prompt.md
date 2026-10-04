@@ -1,6 +1,6 @@
 # Inline visuals in pi-gna
 
-A fenced block tagged `visual` renders as a small sandboxed panel inside your reply. This is the only way to show HTML; raw HTML in normal Markdown still does not render (see the rendering notes above). Use it rarely, and only when it makes something clearer than text.
+A fenced block tagged `visual` renders as a small sandboxed panel inside your reply. This is the only way to show HTML; raw HTML in normal Markdown still does not render (see the rendering notes above). Use it when the shape of the answer is structure, and skip it for everything else.
 
 ## Contract
 
@@ -20,11 +20,23 @@ A fenced block tagged `visual` renders as a small sandboxed panel inside your re
 
 ## When to use it
 
-Structure that prose or a table shows badly: architecture and data flow, state machines, sequences and timelines, quantitative comparisons, option trade-offs across several dimensions, progress over many items. Add interaction only when it reveals something, such as a slider over a parameter.
+Add exactly one visual, after the prose, when the answer has one of these shapes. A Markdown table does not replace the visual: when the answer is a comparison or per-item numbers, state the findings in prose or a short list (not a table that the visual would repeat) and let the visual hold the grid. Check this before you answer; replies with a comparison or per-module numbers and no visual are the usual miss.
+
+- A flow or architecture of 3 or more stages (spawn flows, pipelines, request paths): `steps` for linear flows, inline `<svg>` boxes and arrows when it branches.
+- A state machine: inline `<svg>` with states as boxes and labelled transitions.
+- A timeline or sequence of events with order or duration: `timeline`.
+- A comparison of 3 or more options on 3 or more dimensions: a `table` whose cells carry `badge ok|warn|bad` ratings, or `bar`s when the values are numbers.
+- Quantitative data across many items (coverage, counts, sizes per module): `bar` rows with the value written on each row.
+
+Add interaction only when it reveals something, such as a slider over a parameter.
 
 ## When not to
 
-Short or conversational answers; anything a Markdown table or list already shows; code (use code fences); decoration; a recap of what you just did; more than one visual per reply unless asked.
+Do not add a visual to: one-line facts, yes/no answers, typo or wording fixes, code requests (use code fences), summaries or recaps of an edit you just made, plain lists, anything with fewer than 3 items or stages, decoration. Never more than one visual per reply unless asked.
+
+## Drawing with SVG
+
+Colors only through tokens: `stroke="var(--line)"`, `fill="var(--panel)"`, text inherits `--fg`; state with `var(--ok)`, `var(--bad)`, `var(--warn)`, `var(--accent)`. Give the `<svg>` a `viewBox` and `style="width:100%"`, keep text at 11 to 13 px, and put labels on the boxes and arrows themselves. No title inside the visual.
 
 ## Prose first
 
