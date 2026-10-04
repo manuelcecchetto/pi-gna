@@ -1,0 +1,105 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("electron", () => ({ app: { getAppPath: () => "/app", getPath: () => "/tmp" }, shell: {}, dialog: {} }));
+
+import { DESKTOP_ONLY_METHODS, HOST_ERROR_STATUS, methodScope, type HostMethod } from "../shared/host-api";
+import { IPC } from "../shared/ipc";
+import { createHostCore, dispatch, type HostContext, type HostDeps, IPC_ROUTES } from "./host-core";
+
+const calls: unknown[][] = [];
+const record = (name: string) => (...args: unknown[]) => (calls.push([name, ...args]), Promise.resolve({ name }));
+const deps = {
+  shellEnv: Promise.resolve(),
+  host: {},
+  board: {},
+  cardImages: {},
+  settings: { get: record("settings.get") },
+  computerPolicy: {},
+  computerHelper: {},
+  laments: {},
+  github: { project: record("github.project"), list: record("github.list") },
+  atp: { head: record("atp.head"), watch: record("atp.watch") },
+  auth: {
+    signIn: async (_provider: string, _method: string, onUpdate: (update: unknown) => void) => {
+      onUpdate({ kind: "event", event: { type: "auth_url", url: "https://login.example/x", opened: false } });
+      return { ok: true };
+    },
+  },
+  browser: () => undefined,
+  updater: () => undefined,
+  native: { pickFolder: record("pickFolder") },
+} as unknown as HostDeps;
+const core = createHostCore(deps);
+
+const desktop = (extra: Partial<HostContext> = {}): HostContext => ({ client: "desktop", clientId: "desktop", openExternal: () => undefined, authUpdate: () => undefined, ...extra });
+const phone = (extra: Partial<HostContext> = {}): HostContext => ({ ...desktop(), client: { device: "d1" }, clientId: "c1", ...extra });
+
+describe("host methods table", () => {
+  it("has a method for every IPC channel and no channel is routed twice", () => {
+    const channels = Object.values(IPC).filter((channel) => typeof channel === "string");
+    const routed = IPC_ROUTES.map((route) => route.channel);
+    expect(new Set(routed).size).toBe(routed.length);
+    for (const route of IPC_ROUTES) expect(core[route.method], route.method).toBeDefined();
+    // Channels the main process pushes to the window have no route; every invoke/send channel does.
+    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.settingsChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pageToggle, IPC.sidebarToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
+    expect(channels.filter((channel) => !pushes.has(channel) && !routed.includes(channel))).toEqual([]);
+  });
+
+  it("agrees with the shared scope list", () => {
+    for (const name of DESKTOP_ONLY_METHODS) if (core[name]) expect(core[name].scope, name).toBe("desktop");
+    // Desktop-scoped here but not in the shared list: renderer-side orchestration that moves to main in later nodes.
+    const extra = Object.keys(core).filter((name) => core[name]?.scope === "desktop" && methodScope(name as HostMethod) !== "desktop");
+    expect(extra.sort()).toEqual(["atp.getHeld", "atp.setHeld", "atp.watch", "board.worktree", "laments.worktree"]);
+  });
+
+  it("refuses desktop-only methods from a remote client, before validating or running", async () => {
+    calls.length = 0;
+    expect(() => dispatch(core, phone(), "fs.pickFolder", {})).toThrow(expect.objectContaining({ code: "scope_denied" }));
+    expect(() => dispatch(core, phone(), "atp.head", { cwd: "relative" })).toThrow(expect.objectContaining({ code: "scope_denied" }));
+    expect(calls).toEqual([]);
+    await dispatch(core, desktop(), "fs.pickFolder", {});
+    expect(calls).toEqual([["pickFolder"]]);
+  });
+
+  it("refuses unknown names, including inherited ones", () => {
+    expect(() => dispatch(core, desktop(), "nope", {})).toThrow(expect.objectContaining({ code: "not_found" }));
+    expect(() => dispatch(core, desktop(), "constructor", {})).toThrow(expect.objectContaining({ code: "not_found" }));
+    expect(HOST_ERROR_STATUS.not_found).toBe(404);
+  });
+
+  it("keeps the project() absolute-path check", () => {
+    expect(() => dispatch(core, desktop(), "github.project", { cwd: "repo" })).toThrow("a project is an absolute path");
+    expect(() => dispatch(core, desktop(), "atp.head", { cwd: "repo" })).toThrow("a project is an absolute path");
+    expect(() => dispatch(core, desktop(), "github.list", { cwd: "/r", kind: "issue", filter: "merged" })).toThrow("cannot list merged issues");
+    expect(() => dispatch(core, desktop(), "providers.login", { provider: "x", method: "magic" })).toThrow("Unknown login");
+    expect(() => dispatch(core, desktop(), "browser.viewport", { id: 3 })).toThrow("Invalid browser tab");
+    expect(() => dispatch(core, desktop(), "browser.viewport", { id: "t", request: [] })).toThrow("Invalid viewport request");
+    expect(() => dispatch(core, desktop(), "computer.openSettings", { pane: "x" })).toThrow("Unknown settings pane");
+  });
+
+  it("runs a valid call", async () => {
+    calls.length = 0;
+    await expect(dispatch(core, desktop(), "github.project", { cwd: "/r", refresh: true })).resolves.toEqual({ name: "github.project" });
+    expect(calls).toEqual([["github.project", "/r", true]]);
+  });
+
+  it("sends login side effects to the calling client only", async () => {
+    const mine = { opened: [] as string[], updates: [] as unknown[] };
+    const theirs = { opened: [] as string[], updates: [] as unknown[] };
+    const ctx = (side: typeof mine, extra: Partial<HostContext> = {}) => ({ openExternal: (url: string) => side.opened.push(url), authUpdate: (update: unknown) => side.updates.push(update), ...extra });
+    await dispatch(core, desktop(ctx(mine)), "providers.login", { provider: "anthropic", method: "oauth" });
+    expect(mine.opened).toEqual(["https://login.example/x"]);
+    expect(mine.updates).toHaveLength(1);
+    expect(theirs.updates).toEqual([]);
+    // A remote client opens the link itself: its openExternal is a no-op and the update carries the url.
+    await dispatch(core, phone(ctx(theirs, { openExternal: () => undefined })), "providers.login", { provider: "anthropic", method: "oauth" });
+    expect(theirs.opened).toEqual([]);
+    expect(theirs.updates).toHaveLength(1);
+    expect(mine.updates).toHaveLength(1);
+  });
+
+  it("maps positional IPC arguments onto the argument object", () => {
+    const route = IPC_ROUTES.find((r) => r.channel === IPC.boardApply);
+    expect(route?.args({ type: "remove", id: "a" }, 4)).toEqual({ op: { type: "remove", id: "a" }, baseRev: 4 });
+  });
+});

@@ -39,6 +39,7 @@ import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-se
 import { onDisk } from "./resources";
 import { SettingsStore } from "./settings";
 import { cardWorktree } from "./worktree";
+import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-core";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
@@ -122,7 +123,6 @@ hub.subscribe({
         case "browser.reveal": send(IPC.browserReveal); break;
         case "browser.annotation": send(IPC.browserAnnotation, e.annotation); break;
         case "update": send(IPC.updateState, e.state); break;
-        case "providers.login": send(IPC.authUpdate, e.update); break;
       }
     }
   },
@@ -272,182 +272,63 @@ function on<A extends unknown[]>(channel: string, listener: (...args: A) => void
   });
 }
 
+/** The desktop window's side of the host methods: effects that belong to the caller happen on this Mac. */
+const desktopContext: HostContext = {
+  client: "desktop",
+  clientId: DESKTOP.clientId,
+  openExternal,
+  authUpdate: (update) => send(IPC.authUpdate, update),
+};
+
 function registerIpc(shellEnv: Promise<void>): void {
-  // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
-  handle(IPC.listSessions, async () => (await shellEnv, listSessions()));
-  handle(IPC.openSession, async (request: OpenSessionRequest) => (await shellEnv, host.open(request, { client: DESKTOP })));
-  handle(IPC.closeSession, (handle: string) => host.close(handle));
-  handle(IPC.command, (handle: string, command: RpcCommand) => host.command(handle, command));
-  handle(IPC.detachSession, (handle: string) => host.detach(handle, DESKTOP.clientId));
-  handle(IPC.attachSession, (handle: string) => {
-    try {
-      host.attach(handle, DESKTOP);
-    } catch {
-      return null; // it ended meanwhile
-    }
-    // Attach and snapshot in one turn: the snapshot's seq says which events the window must still apply.
-    return host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER }) ?? null;
+  const core = createHostCore({
+    shellEnv,
+    host,
+    board,
+    cardImages,
+    settings,
+    computerPolicy,
+    computerHelper,
+    laments,
+    github,
+    atp,
+    auth,
+    browser: () => browser,
+    updater: () => updater,
+    native: {
+      pickFolder: async () => {
+        const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
+      pickAttachments: async (kind) => {
+        const options: Electron.OpenDialogOptions =
+          kind === "photos"
+            ? { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] }
+            : { title: "Attach files and folders", properties: ["openFile", "openDirectory", "multiSelections"] };
+        const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+        return result.canceled ? [] : describePaths(result.filePaths);
+      },
+      showItemInFolder: (path) => shell.showItemInFolder(path),
+      windowFocused: () => window?.isFocused() ?? false,
+      focusBrowserWindow: (id) => browser?.focusWindow(id),
+      killVisual: (frameId) => {
+        const frames = window?.webContents.mainFrame.framesInSubtree ?? [];
+        const pid = visualFrameToKill(frames, frameId, window?.webContents.getOSProcessId() ?? 0);
+        if (pid !== undefined) process.kill(pid, "SIGKILL");
+      },
+    },
   });
-  on(IPC.viewing, (handle: string, viewing: boolean) => host.viewing(handle, DESKTOP.clientId, viewing === true));
-  handle(IPC.liveChats, () => host.attentionAll());
-  handle(IPC.interrupt, (handle: string) => host.interrupt(handle));
-  handle(IPC.editQueue, (handle: string, op: QueueEdit) => host.editQueue(handle, op));
-  handle(IPC.respondDialog, (handle: string, response: ExtensionUiResponse): DialogAnswer => {
-    try {
-      host.respondDialog(handle, response);
-      return { ok: true };
-    } catch (error) {
-      // Answered elsewhere first (a phone), or the chat ended: the window drops the card; anything else keeps it.
-      if (!(error instanceof HostError)) throw error;
-      return { ok: false, code: error.code, message: error.message };
-    }
-  });
-  handle(IPC.listFiles, async (cwd: string) => (await shellEnv, listFiles(cwd)));
-  handle(IPC.pickFolder, async () => {
-    const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
-    return result.canceled ? null : (result.filePaths[0] ?? null);
-  });
-  on(IPC.openExternal, (url: string) => openExternal(url));
-  on(IPC.visualKill, (frameId: string) => {
-    const frames = window?.webContents.mainFrame.framesInSubtree ?? [];
-    const pid = visualFrameToKill(frames, frameId, window?.webContents.getOSProcessId() ?? 0);
-    if (pid !== undefined) process.kill(pid, "SIGKILL");
-  });
-  handle(IPC.compactionSettings, async () => (await shellEnv, readCompactionSettings()));
-  handle(IPC.windowFocused, () => window?.isFocused() ?? false);
-  handle(IPC.describePaths, (paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));
-  handle(IPC.pickAttachments, async (kind: "photos" | "files") => {
-    const options: Electron.OpenDialogOptions =
-      kind === "photos"
-        ? { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] }
-        : { title: "Attach files and folders", properties: ["openFile", "openDirectory", "multiSelections"] };
-    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
-    return result.canceled ? [] : describePaths(result.filePaths);
-  });
-
-  on(IPC.browserLayout, (layout: BrowserLayout) => browser?.setLayout(layout));
-  on(IPC.browserNewTab, (url?: string) => browser?.createTab(url));
-  on(IPC.browserCloseTab, (id: string) => browser?.closeTab(id));
-  on(IPC.browserActivate, (id: string) => {
-    browser?.activate(id);
-    browser?.focusWindow(id);
-  });
-  on(IPC.browserNavigate, (id: string, input: string) => browser?.navigate(id, input));
-  on(IPC.browserCommand, (id: string, command: BrowserCommand) => browser?.command(id, command));
-  on(IPC.browserAnnotate, (enabled: boolean) => browser?.setAnnotating(enabled));
-  on(IPC.browserInspect, (id: string) => browser?.inspect(id));
-  handle(IPC.browserViewport, async (id: string, request: unknown) => {
-    if (typeof id !== "string" || !browser) throw new Error("Invalid browser tab");
-    if (request !== null && (typeof request !== "object" || Array.isArray(request))) throw new Error("Invalid viewport request");
-    // Whatever the renderer sends, the user is the source.
-    return (await browser.setViewport(id, request ? { ...(request as ViewportRequest), source: "user" } : undefined)) ?? null;
-  });
-  handle(IPC.browserPopOut, async (id: string) => {
-    if (typeof id !== "string" || !browser) throw new Error("Invalid browser tab");
-    await browser.popOut(id);
-  });
-  handle(IPC.browserReturn, async (id: string) => {
-    if (typeof id !== "string" || !browser) throw new Error("Invalid browser tab");
-    await browser.returnToPane(id);
-  });
-  handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
-  handle(IPC.browserGetState, () => browser?.snapshot());
-
-  handle(IPC.boardGet, () => board.get());
-  handle(IPC.computerGet, () => computerPolicy.get());
-  handle(IPC.computerApply, (op: ComputerOp, baseRev?: number) => computerPolicy.apply(op, baseRev));
-  handle(IPC.computerPermissions, () => computerHelper.call("permissions", {}));
-  handle(IPC.computerRequest, async (pane?: "accessibility" | "screen_recording") => {
-    await computerHelper.call("request_permissions", {});
-    const permissions = await computerHelper.call("permissions", {});
-    // macOS 26 does not prompt for Screen Recording from the background helper ("does not allow prompting") and does
-    // not list it in the pane until it is added, so open the pane and show the app to add with + or drag in.
-    if (pane === "screen_recording" && !permissions.screenRecording) {
-      await computerHelper.call("open_settings", { pane });
-      shell.showItemInFolder(computerHelper.installedApp);
-    }
-    return permissions;
-  });
-  handle(IPC.computerOpenSettings, async (pane: "accessibility" | "screen_recording") => {
-    if (pane !== "accessibility" && pane !== "screen_recording") throw new Error("Unknown settings pane");
-    await computerHelper.call("open_settings", { pane });
-  });
-  handle(IPC.settingsGet, () => settings.get());
-  handle(IPC.settingsApply, (op: SettingsOp, baseRev?: number) => settings.apply(op, baseRev));
-  // PI_CODING_AGENT_DIR can come from the login shell.
-  handle(IPC.piSettingsGet, async () => (await shellEnv, readPiSettings()));
-  handle(IPC.piSettingsApply, async (patch: unknown) => (await shellEnv, writePiSettings(patch)));
-  handle(IPC.piSettingsReveal, async () => {
-    await shellEnv;
-    shell.showItemInFolder((await readPiSettings()).path);
-  });
-  // pi's logins (/login), with the pi found on the login shell's PATH.
-  handle(IPC.authList, async () => (await shellEnv, auth.list()));
-  handle(IPC.authLogin, async (provider: string, method: AuthMethod) => {
-    if (typeof provider !== "string" || (method !== "oauth" && method !== "api_key")) throw new Error("Unknown login");
-    await shellEnv;
-    return auth.signIn(provider, method, (update) => {
-      // As pi's /login does, open the sign-in page in the browser (Claude Code opens its own).
-      if (update.kind === "event" && update.event.type === "auth_url" && !update.event.opened) openExternal(update.event.url);
-      publish({ kind: "providers.login", update });
-    });
-  });
-  on(IPC.authAnswer, (n: number, value: string) => auth.answer(Number(n), String(value)));
-  on(IPC.authCancel, () => auth.cancel());
-  handle(IPC.authLogout, async (provider: string) => {
-    await shellEnv;
-    await auth.signOut(String(provider));
-  });
-  handle(IPC.lamentsGet, () => laments.get());
-  handle(IPC.lamentsApply, (op: LamentOp, baseRev?: number) => laments.apply(op, baseRev));
-  handle(IPC.boardApply, async (op: BoardOp, baseRev?: number) => {
-    const next = await board.apply(op, baseRev);
-    if (op.type === "remove") void cardImages.remove(op.id).catch((error: Error) => log.warn("board", `could not delete the images of card ${op.id}: ${error.message}`));
-    return next;
-  });
-  handle(IPC.boardSaveImage, async (card: string, image: { mimeType: string; data: string }) => {
-    if (!(await board.get()).cards.some((other) => other.id === card)) throw new Error(`no card ${String(card)}`);
-    return cardImages.save(card, image);
-  });
-  handle(IPC.cardWorktree, async (id: string) => {
-    await shellEnv;
-    const card = (await board.get()).cards.find((other) => other.id === id);
-    if (!card) throw new Error(`no card ${String(id)}`);
-    return cardWorktree(card.cwd, card);
-  });
-  handle(IPC.lamentWorktree, async (id: string) => {
-    await shellEnv;
-    const lament = (await laments.get()).laments.find((other) => other.id === id);
-    if (!lament) throw new Error(`no lament ${String(id)}`);
-    return cardWorktree(lament.cwd, { id: lament.id, title: `fix ${lament.title}` });
-  });
-  // gh runs with the login shell's PATH; a project is an absolute folder.
-  const project = (cwd: unknown) => {
-    if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");
-    return cwd;
-  };
-  handle(IPC.githubProject, async (cwd: string, refresh?: boolean) => (await shellEnv, github.project(project(cwd), refresh === true)));
-  handle(IPC.githubChoose, async (cwd: string, login: string | null) => (await shellEnv, github.choose(project(cwd), typeof login === "string" ? login : null)));
-  handle(IPC.githubList, async (cwd: string, kind: GithubKind, filter: GithubFilter) => {
-    if ((kind !== "issue" && kind !== "pr") || (filter !== "open" && filter !== "closed")) throw new Error(`cannot list ${String(filter)} ${String(kind)}s`);
-    await shellEnv;
-    return github.list(project(cwd), kind, filter);
-  });
-  handle(IPC.githubLookup, async (cwd: string, input: string) => (await shellEnv, github.lookup(project(cwd), String(input).slice(0, 500))));
-  // python3, rg and git come from the login shell's PATH.
-  handle(IPC.atpWatch, async (cwd: string | null) => (await shellEnv, atp.watch(cwd === null ? null : project(cwd))));
-  handle(IPC.atpRead, (plan: string) => atp.read(plan));
-  handle(IPC.atpActivate, async (plan: string) => (await shellEnv, atp.activate(plan)));
-  handle(IPC.atpClaim, async (plan: string, agent: string) => (await shellEnv, atp.claim(plan, String(agent))));
-  handle(IPC.atpRelease, async (plan: string, node: string, agent: string, reason: string) => (await shellEnv, atp.release(plan, String(node), String(agent), String(reason))));
-  handle(IPC.atpHead, async (cwd: string) => (await shellEnv, atp.head(project(cwd))));
-  handle(IPC.atpCommit, async (cwd: string, node: string, title: string, before: AtpHead | null) => (await shellEnv, atp.commit(project(cwd), String(node), String(title), before)));
-  handle(IPC.atpGetHeld, () => atp.heldPlans());
-  handle(IPC.atpSetHeld, (plan: string, held: boolean) => atp.setHeld(plan, held === true));
-  handle(IPC.atpInfo, () => ({ librarian: librarianPath() }));
-  handle(IPC.relaunch, () => updater?.restart());
-  handle(IPC.updateGet, () => updater?.get() ?? { phase: "idle" });
-  handle(IPC.updateDownload, () => updater?.download());
+  for (const { channel, method, args, send: fireAndForget } of IPC_ROUTES) {
+    if (fireAndForget) {
+      on(channel, (...positional: unknown[]) => {
+        try {
+          void Promise.resolve(dispatch(core, desktopContext, method, args(...positional))).catch((error: Error) => log.warn("pigna", `${channel}: ${error.message}`));
+        } catch (error) {
+          log.warn("pigna", `${channel}: ${(error as Error).message}`);
+        }
+      });
+    } else handle(channel, (...positional: unknown[]) => dispatch(core, desktopContext, method, args(...positional)));
+  }
 }
 
 /** pi-gna > Check for Updates…: show what GitHub has, also in a checkout (which updates with git, though). */
