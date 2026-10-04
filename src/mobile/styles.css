@@ -11,6 +11,9 @@ body,
   color: var(--fg);
 }
 
-.safe-area {
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+/* In the base layer so utilities (px-6) on the same element still win over the insets' shorthand. */
+@layer base {
+  .safe-area {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
 }
