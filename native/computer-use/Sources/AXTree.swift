@@ -24,12 +24,12 @@ private let layoutRoles: Set<String> = ["AXGroup", "AXScrollArea", "AXSplitGroup
 private let valueTextRoles: Set<String> = ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField", "AXStaticText"]
 private let unlabeledFrameRoles: Set<String> = ["AXImage", "AXButton", "AXScrollArea", "AXCheckBox", "AXRadioButton", "AXMenuButton", "AXPopUpButton"]
 
-private func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
+func attr(_ el: AXUIElement, _ name: String) -> CFTypeRef? {
     var v: CFTypeRef?
     return AXUIElementCopyAttributeValue(el, name as CFString, &v) == .success ? v : nil
 }
 
-private func axFrame(_ el: AXUIElement) -> CGRect? {
+func axFrame(_ el: AXUIElement) -> CGRect? {
     guard let p = attr(el, kAXPositionAttribute), let s = attr(el, kAXSizeAttribute) else { return nil }
     var pt = CGPoint.zero, sz = CGSize.zero
     guard AXValueGetValue(p as! AXValue, .cgPoint, &pt), AXValueGetValue(s as! AXValue, .cgSize, &sz) else { return nil }
@@ -51,7 +51,7 @@ private func label(_ el: AXUIElement) -> String {
     return ""
 }
 
-private func actionNames(_ el: AXUIElement) -> [String] {
+func actionNames(_ el: AXUIElement) -> [String] {
     var names: CFArray?
     guard AXUIElementCopyActionNames(el, &names) == .success, let list = names as? [String] else { return [] }
     return list.compactMap { a in
@@ -154,7 +154,7 @@ func targetApp(_ params: JSON) throws -> (bundleId: String, name: String, pid: p
     return try resolveApp(q)
 }
 
-private func pickWindow(_ pid: pid_t, windowId wanted: Int?) throws -> AXUIElement {
+func pickWindow(_ pid: pid_t, windowId wanted: Int?) throws -> AXUIElement {
     let app = AXUIElementCreateApplication(pid)
     let wins = axWindows(of: pid)
     if let wanted {
@@ -174,6 +174,7 @@ func registerAXMethods() {
             throw RPCError(.permissionDenied, "Accessibility permission is not granted to pi-gna Computer Use.", data: ["missing": ["accessibility"]])
         }
         let target = try targetApp(params)
+        settleBeforeRead(bundleId: target.bundleId)
         let pid = target.pid
         let axApp = AXUIElementCreateApplication(pid)
         let window = try pickWindow(pid, windowId: (params["window_id"] as? NSNumber)?.intValue)

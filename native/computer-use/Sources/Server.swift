@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Single-client newline-delimited JSON-RPC 2.0 server on a Unix domain socket.
@@ -68,13 +69,54 @@ final class Server {
                 let line = buffer.subdata(in: buffer.startIndex..<nl)
                 buffer.removeSubrange(buffer.startIndex...nl)
                 if line.isEmpty { continue }
-                let (reply, ok) = handle(line, authed: authed)
-                if !authed && !ok { send(fd, reply); return false }
-                if ok { authed = true }
-                if let reply { send(fd, reply) }
-                if (reply?["_shutdown"] as? Bool) == true { return true }
+                if !authed {
+                    let (reply, ok) = handle(line, authed: false)
+                    if !ok { send(fd, reply); return false }
+                    authed = true
+                    send(fd, reply)
+                    continue
+                }
+                if dispatch(line, fd: fd) { return true }
             }
         }
+    }
+
+    private let sendLock = NSLock()
+    private var queues: [String: DispatchQueue] = [:]
+    private let queuesLock = NSLock()
+
+    /// One serial queue per target app (its settle waits included), so two apps run concurrently and two actions for the
+    /// same app stay ordered. App-less methods share the "global" queue. Returns true when the helper should exit.
+    private func dispatch(_ line: Data, fd: Int32) -> Bool {
+        guard let obj = (try? JSONSerialization.jsonObject(with: line)) as? JSON, let method = obj["method"] as? String else {
+            send(fd, errorReply(nil, RPCError(rawCode: -32700, "parse error")))
+            return false
+        }
+        if method == "hello" || method == "shutdown" {
+            let (reply, _) = handle(line, authed: true)
+            send(fd, reply)
+            return method == "shutdown"
+        }
+        let key = queueKey(obj["params"] as? JSON ?? [:])
+        queuesLock.lock()
+        let queue = queues[key] ?? DispatchQueue(label: "cu.app.\(key)")
+        queues[key] = queue
+        queuesLock.unlock()
+        queue.async { [self] in
+            let (reply, _) = handle(line, authed: true)
+            send(fd, reply)
+        }
+        return false
+    }
+
+    private func queueKey(_ params: JSON) -> String {
+        if let o = params["app"] as? JSON, let id = o["bundleId"] as? String { return id }
+        guard let q = params["app"] as? String else { return "global" }
+        let lower = q.trimmingCharacters(in: .whitespaces).lowercased()
+        for r in NSWorkspace.shared.runningApplications {
+            if let id = r.bundleIdentifier, id.lowercased() == lower || (r.activationPolicy == .regular && r.localizedName?.lowercased() == lower) { return id }
+        }
+        return lower
     }
 
     private func handle(_ line: Data, authed: Bool) -> (JSON?, Bool) {
@@ -123,6 +165,7 @@ final class Server {
 
     private func send(_ fd: Int32, _ message: JSON?) {
         guard var message else { return }
+        sendLock.lock(); defer { sendLock.unlock() }
         message.removeValue(forKey: "_shutdown")
         guard var data = try? JSONSerialization.data(withJSONObject: message) else { return }
         data.append(0x0A)

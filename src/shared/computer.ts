@@ -15,6 +15,8 @@ export const ComputerErrorCode = {
   invalidParams: -32008,
   helperCrashed: -32009,
   timeout: -32010,
+  /** Cannot be done without taking the foreground (window not on screen, no menu item for a shortcut, ...); never silently activates. */
+  backgroundUnsupported: -32011,
   /** Standard-ish codes the helper uses before authentication and for unknown methods. */
   unauthorized: -32600,
   methodNotFound: -32601,

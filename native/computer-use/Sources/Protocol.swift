@@ -3,7 +3,7 @@ import Foundation
 /// Helper protocol version spoken on the socket and bumped only when the wire format changes.
 let protocolVersion = 1
 /// Bumped only when the helper's own behavior changes (see docs/COMPUTER_USE.md, "Install location").
-let helperVersion = 1
+let helperVersion = 2
 
 typealias JSON = [String: Any]
 
@@ -19,6 +19,7 @@ enum RPCErrorCode: Int {
     case invalidParams = -32008
     case helperCrashed = -32009
     case timeout = -32010
+    case backgroundUnsupported = -32011
 }
 
 struct RPCError: Error {
@@ -55,4 +56,5 @@ func registerMethods() {
     registerAppMethods()
     registerAXMethods()
     registerCaptureMethods()
+    registerInputMethods()
 }

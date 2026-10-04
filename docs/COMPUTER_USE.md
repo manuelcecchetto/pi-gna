@@ -123,6 +123,7 @@ safe to show the model):
 | -32008 | `invalid_params` | bad parameters |
 | -32009 | `helper_crashed` | raised by main when the helper dies mid-call |
 | -32010 | `timeout` | the call exceeded 30 s |
+| -32011 | `background_unsupported` | the action cannot be done in the background (`data.cause`: `app_not_visible`, `no_menu_item_for_shortcut`, `paste_unavailable`, `raise_is_foreground`, `skylight_missing`; `data.foregroundFallback`: `enabled`/`disabled`). With the `configure {allow_foreground_fallback}` setting (default off, wired by T12) a hidden/minimized target may be unhidden and activated; the result then carries `foreground: true` |
 
 ### Notifications (helper → main)
 
@@ -236,6 +237,17 @@ trust only indexes from the latest state.
   and a `note`.
 
 ## Input strategy
+
+> **Implemented (T05)** in `native/computer-use/Sources/Input.swift`. Wire names follow `get_app_state` (snake_case): `click
+> {app, element_index | x,y, mouse_button?, click_count?}`, `drag {from_x,from_y,to_x,to_y}`, `scroll {element_index | x,y,
+> direction, pages?}`, `press_key {key}`, `type_text {text}`, `set_value`, `select_text {element_index, text, prefix?, suffix?,
+> selection_type?}`, `perform_secondary_action {element_index, action}`, `paste {text, format?}`, `configure
+> {allow_foreground_fallback?}`; every action also takes optional `window_id` and `settle_ms` (test override of the 1 s
+> baseline). Results: `{method: "ax"|"cgevent"|"ax_insert", settled, zOrderChanged?, foreground?}`. Notes from the build:
+> `AXConfirm` is not used as a click on text fields (it commits the edit and drops focus); scroll uses pixel wheel events
+> (no AX scrollbar actions); an AX menu item's `AXEnabled` can be stale until the menu was updated, so `paste` presses
+> the Paste item, verifies the focused element's value changed, and otherwise inserts plain text via `AXSelectedText`
+> (`method: "ax_insert"`, `formatLost` for html). Handlers run on one serial queue per app (`Server.dispatch`), settle waits included.
 
 Order for every action, per element (`elementIndex`) or point (`x,y`):
 
