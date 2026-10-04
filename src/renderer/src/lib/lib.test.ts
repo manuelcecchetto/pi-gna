@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
 import { markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
-import { applyQueueOp } from "./queue";
+import { applyQueueOp } from "../../../shared/queue";
 import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
 import { resolveReserveTokens } from "../../../shared/compaction";

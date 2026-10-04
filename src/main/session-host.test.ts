@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app" } }));
 
 const fake = vi.hoisted(() => ({
-  pis: [] as { opts: { sessionPath?: string }; handlers: { onRecords(r: unknown[]): void; onExit(e: unknown): void }; closed: boolean }[],
+  send: (async (_command: unknown, _pi: unknown) => undefined) as (command: unknown, pi: unknown) => Promise<unknown>,
+  responded: [] as unknown[],
+  pis: [] as { opts: { sessionPath?: string }; handlers: { onRecords(r: unknown[]): void; onExit(e: unknown): void }; closed: boolean; close(): Promise<void> }[],
 }));
 vi.mock("./pi-process", () => ({
   PiProcess: class {
@@ -11,8 +13,8 @@ vi.mock("./pi-process", () => ({
     constructor(public opts: { sessionPath?: string }, public handlers: { onRecords(r: unknown[]): void; onExit(e: unknown): void }) {
       fake.pis.push(this);
     }
-    send = async () => ({ type: "response", success: true, data: { sessionFile: this.opts.sessionPath } });
-    respondUi = () => {};
+    send = async (command: unknown) => (await fake.send(command, this)) ?? { type: "response", success: true, data: { sessionFile: this.opts.sessionPath } };
+    respondUi = (response: unknown) => fake.responded.push(response);
     async close() {
       this.closed = true;
       this.handlers.onExit({ code: 0, signal: null, stderrTail: "" });
@@ -171,5 +173,96 @@ describe("session registry", () => {
     const attentions = globals.filter((e) => e.kind === "attention") as unknown as { chats: { attention: string; settled?: unknown }[] }[];
     expect(attentions.some((e) => e.chats[0]?.attention === "unread")).toBe(true);
     expect(attentions.at(-1)!.chats[0]!.settled).toBeDefined();
+  });
+});
+
+// ── Command semantics ────────────────────────────────────────────────────────
+
+describe("command semantics", () => {
+  const request = { cwd: "/tmp", sessionPath: "/tmp/c.jsonl" };
+  const phone = { caller: { device: "dev1" }, clientId: "p", bootId: "b" } as const;
+  const rec = (type: string, extra: object = {}) => ({ type, ...extra });
+
+  async function setup() {
+    const { SessionHost: Host } = await import("./session-host");
+    fake.pis.length = 0;
+    fake.responded.length = 0;
+    fake.send = async () => undefined;
+    const events: { kind: string; [key: string]: unknown }[] = [];
+    const host = new Host((batch) => void events.push(...(batch.events as never[])), bridge, "/atp");
+    const { handle } = await host.open(request);
+    return { host, handle, events, pi: fake.pis[0]! };
+  }
+
+  it("refuses commands outside the allowlist for remote callers, not the desktop", async () => {
+    const { host, handle } = await setup();
+    await expect(host.command(handle, { type: "bash", command: "ls" } as never, phone)).rejects.toMatchObject({ code: "scope_denied" });
+    await expect(host.command(handle, { type: "new_session" } as never, phone)).rejects.toMatchObject({ code: "scope_denied" });
+    expect((await host.command(handle, { type: "get_state" }, phone)).success).toBe(true);
+    expect((await host.command(handle, { type: "bash", command: "ls" } as never)).success).toBe(true);
+  });
+
+  it("makes interrupt and editQueue atomic under concurrent calls", async () => {
+    const { host, handle, pi } = await setup();
+    pi.handlers.onRecords([rec("agent_start")]);
+    const log: string[] = [];
+    fake.send = async (command) => {
+      const { type, message } = command as { type: string; message?: string };
+      log.push(`${type}${message ? `:${message}` : ""}:start`);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      log.push(`${type}${message ? `:${message}` : ""}:end`);
+      return type === "clear_queue" ? { type: "response", success: true, data: { steering: ["a", "b"], followUp: ["c"] } } : undefined;
+    };
+    const [edited, restored, sent] = await Promise.all([
+      host.editQueue(handle, { type: "remove", kind: "steering", text: "a" }),
+      host.interrupt(handle),
+      host.command(handle, { type: "steer", message: "late" }),
+    ]);
+    expect(edited).toBe(true);
+    expect(restored).toEqual(["a", "b", "c"]);
+    expect(sent.success).toBe(true);
+    // Each call's commands are contiguous: the next one starts only after the previous one's last command ended.
+    expect(log.filter((entry) => entry.endsWith(":start")).map((entry) => entry.replace(":start", ""))).toEqual([
+      "clear_queue", "steer:b", "follow_up:c", "clear_queue", "abort", "steer:late",
+    ]);
+    const ends = log.map((entry, index) => (entry.endsWith(":end") ? index : -1)).filter((index) => index >= 0);
+    for (const [i, entry] of log.entries()) if (entry.endsWith(":start") && i > 0) expect(log[i - 1]!.endsWith(":end")).toBe(true);
+    expect(ends).toHaveLength(6);
+  });
+
+  it("lets the first answer to a dialog win and tells everyone", async () => {
+    const { host, handle, events, pi } = await setup();
+    pi.handlers.onRecords([{ type: "extension_ui_request", id: "d1", method: "confirm", title: "Run?" }]);
+    expect(host.snapshot(handle, { turns: 5 })!.state.dialogs).toHaveLength(1);
+    host.respondDialog(handle, { type: "extension_ui_response", id: "d1", confirmed: true }, phone);
+    expect(events.filter((e) => e.kind === "dialog_resolved")).toEqual([{ kind: "dialog_resolved", id: "d1", by: { device: "dev1" }, outcome: "answered" }]);
+    expect(host.snapshot(handle, { turns: 5 })!.state.dialogs).toHaveLength(0);
+    expect(() => host.respondDialog(handle, { type: "extension_ui_response", id: "d1", confirmed: false })).toThrowError(expect.objectContaining({ code: "already_answered" }));
+    expect(() => host.respondDialog(handle, { type: "extension_ui_response", id: "nope", confirmed: false })).toThrowError(expect.objectContaining({ code: "not_found" }));
+    expect(fake.responded).toHaveLength(1);
+  });
+
+  it("answers main's own choices once, and settles dialogs on pi timeout and exit", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, handle, events, pi } = await setup();
+      const choice = host.requestChoice(handle, "Allow?", ["Allow", "Deny"]);
+      const id = (events.find((e) => (e.record as { id?: string } | undefined)?.id?.startsWith("pigna-choice-"))!.record as { id: string }).id;
+      host.respondDialog(handle, { type: "extension_ui_response", id, value: "Allow" }, phone);
+      await expect(choice).resolves.toBe("Allow");
+      expect(() => host.respondDialog(handle, { type: "extension_ui_response", id, value: "Deny" })).toThrowError(expect.objectContaining({ code: "already_answered" }));
+      expect(fake.responded).toHaveLength(0);
+
+      pi.handlers.onRecords([{ type: "extension_ui_request", id: "t1", method: "input", title: "Name", timeout: 1000 }]);
+      vi.advanceTimersByTime(1000);
+      expect(events.at(-1)).toMatchObject({ kind: "dialog_resolved", id: "t1", outcome: "timeout" });
+      expect(() => host.respondDialog(handle, { type: "extension_ui_response", id: "t1", value: "x" })).toThrowError(expect.objectContaining({ code: "already_answered" }));
+
+      pi.handlers.onRecords([{ type: "extension_ui_request", id: "e1", method: "select", title: "Pick", options: ["a"] }]);
+      await pi.close();
+      expect(events.filter((e) => e.kind === "dialog_resolved" && e.id === "e1")).toMatchObject([{ outcome: "exit" }]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

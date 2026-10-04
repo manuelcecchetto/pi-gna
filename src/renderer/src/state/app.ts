@@ -43,7 +43,7 @@ import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, triageName, tri
 import { reviewName, reviewPrompt } from "../lib/github";
 import { fixPrompt } from "../lib/laments";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
-import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
+import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
 import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
 import { createStore, useStore } from "../lib/store";
 

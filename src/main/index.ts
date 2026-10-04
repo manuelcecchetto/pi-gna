@@ -12,6 +12,7 @@ import type { ViewportRequest } from "../shared/viewport";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
+import { HostError } from "../shared/host-api";
 import { type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
@@ -276,7 +277,14 @@ function registerIpc(shellEnv: Promise<void>): void {
   handle(IPC.openSession, async (request: OpenSessionRequest) => (await shellEnv, host.open(request, { client: DESKTOP })));
   handle(IPC.closeSession, (handle: string) => host.close(handle));
   handle(IPC.command, (handle: string, command: RpcCommand) => host.command(handle, command));
-  on(IPC.respondUi, (handle: string, response: ExtensionUiResponse) => host.respondUi(handle, response));
+  on(IPC.respondUi, (handle: string, response: ExtensionUiResponse) => {
+    try {
+      host.respondDialog(handle, response);
+    } catch (error) {
+      // Answered elsewhere first (a phone): the window drops its card on dialog_resolved.
+      if (!(error instanceof HostError)) throw error;
+    }
+  });
   handle(IPC.listFiles, async (cwd: string) => (await shellEnv, listFiles(cwd)));
   handle(IPC.pickFolder, async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });

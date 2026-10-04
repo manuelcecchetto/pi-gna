@@ -159,6 +159,16 @@ export interface UiState {
   bookmarks: Record<string, string[]>;
 }
 
+/** Who is calling a host method: the desktop window (trusted) or a paired device. */
+export interface HostCtx {
+  caller: "desktop" | { device: string };
+  clientId: string;
+  bootId: string;
+}
+
+/** The `Actor` for events and logs. */
+export const actorOf = (ctx: HostCtx): Actor => (ctx.caller === "desktop" ? "desktop" : ctx.caller);
+
 // ── Errors ───────────────────────────────────────────────────────────────────
 
 export const HOST_ERROR_STATUS = {

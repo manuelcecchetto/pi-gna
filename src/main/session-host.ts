@@ -4,13 +4,15 @@ import { stat } from "node:fs/promises";
 import { basename, isAbsolute } from "node:path";
 import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
-import type { Actor, AttentionSummary, ChatSnapshot, ClientPresence, DialogOutcome, GlobalEvent, HostEvent } from "../shared/host-api";
+import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type ClientPresence, type DialogOutcome, type GlobalEvent, type HostCtx, HostError, type HostEvent, isAllowedRpc, type QueueEdit } from "../shared/host-api";
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
-import type { ExtensionUiResponse, RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
+import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
 import type { Feature } from "../shared/settings";
 import { attention, createSession, hydrate, isDisposable, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
+import { applyQueueOp, type Queues } from "../shared/queue";
 import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
+import { KeyedMutex } from "./command-layer";
 import { log } from "./log";
 import { PiProcess } from "./pi-process";
 import { projectTrust } from "./pi-settings";
@@ -19,6 +21,12 @@ import { readActiveBranch } from "./session-file";
 
 /** How long an approval card waits for the user before it counts as a refusal. */
 const APPROVAL_TIMEOUT_MS = 10 * 60_000;
+/** Dialogs answered lately are remembered per chat, so a late second answer reads "already answered", not "unknown". */
+const RESOLVED_KEPT = 200;
+/** Commands that read or change pi's queues or run state: serialized with `interrupt` and `editQueue`. */
+const ORDERED = new Set<RpcCommand["type"]>(["prompt", "steer", "follow_up", "clear_queue", "abort"]);
+/** The desktop window: trusted, the default caller. */
+const DESKTOP: HostCtx = { caller: "desktop", clientId: "desktop", bootId: "" };
 const HANDLE = /^[a-z0-9]{6,32}$/;
 /** Tools that would compete with the integrated browser (Stagehand's). Override with PIGNA_EXCLUDE_TOOLS. */
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
@@ -45,6 +53,9 @@ interface Live {
   /** Leases of host-side owners (an ATP runner, a background task): the chat has no viewer but must not be disposed. */
   holds: Set<string>;
   settled?: { outcome: RunOutcome; at: number };
+  /** Dialogs waiting for an answer (pi's and main's own), with the timer that mirrors pi's timeout. */
+  dialogs: Map<string, ReturnType<typeof setTimeout> | undefined>;
+  resolved: Set<string>;
 }
 
 export interface ChatPage {
@@ -57,6 +68,7 @@ export class SessionHost {
   private readonly live = new Map<string, Live>();
   /** Session file -> the one handle whose pi has it open (two pis on one file are unsafe). */
   private readonly byFile = new Map<string, string>();
+  private readonly mutex = new KeyedMutex();
   private readonly summaries = new Map<string, string>();
   private publishGlobal: (event: GlobalEvent) => void = () => {};
   /** Choices main asked of the user (requestChoice). Answered from the window only; pi never sees them. */
@@ -168,6 +180,7 @@ export class SessionHost {
         },
         onExit: (exit) => {
           this.settleChoices(handle);
+          this.settleDialogs(handle, "exit");
           this.ended(handle);
           this.bridge.unregister(handle);
           for (const listener of this.exitListeners) listener(handle);
@@ -188,6 +201,8 @@ export class SessionHost {
       seq: 0,
       clients: new Map(),
       holds: new Set(),
+      dialogs: new Map(),
+      resolved: new Set(),
     });
     if (sessionPath) this.byFile.set(sessionPath, handle);
     this.lease(handle, lease);
@@ -202,12 +217,51 @@ export class SessionHost {
     return { handle, entries };
   }
 
-  command(handle: string, command: RpcCommand): Promise<RpcResponse> {
+  /**
+   * Send a command to pi. A remote caller gets the RPC allowlist (`bash`, `new_session` and the rest are refused);
+   * the desktop is trusted. Commands that touch the queues run in order with `interrupt` and `editQueue`.
+   */
+  command(handle: string, command: RpcCommand, ctx: HostCtx = DESKTOP): Promise<RpcResponse> {
+    if (ctx.caller !== "desktop" && !isAllowedRpc(command)) return Promise.reject(new HostError("scope_denied", `command not allowed remotely: ${String(command.type)}`));
+    return ORDERED.has(command.type) ? this.mutex.run(handle, () => this.send(handle, command)) : this.send(handle, command);
+  }
+
+  private send(handle: string, command: RpcCommand): Promise<RpcResponse> {
     const chat = this.live.get(handle);
     if (!chat) return Promise.resolve({ type: "response", command: command.type, success: false, error: "session is not running" });
     // A chat you prompted from pi-gna stays alive when everyone navigates away.
     if (command.type === "prompt" || command.type === "steer" || command.type === "follow_up") chat.state = { ...chat.state, prompted: true };
     return chat.pi.send(command);
+  }
+
+  /** Esc: take the queued messages back (returned to the caller), then abort the run or manual compaction. Atomic per chat. */
+  interrupt(handle: string): Promise<string[]> {
+    return this.mutex.run(handle, async () => {
+      const state = this.live.get(handle)?.state;
+      if (!state || (!state.running && !state.compacting)) return [];
+      const cleared = await this.send(handle, { type: "clear_queue" });
+      const data = cleared.data as Queues | undefined;
+      const restored = [...(data?.steering ?? []), ...(data?.followUp ?? [])];
+      await this.send(handle, { type: "abort" });
+      return restored;
+    });
+  }
+
+  /**
+   * Edit pi's queues (trash, steer now, defer, take out to edit). RPC can only clear both queues and append, so this
+   * clears, applies the op and re-queues the rest in order, without another command in between. Images on
+   * re-queued messages are lost.
+   */
+  editQueue(handle: string, op: QueueEdit): Promise<boolean> {
+    return this.mutex.run(handle, async () => {
+      if (!this.live.get(handle)?.state.running) return false;
+      const cleared = await this.send(handle, { type: "clear_queue" });
+      if (!cleared.data) return false;
+      const { queues, found } = applyQueueOp(cleared.data as Queues, op);
+      for (const message of queues.steering) await this.send(handle, { type: "steer", message });
+      for (const message of queues.followUp) await this.send(handle, { type: "follow_up", message });
+      return found;
+    });
   }
 
   // ── State, snapshots, attention ──────────────────────────────────────────────
@@ -222,6 +276,7 @@ export class SessionHost {
     const now = Date.now();
     let state = chat.state;
     for (const event of events) {
+      this.trackDialog(handle, chat, event);
       state = reduceHostEvent(state, event, now);
       if (event.kind === "rpc" && event.record.type === "agent_settled") {
         const outcome = runOutcome(state.items);
@@ -417,7 +472,7 @@ export class SessionHost {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         settle(undefined);
-        this.push(handle, [{ kind: "dialog_resolved", id, by: "desktop", outcome: "timeout" }]);
+        this.settleDialog(handle, id, "desktop", "timeout");
       }, APPROVAL_TIMEOUT_MS);
       const settle = (value: string | undefined) => {
         clearTimeout(timer);
@@ -433,20 +488,54 @@ export class SessionHost {
     for (const choice of [...this.choices.values()]) if (choice.handle === handle) choice.resolve(undefined);
   }
 
-  /** Answer a dialog; every client is told, so the others drop their card. */
-  respondUi(handle: string, response: ExtensionUiResponse, by: Actor = "desktop"): void {
+  /** Keep the set of waiting dialogs in step with the events: a request opens one, a resolution closes it. */
+  private trackDialog(handle: string, chat: Live, event: HostEvent): void {
+    if (event.kind === "rpc" && event.record.type === "extension_ui_request" && DIALOG_METHODS.has(event.record.method)) {
+      const { id } = event.record;
+      const timeout = "timeout" in event.record ? event.record.timeout : undefined;
+      // pi gives up on its own dialogs after `timeout`; mirror that. Main's choices run their own timer.
+      const timer = timeout && !this.choices.has(id) ? setTimeout(() => this.settleDialog(handle, id, "desktop", "timeout"), timeout) : undefined;
+      timer?.unref?.();
+      chat.dialogs.set(id, timer);
+    } else if (event.kind === "dialog_resolved") {
+      clearTimeout(chat.dialogs.get(event.id));
+      chat.dialogs.delete(event.id);
+      chat.resolved.add(event.id);
+      if (chat.resolved.size > RESOLVED_KEPT) chat.resolved.delete(chat.resolved.values().next().value as string);
+    }
+  }
+
+  /** Close one waiting dialog (if still waiting) and tell every client. */
+  private settleDialog(handle: string, id: string, by: Actor, outcome: DialogOutcome): boolean {
+    if (!this.live.get(handle)?.dialogs.has(id)) return false;
+    this.push(handle, [{ kind: "dialog_resolved", id, by, outcome }]);
+    return true;
+  }
+
+  /** The chat ends: its waiting dialogs end with it. */
+  private settleDialogs(handle: string, outcome: DialogOutcome): void {
+    for (const id of [...(this.live.get(handle)?.dialogs.keys() ?? [])]) this.settleDialog(handle, id, "desktop", outcome);
+  }
+
+  /**
+   * Answer a dialog. The first answer wins: it resolves the dialog and every client is told (`dialog_resolved`, so the
+   * others drop their card); a later answer fails `already_answered`.
+   */
+  respondDialog(handle: string, response: ExtensionUiResponse, ctx: HostCtx = DESKTOP): void {
     const chat = this.live.get(handle);
-    if (!chat) return;
-    const answered = chat.state.dialogs.some((dialog) => dialog.id === response.id);
-    const choice = this.choices.get(response.id);
+    if (!chat) throw new HostError("not_found", "session is not running");
+    const { id } = response;
+    if (!chat.dialogs.has(id)) throw new HostError(chat.resolved.has(id) ? "already_answered" : "not_found", chat.resolved.has(id) ? "that dialog was already answered" : "no such dialog");
+    const by = actorOf(ctx);
+    const choice = this.choices.get(id);
+    if (choice && choice.handle !== handle) throw new HostError("not_found", "no such dialog");
+    const cancelled = "cancelled" in response && response.cancelled;
+    // Marking it resolved first (push is synchronous) is what makes a concurrent second answer lose.
+    this.push(handle, [{ kind: "dialog_resolved", id, by, outcome: cancelled ? "cancelled" : "answered" }]);
     if (choice) {
-      if (choice.handle !== handle) return;
+      log.info("pi", `approval ${id.slice(0, 18)} answered by ${typeof by === "string" ? by : `device ${by.device}`}`);
       choice.resolve("value" in response ? response.value : undefined);
     } else chat.pi.respondUi(response);
-    if (answered) {
-      const outcome: DialogOutcome = "cancelled" in response && response.cancelled ? "cancelled" : "answered";
-      this.push(handle, [{ kind: "dialog_resolved", id: response.id, by, outcome }]);
-    }
   }
 
   /** Explicit close: clients are told first (they leave the chat), then pi stops. */
