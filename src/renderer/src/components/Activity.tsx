@@ -19,12 +19,12 @@ import { memo, type ReactNode, useMemo } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
 import { userText } from "../lib/session";
-import { type ToolCategory, liveComputerApp, presentTool, summarizeTools } from "../lib/tools";
+import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
 import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
-import { Elapsed } from "./primitives";
+import { Elapsed, useNow } from "./primitives";
 import { resultImages, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, LucideIcon> = {
@@ -224,6 +224,7 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
   const verb = running ? presentation.activeVerb : presentation.verb;
   const elapsed = run?.startedAt && run.endedAt ? run.endedAt - run.startedAt : 0;
   const duration = elapsed >= 100 ? formatDuration(elapsed) : undefined;
+  const timeout = toolTimeoutMs(call.name, call.arguments);
 
   return (
     <div>
@@ -245,13 +246,36 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
         <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 font-mono text-[11px] text-faint">
           {interrupted && "interrupted"}
           {failed && "failed"}
-          {duration && !running && <span className="opacity-0 group-hover:opacity-100">{duration}</span>}
+          {running && run?.startedAt ? (
+            <LiveRunTime since={run.startedAt} timeout={timeout} />
+          ) : (
+            duration &&
+            !running && (
+              <span className="opacity-0 group-hover:opacity-100" title={timeout ? "Run time / timeout" : "Run time"}>
+                {duration}
+                {timeout && ` / ${formatClock(timeout)}`}
+              </span>
+            )
+          )}
           <ChevronRight size={12} className={`transition ${open ? "rotate-90" : "opacity-0 group-hover:opacity-100"}`} />
         </span>
       </button>
       <InlineImages images={resultImages(run?.result ?? run?.partial)} />
       {open && <ToolDetails call={call} run={run} />}
     </div>
+  );
+}
+
+/** A running call's live run time, with its timeout when it set one; warns past 80% of it. */
+function LiveRunTime({ since, timeout }: { since: number; timeout?: number }) {
+  const elapsed = useNow(1000) - since;
+  if (elapsed < 1000 && !timeout) return null;
+  const near = timeout !== undefined && elapsed >= timeout * 0.8;
+  return (
+    <span className={`tabular-nums ${near ? "text-warn" : ""}`} title={timeout ? "Run time / timeout" : "Run time"}>
+      {formatClock(elapsed)}
+      {timeout && ` / ${formatClock(timeout)}`}
+    </span>
   );
 }
 

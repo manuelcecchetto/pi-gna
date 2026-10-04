@@ -194,6 +194,16 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
   }
 }
 
+/**
+ * The timeout a call asked for, in ms, read from its arguments: pi exposes no per-tool default
+ * (bash runs unbounded unless the model passes `timeout`). 0 means "no cap", so it is undefined.
+ */
+export function toolTimeoutMs(name: string, args: Args): number | undefined {
+  const seconds = num(name === "bash" ? args.timeout : undefined) ?? num(args.timeoutSeconds) ?? num(args.timeout_seconds);
+  const ms = seconds !== undefined ? seconds * 1000 : (num(args.timeoutMs) ?? num(args.timeout_ms));
+  return ms && ms > 0 ? ms : undefined;
+}
+
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 export interface SummaryInput {
