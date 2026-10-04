@@ -82,6 +82,9 @@ export type GithubLookup = { ref: GithubRef; problem?: undefined } | { problem: 
 
 export const repoUrl = (repo: GithubRepo): string => `https://${repo.host}/${repo.repo}`;
 
+/** The variable gh reads a token for `host` from: GH_TOKEN for github.com and GHE.com, else the enterprise one. */
+export const tokenVariable = (host: string): "GH_TOKEN" | "GH_ENTERPRISE_TOKEN" => (host === "github.com" || host.endsWith(".ghe.com") ? "GH_TOKEN" : "GH_ENTERPRISE_TOKEN");
+
 /** The link a card keeps to an issue or pull request. */
 export const itemRef = (repo: GithubRepo, item: Pick<GithubItem, "kind" | "number" | "url" | "title">): GithubRef => ({
   kind: item.kind,

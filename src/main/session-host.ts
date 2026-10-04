@@ -36,6 +36,8 @@ export class SessionHost {
   private readonly extensions = { browser: onDisk("resources", "browser-extension.ts"), kanban: onDisk("resources", "kanban-extension.ts"), laments: onDisk("resources", "lament-extension.ts") };
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
+  /** Skills pi-gna bundles: pr-review, which the GitHub page's Review starts a chat with. */
+  private readonly skills = { prReview: onDisk("resources", "skills", "pr-review") };
 
   constructor(
     private readonly emit: (batch: HostEventBatch) => void,
@@ -53,6 +55,7 @@ export class SessionHost {
     if (features.visuals) args.push("--append-system-prompt", onDisk("resources", "pigna-visual-prompt.md"));
     if (features.kanban) args.push("-e", this.extensions.kanban);
     if (features.laments) args.push("-e", this.extensions.laments);
+    if (features.github) args.push("--skill", this.skills.prReview);
     if (features.computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
     if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
     if (trust !== undefined) args.push(trust ? "--approve" : "--no-approve");
