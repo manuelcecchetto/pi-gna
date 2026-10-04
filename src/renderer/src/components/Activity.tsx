@@ -251,9 +251,9 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
           ) : (
             duration &&
             !running && (
-              <span className="opacity-0 group-hover:opacity-100" title={timeout ? "Run time / timeout" : "Run time"}>
+              <span className="text-[10px] opacity-0 group-hover:opacity-70" title={timeout ? "Run time / timeout" : "Run time"}>
                 {duration}
-                {timeout && ` / ${formatClock(timeout)}`}
+                {timeout && <span className="opacity-60">/{formatClock(timeout)}</span>}
               </span>
             )
           )}
@@ -266,15 +266,15 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
   );
 }
 
-/** A running call's live run time, with its timeout when it set one; warns past 80% of it. */
+/** A running call's live run time, kept faint; its timeout shows on hover, or always once past 80% of it. */
 function LiveRunTime({ since, timeout }: { since: number; timeout?: number }) {
   const elapsed = useNow(1000) - since;
-  if (elapsed < 1000 && !timeout) return null;
+  if (elapsed < 1000) return null;
   const near = timeout !== undefined && elapsed >= timeout * 0.8;
   return (
-    <span className={`tabular-nums ${near ? "text-warn" : ""}`} title={timeout ? "Run time / timeout" : "Run time"}>
+    <span className={`text-[10px] tabular-nums ${near ? "text-warn opacity-80" : "opacity-60"}`} title={timeout ? "Run time / timeout" : "Run time"}>
       {formatClock(elapsed)}
-      {timeout && ` / ${formatClock(timeout)}`}
+      {timeout && <span className={near ? "opacity-70" : "hidden group-hover:inline"}>/{formatClock(timeout)}</span>}
     </span>
   );
 }
