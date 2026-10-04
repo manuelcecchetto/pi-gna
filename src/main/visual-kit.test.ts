@@ -8,7 +8,7 @@ describe("visual kit vocabulary", () => {
   it("defines every class the prompt lists", () => {
     const prompt = read("pigna-visual-prompt.md");
     const line = prompt.split("\n").find((l) => l.startsWith("- Classes:")) ?? "";
-    const listed = [...line.matchAll(/`([a-z][a-z-]*)`/g)].map((m) => m[1]);
+    const listed = [...line.matchAll(/`([a-z][a-z-]*)`/g)].map((m) => m[1] ?? "");
     const modifiers = new Set(["ok", "bad", "warn", "accent"]);
     expect(listed.length).toBeGreaterThan(10);
     const css = read("visual/kit.css");
