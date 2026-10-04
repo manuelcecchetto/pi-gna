@@ -9,6 +9,7 @@ describe("applySettingsOp", () => {
     expect(start.theme).toBe("system");
     expect(start.wallpaper).toBe("sky");
     expect(start.wallpaperLoop).toBe(false);
+    expect(start.visuals).toBe(false);
     expect(taskModel(start, "triage")).toBe(TASK_DEFAULTS.triage);
   });
 
@@ -25,6 +26,8 @@ describe("applySettingsOp", () => {
     expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "none" }).wallpaper).toBe("none");
     expect(applySettingsOp(start, { type: "wallpaperLoop", loop: false })).toBe(start);
     expect(applySettingsOp(start, { type: "wallpaperLoop", loop: true }).wallpaperLoop).toBe(true);
+    expect(applySettingsOp(start, { type: "visuals", on: false })).toBe(start);
+    expect(applySettingsOp(start, { type: "visuals", on: true }).visuals).toBe(true);
   });
 
   it("overrides a task's model and goes back to the default", () => {
@@ -45,6 +48,7 @@ describe("applySettingsOp", () => {
       { type: "theme", theme: "sepia" },
       { type: "wallpaper", wallpaper: "pigna-dusk" },
       { type: "wallpaperLoop", loop: "yes" },
+      { type: "visuals", on: "yes" },
       { type: "model", task: "review", model: null },
       { type: "model", task: "triage", model: { id: "", thinking: "low" } },
       { type: "model", task: "triage", model: { id: "m", thinking: "lots" } },
@@ -63,6 +67,7 @@ describe("parseSettings", () => {
       theme: "sepia",
       wallpaper: "moon",
       wallpaperLoop: 1,
+      visuals: "on",
       models: { triage: { id: "claude-haiku-4-5", thinking: "off" }, worker: { id: "x" }, other: {} },
     });
     expect(settings.features).toEqual({ kanban: false, laments: true, github: true, atp: true });
@@ -70,8 +75,9 @@ describe("parseSettings", () => {
     expect(settings.wallpaper).toBe("sky");
     expect(parseSettings({ wallpaper: "ink" }).settings.wallpaper).toBe("ink");
     expect(parseSettings({ wallpaperLoop: true }).settings.wallpaperLoop).toBe(true);
+    expect(parseSettings({ visuals: true }).settings.visuals).toBe(true);
     expect(settings.models).toEqual({ triage: { id: "claude-haiku-4-5", thinking: "off" } });
-    expect(dropped).toBe(5);
+    expect(dropped).toBe(6);
     expect(parseSettings({}).settings).toEqual(start);
   });
 

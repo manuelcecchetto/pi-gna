@@ -94,6 +94,7 @@ const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"
 const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
   ...(await settings.get()).features,
   computer: (await computerPolicy.get()).enabled,
+  visuals: (await settings.get()).visuals,
 }));
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));

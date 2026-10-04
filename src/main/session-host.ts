@@ -22,8 +22,8 @@ const HANDLE = /^[a-z0-9]{6,32}$/;
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
 /** What is on when a chat starts: the Settings page's features, and Computer Use. */
-export type SessionFeatures = Record<Feature | "computer", boolean>;
-const NONE: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false };
+export type SessionFeatures = Record<Feature | "computer" | "visuals", boolean>;
+const NONE: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false };
 
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();

@@ -421,6 +421,7 @@ const WARMING_LABELS = { off: "Off", streaming: "During runs", idle: "Between ru
 function AgentSection({ pi }: { pi: Pi }) {
   /** A row's reset button, while the key is set in the file. */
   const reset = (...keys: PiKey[]) => (keys.some((key) => pi.isSet(key)) ? () => pi.set(Object.fromEntries(keys.map((key) => [key, null]))) : undefined);
+  const visuals = useApp((state) => state.settings.visuals);
   const toggle = (key: PiKey) => <Switch on={pi.value(key) === true} onChange={(on) => pi.set({ [key]: on })} />;
   const choice = (key: PiKey, labels: Record<string, string>) => {
     const setting = PI_SETTINGS[key];
@@ -433,6 +434,11 @@ function AgentSection({ pi }: { pi: Pi }) {
   return (
     <>
       <PiFileNote pi={pi} />
+      <Card title="Beta">
+        <Row title="Inline visuals" about="Agents may add small interactive HTML visuals (diagrams, comparisons, timelines) to replies. Renders sandboxed, offline. Applies to chats you open afterwards.">
+          <Switch on={visuals} onChange={(on) => void applySettings({ type: "visuals", on })} />
+        </Row>
+      </Card>
       <Card title="Messages while pi works">
         <Row title="Steering" about="Messages you send while pi works, delivered after its current step." onReset={reset("steeringMode")}>
           {choice("steeringMode", QUEUE_LABELS)}

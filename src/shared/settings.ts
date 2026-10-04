@@ -48,6 +48,8 @@ export interface Settings {
   wallpaper: Wallpaper;
   /** Each new empty state shows the next wallpaper, from the one picked, instead of always that one. */
   wallpaperLoop: boolean;
+  /** Beta: agents may add small sandboxed HTML visuals to replies. Read when a chat starts. */
+  visuals: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
 }
@@ -57,6 +59,7 @@ export type SettingsOp =
   | { type: "theme"; theme: Theme }
   | { type: "wallpaper"; wallpaper: Wallpaper }
   | { type: "wallpaperLoop"; loop: boolean }
+  | { type: "visuals"; on: boolean }
   /** null: back to the default. */
   | { type: "model"; task: Task; model: TaskModel | null };
 
@@ -74,6 +77,7 @@ export const emptySettings = (): Settings => ({
   theme: "system",
   wallpaper: "sky",
   wallpaperLoop: false,
+  visuals: false,
   models: {},
 });
 
@@ -113,6 +117,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.loop !== "boolean") throw new SettingsError(`cannot loop wallpapers ${String(op.loop)}`);
       return settings.wallpaperLoop === op.loop ? settings : { ...settings, wallpaperLoop: op.loop };
     }
+    case "visuals": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn visuals ${String(op.on)}`);
+      return settings.visuals === op.on ? settings : { ...settings, visuals: op.on };
+    }
     case "model": {
       if (!TASKS.includes(op.task)) throw new SettingsError(`unknown task ${String(op.task)}`);
       const model = op.model === null ? undefined : taskModelOf(op.model);
@@ -145,6 +153,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.wallpaper !== undefined) dropped++;
   if (typeof file.wallpaperLoop === "boolean") settings.wallpaperLoop = file.wallpaperLoop;
   else if (file.wallpaperLoop !== undefined) dropped++;
+  if (typeof file.visuals === "boolean") settings.visuals = file.visuals;
+  else if (file.visuals !== undefined) dropped++;
   const models = (file.models ?? {}) as Record<string, unknown>;
   for (const task of TASKS) {
     if (models[task] === undefined) continue;
