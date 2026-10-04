@@ -635,6 +635,9 @@ Verified live (pi 1.0.0, Oct 2026):
   Chromium blocks while a button inside still has focus). While collapsed, show-sidebar and
   new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
   header gets `COLLAPSED_INSET` left padding.
+- Chat header (`SessionPane`): title, then the card chip, the browser toggle (⌘B) and expand-all (Ctrl+O). It has
+  no close button: closing a chat stops its pi process and is rarely wanted mid-work, so it lives in the sidebar
+  row's right-click menu ("Close chat").
 - Sidebar order (`projectViews`): pinned projects first, in the order you pinned them (hover pin button; a pinned
   project keeps its pin visible, app-only state in localStorage), then the rest by latest activity: the index's
   file times, raised by messages you send from pi-gna so a chat and its project move up right away instead of
