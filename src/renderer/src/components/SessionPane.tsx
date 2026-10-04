@@ -1,8 +1,8 @@
-import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, SquareKanban, X } from "lucide-react";
+import { Globe, ListChevronsDownUp, ListChevronsUpDown, Paperclip, SquareKanban } from "lucide-react";
 import { useRef, useState } from "react";
 import { cardOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../lib/session";
-import { addChatToBoard, attachFiles, closeSession, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
+import { addChatToBoard, attachFiles, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -68,13 +68,10 @@ export function SessionPane({ session }: { session: SessionState }) {
         <button
           type="button"
           onClick={toggleExpandAll}
-          title={expandAll ? "Collapse all (Ctrl+O)" : "Expand all (Ctrl+O)"}
+          title={expandAll ? "Collapse the transcript's steps (Ctrl+O)" : "Expand the transcript's steps (Ctrl+O)"}
           className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg"
         >
-          {expandAll ? <ChevronsDownUp size={15} /> : <ChevronsUpDown size={15} />}
-        </button>
-        <button type="button" onClick={() => void closeSession(session.handle)} title="Close session (stops its pi process)" className="rounded-md p-1.5 text-faint hover:bg-raised hover:text-fg">
-          <X size={15} />
+          {expandAll ? <ListChevronsDownUp size={15} /> : <ListChevronsUpDown size={15} />}
         </button>
       </header>
       {session.phase === "exited" && <ExitBanner session={session} />}
