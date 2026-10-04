@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>pi-gna visual kit gallery</title>
+    <link rel="stylesheet" href="kit.css" />
+    <style>body{max-width:680px;margin:16px auto;padding:0 12px;background:var(--canvas)}</style>
+  </head>
+  <body>
+    <!-- Open directly (follows the OS theme) or add ?theme=light / ?theme=dark to force one. -->
+    <div id="visual" style="max-height:none">
+      <h2>Stats, grid, card</h2>
+      <div class="grid">
+        <div class="card stat"><span class="stat-value">128</span><span class="stat-label">requests</span></div>
+        <div class="card stat"><span class="stat-value">4.2 ms</span><span class="stat-label">p50 latency</span></div>
+        <div class="card stat"><span class="stat-value">99.1%</span><span class="stat-label">success</span></div>
+      </div>
+      <h2>Row, badges, muted, mono</h2>
+      <div class="row"><span class="badge">neutral</span><span class="badge ok">ok</span><span class="badge bad">bad</span><span class="badge warn">warn</span><span class="badge accent">accent</span><span class="muted">muted text</span><span class="mono">mono_text()</span></div>
+      <h2>Table</h2>
+      <table class="table"><tr><th>File</th><th>Lines</th><th>Status</th></tr>
+        <tr><td class="mono">src/main/index.ts</td><td>412</td><td><span class="badge ok">ok</span></td></tr>
+        <tr><td class="mono">src/main/session-host.ts</td><td>980</td><td><span class="badge warn">large</span></td></tr></table>
+      <h2>Callout</h2>
+      <div class="callout">Default callout.</div>
+      <div class="callout warn" style="margin-top:6px">Warn callout.</div>
+      <h2>Steps</h2>
+      <ol class="steps"><li>Parse fence</li><li>Create frame</li><li>Render</li></ol>
+      <h2>Timeline</h2>
+      <ul class="timeline"><li><b>09:00</b> <span class="muted">started</span></li><li><b>09:05</b> <span class="muted">built</span></li><li><b>09:10</b> <span class="muted">shipped</span></li></ul>
+      <h2>Bars and legend</h2>
+      <div class="stack">
+        <div><div class="row muted"><span>Alpha</span></div><div class="bar" style="--v:80%"><span></span></div></div>
+        <div><div class="row muted"><span>Beta</span></div><div class="bar ok" style="--v:55%"><span></span></div></div>
+        <div><div class="row muted"><span>Gamma</span></div><div class="bar bad" style="--v:25%"><span></span></div></div>
+        <div class="legend"><span style="--c:var(--accent)">Alpha</span><span style="--c:var(--ok)">Beta</span><span style="--c:var(--bad)">Gamma</span></div>
+      </div>
+      <h2>Controls</h2>
+      <div class="controls"><label>Size <input type="range" min="0" max="10" value="4" /></label><select><option>One</option><option>Two</option></select><button>Button</button></div>
+      <h2>SVG</h2>
+      <svg viewBox="0 0 240 60" width="240" height="60"><rect x="4" y="10" width="80" height="40" rx="4"/><text x="44" y="35" text-anchor="middle">client</text><path d="M84 30h70"/><rect x="154" y="10" width="80" height="40" rx="4"/><text x="194" y="35" text-anchor="middle">server</text></svg>
+    </div>
+    <script>
+      var t = new URLSearchParams(location.search).get("theme");
+      if (t === "light" || t === "dark") document.documentElement.style.colorScheme = t;
+      if (t === "light") {
+        var l = {"--canvas":"#fcfcfb","--panel":"#f4f4f3","--raised":"#ebebea","--sunken":"#f7f7f6","--line":"rgb(0 0 0 / 0.08)","--fg":"#1d1d20","--muted":"#63636b","--faint":"#9a9aa2","--accent":"#2f6fe4","--accent-soft":"rgb(47 111 228 / 0.1)","--ok":"#1f9d55","--bad":"#d93b3b","--warn":"#a86b00"};
+        for (var k in l) document.documentElement.style.setProperty(k, l[k]);
+      }
+    </script>
+  </body>
+</html>
