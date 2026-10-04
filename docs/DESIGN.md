@@ -607,8 +607,8 @@ Verified live (pi 1.0.0, Oct 2026):
   still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
   (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
   visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI). A running
-  tool row ticks a faint 10px run time ("14s", with "/20s" on hover), shown always and amber past 80% of the
-  timeout; a finished row shows its duration on hover. The timeout comes only from the call's arguments (`toolTimeoutMs`: bash `timeout` in seconds,
+  tool row ticks a faint 10px run time ("14s"); with a timeout, a tiny pie next to it fills toward it (amber past
+  80%, exact numbers in its tooltip). A finished row shows its duration and timeout on hover. The timeout comes only from the call's arguments (`toolTimeoutMs`: bash `timeout` in seconds,
   `timeoutSeconds`, `timeoutMs`): pi exposes no per-tool defaults, and bash runs unbounded without one.
 - Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window);
   commentary between tool calls is normal (white) text, so the two stay distinct.

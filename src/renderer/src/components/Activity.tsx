@@ -266,16 +266,40 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
   );
 }
 
-/** A running call's live run time, kept faint; its timeout shows on hover, or always once past 80% of it. */
+/** A running call's live run time, kept faint; with a timeout, a pie fills toward it (amber past 80%). */
 function LiveRunTime({ since, timeout }: { since: number; timeout?: number }) {
   const elapsed = useNow(1000) - since;
-  if (elapsed < 1000) return null;
-  const near = timeout !== undefined && elapsed >= timeout * 0.8;
+  if (elapsed < 1000 && !timeout) return null;
+  const fraction = timeout ? Math.min(1, elapsed / timeout) : undefined;
+  const near = fraction !== undefined && fraction >= 0.8;
   return (
-    <span className={`text-[10px] tabular-nums ${near ? "text-warn opacity-80" : "opacity-60"}`} title={timeout ? "Run time / timeout" : "Run time"}>
-      {formatClock(elapsed)}
-      {timeout && <span className={near ? "opacity-70" : "hidden group-hover:inline"}>/{formatClock(timeout)}</span>}
+    <span
+      className={`flex items-center gap-1 text-[10px] tabular-nums ${near ? "text-warn opacity-80" : "opacity-60"}`}
+      title={timeout ? `${formatClock(elapsed)} of a ${formatClock(timeout)} timeout` : "Run time"}
+    >
+      {elapsed >= 1000 && formatClock(elapsed)}
+      {fraction !== undefined && <TimeoutPie fraction={fraction} />}
     </span>
+  );
+}
+
+/** A 9px pie that becomes solid as a call nears its timeout: a ring plus a wedge drawn as a fat stroke. */
+function TimeoutPie({ fraction }: { fraction: number }) {
+  const c = 2 * Math.PI * 2;
+  return (
+    <svg width="9" height="9" viewBox="0 0 9 9" className="-rotate-90" aria-hidden>
+      <circle cx="4.5" cy="4.5" r="4" fill="none" stroke="currentColor" strokeWidth="1" />
+      <circle
+        cx="4.5"
+        cy="4.5"
+        r="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeDasharray={`${fraction * c} ${c}`}
+        style={{ transition: "stroke-dasharray 1s linear" }}
+      />
+    </svg>
   );
 }
 
