@@ -432,6 +432,8 @@ export class BrowserManager {
       await cdp(wc, "Emulation.setUserAgentOverride", { userAgent: "" });
       return;
     }
+    // Device metrics on a view that never navigated crash Electron 44 on macOS (null dereference in the main process).
+    if (!wc.getURL()) await this.load(tab, "about:blank");
     const scale = this.fitFor(tab)?.scale ?? 1;
     tab.emulatedScale = scale;
     await cdp(wc, "Emulation.setDeviceMetricsOverride", {

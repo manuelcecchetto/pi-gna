@@ -158,7 +158,7 @@ export class BrowserAgent {
         await this.browser.ensureVisible(tab);
         const set = request.reset ? undefined : request.set;
         if (!request.reset && !set) return { ...this.where(wc), viewport: tab.viewport };
-        const viewport = await this.browser.setViewport(tab.id, set && resolveViewport({ ...set, source: "agent" }));
+        const viewport = await this.browser.setViewport(tab.id, set && { ...set, source: "agent" });
         return { ...this.where(wc), viewport };
       }
     }

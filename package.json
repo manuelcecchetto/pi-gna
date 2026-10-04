@@ -31,7 +31,8 @@
     "dist": "node scripts/build-computer-use.mjs && electron-vite build && electron-builder --mac --publish never",
     "build:computer-use": "node scripts/build-computer-use.mjs",
     "icon": "electron scripts/make-icon.mjs",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "verify:responsive": "node scripts/verify-responsive-browser.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
