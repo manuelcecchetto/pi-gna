@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
 import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
-import { liveComputerApp, presentTool, summarizeTools } from "./tools";
+import { liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -201,6 +201,16 @@ describe("hydrate + view", () => {
     expect(liveComputerApp([{ name: "computer_click", arguments: { app: "TextEdit" }, running: true }])).toBe("TextEdit");
     expect(liveComputerApp([{ name: "computer_click", arguments: { app: "TextEdit" }, running: false }])).toBeUndefined();
     expect(presentTool("kanban_update", { column: "in_review", report: "Fixed" }, "/repo")).toMatchObject({ verb: "Moved its card", target: "to in_review" });
+  });
+
+  it("reads a call's timeout from its arguments", () => {
+    expect(toolTimeoutMs("bash", { command: "sleep 9", timeout: 120 })).toBe(120_000);
+    expect(toolTimeoutMs("bash", { command: "ls" })).toBeUndefined();
+    expect(toolTimeoutMs("bash", { command: "ls", timeout: 0 })).toBeUndefined();
+    expect(toolTimeoutMs("invisible_browse", { url: "x", timeoutSeconds: 30, timeoutMs: 5000 })).toBe(30_000);
+    expect(toolTimeoutMs("invisible_browse", { url: "x", timeoutMs: 5000 })).toBe(5000);
+    // Only bash's bare `timeout` is known to be seconds; elsewhere the unit is unknown.
+    expect(toolTimeoutMs("custom", { timeout: 5000 })).toBeUndefined();
   });
 });
 

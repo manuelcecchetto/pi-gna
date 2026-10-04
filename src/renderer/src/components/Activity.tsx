@@ -19,12 +19,12 @@ import { memo, type ReactNode, useMemo } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
 import { userText } from "../lib/session";
-import { type ToolCategory, liveComputerApp, presentTool, summarizeTools } from "../lib/tools";
+import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
 import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
-import { Elapsed } from "./primitives";
+import { Elapsed, useNow } from "./primitives";
 import { resultImages, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, LucideIcon> = {
@@ -224,6 +224,7 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
   const verb = running ? presentation.activeVerb : presentation.verb;
   const elapsed = run?.startedAt && run.endedAt ? run.endedAt - run.startedAt : 0;
   const duration = elapsed >= 100 ? formatDuration(elapsed) : undefined;
+  const timeout = toolTimeoutMs(call.name, call.arguments);
 
   return (
     <div>
@@ -245,13 +246,60 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
         <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 font-mono text-[11px] text-faint">
           {interrupted && "interrupted"}
           {failed && "failed"}
-          {duration && !running && <span className="opacity-0 group-hover:opacity-100">{duration}</span>}
+          {running && run?.startedAt ? (
+            <LiveRunTime since={run.startedAt} timeout={timeout} />
+          ) : (
+            duration &&
+            !running && (
+              <span className="text-[10px] opacity-0 group-hover:opacity-70" title={timeout ? "Run time / timeout" : "Run time"}>
+                {duration}
+                {timeout && <span className="opacity-60">/{formatClock(timeout)}</span>}
+              </span>
+            )
+          )}
           <ChevronRight size={12} className={`transition ${open ? "rotate-90" : "opacity-0 group-hover:opacity-100"}`} />
         </span>
       </button>
       <InlineImages images={resultImages(run?.result ?? run?.partial)} />
       {open && <ToolDetails call={call} run={run} />}
     </div>
+  );
+}
+
+/** A running call's live run time, kept faint; with a timeout, a pie fills toward it (amber past 80%). */
+function LiveRunTime({ since, timeout }: { since: number; timeout?: number }) {
+  const elapsed = useNow(1000) - since;
+  if (elapsed < 1000 && !timeout) return null;
+  const fraction = timeout ? Math.min(1, elapsed / timeout) : undefined;
+  const near = fraction !== undefined && fraction >= 0.8;
+  return (
+    <span
+      className={`flex items-center gap-1 text-[10px] tabular-nums ${near ? "text-warn opacity-80" : "opacity-60"}`}
+      title={timeout ? `${formatClock(elapsed)} of a ${formatClock(timeout)} timeout` : "Run time"}
+    >
+      {elapsed >= 1000 && formatClock(elapsed)}
+      {fraction !== undefined && <TimeoutPie fraction={fraction} />}
+    </span>
+  );
+}
+
+/** A 9px pie that becomes solid as a call nears its timeout: a ring plus a wedge drawn as a fat stroke. */
+function TimeoutPie({ fraction }: { fraction: number }) {
+  const c = 2 * Math.PI * 2;
+  return (
+    <svg width="9" height="9" viewBox="0 0 9 9" className="-rotate-90" aria-hidden>
+      <circle cx="4.5" cy="4.5" r="4" fill="none" stroke="currentColor" strokeWidth="1" />
+      <circle
+        cx="4.5"
+        cy="4.5"
+        r="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeDasharray={`${fraction * c} ${c}`}
+        style={{ transition: "stroke-dasharray 1s linear" }}
+      />
+    </svg>
   );
 }
 

@@ -612,7 +612,10 @@ Verified live (pi 1.0.0, Oct 2026):
   next tool does not collapse it) or the run ends. Your toggle is keyed per phase (working/done), so the answer
   still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
   (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
-  visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI).
+  visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI). A running
+  tool row ticks a faint 10px run time ("14s"); with a timeout, a tiny pie next to it fills toward it (amber past
+  80%, exact numbers in its tooltip). A finished row shows its duration and timeout on hover. The timeout comes only from the call's arguments (`toolTimeoutMs`: bash `timeout` in seconds,
+  `timeoutSeconds`, `timeoutMs`): pi exposes no per-tool defaults, and bash runs unbounded without one.
 - Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window);
   commentary between tool calls is normal (white) text, so the two stay distinct.
 - Steering: queued messages sit in a card attached to the top of the composer (Codex-style). Steers say
