@@ -748,7 +748,8 @@ An effect must never return what `scrollIntoView` returns (`useEffect(() => el.s
 `behavior: "smooth"` current Chromium returns a Promise, React calls it as the cleanup ("M is not a function") and
 the window goes blank. Give such effects a block body.
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.
-The checks are `pnpm typecheck` and `pnpm test`; the repo has no formatter or linter config (`npx biome` fetches an
+The checks are `pnpm typecheck` and `pnpm test` (some tests run real git, python3 and rg, so ci.yml and release.yml
+install ripgrep on their runners); the repo has no formatter or linter config (`npx biome` fetches an
 unrelated npm package). To build and test without rewriting the `out/` a running pi-gna reloads from, build with
 `npx electron-vite build --outDir /tmp/<dir>/out`, give `/tmp/<dir>` a copy of `package.json` and symlinks to
 `resources`, `src` and `node_modules`, and launch Electron (`node -e 'console.log(require("electron"))'`) on it.

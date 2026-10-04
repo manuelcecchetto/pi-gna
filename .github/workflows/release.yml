@@ -21,6 +21,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The tests run real git, python3 and rg (ATP's plan scan); the runner image has no ripgrep.
+      - run: brew install ripgrep
       - name: Tag matches package.json
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - name: Release notes from CHANGELOG.md

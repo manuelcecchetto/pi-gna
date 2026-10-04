@@ -19,6 +19,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The tests run real git, python3 and rg (ATP's plan scan); the runner image has no ripgrep.
+      - run: sudo apt-get install -y ripgrep
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
