@@ -13,6 +13,11 @@ export const FEATURE_LABELS: Readonly<Record<Feature, string>> = { kanban: "Kanb
 export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
 
+/** The empty state's backdrop, each a 🤌 in another form, painted at dusk (dark) and by day (light); none leaves the
+ * canvas plain. The renderer maps each to its images (lib/wallpapers.ts). */
+export const WALLPAPERS = ["sky", "stars", "peak", "pines", "shadow", "ink", "fresco", "none"] as const;
+export type Wallpaper = (typeof WALLPAPERS)[number];
+
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly ThinkingLevel[];
 
 /** The model a chat pi-gna starts runs on, for that chat only. Without a provider, the chat's own one if it has the
@@ -40,6 +45,9 @@ export interface Settings {
   version: 1;
   features: Record<Feature, boolean>;
   theme: Theme;
+  wallpaper: Wallpaper;
+  /** Each new empty state shows the next wallpaper, from the one picked, instead of always that one. */
+  wallpaperLoop: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
 }
@@ -47,6 +55,8 @@ export interface Settings {
 export type SettingsOp =
   | { type: "feature"; feature: Feature; enabled: boolean }
   | { type: "theme"; theme: Theme }
+  | { type: "wallpaper"; wallpaper: Wallpaper }
+  | { type: "wallpaperLoop"; loop: boolean }
   /** null: back to the default. */
   | { type: "model"; task: Task; model: TaskModel | null };
 
@@ -62,6 +72,8 @@ export const emptySettings = (): Settings => ({
   version: 1,
   features: Object.fromEntries(FEATURES.map((feature) => [feature, true])) as Record<Feature, boolean>,
   theme: "system",
+  wallpaper: "sky",
+  wallpaperLoop: false,
   models: {},
 });
 
@@ -93,6 +105,14 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (!THEMES.includes(op.theme)) throw new SettingsError(`unknown theme ${String(op.theme)}`);
       return settings.theme === op.theme ? settings : { ...settings, theme: op.theme };
     }
+    case "wallpaper": {
+      if (!WALLPAPERS.includes(op.wallpaper)) throw new SettingsError(`unknown wallpaper ${String(op.wallpaper)}`);
+      return settings.wallpaper === op.wallpaper ? settings : { ...settings, wallpaper: op.wallpaper };
+    }
+    case "wallpaperLoop": {
+      if (typeof op.loop !== "boolean") throw new SettingsError(`cannot loop wallpapers ${String(op.loop)}`);
+      return settings.wallpaperLoop === op.loop ? settings : { ...settings, wallpaperLoop: op.loop };
+    }
     case "model": {
       if (!TASKS.includes(op.task)) throw new SettingsError(`unknown task ${String(op.task)}`);
       const model = op.model === null ? undefined : taskModelOf(op.model);
@@ -121,6 +141,10 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   }
   if (THEMES.includes(file.theme as Theme)) settings.theme = file.theme as Theme;
   else if (file.theme !== undefined) dropped++;
+  if (WALLPAPERS.includes(file.wallpaper as Wallpaper)) settings.wallpaper = file.wallpaper as Wallpaper;
+  else if (file.wallpaper !== undefined) dropped++;
+  if (typeof file.wallpaperLoop === "boolean") settings.wallpaperLoop = file.wallpaperLoop;
+  else if (file.wallpaperLoop !== undefined) dropped++;
   const models = (file.models ?? {}) as Record<string, unknown>;
   for (const task of TASKS) {
     if (models[task] === undefined) continue;

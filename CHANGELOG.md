@@ -5,6 +5,10 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Wallpapers: pick the empty state's backdrop in Settings > Appearance, from the sky and six new ones, each a 🤌 in
+  another form (a constellation, a Dolomite spire, a pine forest, a shadow on a wall, an ink wash, a fresco), at dusk
+  in the dark theme and by day in the light one, or none. Loop shows the next one at each new chat and each launch.
+
 ## 0.3.2 - 2026-10-04
 
 - Fix chats exiting at start ("Cannot find module '../src/shared/viewport'"): 0.3.1 left a file the browser

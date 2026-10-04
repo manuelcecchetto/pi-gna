@@ -698,9 +698,17 @@ Verified live (pi 1.0.0, Oct 2026):
 Inspired by beautifului.dev (no code copied; it has no public source or license): dark neutral surfaces
 (~#1b1b1d), hairline borders, dashed dividers, system sans, mono only for code, paths and numbers, no eyebrow labels (small uppercase captions), muted grays, one blue accent,
 light and dark themes, the pi-logo spinner with shimmer text, compact chips that expand.
-Empty states sit on a painted 🤌 raised into a dusk sky (`assets/pigna-dusk.webp` dark, `pigna-day.webp` light;
-Shinkai-style with a halftone texture, generated with GPT Image 2.5 and outpainted to 16:9 with the hand centered),
-masked into the canvas above the text and composer. The spinner and the sidebar's state marks stay pi's pixel
+Empty states sit on a wallpaper picked in Settings > Appearance (`settings.wallpaper`, default `sky`; `none` leaves
+the canvas plain), masked into the canvas above the text and composer. Each is the 🤌 in another form: a painted hand
+raised into the sky (Shinkai-style with a halftone texture, outpainted to 16:9), a constellation, a Dolomite spire, a
+pine forest (a *pigna* is a pine cone), a shadow on a plaster wall, an ink wash and a fresco. Each has a dusk image
+(dark theme) and a day image (light), the day one generated from the dusk one as a reference so the scene stays the
+same; GPT Image 2.5 at 2560 × 1440, high, then `cwebp -q 72 -m 6 -sharp_yuv` (thumbnails: `-q 75 -resize 480 270`).
+Files are `assets/wallpapers/<id>-<dusk|day>.webp` and `thumbs/`, found by `import.meta.glob` in
+`lib/wallpapers.ts`, whose test fails when one is missing; keep the hand in the upper middle and the bottom third calm
+and dark (dusk) or pale (day), since the mask fades it out under the text. With Loop on (`settings.wallpaperLoop`),
+each new empty state (and so each launch) shows the next wallpaper; where the loop is stays in localStorage
+(`pigna:wallpaper-loop`). The spinner and the sidebar's state marks stay pi's pixel
 logo in its coral/blue/yellow: they show pi working.
 
 Brand: **pi-gna** (Italian *pigna*, the 🤌 "mano a pigna" gesture). The logo is 🤌i: Twemoji's pinched fingers
@@ -724,6 +732,8 @@ too, and on a taken port Electron only logs "Cannot start http server for devtoo
 `scripts/cdp.mjs` would drive the other agent's window. `PIGNA_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
+A `PIGNA_BACKGROUND=1` instance never paints for `scripts/cdp.mjs shot` (it hangs); start it with `--inspect=<port>`
+too and use `capture`, and wait a few seconds after opening a page (its enter animation captures blank).
 The same starvation hits CDP tests of background windows: mouse moves are dispatched with the next frame (hover
 and IntersectionObserver lag until one is drawn), and a `drag` blocks waiting for frames. Force frames by taking
 screenshots (`shot`) after a `move`, and in a parallel loop while a `drag` runs.

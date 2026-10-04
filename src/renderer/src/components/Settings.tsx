@@ -4,8 +4,9 @@
 import { ArrowLeft, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, ToggleRight, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
-import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, THEMES, type Theme, THINKING_LEVELS } from "../../../shared/settings";
+import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { tildify } from "../lib/format";
+import { WALLPAPER_LABELS, wallpaperStyle } from "../lib/wallpapers";
 import { applySettings, closeSettings, openSettings, type PageState, remoteError, showUpdate, toast, useApp } from "../state/app";
 import { useAtp } from "../state/atp";
 import { applyComputer, ComputerSection, useComputerSettings } from "./Computer";
@@ -28,7 +29,7 @@ interface SectionInfo {
 
 const SECTIONS: SectionInfo[] = [
   { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update about settings.json file folder" },
-  { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color" },
+  { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color wallpaper background backdrop empty state image loop cycle rotate shuffle" },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: Keyboard, group: "pi-gna", about: "Hold ⌘ anywhere to see ⌘1–⌘9 on the chats in the sidebar.", keywords: "keys hotkeys keyboard command" },
   {
     id: "providers",
@@ -283,12 +284,36 @@ const THEME_LABELS: Record<Theme, string> = { system: "System", light: "Light", 
 
 function AppearanceSection() {
   const theme = useApp((state) => state.settings.theme);
+  const wallpaper = useApp((state) => state.settings.wallpaper);
+  const loop = useApp((state) => state.settings.wallpaperLoop);
   return (
-    <Card>
-      <Row title="Theme" about="System follows macOS's appearance.">
-        <Segmented value={theme} options={THEMES} labels={THEME_LABELS} onChange={(next) => void applySettings({ type: "theme", theme: next })} />
-      </Row>
-    </Card>
+    <>
+      <Card>
+        <Row title="Theme" about="System follows macOS's appearance.">
+          <Segmented value={theme} options={THEMES} labels={THEME_LABELS} onChange={(next) => void applySettings({ type: "theme", theme: next })} />
+        </Row>
+      </Card>
+      <Card title="Wallpaper" note="Behind a new chat, above the composer. Each one is painted at dusk for the dark theme and by day for the light one.">
+        <div className="grid grid-cols-4 gap-3 p-3">
+          {WALLPAPERS.map((id) => {
+            const style = wallpaperStyle(id, true);
+            const on = id === wallpaper;
+            return (
+              <button key={id} type="button" aria-pressed={on} onClick={() => !on && void applySettings({ type: "wallpaper", wallpaper: id })} className="group flex flex-col gap-1.5 text-left">
+                <span
+                  style={style}
+                  className={`aspect-video w-full rounded-md ${style ? "wallpaper-thumb" : "border border-dashed border-line-strong bg-canvas"} ${on ? "ring-2 ring-accent ring-offset-2 ring-offset-canvas" : ""}`}
+                />
+                <span className={`text-[12px] ${on ? "text-fg" : "text-muted group-hover:text-fg"}`}>{WALLPAPER_LABELS[id]}</span>
+              </button>
+            );
+          })}
+        </div>
+        <Row title="Loop" about="Show the next wallpaper at each new chat and each launch, starting from the one picked.">
+          <Switch on={loop} onChange={(on) => void applySettings({ type: "wallpaperLoop", loop: on })} />
+        </Row>
+      </Card>
+    </>
   );
 }
 
