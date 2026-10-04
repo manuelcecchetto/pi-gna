@@ -38,7 +38,7 @@ describe("visible compaction UI", () => {
     expect(transcript.match(/Compacting context/g)).toHaveLength(1);
     expect(transcript).not.toContain("· compacting context");
     expect(composer).not.toContain("Compacting context");
-    expect(composer).toContain('title="Stop (Esc)"');
+    expect(composer).toContain('title="Stop (Esc twice)"');
     expect(transcript).toContain('aria-live="polite"');
   });
 

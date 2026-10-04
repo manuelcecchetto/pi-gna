@@ -58,12 +58,17 @@ function detectMenu(text: string, caret: number): MenuState | undefined {
 }
 
 /** `placeholder`: what the empty composer suggests while pi is idle (the ATP page's orchestrator has its own). */
+/** How long a first Esc keeps the stop button armed for the second. */
+const ESC_ARM_MS = 2500;
+
 export function Composer({ session, placeholder }: { session: SessionState; placeholder?: string }) {
   const { handle } = session;
   const [text, setTextState] = useState(() => drafts.get(handle) ?? "");
   const [menu, setMenu] = useState<MenuState>();
   const [selected, setSelected] = useState(0);
   const [files, setFiles] = useState<string[]>([]);
+  /** The first Esc while pi runs arms the stop button (it shows "esc"); a second Esc stops. */
+  const [armed, setArmed] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const commands = useApp((state) => state.commands[handle]);
   const annotations = useApp((state) => state.annotations);
@@ -174,7 +179,11 @@ export function Composer({ session, placeholder }: { session: SessionState; plac
     if (event.key === "Escape") {
       event.preventDefault();
       if (menu) setMenu(undefined);
-      else if (session.running || session.compacting) void stop();
+      else if (!(session.running || session.compacting)) return;
+      else if (armed) {
+        setArmed(false);
+        void stop();
+      } else setArmed(true);
       return;
     }
     if (event.key === "Enter" && !event.shiftKey) {
@@ -205,6 +214,13 @@ export function Composer({ session, placeholder }: { session: SessionState; plac
   const widgetsBelow = Object.entries(session.widgets).filter(([, w]) => w.placement === "belowEditor");
   const exited = session.phase === "exited";
   const busy = session.running || Boolean(session.compacting);
+
+  useEffect(() => {
+    if (!armed) return;
+    if (!busy) return setArmed(false);
+    const timer = setTimeout(() => setArmed(false), ESC_ARM_MS);
+    return () => clearTimeout(timer);
+  }, [armed, busy]);
 
   return (
     <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2 px-8 pb-5">
@@ -285,17 +301,20 @@ export function Composer({ session, placeholder }: { session: SessionState; plac
           <AttachMenu handle={handle} disabled={exited} />
           <ModelPicker session={session} />
           <ThinkingPicker session={session} />
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
             <TokenRate session={session} />
             <ContextMeter session={session} />
-            {busy && (
-              <span className="hidden text-[11px] text-faint sm:inline">
-                <Kbd>esc</Kbd> stop
-              </span>
-            )}
-            {busy && empty ? (
-              <button type="button" onClick={() => void stop()} title="Stop (Esc)" className="grid h-8 w-8 place-items-center rounded-full bg-fg text-canvas hover:opacity-90">
-                <Square size={11} fill="currentColor" />
+            {busy && (empty || armed) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setArmed(false);
+                  void stop();
+                }}
+                title={armed ? "Press Esc again to stop" : "Stop (Esc twice)"}
+                className={`grid h-8 min-w-8 place-items-center rounded-full bg-fg text-canvas hover:opacity-90${armed ? " px-2.5 font-mono text-[11px] font-medium" : ""}`}
+              >
+                {armed ? "esc" : <Square size={11} fill="currentColor" />}
               </button>
             ) : (
               <button
@@ -337,11 +356,11 @@ function PickerButton({ icon, label, onClick, disabled }: { icon: React.ReactNod
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
+      className="flex max-w-full min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
     >
       {icon}
-      <span className="max-w-48 truncate">{label}</span>
-      <ChevronDown size={11} className="text-faint" />
+      <span className="max-w-48 min-w-0 truncate">{label}</span>
+      <ChevronDown size={11} className="shrink-0 text-faint" />
     </button>
   );
 }
@@ -359,8 +378,10 @@ function ModelPicker({ session }: { session: SessionState }) {
     void setModel(session.handle, model);
   };
   return (
-    <div className="relative">
-      <PickerButton icon={<Cpu size={13} />} label={label} disabled={session.phase !== "ready"} onClick={() => setOpen(!open)} />
+    // On a narrow composer the model name truncates so the status group on the right keeps its line;
+    // min-w-13 keeps room for the icon, the chevron and the padding.
+    <div className="relative min-w-13">
+      <PickerButton icon={<Cpu size={13} className="shrink-0" />} label={label} disabled={session.phase !== "ready"} onClick={() => setOpen(!open)} />
       <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 w-80 p-1">
         <input
           autoFocus
@@ -400,7 +421,7 @@ function ThinkingPicker({ session }: { session: SessionState }) {
   if (!levels || (levels.length === 1 && levels[0] === "off")) return null;
   return (
     <div className="relative">
-      <PickerButton icon={<Brain size={13} />} label={session.thinkingLevel ?? "thinking"} disabled={session.phase !== "ready"} onClick={() => setOpen(!open)} />
+      <PickerButton icon={<Brain size={13} className="shrink-0" />} label={session.thinkingLevel ?? "thinking"} disabled={session.phase !== "ready"} onClick={() => setOpen(!open)} />
       <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 w-40 p-1">
         {levels.map((level: ThinkingLevel) => (
           <button
