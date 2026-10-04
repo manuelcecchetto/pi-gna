@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.4.1 - 2026-10-04
+
 - Computer Use keeps its Accessibility and Screen Recording permissions across updates: the helper is now signed
   with a stable certificate instead of a per-build signature. Updating to this release asks for both one last time.
 
