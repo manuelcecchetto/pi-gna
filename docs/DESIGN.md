@@ -275,9 +275,10 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   (Packaging and release, "Signing"): stable across releases, new on every ad-hoc checkout build. When main installs
   a newer helper whose requirement differs from the installed one, it runs `tccutil reset Accessibility|ScreenCapture
   io.github.manuelcecchetto.pigna.computeruse`, so macOS asks again instead of showing a switch that is on but no
-  longer applies; the same command clears stale entries by hand. After
-  a reset the helper is not listed under Screen & System Audio Recording until it asks; add it with **+** from
-  `~/.pi-gna/computer-use/`. A release that does not touch `native/computer-use/` keeps `helperVersion`. macOS 26 may
+  longer applies; the same command clears stale entries by hand. macOS 26
+  never prompts for Screen Recording from the helper (tccd: "kTCCServiceScreenCapture does not allow prompting;
+  returning denied") and the pane does not list it, so that row's Request opens the pane and reveals the installed
+  helper (`~/.pi-gna/computer-use/`) in Finder to add with **+** or drag in. A release that does not touch `native/computer-use/` keeps `helperVersion`. macOS 26 may
   also show a one-off "bypass the system private window picker" prompt on the first screenshot; choose Allow.
 - **Known limits**: the focused (main) window of an app only, so a multi-window app always acts on that window and,
   with every window off screen, a read falls back to another window of the app; minimized or other-Space windows

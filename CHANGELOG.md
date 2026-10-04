@@ -5,6 +5,9 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Computer Use: Request for Screen Recording opens the System Settings pane and shows the helper in Finder to add,
+  since macOS does not prompt for it (the button did nothing).
+
 ## 0.4.1 - 2026-10-04
 
 - Computer Use keeps its Accessibility and Screen Recording permissions across updates: the helper is now signed

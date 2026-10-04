@@ -82,6 +82,11 @@ export class ComputerService {
 
   constructor(private readonly deps: ComputerServiceDeps) {}
 
+  /** Where the helper runs from: what to add by hand under Screen & System Audio Recording. */
+  get installedApp(): string {
+    return join(this.deps.installDir, HELPER_APP);
+  }
+
   /** Subscribe to helper notifications (`cancelled`, `permissions_changed`, `app_gone`). Returns an unsubscribe. */
   onNotification(listener: (notification: ComputerNotification) => void): () => void {
     this.listeners.add(listener);
@@ -129,7 +134,7 @@ export class ComputerService {
 
   private async start(): Promise<RpcClient> {
     const { deps } = this;
-    const installed = join(deps.installDir, HELPER_APP);
+    const installed = this.installedApp;
     const [bundled, current] = await Promise.all([deps.readVersion(deps.bundledApp), deps.readVersion(installed)]);
     if (bundled === undefined) log.warn("computer", `helper missing at ${deps.bundledApp}; run \`pnpm build:computer-use\` in a checkout`);
     if (bundled === undefined) throw new ComputerError(ComputerErrorCode.appNotFound, `Computer Use helper is missing from this build (${deps.bundledApp})`);

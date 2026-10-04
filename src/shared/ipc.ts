@@ -114,7 +114,8 @@ export interface ComputerApi {
   /** Live Accessibility and Screen Recording status from the helper (starts it); rejects with the reason it cannot. */
   permissions(): Promise<Permissions>;
   /** Ask macOS for the missing permissions (shows its prompts), then report the status. */
-  requestPermissions(): Promise<Permissions>;
+  /** Prompts for what is missing; for Screen Recording, which macOS will not prompt for, opens the pane and shows the helper. */
+  requestPermissions(pane?: "accessibility" | "screen_recording"): Promise<Permissions>;
   openSettings(pane: "accessibility" | "screen_recording"): Promise<void>;
 }
 

@@ -90,14 +90,14 @@ export function ComputerSection() {
             name="Accessibility"
             about="Read app windows and send clicks and keys."
             granted={permissions?.accessibility}
-            onRequest={() => void run(() => studio().requestPermissions())}
+            onRequest={() => void run(() => studio().requestPermissions("accessibility"))}
             onOpen={() => open("accessibility")}
           />
           <PermissionRow
             name="Screen Recording"
             about="Take screenshots of app windows."
             granted={permissions?.screenRecording}
-            onRequest={() => void run(() => studio().requestPermissions())}
+            onRequest={() => void run(() => studio().requestPermissions("screen_recording"))}
             onOpen={() => open("screen_recording")}
           />
         </div>

@@ -271,9 +271,16 @@ function registerIpc(shellEnv: Promise<void>): void {
   handle(IPC.computerGet, () => computerPolicy.get());
   handle(IPC.computerApply, (op: ComputerOp) => computerPolicy.apply(op));
   handle(IPC.computerPermissions, () => computerHelper.call("permissions", {}));
-  handle(IPC.computerRequest, async () => {
+  handle(IPC.computerRequest, async (pane?: "accessibility" | "screen_recording") => {
     await computerHelper.call("request_permissions", {});
-    return computerHelper.call("permissions", {});
+    const permissions = await computerHelper.call("permissions", {});
+    // macOS 26 does not prompt for Screen Recording from the background helper ("does not allow prompting") and does
+    // not list it in the pane until it is added, so open the pane and show the app to add with + or drag in.
+    if (pane === "screen_recording" && !permissions.screenRecording) {
+      await computerHelper.call("open_settings", { pane });
+      shell.showItemInFolder(computerHelper.installedApp);
+    }
+    return permissions;
   });
   handle(IPC.computerOpenSettings, async (pane: "accessibility" | "screen_recording") => {
     if (pane !== "accessibility" && pane !== "screen_recording") throw new Error("Unknown settings pane");

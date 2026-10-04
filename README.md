@@ -97,8 +97,9 @@ updates the `--pigna` flag.
 ## Computer Use setup
 
 1. Open Settings > Computer Use (Cmd+Shift+U) and turn on **Let pi use apps on this Mac**.
-2. Grant **Accessibility** and **Screen Recording** to *pi-gna Computer Use* (the page opens each pane). The helper
-   lives in `~/.pi-gna/computer-use/`; if it is missing from Screen & System Audio Recording, add it with **+**.
+2. Grant **Accessibility** and **Screen Recording** to *pi-gna Computer Use* (the page opens each pane). macOS does
+   not prompt for Screen Recording from the helper, so **Request** opens the pane and shows the helper in Finder
+   (`~/.pi-gna/computer-use/`): add it with **+** or drag it into the list, then choose **Quit & Reopen** if asked.
 3. Ask pi to use an app and answer the approval card. Revoke "Always allow" apps on the same page.
 
 Release builds sign the helper with a stable certificate, so the grants survive updates. If the switches in System

@@ -101,7 +101,7 @@ const api: StudioApi = {
     apply: (op) => ipcRenderer.invoke(IPC.computerApply, op),
     onChange: (listener) => subscribe<ComputerSettings>(IPC.computerChanged, listener),
     permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
-    requestPermissions: () => ipcRenderer.invoke(IPC.computerRequest),
+    requestPermissions: (pane) => ipcRenderer.invoke(IPC.computerRequest, pane),
     openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
   },
   settings: {
