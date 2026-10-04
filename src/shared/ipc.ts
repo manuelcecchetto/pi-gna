@@ -34,6 +34,7 @@ export const IPC = {
   windowFocused: "studio:window-focused",
   windowFocus: "studio:window-focus",
   openExternal: "studio:open-external",
+  visualKill: "studio:visual-kill",
   events: "studio:events",
   browserLayout: "browser:layout",
   browserNewTab: "browser:new-tab",
@@ -377,6 +378,8 @@ export interface StudioApi {
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
   pathForFile(file: File): string;
   openExternal(url: string): void;
+  /** Kill the renderer process of a stuck inline visual frame (by its id), so a runaway script stops burning a core. */
+  killVisual(frameId: string): void;
   onEvents(listener: (batch: HostEventBatch) => void): () => void;
   browser: BrowserApi;
   board: BoardApi;

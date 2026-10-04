@@ -955,6 +955,33 @@ what it recorded), `menu "Copy Image"` clicks an item of the last one, and `main
 process with `require` (for example to read the clipboard). Save the user's clipboard before an item writes to
 it and restore it afterwards.
 
+### Verifying inline visuals
+
+`FAKE_FIXTURE=<name>` makes `scripts/fake-pi.mjs` reply with a fixed text from `scripts/fake-pi-visuals.mjs`, `FAKE_CHUNK`
+characters per delta every `FAKE_DELAY` ms: `architecture`, `comparison`, `slider`, `two` (two visuals), `stream` (use a small
+`FAKE_CHUNK`, 25, to watch the placeholder), `oversized` (70 KB, use `FAKE_CHUNK=2000`), `hostile` (nine fences: fetch, `<img>`,
+`top.location`, `window.open`, form submit, `alert`, `parent.studio`, a `javascript:` link, an http link; they point at
+`http://127.0.0.1:$FAKE_HOSTILE_PORT`) and `loop` (`while(true){}`). Start a test instance as above, with fresh
+`PIGNA_USER_DATA` containing `settings.json` `{"version":1,"visuals":true}`, `PIGNA_CWD`, `PIGNA_BACKGROUND=1`,
+`--remote-debugging-port=<p>` and `--inspect=<q>`, and run a tiny counting HTTP server for the hostile port. Then
+(`CDP_PORT=<p> CDP_MAIN=<q>`), after `node scripts/cdp.mjs type "go" --enter`:
+- **Renders and sizes**: `eval "[...document.querySelectorAll('iframe.visual-frame')].map(f=>f.style.height)"` (above 40px once
+  the frame reported its height); `nativeTheme.themeSource='light'|'dark'` through `main`, then `capture` for both themes.
+- **Streaming**: poll `document.body.innerText.includes('Drawing visual')` while a small-chunk `stream` runs; it turns into an
+  iframe when the reply ends.
+- **Frame contents**: `node scripts/cdp-frame.mjs "<expr>" [n]` evaluates inside the nth frame (the slider: set `#w`, dispatch
+  `input`, read `#out`; hostile: `window.__parentAccess` is `blocked`).
+- **Containment**: the counting server saw no request; `location.href` is unchanged; `main "webContents.getAllWebContents()"`
+  and `BrowserWindow.getAllWindows()` show no new window. `window.studio` is frozen, so stub nothing: a click on the http link
+  really opens your browser (the only request the server may see, and only from a click); the `javascript:` link opens nothing.
+- **Loop**: a 100 ms timer in the page keeps ticking (max gap ~100 ms), the watchdog shows "Visual stopped responding" after
+  8 s, and the frame's process is gone from `main "...mainFrame.framesInSubtree"` (check `top` that no helper stays at 100%).
+- **Setting**: Settings > Agent > Inline visuals (`[role=switch]` next to that label) flips live: off turns visuals into
+  `visual` code blocks and drops the frame processes, on brings the frames back.
+- Two lessons from the first run: the streaming placeholder must not delete the hidden `.visual-src` (the source was lost when
+  streaming ended without the html changing: blank 40px frame), and the frame's first `render` can be missed if it loads before
+  the parent listens (the frame now acks with `rendered`; heartbeats re-send until then).
+
 Electron drag regions: `-webkit-app-region` rects are applied in document order, so a `no-drag` element that
 overlaps a `drag` header must come later in the DOM (or be its descendant), or real clicks start a window drag.
 CDP clicks bypass the OS drag layer, so tests cannot catch this; check DOM order instead.

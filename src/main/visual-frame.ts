@@ -35,3 +35,10 @@ export function visualAsset(rawUrl: string): { file: string; type: string } | nu
   const asset = Object.hasOwn(ASSETS, url.pathname) ? ASSETS[url.pathname] : undefined;
   return asset ? { file: asset[0], type: asset[1] } : null;
 }
+
+/** The process to kill for a stuck frame: the one hosting `pigna-visual://<frameId>/`, never the app window's own. */
+export function visualFrameToKill(frames: readonly { url: string; osProcessId: number }[], frameId: string, appPid: number): number | undefined {
+  if (!/^[0-9a-f]{16}$/.test(frameId)) return undefined;
+  const frame = frames.find((f) => f.url.startsWith(`${VISUAL_SCHEME}://${frameId}/`));
+  return frame && frame.osProcessId > 0 && frame.osProcessId !== appPid ? frame.osProcessId : undefined;
+}

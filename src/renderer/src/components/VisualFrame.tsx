@@ -29,17 +29,25 @@ function newFrameId(): string {
 /** Sandboxed iframe running one HTML fragment. Memoised by source so transcript re-renders keep the frame. */
 export const VisualFrame = memo(function VisualFrame({ source }: { source: string }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const [src] = useState(() => `pigna-visual://${newFrameId()}/doc`);
+  const [frameId] = useState(newFrameId);
+  const src = `pigna-visual://${frameId}/doc`;
   const [height, setHeight] = useState(MIN_H);
   const [expanded, setExpanded] = useState(false);
   const [showSource, setShowSource] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
 
+  // A frame that stopped responding keeps spinning even after its iframe is removed: its process has to be killed.
+  useEffect(() => {
+    if (error) window.studio.killVisual(frameId);
+  }, [error, frameId]);
+  useEffect(() => () => window.studio.killVisual(frameId), [frameId]);
+
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
     let lastBeat = Date.now();
+    let rendered = false;
     const post = (message: unknown) => frame.contentWindow?.postMessage(message, "*");
     const sendRender = () => post({ type: "render", html: source, tokens: readTokens() });
     const onMessage = (event: MessageEvent) => {
@@ -50,6 +58,13 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
       switch (data.type) {
         case "ready":
           sendRender();
+          break;
+        case "rendered":
+          rendered = true;
+          break;
+        case "heartbeat":
+          // The frame can load before this effect listens, losing its `ready` and our load handler: re-send until it confirms.
+          if (!rendered) sendRender();
           break;
         case "height":
           if (typeof data.px === "number" && Number.isFinite(data.px)) setHeight(Math.max(MIN_H, Math.ceil(data.px)));

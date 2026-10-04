@@ -20,7 +20,7 @@ import { BrowserManager, PARTITION } from "./browser/manager";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { serveVisual } from "./visual-protocol";
-import { VISUAL_SCHEME } from "./visual-frame";
+import { VISUAL_SCHEME, visualFrameToKill } from "./visual-frame";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { BoardStore } from "./board";
 import { CardImages } from "./card-images";
@@ -238,6 +238,11 @@ function registerIpc(shellEnv: Promise<void>): void {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
   on(IPC.openExternal, (url: string) => openExternal(url));
+  on(IPC.visualKill, (frameId: string) => {
+    const frames = window?.webContents.mainFrame.framesInSubtree ?? [];
+    const pid = visualFrameToKill(frames, frameId, window?.webContents.getOSProcessId() ?? 0);
+    if (pid !== undefined) process.kill(pid, "SIGKILL");
+  });
   handle(IPC.compactionSettings, async () => (await shellEnv, readCompactionSettings()));
   handle(IPC.windowFocused, () => window?.isFocused() ?? false);
   handle(IPC.describePaths, (paths: string[]) => describePaths(Array.isArray(paths) ? paths : []));

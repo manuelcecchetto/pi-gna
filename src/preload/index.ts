@@ -45,6 +45,7 @@ const api: StudioApi = {
   onOpenProject: (listener) => subscribe<string>(IPC.openProject, listener),
   pathForFile: (file) => webUtils.getPathForFile(file),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
+  killVisual: (frameId) => ipcRenderer.send(IPC.visualKill, frameId),
   onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),
   browser: {
     layout: (layout) => ipcRenderer.send(IPC.browserLayout, layout),

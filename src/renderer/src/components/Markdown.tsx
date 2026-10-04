@@ -52,10 +52,17 @@ export const Markdown = memo(function Markdown({
     for (const el of root.querySelectorAll<HTMLElement>(".visual[data-visual]")) {
       const source = el.querySelector(".visual-src")?.textContent ?? "";
       if (streaming) {
+        // Keep the hidden source: the effect runs again when streaming ends and the html (so this element) is unchanged.
         el.classList.add("pending");
-        el.textContent = "Drawing visual…";
+        if (!el.querySelector(".visual-drawing")) {
+          const note = document.createElement("span");
+          note.className = "visual-drawing";
+          note.textContent = "Drawing visual…";
+          el.append(note);
+        }
         continue;
       }
+      el.classList.remove("pending");
       el.textContent = "";
       const mount = createRoot(el);
       mount.render(<VisualFrame source={source} />);

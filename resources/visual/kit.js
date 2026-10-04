@@ -32,6 +32,7 @@
     if (d.type === "render") {
       applyTokens(d.tokens || d.vars);
       render(d.html);
+      send({ type: "rendered" });
     } else if (d.type === "tokens") applyTokens(d.tokens || d.vars);
     else if (d.type === "ping") send({ type: "heartbeat" });
   });

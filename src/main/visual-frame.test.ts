@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VISUAL_CSP, visualAsset } from "./visual-frame";
+import { VISUAL_CSP, visualAsset, visualFrameToKill } from "./visual-frame";
 
 describe("visualAsset", () => {
   const host = "pigna-visual://abcd1234ef";
@@ -38,5 +38,25 @@ describe("VISUAL_CSP", () => {
     expect(directives.get("font-src")).toBe("data:");
     expect(directives.get("media-src")).toBe("data: blob:");
     expect(VISUAL_CSP).not.toMatch(/https?:|\*/);
+  });
+});
+
+describe("visualFrameToKill", () => {
+  const id = "0123456789abcdef";
+  const frames = [
+    { url: "app://pigna/index.html", osProcessId: 10 },
+    { url: `pigna-visual://${id}/doc`, osProcessId: 20 },
+    { url: "pigna-visual://fedcba9876543210/doc", osProcessId: 30 },
+  ];
+  it("picks the process hosting that frame", () => {
+    expect(visualFrameToKill(frames, id, 10)).toBe(20);
+  });
+  it("never kills the app window's process", () => {
+    expect(visualFrameToKill(frames, id, 20)).toBeUndefined();
+  });
+  it("refuses malformed ids and unknown frames", () => {
+    expect(visualFrameToKill(frames, "app", 10)).toBeUndefined();
+    expect(visualFrameToKill(frames, "../../index", 10)).toBeUndefined();
+    expect(visualFrameToKill(frames, "aaaaaaaaaaaaaaaa", 10)).toBeUndefined();
   });
 });
