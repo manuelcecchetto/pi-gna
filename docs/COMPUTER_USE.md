@@ -9,13 +9,13 @@ typing) with its own virtual cursor, per-app approvals and an Esc-to-cancel, wit
 macOS only. The Codex app's Computer Use is the behavioral reference (API shape and policy); no OpenAI code or
 binary is copied or shipped.
 
-> **Evidence contradicts one plan-wide assumption.** The plan assumed "AX action first, `CGEventPostToPid` as the
-> fallback" would cover clicks without touching the user's cursor. On this Mac (macOS 26.4.1, arm64) a
-> `CGEventPostToPid` **left click is ignored by TextEdit even when TextEdit is frontmost** (also with
-> `SLEventPostToPid`, window-number fields, a preceding mouseMoved, and the SkyLight focus-without-raise record).
-> Only a real HID-tap click (which moves the cursor) worked. Keyboard events through `CGEventPostToPid` **do**
-> work in the background. So pointer clicks need a third rung (see "Input strategy"), and "never moves the user's
-> cursor" holds for AX actions and keys, not for the last-resort click. Everything else in the plan held.
+> **Evidence update (T04b).** T01 concluded that pointer clicks needed a foreground fallback (activate the app, warp the
+> cursor). That is **withdrawn**: it only held because the posted events lacked the target window number and the
+> window-relative location. With the recipe in "Input strategy" (private SkyLight calls, discovered by static analysis of
+> the Codex service's API names plus public prior art) left/double/right click, drag, scroll, typing and menu actions
+> reach a background AppKit, SwiftUI and Electron window while the user's frontmost app, key window and cursor stay
+> unchanged (Evidence e). **The helper must never activate an app, warp the cursor or post to the HID tap.** What cannot be done in the
+> background fails with an error (see "Cannot be done in the background").
 
 ## Process model
 
@@ -247,45 +247,97 @@ Order for every action, per element (`elementIndex`) or point (`x,y`):
    scrollbar `AXIncrement`/`AXDecrement` or `AXScrollToVisible` for the element, else a scroll-wheel
    CGEvent (below). `type_text` into a focused settable text element may use AX (`AXSelectedText` set inserts at
    the caret) when the app is Cocoa; otherwise key events.
-2. **`CGEventPostToPid`** (never activates, never moves the cursor):
-   - **Keyboard: works in the background** (Evidence a): focus the element first with
-     `AXUIElementSetAttributeValue(el, "AXFocused", true)` (or the window's `AXMain`), then for each UTF-16 unit
-     post key-down/key-up `CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown:)` with
-     `keyboardSetUnicodeString` (this types any character without layout mapping). `press_key` maps
-     xdotool names to virtual key codes (Return 36, Tab 48, Escape 53, BackSpace 51, Delete 117, arrows 123-126,
-     F-keys, `KP_n`, letters/digits from a US layout table) and sets `event.flags` for `super`/`ctrl`/`alt`/`shift`.
-     **Command-key shortcuts did not select-all in the background TextEdit** (menu key equivalents are
-     dispatched by an active `NSApp`); hypothesis: shortcut keys with `super` need rung 3 (activate) or, better,
-     the equivalent menu item pressed through AX (`AXMenuBar` → item → `AXPress`); the key tool tries a
-     menu-item lookup by key equivalent when `super+` is requested and the app is not active.
-   - **Mouse: does not work for AppKit apps** (Evidence a): `postToPid` and SkyLight `SLEventPostToPid` left
-     clicks were ignored by TextEdit, frontmost or not, with or without `mouseEventWindowUnderMousePointer`
-     fields, a `mouseMoved` first, pressure, or the SkyLight `SLPSPostEventRecordTo` focus-without-raise
-     records (bytes `0xf8`, `0x01/0x02`, window id at `0x3c`). It is still the first thing tried for a
-     coordinate click on an app that is known to accept it (Chromium/Electron and some games accept posted
-     mouse events; hypothesis, not tested); the helper verifies by re-reading the AX tree (or the caller's next
-     `get_state`) and the result's `method` says what was used. The unverified-effect case is simply reported to
-     the model as "click sent (cgevent)".
-3. **Last resort: brief foreground click** (only for `click`/`drag`/`scroll` by coordinates when 1 and 2 cannot
-   work, and not for elements that have an AX action): save `CGEvent(source: nil).location` and the frontmost
-   app, `NSRunningApplication.activate(options: [])` the target (this raises its window; the user sees it
-   happen and the overlay announces it), post a HID-tap click with `post(tap: .cghidEventTap)` at the point,
-   then `CGWarpMouseCursorPosition` back to the saved location, and re-activate the previously frontmost app.
-   This **does move the cursor for ~100 ms and changes focus**; it is a settings toggle
-   ("Allow brief foreground clicks", default **on**, written in the overlay pill as "pi is using <App>") and a
-   hard no when the user's real input is active (see below). Observed during the spike: HID-tap clicks reliably hit
-   what is under the real pointer, so the point must be re-hit-tested against `CGWindowListCopyWindowInfo` (the
-   target window must be topmost at that point; otherwise activate first and re-check, else fail with
-   `action_failed: target point is covered`).
+2. **Synthetic background events** (never activates, never moves the cursor, never touches the HID tap). Proven
+   mechanism, all on macOS 26.4.1 arm64 (Evidence e). Every call below is public API except the three SkyLight symbols
+   resolved with `dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight")` + `dlsym`
+   (`SLPSPostEventRecordTo`, `SLEventSetWindowLocation`, optionally `SLEventPostToPid`; `GetProcessForPID` is the
+   deprecated Carbon call declared through `@_silgen_name`). Resolve them once; if any is missing the helper reports
+   `action_failed: background input unavailable on this macOS` (never a foreground fallback).
 
-When to activate a window without clicking: only for `press_key` with `super+`/`ctrl+` shortcuts that have no
-AX menu equivalent, and only for the duration of the call (activate, post, restore frontmost app). Otherwise never
-activate. `NSRunningApplication.activate` of an app launched by `get_state` is not needed: launch uses
-`NSWorkspace.openApplication` with `activates = false`.
+   Per action, with `wid` = the target CGWindowID (the window `get_app_state` captured, `captureMappings`) and `p` the
+   point in the window's own top-left-origin point space (`screenPoint` minus the window's frame origin):
 
-**User interference guard**: while an action runs the helper polls `CGEventSource.secondsSinceLastEventType(.hidSystemState,
-.mouseMoved/.keyDown)`; if the user's own input happened < 150 ms ago before a rung-3 action, delay up to 1 s,
-then fail with `action_failed: user is interacting` rather than steal input.
+   1. **Believe-active + key, without raising** (`synthFocus(true)`, only if the target is not truly frontmost):
+      `GetProcessForPID(pid, &psn)`; post to `psn` with `SLPSPostEventRecordTo(&psn, bytes)` a 0xf8-byte record
+      zero-filled with `b[0x04]=0xf8; b[0x08]=0x0d; b[0x8a]=0x01; uint32 wid at b[0x3c]` (yabai's activate record). The app
+      receives an AppKit-defined "application activated" event, `NSApp.isActive` and `applicationDidBecomeActive`
+      fire inside the target, WindowServer's front process does **not** change. Wait ~40 ms, then post two records
+      `b[0x04]=0xf8; b[0x3a]=0x10; uint32 wid at b[0x3c]; b[0x20..0x2f]=0xff` with `b[0x08]=0x01` then `0x02`
+      (yabai's `make_key_window`): the window becomes key inside the app (`windowDidBecomeKey`, `isKeyWindow`) without being
+      reordered. This is what makes text selection, caret placement, first responder and web `document.hasFocus()` work;
+      without it buttons/checkboxes still work but a click in a text view or field in an inactive app does not take
+      focus (drag and double-click selected nothing in the control run).
+   2. **Mouse** (down/up/dragged, clickCount, left or right): `NSEvent.mouseEvent(with:location:modifierFlags:timestamp:
+      windowNumber: wid, context: nil, eventNumber:clickCount:pressure: 1)` with `location` in window **bottom-left**
+      coordinates (`frameHeight - p.y`), then `.cgEvent`; set `CGEventField 51` (it already holds `wid`; the AppKit event
+      then carries `windowNumber == wid`), field 40 = pid; `SLEventSetWindowLocation(cgEvent, p)` (**required**: without it
+      nothing hit, every combination tried missed); deliver with `CGEventPostToPid(pid, ev)` (`SLEventPostToPid`
+      worked equally). Type sequence: mouseDown, ~30 ms, mouseUp, ~40 ms; double click = a second pair with
+      `clickState` 2; right click = `rightMouseDown/Up` (opens the context menu, Chromium reports `button=2` and
+      `contextmenu`); drag = mouseDown, 8 interpolated `leftMouseDragged` ~15 ms apart, mouseUp. The CGEvent's own screen
+      location is ignored once the window number and window location are set.
+   3. **Scroll**: `CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: dy, ...)`, `location` =
+      window origin + p, field 51 = `wid`, field 40 = pid, `SLEventSetWindowLocation(ev, p)`, `postToPid`.
+   4. **Keys / text**: `CGEvent(keyboardEventSource: nil, virtualKey:, keyDown:)`, `keyboardSetUnicodeString` per UTF-16
+      unit for text, `flags` for modifiers, field 51 = `wid`, field 40 = pid, `postToPid`. Works in the background
+      for typing, Return/Tab/arrows and keys handled by the focused responder. **Menu key equivalents (cmd+a, cmd+v,
+      cmd+1, ...) do not fire** even with step 1 (`NSMenu.performKeyEquivalent` returned false inside the app while it
+      believed it was active and key). Use the AX menu route instead: walk `AXMenuBar`, find the `AXMenuItem` whose
+      `AXMenuItemCmdChar`/`AXMenuItemCmdModifiers` match, `AXPress` it (proven: Edit > Select All after a click into
+      the text view with step 1 active, and a custom item). `press_key` therefore maps `super+x` to that lookup first,
+      and fails with `action_failed: no menu item for shortcut` if none matches.
+   5. **Undo the belief**: `synthFocus(false)` = the same activate record with `b[0x8a]=0x02` (deactivate, window id of
+      the target), after ~100 ms. Do this after every action so the target does not keep believing it is active
+      (it would also show an active title bar if its window is visible).
+   6. **Restore z-order**: a mouse down in a window that is not topmost makes AppKit order that window to the front of
+      the stack (within the user's current app; the user's key window and the frontmost app are untouched, but the target
+      window now covers the user's windows). Record the user's frontmost app's `AXFocusedWindow` before step 1 and
+      `AXUIElementPerformAction(thatWindow, kAXRaiseAction)` after the click (~100 ms later); the stack returns to its
+      previous order and the frontmost app, key window and cursor were never different. If the AX raise fails
+      (no `AXFocusedWindow`, e.g. the front app has no window), leave it and report `zOrderChanged: true` in the result.
+      Do this only for pointer actions that raised something (compare `CGWindowListCopyWindowInfo` order before/after).
+
+   Observed requirements and limits of this route: the target window must be **on screen** (a hidden app's windows,
+   launched with `open -j`, minimized windows and windows on another Space receive the events but AppKit drops the
+   clicks: nothing hit). `get_app_state`'s launch therefore uses `open -g` semantics without hiding (`NSWorkspace
+   openApplication` with `activates = false`, `hides = false`), so the window appears behind the user's
+   current windows. Chromium/Electron accepted the same events (left, double, right, scroll, text) with `isTrusted`
+   true; the (-1,-1) "primer click" some write-ups add for user-activation gates (video play, fullscreen,
+   `window.open`) was not needed for our fixture but is a documented tweak to try if a page ignores a click
+   (hypothesis). Context-menu items: `AXShowMenu` + `AXPress` on the `AXMenuItem`; clicking the menu window with posted
+   mouse events was **not** proven (hypothesis: use AX).
+3. **There is no third rung.** No activation, no cursor warp, no HID-tap click, ever. If rungs 1 and 2 cannot do it, the
+   tool fails (below).
+
+### Cannot be done in the background (must fail, never silently activate)
+
+Error `action_failed` (or `unsupported`) with a one-line cause the model can read; the overlay never claims success.
+
+- Target window not on screen: minimized, app hidden, another Space, or fully off-screen. (`app_not_visible`: tell the
+  user/model to un-minimize; the helper does not do it.)
+- Canvas/game surfaces that read only HID-tap events (Blender GHOST, Unity, SDL games; per cua-driver's write-up; not
+  tested here): `action_failed: app does not accept background input`.
+- Menu key equivalents with no matching `AXMenuItem`; shortcuts handled only by a global event tap.
+- Chromium right-click on web content on some builds (the write-up reports coercion to left click; our Electron fixture
+  received `button=2`), so verify with the next `get_app_state`.
+- Secure input / password fields (`IsSecureEventInputEnabled`), macOS security prompts, SecurityAgent: already refused by policy.
+- Anything the private SkyLight symbols no longer resolve for (new macOS): fail with the cause; do not degrade.
+- Reading or writing the clipboard is **not** a background action (it is global). `paste` saves and restores it
+  (like Codex) and is allowed; no other tool may touch it.
+
+### Concurrency
+
+Different apps are driven by different chats at the same time (Codex allows this; only the same app is exclusive). The
+synthetic focus record, the AX raise and the window-order check are per target app, so two actions on two different apps
+do not interfere. **T02's handlers currently run synchronously on the socket thread; T05 must change that**: one serial
+action queue per `bundleId` (an actor or `DispatchQueue` per app) so actions for different apps run concurrently and
+two actions for the same app are strictly ordered; the socket thread only dispatches and replies by request id. The
+user-frontmost-app/z-order snapshot used in step 6 is taken per action under a small global lock (reads only), since the
+user's frontmost window is shared state; an action that sees the frontmost app change mid-action (the user switched)
+must not "restore" to the stale app: restore only if the frontmost app is still the one snapshotted.
+
+**Never raise on the user's behalf beyond step 6**: the helper never calls `NSRunningApplication.activate`,
+`_SLPSSetFrontProcessWithOptions`, `AXFrontmost = true`, `AXRaise` on the target, or `open` without `-g`.
 
 ## Settle wait
 
@@ -308,7 +360,7 @@ CGShieldingWindowLevel()` (higher than any app; verify it also covers fullscreen
 
 - **Virtual cursor**: an arrow (SVG-like `NSBezierPath`, accent `#339cff` from the helper's `config.json` strings
   like Codex's is optional) drawn at the global point of the last action with a short ease-out move (200 ms), a ripple on
-  click, and a small trailing label for typing. It is purely visual; the real pointer is never moved (except rung 3).
+  click, and a small trailing label for typing. It is purely visual; the real pointer is never moved.
 - **Pill**: a rounded capsule pinned to the top-center of the target window, 28 pt high, text
   `pi is using <App name> · Esc to cancel` (localizable strings in the helper's `strings.json`, default en),
   dark translucent background (`NSVisualEffectView .hudWindow`), no focus. Shown on `begin_session`, hidden on
@@ -421,9 +473,7 @@ is open or the answer takes longer than 10 minutes, the decision is Deny. The to
 2. Permissions: Accessibility ✓/✗, Screen Recording ✓/✗, "Open System Settings" buttons, helper path and version
    (`~/.pi-gna/computer-use/…`, `v<PigCUHelperVersion>`), "Reinstall helper" (explicit, warns about re-granting).
 3. **Always-allowed apps** list (icon, name, bundle id, added date) with Remove; "Allow once" grants are not listed.
-4. "Allow brief foreground clicks" toggle (rung 3), default on, with a sentence that this briefly raises the app and
-   returns your pointer.
-5. Footnote: terminal apps, pi-gna, and system security prompts can never be controlled.
+4. Footnote: terminal apps, pi-gna, and system security prompts can never be controlled.
 6. "Stop all computer use" button (calls `end_session` for every session).
 
 ## Main-side files (for later nodes)
@@ -455,9 +505,11 @@ Risks:
   forces a re-grant. Hypothesis (not tested): signing the helper with a stable self-signed code-signing identity
   created in the user's login keychain would keep the designated requirement across rebuilds; revisit if
   re-grants hurt.
-- **Mouse clicks without moving the pointer are not reliably possible** with public/known SPIs on this OS (Evidence a);
-  rung 3 is the answer and visibly raises the target. Apps without AX actions for custom-drawn controls
-  (games, canvases, some Electron apps with a flat AX tree) depend on it.
+- **Background pointer input relies on private SkyLight SPI** (`SLPSPostEventRecordTo`, `SLEventSetWindowLocation`) and
+  an undocumented event-record layout (Evidence e). A macOS update can break it; the helper detects missing symbols and
+  fails the action (no foreground fallback). Re-run the T04b fixtures on each new macOS major. The target's window
+  also gets raised on a pointer click and is put back with `AXRaise` of the user's window (a ~100 ms flicker is
+  possible). Canvas/game apps that only read HID events cannot be driven (listed under "Cannot be done in the background").
 - **Prompt injection through app content** (an email, a page): approval is per app, not per action; the policy
   prompt text and "terminal and security apps are unreachable" are the mitigations; browser-style per-origin
   approval has no analogue here.
@@ -548,11 +600,55 @@ are useful for `select_text` and click targeting. So AX is the primary path, as 
 - Codex's own docs/config: `~/.codex/computer-use/Codex Computer Use.app` is `LSUIElement=1`, config
   `{"strings":{"usingComputer":"ChatGPT is using your computer","escToCancel":"Esc to cancel"}}`, which the overlay pill mirrors.
 
+### e. Background clicks/typing without focus (T04b, macOS 26.4.1, throwaway fixtures under `/tmp/pigna-fixture`)
+
+How the recipe was found. Static analysis of the installed Codex service (`nm | swift demangle`, `objdump -d`; API names
+and call order only, nothing copied): Swift types `SyntheticAppFocusEnforcer` (state `applicationBelievesItIsActive`,
+`applicationBelievesItHasFocus`, `applicationIsActive`), `SystemFocusStealPreventer` (event taps), `SynthesizedEvent`
+(`mouseEvent(... inWindow:windowBounds:windowUsesFlippedCoordinates:)`, `notifyAppActivated`, `notifyAppDeactivated`,
+`notifyWindowKeyFocusReturned/Removed`, `click`, `scroll`, `type(string:)`), `WindowServerSPI.setWindowLocation(CGEvent, CGPoint)`,
+`ApplicationRegistrySPI` (`getProcessForPID`, `setFrontProcess(psn, windowID, options)`, `releaseKeyFocus`),
+`CGEventAPI.postToPid`. `SynthesizedEvent.mouseEvent` builds an `NSEvent` with a window number, takes its `CGEvent`,
+sets event fields 3, 7, 91, 92 and calls `setWindowLocation`; the notify events are `NSEvent.otherEvent(type: 13 (AppKit-defined),
+subtype ...)` posted to the pid. This matched public prior art (yabai `window_manager_focus_window_without_raise` and
+`window_manager_make_key_window`, Cua's cua-driver "Inside macOS window internals", PR trycua/cua#2609). The Codex binary was only read, never run,
+attached to or copied. `SetFrontProcess` is not used by the proven recipe (see below); the Codex service's callers pass
+options `0x100` and appear to be its restore path, not part of delivery (hypothesis).
+
+Fixtures (sources in `/tmp/pigna-fixture/spike-src`, summarised here): `Fixture.app`, an AppKit app (text field, text view in a scroll view,
+button, checkbox, Edit menu with Select All/Paste/Custom1 cmd+1, context menu) whose `NSApplication.sendEvent` logs every event with
+`isActive`/`keyWindow`, launched `open -g` (window ordered just below the user's top window with
+`order(.below, relativeTo:)` so the z-order change is measurable); `SUI.app` (SwiftUI TextField, Button, Toggle, ScrollView); an Electron
+page (repo's electron dist, `showInactive`) with button, input, checkbox, scroll div logging DOM events. Driver `drv2`/`drv4` posts
+the recipe above; before and after every step it records frontmost bundle id, the frontmost app's `AXFocusedWindow`
+title, `NSEvent.mouseLocation` and the top three on-screen windows.
+
+| Observation | Result |
+|---|---|
+| Fixture launched `open -g -j` (hidden) | window not on screen; every posted click ignored (events arrived with window number 0 or no hit): **target must be on screen** |
+| Plain `CGEvent` mouse + fields 40/91/92 (T01's recipe) | AppKit saw `windowNumber 0`, clicks ignored |
+| `NSEvent.mouseEvent(windowNumber: wid).cgEvent` without `SLEventSetWindowLocation` | event arrives with the right window and location, **button not pressed** (32 variants: every miss) |
+| Same plus `SLEventSetWindowLocation(ev, p)` (top-left window point) | **button action fired**, `CGEventPostToPid` and `SLEventPostToPid` both; frontmost app, key window, cursor unchanged |
+| Full suite with step 1+5 (believe-active/key records, then deactivate): left click, checkbox, double click (`clickCount 2`), drag, scroll wheel (scrollY 0 → 100), click text field, type "hello" (5 UTF-16 events), right click | all landed: AppKit fixture (11 checks); frontmost = pi-gna, key window = pi-gna, cursor (837,392) unchanged after every step |
+| Same without step 1 (control) | buttons work; text-view double click/drag selected nothing |
+| Step 1 alone | fixture logged `DID BECOME ACTIVE`, `windowDidBecomeKey`, `isKeyWindow true`; `lsappinfo front` and `NSWorkspace.frontmostApplication` still pi-gna; z-order unchanged |
+| A mouse down on the non-topmost fixture window | AppKit orders it to the **top of the stack** (above pi-gna) in every variant; `AXRaise` of the user's focused window put pi-gna back on top; frontmost app/key window never changed |
+| `SLSOrderWindow` from another process | error 1000; not usable (needs WindowServer-owner rights) |
+| SwiftUI fixture | button, toggle, "hello" typed, scroll (first row moved 80 pt): all landed, desktop state unchanged |
+| Electron fixture (Chromium) | left (`isTrusted true`, `document.hasFocus() true`), double (`detail 2`), right (`button 2` + `contextmenu`), typing, scroll (`scrollTop` 0 → 300) all landed |
+| cmd+a / cmd+v / cmd+1 key events, with step 1 | keyDown reached the focused window, **no menu action** (`performKeyEquivalent` false) |
+| `AXPress` on Edit > Select All after a click in the text view (step 1 active), `AXPress` on Edit > Custom1 | worked in the background |
+| Context menu item click by posting mouse events to the menu window (layer 101) | did not trigger the item (not proven; defocus record may dismiss it) |
+
+TextEdit itself was **not** retried (desktop etiquette: no user apps); T01's failure is explained by the missing window
+location and window number, not by TextEdit. T05 must repeat the checks against TextEdit and Calculator once the helper
+is installed.
+
 ### Not tested (labeled hypotheses)
 
-- Posted mouse events to Chromium/Electron/Safari (may work; unverified).
+- Safari/WebKit, Chromium user-activation gated actions (video, fullscreen) and the (-1,-1) primer click; canvas/game apps; other Spaces; stage manager.
 - Whether AXObserver settle early-exit behaves well on very chatty apps (design chooses a hard 5 s ceiling).
 - `CGShieldingWindowLevel` overlay over fullscreen Spaces and over other apps' sheets.
 - `open -g -a … --args` passing arguments to an already-running instance (it does not; a second launch with
   `-n` is needed, hence the live-socket check).
-- Drag via AX is generally unsupported; drag always needs rung 2/3.
+- Drag via AX is generally unsupported; drag always uses rung 2.
