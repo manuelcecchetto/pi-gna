@@ -475,10 +475,15 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   (or resumes from its session file) when the page shows the plan, without a model call, and idle ones stop when
   the page closes. New ATP opens the same composer with the architect skills; the chat that writes the plan
   becomes its orchestrator.
-- **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a rail of the project's plans with
-  their progress, the plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last
-  note), the graph, a docked node panel (instruction, context, report, its chats) and the orchestrator's transcript
-  and composer. View > ATP (⌘⇧A) and the sidebar's ATP row open it.
+- **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a header breadcrumb (project, then
+  the plan; `PlanSwitch` opens a menu of the project's plans with their progress, in place of an always-on rail), the
+  plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last note), the graph, a
+  docked node panel (instruction, context, report, its chats; closes with its X or Esc) and the orchestrator's
+  transcript and composer. View > ATP (⌘⇧A) and the sidebar's ATP row open it. The node panel and the transcript
+  resize from their inner edge (`ResizeHandle`, double-click resets; bounds `ATP_DETAIL`/`ATP_DOCK` in
+  `lib/layout.ts`, persisted as `pigna:atp-panels`). A drag stops before the graph gets under `ATP_GRAPH_MIN`
+  (280×160); on a smaller window the remembered sizes give way the same way (the node panel's CSS `clamp`, the
+  transcript shrinking before the graph's `minHeight`) without changing what is remembered.
 - **The graph** (`components/AtpGraph.tsx`, `lib/atp-layout.ts`) is native SVG and HTML, no graph library: a
   layered layout (longest-path layers, barycenter ordering, then straightened), cards positioned in one transformed
   layer and edges as SVG paths with `vector-effect: non-scaling-stroke`. SCOPE nodes draw dotted edges to their
