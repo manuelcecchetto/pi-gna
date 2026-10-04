@@ -8,7 +8,7 @@ import { HostError, type MethodScope, type NewCardAttachment, type QueueEdit, ty
 import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
-import type { SettingsOp } from "../shared/settings";
+import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
 import { listFiles } from "./files";
@@ -32,6 +32,8 @@ import type { SessionHost } from "./session-host";
 import type { SettingsStore } from "./settings";
 import type { UiStateStore } from "./ui-state";
 import type { Updater } from "./updater";
+import type { DeviceStore } from "./devices";
+import type { RemoteHost } from "./remote";
 
 /** Who is calling, and the side effects that belong to that client alone (never broadcast). */
 export interface HostContext {
@@ -71,6 +73,8 @@ export interface HostDeps {
   auth: PiAuth;
   browser(): BrowserManager | undefined;
   updater(): Updater | undefined;
+  devices: DeviceStore;
+  remote: RemoteHost;
   native: HostNative;
 }
 
@@ -309,6 +313,22 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "atp.discardNewPlan": method<{ cwd: string }>("remote", (raw) => ({ cwd: project(raw.cwd) }), (_ctx, { cwd }) => (atpRuns.discardNewPlan(cwd), null)),
     "atp.importThreads": any<{ threads: unknown }>("desktop", async (_ctx, { threads }) => (await atpThreads.importLegacy(threads), null)),
     "atp.state": any("remote", () => ({ ...atpRuns.state(), held: atp.heldPlans() })),
+
+    // Remote access. Everything that changes the tailnet, pairs a device or turns access on is the Mac's alone.
+    "devices.list": any("remote", (ctx) => deps.devices.list(ctx.client === "desktop" ? undefined : ctx.client.device)),
+    "devices.rename": method<{ id: string; name: string }>("remote", (raw) => ({ id: String(raw.id), name: String(raw.name) }), (_ctx, { id, name }) => deps.devices.rename(id, name)),
+    "devices.revoke": method<{ id: string }>("remote", (raw) => ({ id: String(raw.id) }), (_ctx, { id }) => deps.devices.revoke(id)),
+    "devices.revokeAll": any("desktop", () => deps.devices.revokeAll()),
+    "devices.pairStart": any("desktop", () => deps.devices.startPairing()),
+    "devices.pairing": any("desktop", () => deps.devices.pairingStatus()),
+    "devices.pairDecide": method<{ request: string; allow: boolean }>("desktop", (raw) => ({ request: String(raw.request), allow: raw.allow === true }), (_ctx, { request, allow }) => deps.devices.decide(request, allow)),
+    // The Mac re-reads Tailscale when it asks; a phone gets the last reading.
+    "remote.get": any("remote", (ctx) => (ctx.client === "desktop" ? deps.remote.check() : deps.remote.status())),
+    "remote.enable": method<{ port?: number }>("desktop", (raw) => ({ port: raw.port === undefined || raw.port === null ? undefined : Number(raw.port) }), (_ctx, { port }) => deps.remote.enable(port)),
+    "remote.disable": any("desktop", () => deps.remote.disable()),
+    "remote.serve": any("desktop", () => deps.remote.serve()),
+    "remote.unserve": any("desktop", () => deps.remote.unserve()),
+    "remote.setKeepAwake": method<{ keepAwake: KeepAwake }>("desktop", (raw) => ({ keepAwake: raw.keepAwake }), (_ctx, { keepAwake }) => deps.remote.setKeepAwake(keepAwake)),
   };
 }
 
@@ -420,4 +440,15 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.relaunch, "host.relaunch"),
   route(IPC.updateGet, "update.get"),
   route(IPC.updateDownload, "update.download"),
+  route(IPC.remoteGet, "remote.get"),
+  route(IPC.remoteEnable, "remote.enable", (port) => ({ port })),
+  route(IPC.remoteDisable, "remote.disable"),
+  route(IPC.remoteServe, "remote.serve"),
+  route(IPC.remoteUnserve, "remote.unserve"),
+  route(IPC.devicesList, "devices.list"),
+  route(IPC.devicesRevoke, "devices.revoke", (id) => ({ id })),
+  route(IPC.devicesRevokeAll, "devices.revokeAll"),
+  route(IPC.pairStart, "devices.pairStart"),
+  route(IPC.pairing, "devices.pairing"),
+  route(IPC.pairDecide, "devices.pairDecide", (request, allow) => ({ request, allow })),
 ];

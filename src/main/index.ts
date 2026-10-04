@@ -43,6 +43,11 @@ import { SettingsStore } from "./settings";
 import { UiStateStore } from "./ui-state";
 import { cardWorktree } from "./worktree";
 import { ChatTasks } from "./chat-tasks";
+import { IdempotencyCache } from "./command-layer";
+import { DeviceStore } from "./devices";
+import { RemoteHost } from "./remote";
+import { RemoteServer } from "./remote-server";
+import { TailscaleCli } from "./tailscale";
 import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-core";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
@@ -130,10 +135,28 @@ hub.subscribe({
         case "browser.reveal": send(IPC.browserReveal); break;
         case "browser.annotation": send(IPC.browserAnnotation, e.annotation); break;
         case "update": send(IPC.updateState, e.state); break;
+        case "devices": send(IPC.devicesChanged, e.devices); break;
+        case "remote": send(IPC.remoteChanged, e.status); break;
       }
     }
   },
 });
+// Remote access (docs/REMOTE.md): paired devices exist from launch; the server and Tailscale wiring come with the host core.
+let remoteServer: RemoteServer | undefined;
+let remoteHost: RemoteHost | undefined;
+const devices = new DeviceStore(
+  join(app.getPath("userData"), "remote-devices.json"),
+  (list) => {
+    remoteServer?.devicesChanged(list);
+    publish({ kind: "devices", devices: list });
+    void remoteHost?.announce();
+  },
+  (status) => {
+    // The pairing code and the approval prompt are for this window only: they never go through the hub.
+    send(IPC.pairingChanged, status);
+    if (status.state === "pending_approval" && window && !window.isDestroyed()) process.env.PIGNA_BACKGROUND === "1" ? window.showInactive() : window.show();
+  },
+);
 const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"), (next) => {
   publish({ kind: "settings", settings: next });
   applySettings(next);
@@ -297,11 +320,40 @@ const desktopContext: HostContext = {
   authUpdate: (update) => send(IPC.authUpdate, update),
 };
 
+/** The remote server's per-caller context: a phone's links open on the phone, and login progress needs a per-client channel (a later node). */
+const remoteContext = (device: { id: string }, clientId: string): HostContext => ({ client: { device: device.id }, clientId, openExternal: () => undefined, authUpdate: () => undefined });
+
 function registerIpc(shellEnv: Promise<void>): void {
   const tasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv });
   atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
+  // Nothing listens until remote access is turned on in Settings (RemoteHost.sync, from applySettings).
+  remoteServer = new RemoteServer({
+    devices,
+    hub,
+    cache: new IdempotencyCache(hub.bootId),
+    call: (ctx, name, args) => dispatch(core, ctx, name, args),
+    scopeOf: (name) => (Object.hasOwn(core, name) ? core[name]?.scope : undefined),
+    context: remoteContext,
+    allowedHosts: () => remoteHost?.allowedHosts() ?? [],
+    buildId: __PIGNA_BUILD__,
+    staticDir: join(import.meta.dirname, "../mobile"),
+    log: (line) => log.info("remote", line),
+  });
+  remoteHost = new RemoteHost({
+    server: remoteServer,
+    tailscale: new TailscaleCli(),
+    settings,
+    devices,
+    publish: (status) => publish({ kind: "remote", status }),
+    awake: () => keepAwakeId !== undefined,
+    // Local testing without Tailscale: PIGNA_REMOTE_LOOPBACK=1 also accepts Host: 127.0.0.1:<port>.
+    loopback: process.env.PIGNA_REMOTE_LOOPBACK === "1",
+    log: (line) => log.info("remote", line),
+  });
   const core = createHostCore({
     shellEnv,
+    devices,
+    remote: remoteHost,
     host,
     tasks,
     board,
@@ -373,6 +425,7 @@ function applySettings(next: Settings): void {
   nativeTheme.themeSource = next.theme;
   buildMenu(next.features);
   syncKeepAwake();
+  void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
   if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
 }
@@ -383,10 +436,12 @@ function syncKeepAwake(): void {
   const wanted = wantsKeepAwake(current, host.running > 0);
   if (wanted && keepAwakeId === undefined) {
     keepAwakeId = powerSaveBlocker.start("prevent-app-suspension");
+    void remoteHost?.announce();
     log.info("pigna", `keep-awake on (${current.remote.keepAwake}, ${host.running} chat(s) running)`);
   } else if (!wanted && keepAwakeId !== undefined) {
     powerSaveBlocker.stop(keepAwakeId);
     keepAwakeId = undefined;
+    void remoteHost?.announce();
     log.info("pigna", `keep-awake off (${current.remote.enabled ? current.remote.keepAwake : "remote access off"}, ${host.running} chat(s) running)`);
   }
 }
@@ -488,7 +543,7 @@ function init(): void {
     quitting = true;
     if (keepAwakeId !== undefined) powerSaveBlocker.stop(keepAwakeId);
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    void Promise.allSettled([remoteHost?.stop(), host.closeAll(), devices.flushed(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => {
     if (!hidesOnClose(current)) app.quit();

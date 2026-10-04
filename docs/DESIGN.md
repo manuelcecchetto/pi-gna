@@ -574,6 +574,20 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   of this applies.
 - **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
   `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
+- **Remote access** (Settings > Remote access; stub, grows with the remote nodes): `RemoteHost` (`src/main/remote.ts`) keeps the
+  `RemoteServer` listening on `127.0.0.1:<port>` exactly while `remote.enabled` (`sync()` from `applySettings`; a taken port
+  shows as an error row). Tailscale is read through the CLI on the login-shell PATH or `/Applications/Tailscale.app/Contents/MacOS/Tailscale`
+  (`src/main/tailscale.ts`; parsing and the exact commands are pure in `src/shared/tailscale.ts`). Reading status changes
+  nothing; **Serve over Tailscale** (`tailscale serve --bg --https=443 http://127.0.0.1:<port>`) and **Stop serving** run only
+  on a click, serve is refused while Funnel is on for :443 or another service holds :443 (it is never replaced), and no
+  Funnel command exists in the code. The page shows the status checks with fixes, the tailnet URL, the one-time code
+  (with a QR from the bundled MIT `qrcode-generator`, plus the URL and code as text), the approval prompt (device name,
+  user agent, Tailscale login; Allow/Deny; a pending request shows the window and opens this page), the devices
+  (revoke, revoke all) and the phones connected now. Pairing codes and the prompt go to the window only (never through
+  the hub); the device list and `RemoteStatus` also ride `global` (`devices`, `remote`). The Mac's methods (`remote.*`,
+  `devices.pairStart/pairing/pairDecide/revokeAll`) are desktop-scope. Test instances: `PIGNA_REMOTE_LOOPBACK=1` also
+  accepts `Host: 127.0.0.1:<port>`; curl needs `Origin: https://127.0.0.1:<port>`, `X-Pigna-Client: 1` and a
+  `Tailscale-User-Login` header.
   and the models of the chats pi-gna starts itself (card triage, ATP orchestrator and worker; `pickModel` tries the
   task's provider, then the chat's, then any provider with that model id). Computer Use keeps its `enabled` in
   `computer-use.json`, next to its policy.

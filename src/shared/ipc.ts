@@ -9,7 +9,7 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
-import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, NewCardAttachment, QueueEdit, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
+import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, DeviceInfo, HostErrorCode, HostEvent, NewCardAttachment, PairingStatus, QueueEdit, RemoteStatus, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type { UiOp } from "./ui-state";
 import type {
@@ -121,6 +121,20 @@ export const IPC = {
   updateState: "update:state",
   updateDownload: "update:download",
   updateReveal: "update:reveal",
+  remoteGet: "remote:get",
+  remoteChanged: "remote:changed",
+  remoteEnable: "remote:enable",
+  remoteDisable: "remote:disable",
+  remoteServe: "remote:serve",
+  remoteUnserve: "remote:unserve",
+  devicesList: "devices:list",
+  devicesChanged: "devices:changed",
+  devicesRevoke: "devices:revoke",
+  devicesRevokeAll: "devices:revoke-all",
+  pairStart: "devices:pair-start",
+  pairing: "devices:pairing",
+  pairDecide: "devices:pair-decide",
+  pairingChanged: "devices:pairing-changed",
 } as const;
 
 /** The Computer Use policy lives in main; every change is pushed back. */
@@ -289,6 +303,27 @@ export interface UpdateApi {
   onReveal(listener: () => void): () => void;
 }
 
+/** Remote access (docs/REMOTE.md): the Mac's own controls. Pairing codes go to this window only, never to a phone. */
+export interface RemoteApi {
+  /** Re-reads Tailscale and returns the status. */
+  get(): Promise<RemoteStatus>;
+  onChange(listener: (status: RemoteStatus) => void): () => void;
+  enable(port?: number): Promise<RemoteStatus>;
+  disable(): Promise<RemoteStatus>;
+  /** `tailscale serve --bg --https=443`, only on a click; refused with Funnel on. */
+  serve(): Promise<RemoteStatus>;
+  unserve(): Promise<RemoteStatus>;
+  devices(): Promise<DeviceInfo[]>;
+  onDevices(listener: (devices: DeviceInfo[]) => void): () => void;
+  revoke(id: string): Promise<DeviceInfo[]>;
+  revokeAll(): Promise<DeviceInfo[]>;
+  /** A fresh one-time code. */
+  pairStart(): Promise<PairingStatus>;
+  pairing(): Promise<PairingStatus>;
+  pairDecide(request: string, allow: boolean): Promise<PairingStatus>;
+  onPairing(listener: (status: PairingStatus) => void): () => void;
+}
+
 export interface BrowserApi {
   layout(layout: BrowserLayout): void;
   newTab(url?: string): void;
@@ -447,4 +482,5 @@ export interface StudioApi {
   github: GithubApi;
   atp: AtpApi;
   update: UpdateApi;
+  remote: RemoteApi;
 }

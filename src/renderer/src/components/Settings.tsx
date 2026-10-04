@@ -12,6 +12,7 @@ import { useAtp } from "../state/atp";
 import { applyComputer, ComputerSection, useComputerSettings } from "./Computer";
 import { DigitHint, Kbd, Switch, useCommandDigits } from "./primitives";
 import { ProvidersSection } from "./Providers";
+import { RemoteSection } from "./Remote";
 import { Button, Card, Choice, ModelChoice, NumberField, Row, Segmented } from "./SettingsControls";
 import { COLLAPSED_INSET } from "./Sidebar";
 
@@ -509,32 +510,6 @@ const FEATURE_ABOUT: Record<Feature, string> = {
   github: "A project's issues and pull requests, and GitHub links on cards.",
   atp: "Plans that worker chats run node by node, their orchestrator, and its tools.",
 };
-
-/** The host-mode switches; pairing, the URL and devices come with the rest of remote access. */
-function RemoteSection() {
-  const remote = useApp((state) => state.settings.remote);
-  const openAtLogin = useApp((state) => state.settings.openAtLogin);
-  return (
-    <>
-      <Card>
-        <Row title="Remote access" about="While on, closing the window hides it and pi-gna keeps running, so your phone can still reach it. Quit from the menu to stop.">
-          <Switch on={remote.enabled} onChange={(on) => void applySettings({ type: "remoteEnabled", on })} />
-        </Row>
-        <Row title="Port" about="Listens on 127.0.0.1 only; Tailscale serve forwards to it.">
-          <NumberField value={remote.port} min={1024} max={65535} onCommit={(port) => void applySettings({ type: "remotePort", port })} />
-        </Row>
-        <Row title="Open at login" about="Start pi-gna when you log in to this Mac.">
-          <Switch on={openAtLogin} onChange={(on) => void applySettings({ type: "openAtLogin", on })} />
-        </Row>
-      </Card>
-      <Card title="Keep awake" note="Keep awake prevents idle sleep only. A MacBook with its lid closed sleeps anyway, unless it is on power with an external display (clamshell mode). For use that does not depend on a laptop, run pi-gna on an always-on Mac.">
-        <Row title="Prevent idle sleep" about="Only while remote access is on.">
-          <Segmented value={remote.keepAwake} options={KEEP_AWAKE_MODES} labels={KEEP_AWAKE_LABELS} onChange={(mode) => void applySettings({ type: "keepAwake", mode })} />
-        </Row>
-      </Card>
-    </>
-  );
-}
 
 function FeaturesSection() {
   const features = useApp((state) => state.settings.features);

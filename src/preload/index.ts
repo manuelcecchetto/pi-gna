@@ -6,7 +6,7 @@ import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
 import type { Settings, SettingsSection } from "../shared/settings";
-import type { AtpPlanThreads, AtpRunnerState, Revved, UiState } from "../shared/host-api";
+import type { AtpPlanThreads, AtpRunnerState, DeviceInfo, PairingStatus, RemoteStatus, Revved, UiState } from "../shared/host-api";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -144,6 +144,22 @@ const api: StudioApi = {
     onState: (listener) => subscribe<UpdateState>(IPC.updateState, listener),
     download: () => ipcRenderer.invoke(IPC.updateDownload),
     onReveal: (listener) => subscribe<void>(IPC.updateReveal, listener),
+  },
+  remote: {
+    get: () => ipcRenderer.invoke(IPC.remoteGet),
+    onChange: (listener) => subscribe<RemoteStatus>(IPC.remoteChanged, listener),
+    enable: (port) => ipcRenderer.invoke(IPC.remoteEnable, port),
+    disable: () => ipcRenderer.invoke(IPC.remoteDisable),
+    serve: () => ipcRenderer.invoke(IPC.remoteServe),
+    unserve: () => ipcRenderer.invoke(IPC.remoteUnserve),
+    devices: () => ipcRenderer.invoke(IPC.devicesList),
+    onDevices: (listener) => subscribe<DeviceInfo[]>(IPC.devicesChanged, listener),
+    revoke: (id) => ipcRenderer.invoke(IPC.devicesRevoke, id),
+    revokeAll: () => ipcRenderer.invoke(IPC.devicesRevokeAll),
+    pairStart: () => ipcRenderer.invoke(IPC.pairStart),
+    pairing: () => ipcRenderer.invoke(IPC.pairing),
+    pairDecide: (request, allow) => ipcRenderer.invoke(IPC.pairDecide, request, allow),
+    onPairing: (listener) => subscribe<PairingStatus>(IPC.pairingChanged, listener),
   },
 };
 

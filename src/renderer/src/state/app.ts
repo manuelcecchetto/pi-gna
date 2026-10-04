@@ -908,6 +908,8 @@ export function boot(): void {
     syncViewing();
     if (focused && !store.get().page) markRead(store.get().active);
   });
+  // A phone asked to pair: show the approval prompt (Settings > Remote access).
+  studio().remote.onPairing((pairing) => pairing.state === "pending_approval" && openSettings("remote"));
   studio().settings.onChange(onSettings);
   void studio().settings.get().then(onSettings);
   bootUiState();

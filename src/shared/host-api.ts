@@ -11,7 +11,8 @@ import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, Gi
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
-import type { Settings, SettingsOp } from "./settings";
+import type { KeepAwake, Settings, SettingsOp } from "./settings";
+import type { TailscaleStatus } from "./tailscale";
 import type { UiOp } from "./ui-state";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { PickedPath, ProjectGroup, UpdateState } from "./ipc";
@@ -327,7 +328,7 @@ export interface PairingStatus {
   request?: { id: string; deviceName: string; userAgent: string; tailnetLogin: string };
 }
 
-export type KeepAwake = "while_running" | "always";
+export type { KeepAwake };
 
 export interface RemoteStatus {
   enabled: boolean;
@@ -339,6 +340,14 @@ export interface RemoteStatus {
   /** The sleep blocker is held now. */
   awake: boolean;
   devices: number;
+  /** The local server is listening (127.0.0.1:port). */
+  listening: boolean;
+  /** Event streams open now: the phones connected. */
+  connected: number;
+  /** Why the server could not start (port in use). */
+  error?: string;
+  /** What `tailscale` reports; the Mac's Settings shows the fixes. */
+  tailscale: TailscaleStatus;
 }
 
 // ── Chat contract ────────────────────────────────────────────────────────────
@@ -522,6 +531,7 @@ export interface HostMethods {
   "devices.revoke": { args: { id: string }; result: DeviceInfo[] };
   "devices.revokeAll": { args: Record<string, never>; result: DeviceInfo[] };
   "devices.pairStart": { args: Record<string, never>; result: PairingStatus };
+  "devices.pairing": { args: Record<string, never>; result: PairingStatus };
   "devices.pairDecide": { args: { request: string; allow: boolean }; result: PairingStatus };
   "remote.get": { args: Record<string, never>; result: RemoteStatus };
   "remote.enable": { args: { port?: number }; result: RemoteStatus };
@@ -585,6 +595,7 @@ export const DESKTOP_ONLY_METHODS = [
   "fs.describePaths",
   "devices.revokeAll",
   "devices.pairStart",
+  "devices.pairing",
   "devices.pairDecide",
   "remote.enable",
   "remote.disable",
@@ -629,6 +640,7 @@ export const READ_ONLY_METHODS = [
   "fs.browseFolders",
   "fs.describePaths",
   "devices.list",
+  "devices.pairing",
   "remote.get",
   "app.hello",
   "app.info",
