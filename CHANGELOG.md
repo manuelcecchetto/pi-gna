@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-04
+
 - Fix a lament (right-click it, or Fix in its details): a new chat looks for the cause and fixes it in a git worktree,
   on a branch of its own (`pigna/<lament>-fix-…`), and the lament links to that chat and branch. The manual action
   is now Mark resolved, for when the fix is in: no chat runs for it.
