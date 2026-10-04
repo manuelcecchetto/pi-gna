@@ -10,13 +10,17 @@ import {
   Maximize2,
   MessageSquarePlus,
   Minimize2,
+  MonitorSmartphone,
   Plus,
   RotateCw,
+  RotateCcw,
   SquareArrowOutUpRight,
+  Smartphone,
   X,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
+import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { setPane, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
@@ -35,6 +39,10 @@ export function BrowserPane() {
   const [suggesting, setSuggesting] = useState(false);
   const { open: openMenu, menu } = useContextMenu();
   const viewport = useRef<HTMLDivElement>(null);
+  const [dimensionsOpen, setDimensionsOpen] = useState(false);
+  const [stage, setStage] = useState({ width: 0, height: 0 });
+  // An active viewport keeps the row visible so an agent-set one can never be hidden.
+  const showDimensions = Boolean(active) && (dimensionsOpen || Boolean(active?.viewport));
   // Native views draw above the DOM, so hide the page while a DOM overlay must cover it.
   const visible = pane.open && Boolean(active) && !lightbox && !suggesting && !overlay;
 
@@ -43,6 +51,7 @@ export function BrowserPane() {
     if (!element) return;
     const report = () => {
       const r = element.getBoundingClientRect();
+      setStage({ width: r.width, height: r.height });
       browser().layout({ visible, bounds: { x: r.left, y: r.top, width: r.width, height: r.height } });
     };
     report();
@@ -105,6 +114,13 @@ export function BrowserPane() {
           >
             <MessageSquarePlus size={15} />
           </IconButton>
+          <IconButton
+            title={active.viewport ? "Responsive mode is on (Reset to close)" : "Dimensions"}
+            active={showDimensions}
+            onClick={() => !active.viewport && setDimensionsOpen((v) => !v)}
+          >
+            <MonitorSmartphone size={15} />
+          </IconButton>
           <IconButton title="Inspect" onClick={() => browser().inspect(active.id)}>
             <Code2 size={15} />
           </IconButton>
@@ -114,9 +130,12 @@ export function BrowserPane() {
         </div>
       )}
 
+      {active && showDimensions && <DimensionsBar tab={active} stage={stage} />}
+
       <div ref={viewport} className="relative min-h-0 flex-1 bg-sunken">
         {!active && <StartPage />}
         {active && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
+        {active?.viewport && visible && <DeviceFrame spec={active.viewport} stage={stage} />}
       </div>
       {state.annotating && (
         <div className="shrink-0 border-t border-accent/30 bg-accent-soft px-3 py-1.5 text-[12px] text-fg">
@@ -309,5 +328,120 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+const field = "h-6 rounded-md bg-sunken px-1.5 font-mono text-[11.5px] text-fg outline-none focus:ring-1 focus:ring-accent/50";
+
+// Draws under the native view, which main places at fitViewport's bounds; the same function keeps both in agreement.
+function DeviceFrame({ spec, stage }: { spec: ViewportSpec; stage: { width: number; height: number } }) {
+  if (stage.width <= 0 || stage.height <= 0) return null;
+  const { bounds } = fitViewport(stage, spec);
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        className="absolute rounded-[3px] ring-1 ring-line-strong"
+        style={{ left: bounds.x - 1, top: bounds.y - 1, width: bounds.width + 2, height: bounds.height + 2 }}
+      />
+      {bounds.y >= 16 && (
+        <div className="absolute text-center font-mono text-[10px] leading-4 text-faint" style={{ left: bounds.x, width: bounds.width, top: bounds.y - 16 }}>
+          {spec.width}
+        </div>
+      )}
+      {bounds.x >= 34 && (
+        <div className="absolute -rotate-90 text-center font-mono text-[10px] leading-4 text-faint" style={{ left: bounds.x - 25, top: bounds.y + bounds.height / 2 - 8, width: 32 }}>
+          {spec.height}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NumberField({ value, onCommit, title, step }: { value: number; onCommit: (n: number) => void; title: string; step?: number }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const n = Number(draft);
+    if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n);
+    else setDraft(String(value));
+  };
+  return (
+    <input
+      type="number"
+      title={title}
+      value={draft}
+      step={step}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
+      className={`${field} w-14`}
+    />
+  );
+}
+
+function DimensionsBar({ tab, stage }: { tab: BrowserTab; stage: { width: number; height: number } }) {
+  const spec = tab.viewport;
+  const apply = (request: ViewportRequest) => void browser().viewport(tab.id, { ...request, source: "user" }).catch(() => {});
+  const size = spec ?? { width: Math.round(stage.width) || 1280, height: Math.round(stage.height) || 800, dpr: 1, mobile: false };
+  const current = { width: size.width, height: size.height, dpr: size.dpr, mobile: size.mobile };
+  const preset = spec ? (DEVICE_PRESETS.find((p) => p.label === spec.label)?.id ?? "custom") : "responsive";
+  const dprPreset = [1, 2, 3].includes(size.dpr) ? String(size.dpr) : "custom";
+  const scale = spec ? fitViewport(stage, spec).scale : 1;
+  const zoom = scale < 1 ? `Fit ${Math.round(scale * 100)}%` : "100%";
+
+  return (
+    <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1 text-[11.5px] text-muted">
+      <Smartphone size={13} className="text-faint" />
+      <select
+        title="Device preset"
+        value={preset}
+        onChange={(event) => {
+          const v = event.target.value;
+          if (v === "responsive") void browser().viewport(tab.id, null);
+          else if (v === "custom") apply(current);
+          else apply({ preset: v });
+        }}
+        className={field}
+      >
+        <option value="responsive">Responsive</option>
+        {DEVICE_PRESETS.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.label}
+          </option>
+        ))}
+        <option value="custom">Custom</option>
+      </select>
+      <NumberField title="Width (CSS px)" value={size.width} onCommit={(width) => apply({ ...current, width })} />
+      <span className="text-faint">×</span>
+      <NumberField title="Height (CSS px)" value={size.height} onCommit={(height) => apply({ ...current, height })} />
+      <select
+        title="Device pixel ratio"
+        value={dprPreset}
+        onChange={(event) => event.target.value !== "custom" && apply({ ...current, dpr: Number(event.target.value) })}
+        className={field}
+      >
+        {[1, 2, 3].map((d) => (
+          <option key={d} value={d}>
+            {d}x
+          </option>
+        ))}
+        <option value="custom">Custom</option>
+      </select>
+      {dprPreset === "custom" && <NumberField title="Custom DPR" step={0.25} value={size.dpr} onCommit={(dpr) => apply({ ...current, dpr })} />}
+      <IconButton title="Rotate" onClick={() => apply({ ...current, width: size.height, height: size.width })}>
+        <RotateCcw size={13} />
+      </IconButton>
+      <IconButton title={size.mobile ? "Mobile and touch (on)" : "Mobile and touch (off)"} active={size.mobile} onClick={() => apply({ ...current, mobile: !size.mobile })}>
+        <Smartphone size={13} />
+      </IconButton>
+      {spec && <span className="font-mono text-[11px] text-faint">{zoom}</span>}
+      {spec?.source === "agent" && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10.5px] text-accent">Set by pi</span>}
+      <span className="flex-1" />
+      {spec && (
+        <button type="button" onClick={() => void browser().viewport(tab.id, null)} className="rounded-md px-2 py-0.5 text-fg hover:bg-raised">
+          Reset
+        </button>
+      )}
+    </div>
   );
 }
