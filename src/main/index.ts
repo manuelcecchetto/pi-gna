@@ -50,6 +50,9 @@ if (process.env.PIGNA_USER_DATA) {
 } else {
   adoptProfile("pi studio", "pi-studio-browser");
 }
+// The browser pane's cookies would otherwise be encrypted with a key in the login keychain ("pi-gna Safe Storage"),
+// and with an ad-hoc signature macOS asks for it again after every update. A fixed key is enough for this profile.
+if (process.platform === "darwin") app.commandLine.appendSwitch("use-mock-keychain");
 const logFile = join(app.getPath("logs"), "main.log");
 mkdirSync(app.getPath("logs"), { recursive: true });
 logToFile(logFile);

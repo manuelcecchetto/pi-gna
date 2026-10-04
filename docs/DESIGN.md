@@ -131,8 +131,11 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   as a test instance; it updates itself to the latest release and restarts as it.
 - **Fuses** (`electronFuses`): no `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` or `--inspect`; asar-only loading with
   integrity validation; encrypted cookies; no extra `file://` privileges. Check with
-  `pnpm dlx @electron/fuses read --app "dist/mac-arm64/<name>.app"`. Cookie encryption keeps a key in the
-  Keychain; an ad-hoc signature changes with every build, so macOS may ask to allow access after an update.
+  `pnpm dlx @electron/fuses read --app "dist/mac-arm64/<name>.app"`. Cookie encryption uses Chromium's mock keychain
+  (`use-mock-keychain`, a fixed key) rather than a Keychain item: an ad-hoc signature changes with every build, so
+  macOS asked for "pi-gna Safe Storage" again after each update. The browser profile's cookies are therefore only
+  as private as the profile folder. Only packaged builds encrypt cookies (the fuse), so check this on an
+  `electron-builder --dir` build, not `pnpm dev`.
 - **Renderer origin.** Outside the dev server the renderer is served from `app://pigna` (standard, secure, V8
   code cache) with a CSP header stricter than the `index.html` meta tag, which also allows Vite's `ws:`.
   localStorage is per origin, so the sidebar layout, pins and bookmarks saved by earlier `file://` builds reset once.
