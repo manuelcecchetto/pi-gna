@@ -1,7 +1,7 @@
 // How tool calls read in the transcript: a category, a verb and a target. Pure, so the
 // collapsed one-liners and the activity summaries stay consistent and testable.
 
-export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "board" | "agent" | "think" | "other";
+export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "think" | "other";
 
 export interface ToolPresentation {
   category: ToolCategory;
@@ -14,6 +14,8 @@ export interface ToolPresentation {
   meta?: string;
   /** Files this call touched, for summaries. */
   files?: string[];
+  /** The native app a computer_* call drove. */
+  app?: string;
 }
 
 type Args = Record<string, unknown>;
@@ -57,8 +59,51 @@ export function patchFiles(input: string): string[] {
   return files;
 }
 
+const COMPUTER_VERBS: Record<string, [string, string]> = {
+  click: ["Clicked", "Clicking"],
+  drag: ["Dragged", "Dragging"],
+  scroll: ["Scrolled", "Scrolling"],
+  press_key: ["Pressed", "Pressing"],
+  set_value: ["Set a value", "Setting a value"],
+  select_text: ["Selected text", "Selecting text"],
+  secondary_action: ["Ran an action", "Running an action"],
+  paste: ["Pasted", "Pasting"],
+};
+
+/** computer_* tools: "Clicked [42] in TextEdit", "Typed 12 characters in Notes", "Read TextEdit state". */
+function presentComputer(action: string, args: Args): ToolPresentation {
+  const app = str(args.app);
+  const base = { category: "computer" as const, app: app || undefined };
+  const inApp = app ? `in ${app}` : undefined;
+  const index = num(args.element_index);
+  const where = index !== undefined ? `[${index}]` : num(args.x) !== undefined ? `(${args.x}, ${args.y})` : "";
+  switch (action) {
+    case "list_apps":
+      return { ...base, verb: "Listed apps", activeVerb: "Listing apps", target: "" };
+    case "get_app_state":
+      return { ...base, verb: app ? `Read ${app} state` : "Read app state", activeVerb: app ? `Reading ${app} state` : "Reading app state", target: "" };
+    case "type_text": {
+      const count = [...str(args.text)].length;
+      return { ...base, verb: "Typed", activeVerb: "Typing", target: `${plural(count, "character", "characters")}`, meta: inApp };
+    }
+    case "drag":
+      return { ...base, verb: "Dragged", activeVerb: "Dragging", target: `(${String(args.from_x)}, ${String(args.from_y)}) → (${String(args.to_x)}, ${String(args.to_y)})`, meta: inApp };
+    case "press_key":
+      return { ...base, verb: "Pressed", activeVerb: "Pressing", target: str(args.key), meta: inApp };
+    case "scroll":
+      return { ...base, verb: "Scrolled", activeVerb: "Scrolling", target: [str(args.direction), where].filter(Boolean).join(" "), meta: inApp };
+    case "secondary_action":
+      return { ...base, verb: "Ran an action", activeVerb: "Running an action", target: [str(args.secondary_action), where].filter(Boolean).join(" "), meta: inApp };
+    default: {
+      const [verb, activeVerb] = COMPUTER_VERBS[action] ?? [action, action];
+      return { ...base, verb, activeVerb, target: where, meta: inApp };
+    }
+  }
+}
+
 export function presentTool(name: string, args: Args, cwd: string, details?: unknown, home?: string): ToolPresentation {
   const rel = (path: unknown) => relativePath(str(path), cwd, home);
+  if (name.startsWith("computer_")) return presentComputer(name.slice("computer_".length), args);
   switch (name) {
     case "read": {
       const offset = num(args.offset);
@@ -149,12 +194,16 @@ export function summarizeTools(tools: SummaryInput[]): string | undefined {
   const readFiles = new Set<string>();
   const editedFiles = new Set<string>();
   const counts: Record<string, number> = {};
+  const apps = new Set<string>();
   let failed = 0;
   for (const { presentation, failed: isFailed } of tools) {
     if (isFailed) failed++;
     if (presentation.category === "read") for (const f of presentation.files ?? []) readFiles.add(f);
     else if (presentation.category === "edit") for (const f of presentation.files ?? []) editedFiles.add(f);
-    else counts[presentation.category] = (counts[presentation.category] ?? 0) + 1;
+    else {
+      if (presentation.app) apps.add(presentation.app);
+      counts[presentation.category] = (counts[presentation.category] ?? 0) + 1;
+    }
   }
   const parts: string[] = [];
   if (readFiles.size) parts.push(`Read ${plural(readFiles.size, "file", "files")}`);
@@ -163,10 +212,20 @@ export function summarizeTools(tools: SummaryInput[]): string | undefined {
   if (editedFiles.size) parts.push(`edited ${plural(editedFiles.size, "file", "files")}`);
   if (counts.web) parts.push(`${plural(counts.web, "web lookup", "web lookups")}`);
   if (counts.browser) parts.push(`${plural(counts.browser, "browser action", "browser actions")}`);
+  if (counts.computer) parts.push(`${apps.size ? `used ${[...apps].join(", ")} · ` : ""}${plural(counts.computer, "action", "actions")}`);
   if (counts.board) parts.push(`${plural(counts.board, "board action", "board actions")}`);
   if (counts.agent) parts.push(`${plural(counts.agent, "delegation", "delegations")}`);
   if (counts.other) parts.push(`${plural(counts.other, "tool call", "tool calls")}`);
   if (failed) parts.push(`${failed} failed`);
   const text = parts.join(" · ");
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** The app a still-running computer_* call is driving, for the "Using <App>" hint. */
+export function liveComputerApp(tools: { name: string; arguments: Record<string, unknown>; running: boolean }[]): string | undefined {
+  for (let i = tools.length - 1; i >= 0; i--) {
+    const tool = tools[i];
+    if (tool?.running && tool.name.startsWith("computer_")) return str(tool.arguments.app) || "an app";
+  }
+  return undefined;
 }

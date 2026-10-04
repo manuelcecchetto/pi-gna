@@ -7,6 +7,7 @@ import {
   FilePen,
   FileText,
   Globe,
+  MousePointer2,
   type LucideIcon,
   Search,
   Sparkles,
@@ -18,7 +19,7 @@ import { memo, type ReactNode, useMemo } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
 import { userText } from "../lib/session";
-import { type ToolCategory, presentTool, summarizeTools } from "../lib/tools";
+import { type ToolCategory, liveComputerApp, presentTool, summarizeTools } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";
 import { Markdown } from "./Markdown";
@@ -33,6 +34,7 @@ const ICONS: Record<ToolCategory, LucideIcon> = {
   search: Search,
   web: Globe,
   browser: AppWindow,
+  computer: MousePointer2,
   board: SquareKanban,
   agent: Bot,
   think: Sparkles,
@@ -81,6 +83,9 @@ export const WorkAccordion = memo(function WorkAccordion({
       ),
     [tools, cwd, home],
   );
+  const usingApp = run.live
+    ? liveComputerApp(tools.map((step) => ({ name: step.call.name, arguments: step.call.arguments, running: step.argsStreaming || !step.run || step.run.status === "running" })))
+    : undefined;
   const steers = steps.filter((step) => step.kind === "steer").length;
   const toggle = () => setExpanded(`work:${run.key}:${layout.settled ? "done" : "working"}`, !open);
   const started = layout.startedAt;
@@ -103,6 +108,7 @@ export const WorkAccordion = memo(function WorkAccordion({
             </>
           )}
         </span>
+        {usingApp && <span className="text-[12.5px] text-accent">· Using {usingApp}</span>}
         {status && <span className="text-[12.5px] text-warn">· {status}</span>}
         {(summary || steers > 0) && (
           <span className="min-w-0 truncate text-[12.5px] text-faint">

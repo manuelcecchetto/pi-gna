@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { HostEvent } from "../../../shared/ipc";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
 import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
-import { presentTool, summarizeTools } from "./tools";
+import { liveComputerApp, presentTool, summarizeTools } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -187,6 +187,19 @@ describe("hydrate + view", () => {
       ),
     );
     expect(board).toBe("3 board actions");
+    const cu = [
+      presentTool("computer_get_app_state", { app: "TextEdit" }, "/repo"),
+      presentTool("computer_click", { app: "TextEdit", element_index: 42 }, "/repo"),
+      presentTool("computer_type_text", { app: "Notes", text: "hello world!" }, "/repo"),
+    ];
+    expect(cu.map((p) => [p.verb, p.target, p.meta])).toEqual([
+      ["Read TextEdit state", "", undefined],
+      ["Clicked", "[42]", "in TextEdit"],
+      ["Typed", "12 characters", "in Notes"],
+    ]);
+    expect(summarizeTools(cu.map((presentation) => ({ presentation, failed: false })))).toBe("Used TextEdit, Notes · 3 actions");
+    expect(liveComputerApp([{ name: "computer_click", arguments: { app: "TextEdit" }, running: true }])).toBe("TextEdit");
+    expect(liveComputerApp([{ name: "computer_click", arguments: { app: "TextEdit" }, running: false }])).toBeUndefined();
     expect(presentTool("kanban_update", { column: "in_review", report: "Fixed" }, "/repo")).toMatchObject({ verb: "Moved its card", target: "to in_review" });
   });
 });
