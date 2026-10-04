@@ -54,4 +54,5 @@ func registerMethods() {
     registerCoreMethods()
     registerAppMethods()
     registerAXMethods()
+    registerCaptureMethods()
 }

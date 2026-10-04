@@ -270,6 +270,14 @@ func registerAXMethods() {
             "note": "Element indexes are valid only until the next get_app_state; read state again before using an index from an older read.",
         ]
         if let wid { result["windowId"] = wid }
+        if params["include_screenshot"] as? Bool ?? true {
+            do {
+                result["screenshot"] = try captureWindow(bundleId: target.bundleId, pid: pid, windowId: nil, preferredWindowId: wid)
+            } catch let e as RPCError {
+                result["screenshot"] = NSNull()
+                result["screenshotError"] = e.message
+            }
+        }
         return result
     }
 }

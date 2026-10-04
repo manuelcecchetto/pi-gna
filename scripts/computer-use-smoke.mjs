@@ -2,7 +2,7 @@
 // Usage: pnpm build:computer-use && node scripts/computer-use-smoke.mjs
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import { createConnection } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -57,6 +57,20 @@ await new Promise((r) => {
 })
 const second = await call('get_app_state', { app: 'TextEdit' })
 console.log(second.error ? `get_app_state error: ${JSON.stringify(second.error)}` : second.result.text)
+// Occlusion check: cover TextEdit with Finder-independent window is manual; capture works either way.
+console.log('\n>>> Cover TextEdit with another window now (20 s or Enter) to check background capture...')
+await new Promise((r) => {
+  process.stdin.once('data', r)
+  setTimeout(r, 20000)
+})
+const shot = await call('screenshot', { app: 'TextEdit' })
+if (shot.error) console.log('screenshot error:', JSON.stringify(shot.error))
+else {
+  const s = shot.result
+  const path = '/tmp/pigna-cu-textedit.jpg'
+  writeFileSync(path, Buffer.from(s.jpeg, 'base64'))
+  console.log(`screenshot saved ${path}: ${s.width}x${s.height}px, window ${s.logicalWidth}x${s.logicalHeight}pt, scale ${s.scale}, regions ${s.regions.length}`)
+}
 const calc = await call('get_app_state', { app: 'Calculator', disable_diff: true })
 console.log(calc.error ? `calculator error: ${JSON.stringify(calc.error)}` : calc.result.text)
 process.stdin.pause()
