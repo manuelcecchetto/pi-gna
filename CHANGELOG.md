@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.4.3 - 2026-10-04
+
 - No more "pi-gna wants to use pi-gna Safe Storage" keychain prompt: the browser pane's cookies no longer
   use a keychain key. Sites you were logged into in the browser pane ask you to log in once more.
 
