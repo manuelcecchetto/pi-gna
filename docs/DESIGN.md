@@ -84,6 +84,11 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   also unpacked to `app.asar.unpacked/` (session-host points pi there; `onDisk` in `src/main/resources.ts`). The
   ATP files (`resources/atp/`, `resources/atp-extension.ts`) ride along under `resources/**`; the librarian is a
   Python script (`python3`, standard library only) that main runs from the unpacked copy.
+- **Computer Use helper.** `pnpm dist` runs `build:computer-use` first (Swift, universal, ad-hoc signed; plain
+  `pnpm build` and `pnpm dev` never need Swift). electron-builder copies `build/computer-use/pi-gna Computer Use.app`
+  to `Contents/Resources/computer-use/` via `extraResources` (outside the asar); a checkout reads
+  `build/computer-use/`. release.yml builds it, verifies it with `codesign --verify --deep --strict` and fails
+  the release if the packaged app lacks it. A missing helper surfaces as `app_not_found` on the Computer Use page.
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
   runtime, no notarization) and macOS asks once before opening a downloaded build (README). Squirrel.Mac
   (Electron's `autoUpdater`, electron-updater) cannot update such builds, so pi-gna has its own updater.

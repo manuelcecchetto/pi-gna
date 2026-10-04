@@ -21,6 +21,11 @@ asarUnpack:
   - src/shared/browser.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+# The Computer Use helper app (built by `pnpm build:computer-use`, which `pnpm dist` runs first) rides outside the
+# asar in Contents/Resources/computer-use/; main installs it to ~/.pi-gna and launches it from there.
+extraResources:
+  - from: build/computer-use/pi-gna Computer Use.app
+    to: computer-use/pi-gna Computer Use.app
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:

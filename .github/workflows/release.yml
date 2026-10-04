@@ -27,7 +27,21 @@ jobs:
         run: node scripts/release.mjs notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Build the Computer Use helper
+        run: |
+          pnpm build:computer-use
+          codesign --verify --deep --strict "build/computer-use/pi-gna Computer Use.app"
+          lipo -archs "build/computer-use/pi-gna Computer Use.app/Contents/MacOS/"* | grep -q arm64
       - run: pnpm dist
+      - name: Helper is packaged and signed
+        run: |
+          for app in dist/mac-arm64/*.app dist/mac/*.app; do
+            [ -d "$app" ] || continue
+            helper="$app/Contents/Resources/computer-use/pi-gna Computer Use.app"
+            test -d "$helper" || { echo "helper missing from $app"; exit 1; }
+            codesign --verify --deep --strict "$helper"
+          done
+          test -d dist/mac-arm64
       - name: Fuses
         run: pnpm dlx @electron/fuses read --app "$(ls -d dist/mac-arm64/*.app)"
       - name: Publish

@@ -118,6 +118,7 @@ export class ComputerService {
     const { deps } = this;
     const installed = join(deps.installDir, HELPER_APP);
     const [bundled, current] = await Promise.all([deps.readVersion(deps.bundledApp), deps.readVersion(installed)]);
+    if (bundled === undefined) log.warn("computer", `helper missing at ${deps.bundledApp}; run \`pnpm build:computer-use\` in a checkout`);
     if (bundled === undefined) throw new ComputerError(ComputerErrorCode.appNotFound, `Computer Use helper is missing from this build (${deps.bundledApp})`);
     if (current === undefined || bundled > current) {
       log.info("computer", `installing helper v${bundled} to ${installed}${current === undefined ? "" : ` (was v${current})`}`);
