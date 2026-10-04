@@ -64,6 +64,15 @@ describe("resolveViewport", () => {
     expect(resolveViewport({ preset: "iphone-15", mobile: false })).toMatchObject({ mobile: false, touch: false, userAgent: "native" });
   });
 
+  it("keeps the device's UA profile across edits that carry it", () => {
+    // the Dimensions bar's rotate and DPR edits: a rotated iPhone stays an iPhone, a Pixel stays Android
+    expect(resolveViewport({ width: 852, height: 393, dpr: 3, mobile: true, userAgent: "iphone" }).userAgent).toBe("iphone");
+    expect(resolveViewport({ width: 412, height: 915, dpr: 2, mobile: true, userAgent: "android" }).userAgent).toBe("android");
+    expect(resolveViewport({ width: 412, height: 915, mobile: true, userAgent: "native" }).userAgent).toBe("iphone");
+    expect(resolveViewport({ width: 412, height: 915, mobile: false, userAgent: "android" }).userAgent).toBe("native");
+    expect(() => resolveViewport({ width: 400, height: 800, mobile: true, userAgent: "nokia" as never })).toThrow(/userAgent/);
+  });
+
   it("rotateViewport swaps edges only", () => {
     const s = resolveViewport({ preset: "ipad" });
     expect(rotateViewport(s)).toEqual({ ...s, width: 1180, height: 820 });

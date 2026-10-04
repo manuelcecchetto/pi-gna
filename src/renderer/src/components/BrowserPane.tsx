@@ -142,7 +142,7 @@ export function BrowserPane() {
         </div>
       )}
 
-      {active && showDimensions && <DimensionsBar tab={active} stage={stage} />}
+      {active && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
 
       <div ref={viewport} className="relative min-h-0 flex-1 bg-sunken">
         {!active && <StartPage />}
@@ -425,9 +425,14 @@ function DimensionsBar({ tab, stage }: { tab: BrowserTab; stage: { width: number
   const spec = tab.viewport;
   const apply = (request: ViewportRequest) => void browser().viewport(tab.id, { ...request, source: "user" }).catch(() => {});
   const size = spec ?? { width: Math.round(stage.width) || 1280, height: Math.round(stage.height) || 800, dpr: 1, mobile: false };
-  const current = { width: size.width, height: size.height, dpr: size.dpr, mobile: size.mobile };
+  // Carries the device's UA profile, so rotating an iPhone or changing a Pixel's DPR keeps its user agent.
+  const current = { width: size.width, height: size.height, dpr: size.dpr, mobile: size.mobile, userAgent: spec?.userAgent };
   const preset = spec ? (DEVICE_PRESETS.find((p) => p.label === spec.label)?.id ?? "custom") : "responsive";
-  const dprPreset = [1, 2, 3].includes(size.dpr) ? String(size.dpr) : "custom";
+  // Picking Custom only opens the number field; the DPR changes when that field commits.
+  const [customDpr, setCustomDpr] = useState(false);
+  // A DPR set from elsewhere (Reset, a preset, the agent) closes a Custom pick that never committed.
+  useEffect(() => setCustomDpr(false), [spec?.dpr, spec === undefined]);
+  const dprPreset = customDpr || ![1, 2, 3].includes(size.dpr) ? "custom" : String(size.dpr);
   const scale = spec ? fitViewport(stage, spec).scale : 1;
   const zoom = scale < 1 ? `Fit ${Math.round(scale * 100)}%` : "100%";
 
@@ -459,7 +464,11 @@ function DimensionsBar({ tab, stage }: { tab: BrowserTab; stage: { width: number
       <select
         title="Device pixel ratio"
         value={dprPreset}
-        onChange={(event) => event.target.value !== "custom" && apply({ ...current, dpr: Number(event.target.value) })}
+        onChange={(event) => {
+          const v = event.target.value;
+          setCustomDpr(v === "custom");
+          if (v !== "custom") apply({ ...current, dpr: Number(v) });
+        }}
         className={field}
       >
         {[1, 2, 3].map((d) => (
@@ -476,7 +485,8 @@ function DimensionsBar({ tab, stage }: { tab: BrowserTab; stage: { width: number
       <IconButton title={size.mobile ? "Mobile and touch (on)" : "Mobile and touch (off)"} active={size.mobile} onClick={() => apply({ ...current, mobile: !size.mobile })}>
         <Smartphone size={13} />
       </IconButton>
-      {spec && <span className="font-mono text-[11px] text-faint">{zoom}</span>}
+      {/* The fit is the pane's; a window tab is scaled to its own window, which the renderer cannot measure. */}
+      {spec && tab.surface !== "window" && <span className="font-mono text-[11px] text-faint">{zoom}</span>}
       {spec?.source === "agent" && <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[10.5px] text-accent">Set by pi</span>}
       <span className="flex-1" />
       {spec && (

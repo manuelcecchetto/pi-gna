@@ -1,6 +1,7 @@
 // Pure viewport model shared by main, renderer and the pi extension. No Electron or DOM imports.
 
-export type UaProfileId = "native" | "iphone" | "android" | "ipad";
+export const UA_PROFILES = ["native", "iphone", "android", "ipad"] as const;
+export type UaProfileId = (typeof UA_PROFILES)[number];
 
 export interface ViewportSpec {
   /** CSS px */
@@ -24,6 +25,8 @@ export interface ViewportRequest {
   dpr?: number;
   mobile?: boolean;
   orientation?: "portrait" | "landscape";
+  /** Keeps a mobile device's UA profile across edits without a preset (the Dimensions bar sends the current one). */
+  userAgent?: UaProfileId;
   source?: "user" | "agent";
 }
 
@@ -119,8 +122,12 @@ export function resolveViewport(request: ViewportRequest): ViewportSpec {
 
   const dpr = clampDpr(request.dpr !== undefined ? finite("dpr", request.dpr) : (base?.dpr ?? 1));
   const mobile = request.mobile ?? base?.mobile ?? false;
+  const kept = request.userAgent;
+  if (kept !== undefined && !(UA_PROFILES as readonly unknown[]).includes(kept)) {
+    throw new Error(`userAgent must be one of ${UA_PROFILES.join(", ")}, got ${JSON.stringify(kept)}`);
+  }
   let userAgent: UaProfileId = "native";
-  if (mobile) userAgent = base?.mobile ? base.userAgent : width >= 600 ? "ipad" : "iphone";
+  if (mobile) userAgent = base?.mobile ? base.userAgent : kept && kept !== "native" ? kept : width >= 600 ? "ipad" : "iphone";
 
   const sized = !base || hasW || hasH || request.aspect !== undefined || request.orientation !== undefined;
   const label = base && !sized && dpr === base.dpr && mobile === base.mobile ? base.label : "Custom";

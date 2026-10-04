@@ -5,6 +5,11 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Responsive browser fixes: pi's clicks on a phone-sized tab no longer hang its browser tools (they tap), and land on
+  the element when the page is scaled to fit. Rotating an iPhone or editing a Pixel no longer turns it into an iPad or
+  iPhone, popping a tab out keeps its device, the DPR select's Custom opens its field, and a window's title follows
+  its size. A `browser_window` whose page fails to load no longer leaves a window behind.
+
 ## 0.3.2 - 2026-10-04
 
 - Fix chats exiting at start ("Cannot find module '../src/shared/viewport'"): 0.3.1 left a file the browser

@@ -3,7 +3,7 @@
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
 import { nativeImage, type WebContents } from "electron";
 import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize, viewportLine } from "../../shared/browser";
-import { resolveViewport, type ViewportSpec } from "../../shared/viewport";
+import { resolveViewport, toInputCoords, type ViewportSpec } from "../../shared/viewport";
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import { cdp } from "./cdp";
@@ -104,8 +104,16 @@ export class BrowserAgent {
         if (!point) throw new Error(`No element [${request.ref}] on the page. Take a new browser_snapshot first.`);
         await delay(60); // let scrollIntoView settle
         const before = wc.getURL();
-        for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
-          await cdp(wc, "Input.dispatchMouseEvent", { type, x: point.x, y: point.y, button: "left", clickCount: 1 });
+        // Input takes view pixels; a fitted viewport is drawn scaled.
+        const { x, y } = toInputCoords(point.x, point.y, tab.emulatedScale ?? 1);
+        if (tab.viewport?.touch) {
+          // Under touch emulation a CDP mouse press becomes a touch whose ack never comes, which would wedge this queue; tap instead.
+          await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+          await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        } else {
+          for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+            await cdp(wc, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+          }
         }
         return this.afterAction(wc, `Clicked [${request.ref}].`, before);
       }

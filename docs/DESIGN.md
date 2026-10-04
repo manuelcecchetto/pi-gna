@@ -176,12 +176,17 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   `docs/RESPONSIVE_BROWSER.md`).
   - *Mechanism*: CDP on the tab's debugger sets metrics (size, DPR, `mobile`, screen), touch emulation and the
     User-Agent together; Electron sends no `Sec-CH-UA*` headers, so a session `onBeforeSendHeaders` hook adds them
-    for emulated tabs. Only mobile presets change the UA; Laptop and Desktop keep the native one. Emulation survives
-    navigation, reload and renderer crashes, so it is applied once and re-applied only on debugger detach.
+    for emulated tabs. Only mobile presets change the UA; Laptop and Desktop keep the native one. A spec keeps its UA
+    profile through edits: the Dimensions bar sends it (`ViewportRequest.userAgent`) and pop-out moves the spec as is,
+    so a rotated iPhone stays an iPhone and a Pixel stays Android (re-deriving it from the width made them an iPad and
+    an iPhone). Emulation survives navigation, reload and renderer crashes, so it is applied once and re-applied only
+    on debugger detach.
   - *Shared math*: `src/shared/viewport.ts` (presets, `resolveViewport`, clamping to 200-3840 px and DPR 1-4,
     `fitViewport`, `toInputCoords`, UA profiles) is used by main, renderer and the extension. A viewport larger
     than the pane is shown with CDP `scale` (fit), never clipped: the view is `size*scale`, centred in the pane;
-    CDP mouse input takes scaled coordinates, so `cdp()` multiplies agent click coordinates by the scale.
+    CDP input takes scaled coordinates, so the agent's click passes its CSS px through `toInputCoords`. Under touch
+    emulation it taps (`Input.dispatchTouchEvent`): with `setEmitTouchEventsForMouse` on, a `mousePressed` is never
+    acknowledged, and the hung call wedged every later browser tool of that chat.
     Screenshots (`Page.captureScreenshot`) stay emulated size x DPR.
   - *Persistence*: the spec lives per tab in `BrowserManager`, not in the agent session. Releasing control or
     ending a run does not clear it; only the user's Reset / Responsive or closing the tab does. When pi set it the
@@ -193,8 +198,9 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   - *Windows*: `browser_window` (open, list, close) or the user's pop-out put a tab in a `BrowserWindow`
     (`showInactive`, content size, `setAspectRatio` when an aspect was asked) with the same emulation. At most
     4 are open at once (`WINDOW_LIMIT`; the next is refused). A window cannot exceed the display work area, so a
-    larger request is emulated at full size inside a smaller window. Closing a window closes its tab; "Return to
-    pane" is the way back. A session's windows close when it ends. Never minimize them: captures hang.
+    larger request is emulated at full size inside a smaller window. Its title follows the spec. An open whose page
+    fails to load closes its window again before throwing, so it never holds a slot. Closing a window closes its
+    tab; "Return to pane" is the way back. A session's windows close when it ends. Never minimize them: captures hang.
   - *Codex lessons*: Codex's iPhone preset left the HTTP UA alone, so SSR served the desktop page
     (openai/codex#35576): we switch viewport, DPR, touch and UA together. Its agent-set viewport was lost when the
     agent released control (#35756, #34335): ours persists with a badge.
@@ -756,7 +762,10 @@ CDP `shot` hung on background test windows (a packaged build, and a dev build af
 though `requestAnimationFrame` ran: `CDP_MAIN=<inspect port> node scripts/cdp.mjs capture <path>` asks main for the
 frame instead (`capturePage` with `stayHidden`, device pixels; needs `--inspect`), and
 `screencapture -x -o -l <CGWindowID>` captures the window as the screen shows it (the id is `kCGWindowNumber` from
-`CGWindowListCopyWindowInfo` for the app's pid, for example through `osascript -l JavaScript`).
+`CGWindowListCopyWindowInfo` for the app's pid, for example through `osascript -l JavaScript`, or the number in
+`BrowserWindow.getMediaSourceId()` (`window:<id>:0`) through `cdp.mjs main`); it includes the native tab views and
+device windows. A tab under touch emulation (a phone preset) never acknowledges CDP mouse presses, so `click` on its
+target hangs: click its elements with `eval` instead.
 Provider logins (Settings > Providers) write `auth.json`: give test instances `PI_CODING_AGENT_DIR=/tmp/<dir>/agent`,
 never the real one. Flows that open a browser or ask a provider for a device code should not run for real in a test:
 put a fake SDK where `PIGNA_PI_BIN` resolves (a folder whose `package.json` is named `@earendil-works/pi-coding-agent`,

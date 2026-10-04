@@ -277,7 +277,15 @@ export class BrowserManager {
     await this.setViewport(tab.id, request);
     win.showInactive();
     this.emitState();
-    if (url) await this.load(tab, normalizeAddress(url));
+    if (url) {
+      // A window whose page failed to load would hold a slot the caller never learned the id of.
+      try {
+        await this.load(tab, normalizeAddress(url));
+      } catch (error) {
+        this.closeTab(tab.id);
+        throw error;
+      }
+    }
     return tab;
   }
 
@@ -301,8 +309,12 @@ export class BrowserManager {
     if (this.paneId === id) {
       this.paneId = this.order.find((other) => other !== id && this.tabs.get(other)?.surface === "pane");
     }
-    if (!tab.viewport) tab.autoViewport = true;
-    await this.setViewport(id, { width: spec.width, height: spec.height, dpr: spec.dpr, mobile: spec.mobile, source: "user" });
+    // An existing viewport moves as is (attachWindow re-emulates it at the window's fit); re-resolving it from its
+    // numbers would drop the device label and re-derive the user agent (a Pixel would turn into an iPhone).
+    if (!tab.viewport) {
+      tab.autoViewport = true;
+      await this.setViewport(id, { width: spec.width, height: spec.height, source: "user" });
+    }
     win.showInactive();
     this.applyLayout();
     this.emitState();
@@ -385,10 +397,13 @@ export class BrowserManager {
     const spec = request ? resolveViewport(request) : undefined;
     tab.viewport = spec;
     tab.emulatedScale = undefined;
-    // A window's content size follows its viewport, so the toolbar resizes the window.
-    if (spec && tab.win && !tab.win.isDestroyed()) {
-      tab.win.setAspectRatio(spec.width / spec.height);
-      tab.win.setContentSize(spec.width, spec.height);
+    // A window's content size follows its viewport, so the toolbar resizes the window; Reset keeps its size.
+    if (tab.win && !tab.win.isDestroyed()) {
+      if (spec) {
+        tab.win.setAspectRatio(spec.width / spec.height);
+        tab.win.setContentSize(spec.width, spec.height);
+      }
+      tab.win.setTitle(spec ? windowTitle(spec) : "Responsive");
     }
     const wc = tab.view.webContents;
     await this.emulate(tab);

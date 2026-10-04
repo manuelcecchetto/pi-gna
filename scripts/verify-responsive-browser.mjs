@@ -29,6 +29,7 @@ const server = http.createServer((req, res) => {
   res.setHeader("Content-Type", "text/html");
   res.end(`<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>fixture ${req.url}</title>
 <body style="margin:0"><h1>${/Mobile/i.test(req.headers["user-agent"] ?? "") ? "MOBILE" : "DESKTOP"} ${req.url}</h1><pre id=out></pre>
+<button id=target style="margin:300px 0 0 150px;width:80px;height:40px" onclick="window.hit=(window.hit||0)+1">Target</button>
 <script>window.probe=()=>({w:innerWidth,h:innerHeight,dpr:devicePixelRatio,coarse:matchMedia('(pointer: coarse)').matches,ua:navigator.userAgent})</script></body>`);
 });
 await new Promise((open) => server.listen(0, "127.0.0.1", open));
@@ -51,6 +52,17 @@ async function call(body) {
   const json = await response.json();
   if (!response.ok) throw new Error(json.error ?? `HTTP ${response.status}`);
   return json;
+}
+/** Click the fixture's Target button through the bridge, with a deadline: a click that never acks must fail, not hang. */
+async function clickTarget(tab) {
+  const deadline = (ms) => new Promise((_, fail) => setTimeout(() => fail(new Error("click timed out")), ms));
+  const snap = await call({ action: "snapshot", tab });
+  const ref = /\[(\d+)\] button "Target"/.exec(snap.text ?? "")?.[1];
+  if (!ref) return { ok: false, detail: "no Target ref in the snapshot" };
+  await Promise.race([call({ action: "click", ref: Number(ref), tab }), deadline(8000)]);
+  const hits = (await call({ action: "evaluate", expression: "String(window.hit || 0)", tab })).text;
+  await call({ action: "evaluate", expression: "window.hit = 0", tab });
+  return { ok: hits === "1", detail: `ref ${ref}, ${hits} hit(s)` };
 }
 const probe = async (tab) => JSON.parse((await call({ action: "evaluate", expression: "JSON.stringify(probe())", tab })).text);
 
@@ -75,6 +87,20 @@ async function main(expression) {
   if (message.result?.exceptionDetails) throw new Error(message.result.exceptionDetails.exception?.description ?? "main eval failed");
   return message.result?.result?.value;
 }
+// The app's renderer (the toolbar's IPC surface, window.studio), through the app window's CDP target.
+async function renderer(expression) {
+  const target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === "page" && t.url.startsWith("app://"));
+  const ws = new WebSocket(target.webSocketDebuggerUrl);
+  await new Promise((open) => (ws.onopen = open));
+  const answer = new Promise((done) => (ws.onmessage = (event) => done(JSON.parse(event.data))));
+  ws.send(JSON.stringify({ id: 1, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true } }));
+  const message = await answer;
+  ws.close();
+  if (message.result?.exceptionDetails) throw new Error(message.result.exceptionDetails.exception?.description ?? "renderer eval failed");
+  return message.result?.result?.value;
+}
+const windowTitles = () =>
+  main(`(() => { const { BrowserWindow } = process.mainModule.require("electron"); return BrowserWindow.getAllWindows().map((w) => w.getTitle()).filter((t) => t !== "pi-gna"); })()`);
 const windows = () =>
   main(`(() => { const { BrowserWindow } = process.mainModule.require("electron"); return BrowserWindow.getAllWindows().filter((w) => !w.webContents.getURL().startsWith("app://") && !w.webContents.getURL().includes("5173")).map((w) => ({ size: w.getContentSize(), focused: w.isFocused() })); })()`);
 
@@ -119,6 +145,10 @@ try {
   check("iphone-15: server saw mobile UA after reload", /iPhone/.test(ssr.ua) && /Mobile/.test(ssr.ua), `UA ${ssr.ua.slice(0, 60)}… sec-ch-ua-mobile ${ssr.mobile}`);
   check("iphone-15: page rendered the mobile variant", /MOBILE/.test((await call({ action: "snapshot" })).text ?? ""));
 
+  // an agent click lands on the element under touch emulation (taps, not mouse presses that never ack)
+  const tap = await clickTarget();
+  check("iphone-15: click hits its element", tap.ok, tap.detail);
+
   // the viewport survives a navigation
   await call({ action: "open", url: `${base}/b` });
   await sleep(500);
@@ -137,6 +167,13 @@ try {
   await sleep(1000);
   const wideProbe = await probe();
   check("16:9: page sees 1280x720 @2x, desktop UA", wideProbe.w === 1280 && wideProbe.h === 720 && wideProbe.dpr === 2 && !/iPhone/.test(wideProbe.ua), `${wideProbe.w}x${wideProbe.h} @${wideProbe.dpr}x`);
+  // a viewport larger than the pane is fitted below scale 1; the click must be scaled with it
+  const big = await call({ action: "viewport", set: { width: 2400, height: 1600 } });
+  await sleep(1000);
+  const fitted = await clickTarget();
+  check("fit below 1: click hits its element", big.viewport?.width === 2400 && fitted.ok, fitted.detail);
+  await call({ action: "viewport", set: { aspect: "16:9", width: 1280, dpr: 2 } });
+  await sleep(1000);
   const wideShot = jpegSize((await call({ action: "screenshot" })).image);
   const wideWant = capped(2560, 1440);
   check("screenshot: 16:9 size capped to 1600", !!wideShot && Math.abs(wideShot.width - wideWant.width) <= 2 && Math.abs(wideShot.height - wideWant.height) <= 2, `${wideShot?.width}x${wideShot?.height}, want ${wideWant.width}x${wideWant.height}`);
@@ -158,6 +195,28 @@ try {
   await call({ action: "window", op: "close", tab: opened.tab });
   await sleep(300);
   check("window: close removes it", (await windows()).length === before);
+  const failed = await call({ action: "window", op: "open", url: "http://127.0.0.1:1/", set: { width: 400, height: 400 } }).then(() => "opened", (error) => error.message);
+  await sleep(500);
+  const left = (await windows()).length;
+  check("window: failed load leaves no window", failed !== "opened" && left === before, `${failed}; ${left} windows`);
+
+  // the user's pop-out keeps the device (label, Android UA); toolbar edits keep the UA and retitle the window
+  await call({ action: "viewport", set: { preset: "pixel-8" } });
+  await sleep(1500);
+  const paneTab = await renderer("studio.browser.state().then((s) => s.activeId)");
+  await renderer(`studio.browser.popOut(${JSON.stringify(paneTab)})`);
+  await sleep(1000);
+  const popped = await probe();
+  check("pop-out: keeps the Pixel's Android UA", /Android/.test(popped.ua) && popped.dpr === 2.625, `${popped.w}x${popped.h} @${popped.dpr}x ${popped.ua.slice(13, 40)}`);
+  check("pop-out: window titled with the preset", (await windowTitles()).includes("Pixel 8 412x915 @2.625x"), JSON.stringify(await windowTitles()));
+  const edited = await renderer(`studio.browser.viewport(${JSON.stringify(paneTab)}, { width: 360, height: 640, dpr: 2.625, mobile: true, userAgent: "android", source: "user" })`);
+  await sleep(1500);
+  const resized = await probe();
+  check("toolbar edit: keeps the Android UA", edited?.userAgent === "android" && /Android/.test(resized.ua) && resized.w === 360, `${resized.w}x${resized.h} ${resized.ua.slice(13, 40)}`);
+  check("toolbar edit: window retitled", (await windowTitles()).includes("Custom 360x640 @2.625x"), JSON.stringify(await windowTitles()));
+  await renderer(`studio.browser.returnToPane(${JSON.stringify(paneTab)})`);
+  await sleep(500);
+  check("return to pane: window closed", (await windows()).length === before);
 
   // reset restores the real values
   const reset = await call({ action: "viewport", reset: true });
