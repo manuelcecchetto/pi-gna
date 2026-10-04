@@ -19,6 +19,8 @@ import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
+import { serveVisual } from "./visual-protocol";
+import { VISUAL_SCHEME } from "./visual-frame";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { BoardStore } from "./board";
 import { CardImages } from "./card-images";
@@ -175,6 +177,11 @@ function createWindow(): void {
       event.preventDefault();
       openExternal(url);
     }
+  });
+
+  // Inline visual frames (sandboxed iframes) may only ever load their own scheme; any navigation inside them is refused.
+  window.webContents.on("will-frame-navigate", (event) => {
+    if (!event.isMainFrame && !event.url.startsWith(`${VISUAL_SCHEME}://`)) event.preventDefault();
   });
 
   browser = new BrowserManager(window, {
@@ -490,6 +497,7 @@ function init(): void {
     });
     // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
+    serveVisual();
     if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));
     registerIpc(shellEnv);
     // Before the window, so it opens in its appearance (and with its background color).

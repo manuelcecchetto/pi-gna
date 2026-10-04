@@ -4,6 +4,7 @@
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { net, protocol } from "electron";
+import { VISUAL_SCHEME } from "./visual-frame";
 
 export const APP_ORIGIN = "app://pigna";
 
@@ -19,13 +20,18 @@ const CSP = [
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-src 'none'",
+  "frame-src pigna-visual:",
   "frame-ancestors 'none'",
 ].join("; ");
 
 /** Must run before the app is ready. */
 export function registerAppScheme(): void {
-  protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }]);
+  // One call: registerSchemesAsPrivileged replaces the earlier list. pigna-visual needs `standard` for relative URLs and
+  // script-src 'self' (measured, docs/DESIGN.md Visuals); the frame cannot fetch, so no other privilege.
+  protocol.registerSchemesAsPrivileged([
+    { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } },
+    { scheme: VISUAL_SCHEME, privileges: { standard: true, secure: true } },
+  ]);
 }
 
 /** Serve `root` (the built renderer) on app://pigna, refusing anything outside it. */
