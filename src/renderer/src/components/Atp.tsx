@@ -1,13 +1,32 @@
 // The ATP page: one project's ATP plans (`*.atp.json`), for big projects that must not get lazy halfway. A plan is
 // a graph of nodes that pi-gna runs one fresh worker chat at a time (state/atp.ts); the page draws it (AtpGraph),
 // starts and stops the run, shows a node's instruction, report and worker chats, and has the plan's orchestrator
-// at the bottom: a chat to ask how it is going, change the plan, or write a new one with the architect skills.
-import { ChevronDown, ChevronRight, ChevronUp, FileWarning, MessagesSquare, Network, Pause, Play, Plus, RefreshCw, Search, Square, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// floating over the graph: a chat to ask how it is going, change the plan, or write a new one with the architect skills.
+import {
+  ChevronDown,
+  ChevronRight,
+  FileWarning,
+  Maximize2,
+  MessageCircle,
+  MessageCircleOff,
+  MessagesSquare,
+  Network,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  Square,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, planName, planProgress } from "../../../shared/atp";
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
+import type { SessionState } from "../lib/session";
+import { presentTool } from "../lib/tools";
+import { chatPeek, createRunDeriver, type PeekBubble, type Step } from "../lib/view";
 import { activate, type PageState, prefill, showPage, useApp } from "../state/app";
 import {
   discardNewPlanChat,
@@ -54,6 +73,8 @@ export function AtpPage({ page }: { page: PageState }) {
   const [query, setQuery] = useState("");
   const graph = useRef<GraphHandle>(null);
   const graphArea = useRef<HTMLDivElement>(null);
+  /** How much of the canvas's bottom the orchestrator's composer covers. */
+  const [covered, setCovered] = useState(0);
   const [panels, setPanels] = useState(loadAtpPanels);
   const resize = (key: keyof AtpPanels) => (size: number, done: boolean) => {
     const next = { ...panels, [key]: size };
@@ -119,6 +140,10 @@ export function AtpPage({ page }: { page: PageState }) {
     prefill(handle, `/skill:${skill} `);
   };
 
+  const dock = (selected === "new" || plan) && (
+    <OrchestratorDock cwd={page.cwd} plan={selected === "new" ? undefined : plan?.path} height={panels.dock} onResize={resize("dock")} onInset={setCovered} />
+  );
+
   const switchable = useMemo(() => [...new Set([page.cwd, ...projects.map((other) => other.cwd)])].map((cwd) => ({ cwd, open: 0 })), [projects, page.cwd]);
   const selectedNode = node && plan?.nodes.find((other) => other.id === node);
 
@@ -163,7 +188,10 @@ export function AtpPage({ page }: { page: PageState }) {
       <div className="flex min-h-0 flex-1">
         <section className="relative flex min-w-0 flex-1 flex-col">
           {selected === "new" ? (
-            <NewPlanIntro cwd={page.cwd} />
+            <>
+              <NewPlanIntro cwd={page.cwd} inset={covered} />
+              {dock}
+            </>
           ) : current && plan ? (
             <>
               <PlanBar
@@ -178,10 +206,11 @@ export function AtpPage({ page }: { page: PageState }) {
               <div className="flex flex-1" style={{ minHeight: ATP_GRAPH_MIN.height }}>
                 <div ref={graphArea} className="relative min-w-0 flex-1">
                   {plan.nodes.length ? (
-                    <AtpGraph ref={graph} plan={plan} selected={node} stalled={stalled} matches={matches} onSelect={setNode} />
+                    <AtpGraph ref={graph} plan={plan} selected={node} stalled={stalled} matches={matches} onSelect={setNode} inset={covered} />
                   ) : (
                     <p className="p-10 text-center text-[12.5px] text-faint">This plan has no nodes yet.</p>
                   )}
+                  {dock}
                 </div>
                 {selectedNode && (
                   <NodePanel
@@ -206,9 +235,6 @@ export function AtpPage({ page }: { page: PageState }) {
             <Unreadable file={current} />
           ) : (
             <Empty cwd={page.cwd} onNew={newPlan} />
-          )}
-          {(selected === "new" || plan) && (
-            <OrchestratorDock cwd={page.cwd} plan={selected === "new" ? undefined : plan?.path} height={panels.dock} onResize={resize("dock")} />
           )}
         </section>
       </div>
@@ -692,9 +718,30 @@ function NodePanel({
 
 // ── The orchestrator ─────────────────────────────────────────────────────────
 
-/** The plan's orchestrator chat under the graph: its composer, and the conversation when you open it. */
-function OrchestratorDock({ cwd, plan, height, onResize }: { cwd: string; plan?: string; height: number; onResize: (height: number, done: boolean) => void }) {
-  const dock = useRef<HTMLDivElement>(null);
+type ChatView = "bubbles" | "full" | "hidden";
+
+/** The last turns the bubbles show. */
+const PEEK_TURNS = 2;
+
+/**
+ * The plan's orchestrator floats over the graph: its composer at the bottom, and its conversation above it, either
+ * as bubbles of the last few turns (the plan stays in view around them) or whole, in a floating panel.
+ */
+function OrchestratorDock({
+  cwd,
+  plan,
+  height,
+  onResize,
+  onInset,
+}: {
+  cwd: string;
+  plan?: string;
+  height: number;
+  onResize: (height: number, done: boolean) => void;
+  onInset: (height: number) => void;
+}) {
+  const room = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<string>();
   useEffect(() => setHandle(orchestrator(cwd, plan)), [cwd, plan]);
   // A new plan's chat moves to the plan once the architect writes it: keep showing it.
@@ -703,52 +750,258 @@ function OrchestratorDock({ cwd, plan, height, onResize }: { cwd: string; plan?:
     const current = adopted ?? handle;
     return current ? state.sessions[current] : undefined;
   });
-  const [open, setOpen] = useState(plan === undefined);
+  // The architect's chat is the page until it writes the plan: it opens whole.
+  const [view, setView] = useState<ChatView>(plan === undefined ? "full" : "bubbles");
   const running = Boolean(session?.running);
   useEffect(() => {
-    if (running) setOpen(true);
+    if (running) setView((current) => (current === "hidden" ? "bubbles" : current));
   }, [running]);
+  // Pointing at the chat keeps its bubbles up; going into the composer brings them back for a while.
+  const [pointing, setPointing] = useState(false);
+  const [woken, setWoken] = useState(0);
+  const present = Boolean(session);
+  // The graph keeps the plan above the composer (the bubbles float over it, like the minimap).
+  useLayoutEffect(() => {
+    const element = bottom.current;
+    if (!element) return;
+    const report = () => onInset(Math.ceil(element.getBoundingClientRect().height) + DOCK_MARGIN);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      onInset(0);
+    };
+  }, [present, onInset]);
   if (!session) return null;
   const talked = session.items.length > 0 || session.running;
   return (
-    <div ref={dock} className="flex min-h-0 flex-col border-t border-line bg-canvas">
-      {open && talked && (
-        // Gives way before the graph does when the window gets short.
-        <div className="relative flex min-h-0 flex-col border-b border-line" style={{ height }}>
-          <ResizeHandle edge="top" bounds={ATP_DOCK} giver={() => dock.current?.previousElementSibling} keep={ATP_GRAPH_MIN.height} onResize={onResize} />
-          <Transcript session={session} />
+    // Only the composer, the bubbles and the panel take the pointer: the plan pans and zooms around them.
+    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center px-4" style={{ paddingBottom: DOCK_MARGIN }}>
+      <div ref={room} className="min-h-6 flex-1" />
+      <div
+        className="flex min-h-0 w-full max-w-[720px] flex-col gap-2"
+        onPointerEnter={() => setPointing(true)}
+        onPointerLeave={() => setPointing(false)}
+        onFocus={() => setWoken((count) => count + 1)}
+      >
+        {talked && view === "full" && (
+          <div
+            className="pointer-events-auto relative flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-line-strong bg-canvas/90 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl"
+            style={{ height }}
+          >
+            <ResizeHandle edge="top" bounds={ATP_DOCK} giver={() => room.current} keep={24} onResize={onResize} />
+            <Transcript session={session} />
+          </div>
+        )}
+        {talked && view === "bubbles" && <ChatBubbles session={session} pointing={pointing} woken={woken} onExpand={() => setView("full")} />}
+        <div ref={bottom} className="flex flex-col gap-1.5">
+          {talked && (
+            <div className="flex justify-end px-1 text-faint">
+              <span className="pointer-events-auto flex shrink-0 items-center gap-0.5 rounded-full border border-line bg-panel/80 p-0.5 shadow-[0_6px_16px_-10px_rgb(0_0_0/0.5)] backdrop-blur-md">
+                <ViewButton
+                  title="The last messages, as bubbles over the plan; they fade once it goes quiet, and point here or at the composer to bring them back"
+                  active={view === "bubbles"}
+                  onClick={() => (setView("bubbles"), setWoken((count) => count + 1))}
+                >
+                  <MessageCircle size={12} />
+                </ViewButton>
+                <ViewButton title="The whole conversation" active={view === "full"} onClick={() => setView("full")}>
+                  <Maximize2 size={12} />
+                </ViewButton>
+                <ViewButton title="Hide the conversation" active={view === "hidden"} onClick={() => setView("hidden")}>
+                  <MessageCircleOff size={12} />
+                </ViewButton>
+                <span className="mx-0.5 h-3 w-px bg-line-strong" />
+                <ViewButton title="Open as a chat" onClick={() => activate(session.handle)}>
+                  <MessagesSquare size={12} />
+                </ViewButton>
+              </span>
+            </div>
+          )}
+          <div className="pointer-events-auto">
+            <Composer
+              key={session.handle}
+              session={session}
+              floating
+              placeholder={plan ? "How is it going? Add, split or rewire nodes…" : "/skill:atp-architect or atp-micro-architect, then what to build…"}
+            />
+          </div>
         </div>
-      )}
-      <div className="flex items-center gap-2 px-5 pt-2 text-[11.5px] text-faint">
-        <span className="font-medium text-muted">{plan ? "Orchestrator" : "Architect"}</span>
-        <span>{plan ? "Ask how it is going, or change the plan" : "Describe the project; the plan opens here once written"}</span>
-        <div className="flex-1" />
-        {talked && (
-          <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-raised hover:text-fg">
-            {open ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-            {open ? "Hide conversation" : "Show conversation"}
-          </button>
-        )}
-        {talked && (
-          <button type="button" onClick={() => activate(session.handle)} title="Open as a chat" className="rounded-md p-1 hover:bg-raised hover:text-fg">
-            <MessagesSquare size={12} />
-          </button>
-        )}
       </div>
-      <Composer
-        key={session.handle}
-        session={session}
-        placeholder={plan ? "How is it going? Add, split or rewire nodes…" : "/skill:atp-architect or atp-micro-architect, then what to build…"}
-      />
+    </div>
+  );
+}
+
+/** The gap under the floating composer. */
+const DOCK_MARGIN = 16;
+
+function ViewButton({ title, active = false, onClick, children }: { title: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-pressed={active}
+      onClick={onClick}
+      className={`grid h-6 w-6 place-items-center rounded-full ${active ? "bg-raised text-fg" : "text-faint hover:bg-raised hover:text-fg"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** How long the bubbles stay after the orchestrator goes quiet (or you leave them), before they fade away. */
+const FADE_AFTER = 12_000;
+
+/**
+ * The last turns as chat bubbles over the plan, like a game's chat: yours on the right, the orchestrator's answers on
+ * the left. While it works, a bubble says what it does; long answers clip and open the whole conversation. Once it is
+ * quiet they fade away, and come back with its next message, while you point at the chat, or when you go into the
+ * composer.
+ */
+function ChatBubbles({ session, pointing, woken, onExpand }: { session: SessionState; pointing: boolean; woken: number; onExpand: () => void }) {
+  const derive = useMemo(() => createRunDeriver(), []);
+  const peek = chatPeek(derive(session), PEEK_TURNS);
+  const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  /** At the end, so new messages and streaming keep it there; only scrolling up leaves it. */
+  const pinned = useRef(true);
+  const lastTop = useRef(0);
+  const shown = peek.bubbles.length > 0 || peek.working;
+  // On every size change, not render: a bubble learns that it clips (and grows "Show all") after this renders.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || !content.current) return;
+    const follow = () => {
+      if (pinned.current) element.scrollTop = element.scrollHeight;
+    };
+    follow();
+    const observer = new ResizeObserver(follow);
+    observer.observe(content.current);
+    return () => observer.disconnect();
+  }, [shown]);
+
+  const latest = peek.bubbles.at(-1);
+  const change = `${peek.bubbles.length}:${latest?.key}:${latest?.text.length}:${peek.working}`;
+  const awake = peek.working || pointing;
+  const [faded, setFaded] = useState(false);
+  useEffect(() => {
+    setFaded(false);
+    if (awake) return;
+    const timer = setTimeout(() => setFaded(true), FADE_AFTER);
+    return () => clearTimeout(timer);
+  }, [change, awake, woken]);
+
+  if (!shown) return null;
+  const count = peek.bubbles.length;
+  return (
+    <div
+      ref={scroller}
+      onWheel={(event) => {
+        if (event.deltaY < 0) pinned.current = false;
+      }}
+      onScroll={(event) => {
+        const element = event.currentTarget;
+        if (element.scrollHeight - element.scrollTop - element.clientHeight < 8) pinned.current = true;
+        else if (element.scrollTop < lastTop.current) pinned.current = false;
+        lastTop.current = element.scrollTop;
+      }}
+      data-faded={faded || undefined}
+      className="atp-bubbles max-h-[min(42vh,420px)] min-h-0 overflow-y-auto px-1 pt-10"
+    >
+      <div ref={content} className="flex flex-col gap-2">
+        {peek.bubbles.map((bubble, index) => (
+          <Bubble key={bubble.key} bubble={bubble} old={count - index > 2} onExpand={onExpand} />
+        ))}
+        {peek.working && <WorkingBubble step={peek.step} cwd={session.cwd} />}
+      </div>
+    </div>
+  );
+}
+
+// Nearly opaque rather than blurred glass: the list's fade (a mask) leaves backdrop-filter nothing to blur.
+const BUBBLE_SURFACE = "pointer-events-auto shadow-[0_10px_28px_-14px_rgb(0_0_0/0.6)]";
+
+/** `old`: an earlier turn's bubble, dimmed until you point at it. */
+function Bubble({ bubble, old, onExpand }: { bubble: PeekBubble; old: boolean; onExpand: () => void }) {
+  const user = bubble.from === "user";
+  const tone = user
+    ? "rounded-br-md bg-raised/95 text-fg"
+    : bubble.error
+      ? "rounded-bl-md border border-bad/30 bg-panel/95 text-bad"
+      : "rounded-bl-md border border-line bg-panel/95 text-fg";
+  return (
+    <div className={`bubble-in flex ${user ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`atp-bubble max-w-[85%] min-w-0 rounded-[18px] px-3.5 py-2 text-[13px] leading-relaxed transition-colors ${old ? "text-muted! hover:text-fg!" : ""} ${BUBBLE_SURFACE} ${tone}`}
+      >
+        <Clipped tail={bubble.streaming} onExpand={onExpand}>
+          {user || bubble.error ? <div className="selectable break-words whitespace-pre-wrap">{bubble.text}</div> : <Markdown text={bubble.text} streaming={bubble.streaming} />}
+        </Clipped>
+      </div>
+    </div>
+  );
+}
+
+const CLIP = 168;
+
+/** A bubble's text up to CLIP px; a longer one fades out (at the top while it streams, to show the newest text). */
+function Clipped({ tail, onExpand, children }: { tail: boolean; onExpand: () => void; children: React.ReactNode }) {
+  const inner = useRef<HTMLDivElement>(null);
+  const [over, setOver] = useState(false);
+  useLayoutEffect(() => {
+    const element = inner.current;
+    if (element) setOver(element.offsetHeight > CLIP + 1);
+  });
+  const fade = tail ? "linear-gradient(to bottom, transparent, black 3em)" : "linear-gradient(to top, transparent, black 3em)";
+  return (
+    <>
+      <div className={`overflow-hidden ${tail ? "flex flex-col justify-end" : ""}`} style={{ maxHeight: CLIP, maskImage: over ? fade : undefined }}>
+        <div ref={inner} className="shrink-0">
+          {children}
+        </div>
+      </div>
+      {over && !tail && (
+        <button type="button" onClick={onExpand} className="mt-1 text-[11.5px] text-muted hover:text-fg">
+          Show all
+        </button>
+      )}
+    </>
+  );
+}
+
+function WorkingBubble({ step, cwd }: { step?: Step; cwd: string }) {
+  const doing =
+    step?.kind === "tool"
+      ? (() => {
+          const tool = presentTool(step.call.name, step.call.arguments, cwd, undefined, window.studio.homeDir);
+          return [tool.activeVerb, tool.target].filter(Boolean).join(" ");
+        })()
+      : step?.kind === "thinking"
+        ? "Thinking"
+        : "Working";
+  return (
+    <div className="bubble-in flex justify-start">
+      <div className={`flex max-w-[85%] min-w-0 items-center gap-2 rounded-full border border-line bg-panel/95 px-3 py-1.5 text-[12px] text-muted ${BUBBLE_SURFACE}`}>
+        <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+        <span className="shimmer truncate">{doing}</span>
+      </div>
     </div>
   );
 }
 
 // ── Empty and broken ─────────────────────────────────────────────────────────
 
-function NewPlanIntro({ cwd }: { cwd: string }) {
+/** Until the architect's chat starts: then the chat, floating over this, is the page. */
+function NewPlanIntro({ cwd, inset }: { cwd: string; inset: number }) {
+  const handle = useAtp((state) => state.orchestrators[`new:${cwd}`]);
+  const talked = useApp((state) => {
+    const session = handle ? state.sessions[handle] : undefined;
+    return Boolean(session && (session.items.length > 0 || session.running));
+  });
+  if (talked) return <div className="flex-1" />;
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-10 text-center">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-10 text-center" style={{ paddingBottom: inset }}>
       <Network size={28} className="text-faint" />
       <p className="max-w-lg text-[13px] leading-relaxed text-muted">
         Describe what to build in the composer below. The architect asks what it needs, then writes the plan to{" "}

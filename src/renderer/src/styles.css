@@ -409,7 +409,7 @@ code.hl span {
 .composer-box {
   border: 1px solid transparent;
   background:
-    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
     linear-gradient(
         115deg,
         color-mix(in srgb, var(--pi-coral) 45%, var(--line-strong)),
@@ -429,7 +429,7 @@ code.hl span {
 }
 .composer-box:focus-within {
   background:
-    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
     linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 30%, var(--pi-blue) 52%, var(--pi-gray) 74%, var(--pi-yellow), var(--pi-coral))
       border-box;
   background-size:
@@ -453,6 +453,17 @@ code.hl span {
 .composer:focus-within .composer-glow {
   opacity: 0.3;
   animation: composer-glow-flow 7s ease-in-out infinite alternate;
+}
+/* Floating over the ATP graph: the canvas shows through, blurred, and a shadow lifts the box off it. */
+.composer-floating {
+  --composer-fill: color-mix(in srgb, var(--panel) 80%, transparent);
+}
+.composer-floating .composer-box {
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 18px 48px -18px rgb(0 0 0 / 0.55);
+}
+.composer-floating .composer-box:focus-within {
+  box-shadow: 0 18px 48px -18px rgb(0 0 0 / 0.55);
 }
 @keyframes composer-glow-flow {
   from {
@@ -858,9 +869,42 @@ code.hl span {
 .atp-doc .prose > :first-child {
   margin-top: 0;
 }
+/* The orchestrator's chat as bubbles over the graph (Atp.tsx ChatBubbles): compact prose, a new bubble rises in,
+   older ones scroll away under a fade at the top, and the whole list fades away once the chat is quiet. The mask
+   makes the list a backdrop root, so bubbles are nearly opaque instead of blurred glass. */
+.atp-bubbles {
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, transparent, black 2.5rem);
+  transition: opacity 260ms ease-out;
+}
+.atp-bubbles[data-faded] {
+  opacity: 0;
+  transition-duration: 1.4s;
+}
+.atp-bubbles[data-faded] * {
+  pointer-events: none;
+}
+.atp-bubble .prose {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.atp-bubble .prose :is(h1, h2, h3, h4) {
+  margin: 0.8em 0 0.3em;
+  font-size: 13px;
+}
+.bubble-in {
+  animation: bubble-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .atp-node,
-  .atp-edge {
+  .atp-edge,
+  .bubble-in {
     animation: none !important;
   }
 }

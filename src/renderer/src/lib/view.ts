@@ -1,6 +1,7 @@
 // Transcript view model: items -> runs (one per user message) -> blocks. Consecutive thinking
 // and tool calls merge into one activity group so a long agent loop reads as a single line.
 import type { BashExecutionMessage, CustomMessage, StopReason, ToolCall, UserMessage } from "../../../shared/protocol";
+import { splitCardBlock, splitFileMentions } from "./attachments";
 import type { CompactionItem, Item, SessionState, ToolRun } from "./session";
 
 export type Step =
@@ -220,6 +221,56 @@ export function layoutRun(run: Run): RunLayout {
     startedAt: run.user?.message.timestamp,
     endedAt: Math.max(texts[0]?.at ?? 0, lastWork && "at" in lastWork ? lastWork.at : 0) || undefined,
   };
+}
+
+/** A bubble of a chat shown as a chat over something else (the ATP orchestrator over its graph). */
+export interface PeekBubble {
+  key: string;
+  from: "user" | "agent";
+  text: string;
+  streaming: boolean;
+  error: boolean;
+}
+
+export interface ChatPeek {
+  bubbles: PeekBubble[];
+  /** The live turn has no answer yet: it works, and this is its latest thinking or tool step (if any). */
+  working: boolean;
+  step?: Step;
+}
+
+/**
+ * The last `turns` turns as chat bubbles: what you said (without its file, card and comment blocks) and the
+ * agent's answer or error. Work (thinking, tools, commentary) stays out; the live turn reports its latest step.
+ */
+export function chatPeek(runs: Run[], turns: number): ChatPeek {
+  const bubbles: PeekBubble[] = [];
+  for (const run of runs.slice(-turns)) {
+    if (run.user) {
+      const text = userText(run.user.message);
+      if (text) bubbles.push({ key: run.user.key, from: "user", text, streaming: false, error: false });
+    }
+    const layout = layoutRun(run);
+    if (!layout.settled) continue;
+    for (const block of layout.final) {
+      if (block.kind === "text") bubbles.push({ key: block.key, from: "agent", text: block.text, streaming: block.streaming, error: false });
+      else if (block.kind === "error") bubbles.push({ key: block.key, from: "agent", text: block.text, streaming: false, error: true });
+    }
+  }
+  const last = runs.at(-1);
+  if (!last?.live || layoutRun(last).settled) return { bubbles, working: false };
+  const activity = last.blocks.findLast((block) => block.kind === "activity");
+  return { bubbles, working: true, step: activity?.kind === "activity" ? activity.steps.at(-1) : undefined };
+}
+
+function userText(message: UserMessage): string {
+  const text =
+    typeof message.content === "string"
+      ? message.content
+      : message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+  const [withoutFiles] = splitFileMentions(text);
+  const [withoutCard] = splitCardBlock(withoutFiles);
+  return withoutCard.replace(/\n*<browser-comments>[\s\S]*?<\/browser-comments>/, "").trim();
 }
 
 /** A break this long before a message (or a new day) gets a centered time divider: "I came back to this". */

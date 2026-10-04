@@ -57,11 +57,14 @@ function detectMenu(text: string, caret: number): MenuState | undefined {
   return undefined;
 }
 
-/** `placeholder`: what the empty composer suggests while pi is idle (the ATP page's orchestrator has its own). */
 /** How long a first Esc keeps the stop button armed for the second. */
 const ESC_ARM_MS = 2500;
 
-export function Composer({ session, placeholder }: { session: SessionState; placeholder?: string }) {
+/**
+ * `placeholder`: what the empty composer suggests while pi is idle (the ATP page's orchestrator has its own).
+ * `floating`: it floats over something (the ATP graph): no page padding, a translucent, blurred box.
+ */
+export function Composer({ session, placeholder, floating = false }: { session: SessionState; placeholder?: string; floating?: boolean }) {
   const { handle } = session;
   const [text, setTextState] = useState(() => drafts.get(handle) ?? "");
   const [menu, setMenu] = useState<MenuState>();
@@ -223,7 +226,7 @@ export function Composer({ session, placeholder }: { session: SessionState; plac
   }, [armed, busy]);
 
   return (
-    <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2 px-8 pb-5">
+    <div className={floating ? "flex w-full flex-col gap-2" : "mx-auto flex w-full max-w-[800px] flex-col gap-2 px-8 pb-5"}>
       <Dialogs handle={handle} dialogs={session.dialogs} />
       {widgetsAbove.map(([key, widget]) => (
         <Widget key={key} lines={widget.lines} />
@@ -256,7 +259,7 @@ export function Composer({ session, placeholder }: { session: SessionState; plac
         }}
       />
       {/* pi-colored glow behind the box; the box border becomes a flowing gradient on focus (see .composer). */}
-      <div className="composer relative">
+      <div className={`composer relative ${floating ? "composer-floating" : ""}`}>
         <div className="composer-glow" aria-hidden />
       <div className="composer-box relative z-10 rounded-2xl">
         {menu && items.length > 0 && (

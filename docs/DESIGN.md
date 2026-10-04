@@ -467,7 +467,7 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   its prompt (`resources/atp/worker.md` or `orchestrator.md`, `--append-system-prompt`) and its plan's path. The page
   remembers which chat worked which node (localStorage) and opens them from the node panel. A worker chat closes
   once its node is done, unless you are looking at it.
-- **The orchestrator** is one chat per plan, under the page: you ask it how the plan is going, or have it edit or
+- **The orchestrator** is one chat per plan, floating over the graph: you ask it how the plan is going, or have it edit or
   extend the plan with the librarian (decompose, future patches). It never works a node. Its extension's
   `atp_pause` holds the plan in main (`Atp.setHeld`; the librarian has no pause) so the runner claims no new node,
   and waits up to 4 minutes for running nodes to finish; `atp_resume` lifts it (and so does the page's Resume). The
@@ -478,12 +478,21 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
 - **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a header breadcrumb (project, then
   the plan; `PlanSwitch` opens a menu of the project's plans with their progress, in place of an always-on rail), the
   plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last note), the graph, a
-  docked node panel (instruction, context, report, its chats; closes with its X or Esc) and the orchestrator's
-  transcript and composer. View > ATP (⌘⇧A) and the sidebar's ATP row open it. The node panel and the transcript
-  resize from their inner edge (`ResizeHandle`, double-click resets; bounds `ATP_DETAIL`/`ATP_DOCK` in
-  `lib/layout.ts`, persisted as `pigna:atp-panels`). A drag stops before the graph gets under `ATP_GRAPH_MIN`
-  (280×160); on a smaller window the remembered sizes give way the same way (the node panel's CSS `clamp`, the
-  transcript shrinking before the graph's `minHeight`) without changing what is remembered.
+  docked node panel (instruction, context, report, its chats; closes with its X or Esc) and the orchestrator
+  (`OrchestratorDock`), which floats over the graph: a translucent composer (`Composer floating`) and above it its
+  conversation in one of three views. Bubbles (default for a plan) show the last two turns as chat bubbles
+  (`chatPeek` in `lib/view.ts`: your text and its answers or errors, no work; a live turn shows its latest step), and
+  fade away 12 s after the chat goes quiet, coming back with its next message, while you point at the chat, or when
+  you go into the composer. Full (default for the architect's new-plan chat) is the whole `Transcript` in a floating
+  panel; hidden shows only the composer. Only the bubbles, panel and composer take the pointer, so the graph pans
+  around them; the composer's height goes to `AtpGraph` as `inset`, which fits and centers the plan above it and
+  lifts the zoom controls and minimap. The bubble list's top fade is a mask, which makes it a backdrop root (no
+  `backdrop-filter` inside it works), so bubbles are near-opaque rather than blurred. View > ATP (⌘⇧A) and the
+  sidebar's ATP row open the page. The node panel and the full conversation resize from their inner edge
+  (`ResizeHandle`, double-click resets; bounds `ATP_DETAIL`/`ATP_DOCK` in `lib/layout.ts`, persisted as
+  `pigna:atp-panels`). A drag stops before the graph gets under `ATP_GRAPH_MIN` (280×160; the conversation stops
+  short of the canvas's top); on a smaller window the remembered sizes give way the same way (the node panel's CSS
+  `clamp`, the conversation panel shrinking) without changing what is remembered.
 - **The graph** (`components/AtpGraph.tsx`, `lib/atp-layout.ts`) is native SVG and HTML, no graph library: a
   layered layout (longest-path layers, barycenter ordering, then straightened), cards positioned in one transformed
   layer and edges as SVG paths with `vector-effect: non-scaling-stroke`. SCOPE nodes draw dotted edges to their
@@ -757,12 +766,13 @@ too and use `capture`, and wait a few seconds after opening a page (its enter an
 The same starvation hits CDP tests of background windows: mouse moves are dispatched with the next frame (hover
 and IntersectionObserver lag until one is drawn), and a `drag` blocks waiting for frames. Force frames by taking
 screenshots (`shot`) after a `move`, and in a parallel loop while a `drag` runs.
-Background test windows are `document.visibilityState === "hidden"`: smooth scrolls never move, scroll events do not
-fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
+Background test windows are `document.visibilityState === "hidden"`: smooth scrolls never move, ResizeObserver callbacks
+never run (even after a `shot`), scroll events do not fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
 `PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it), for streaming UI checks without a model; it names a session file
-(never written), so a card's or lament's chats link as with pi. For board checks, seed
+(never written, so relaunching on the same `PIGNA_USER_DATA` fails to reopen remembered ATP orchestrator chats with
+ENOENT and the page shows no composer: start each run with a fresh profile), so a card's or lament's chats link as with pi. For board checks, seed
 `$PIGNA_USER_DATA/board.json` (`{ "version": 1, "cards": [...] }`) with cards of a throwaway git project under `/tmp`
 (give cards its real path, `/private/tmp/…`: the launch cwd is resolved, so `/tmp/…` cards sit on another board):
 the board's project picker lists every project with cards, and card actions then start fake-pi chats there. Tests with the real
