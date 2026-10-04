@@ -241,7 +241,10 @@ function registerIpc(shellEnv: Promise<void>): void {
   on(IPC.browserLayout, (layout: BrowserLayout) => browser?.setLayout(layout));
   on(IPC.browserNewTab, (url?: string) => browser?.createTab(url));
   on(IPC.browserCloseTab, (id: string) => browser?.closeTab(id));
-  on(IPC.browserActivate, (id: string) => browser?.activate(id));
+  on(IPC.browserActivate, (id: string) => {
+    browser?.activate(id);
+    browser?.focusWindow(id);
+  });
   on(IPC.browserNavigate, (id: string, input: string) => browser?.navigate(id, input));
   on(IPC.browserCommand, (id: string, command: BrowserCommand) => browser?.command(id, command));
   on(IPC.browserAnnotate, (enabled: boolean) => browser?.setAnnotating(enabled));
@@ -251,6 +254,14 @@ function registerIpc(shellEnv: Promise<void>): void {
     if (request !== null && (typeof request !== "object" || Array.isArray(request))) throw new Error("Invalid viewport request");
     // Whatever the renderer sends, the user is the source.
     return (await browser.setViewport(id, request ? { ...(request as ViewportRequest), source: "user" } : undefined)) ?? null;
+  });
+  handle(IPC.browserPopOut, async (id: string) => {
+    if (typeof id !== "string" || !browser) throw new Error("Invalid browser tab");
+    await browser.popOut(id);
+  });
+  handle(IPC.browserReturn, async (id: string) => {
+    if (typeof id !== "string" || !browser) throw new Error("Invalid browser tab");
+    await browser.returnToPane(id);
   });
   handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
   handle(IPC.browserGetState, () => browser?.snapshot());

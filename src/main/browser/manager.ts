@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { app, type BrowserWindow, session, WebContentsView, type WebContents } from "electron";
+import { app, BrowserWindow, session, WebContentsView, type WebContents } from "electron";
 import {
   type Annotation,
   type BrowserCommand,
@@ -21,6 +21,8 @@ import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 export const PARTITION = "persist:pigna-browser";
 const CONSOLE_LIMIT = 300;
 const HISTORY_LIMIT = 500;
+/** Standalone device windows open at once. */
+export const WINDOW_LIMIT = 4;
 
 export interface ConsoleEntry {
   level: string;
@@ -37,6 +39,11 @@ export interface Tab {
   viewport?: ViewportSpec;
   /** Fit scale last sent to Emulation.setDeviceMetricsOverride; undefined when not applied yet. */
   emulatedScale?: number;
+  /** "pane" for the browser pane, otherwise the id of the BrowserWindow the tab lives in. */
+  surface: "pane" | number;
+  win?: BrowserWindow;
+  /** The viewport was made up when popping out a tab that had none; returning to the pane drops it again. */
+  autoViewport?: boolean;
 }
 
 export interface BrowserEvents {
@@ -49,7 +56,10 @@ export interface BrowserEvents {
 export class BrowserManager {
   readonly tabs = new Map<string, Tab>();
   private order: string[] = [];
+  /** The tab the agent and toolbar address; may live in a window. */
   private activeId?: string;
+  /** The pane tab that is drawn in the pane. */
+  private paneId?: string;
   private layout: BrowserLayout = { visible: false, bounds: { x: 0, y: 0, width: 0, height: 0 } };
   private attached?: WebContentsView;
   private annotating = false;
@@ -72,6 +82,10 @@ export class BrowserManager {
     profile.webRequest.onBeforeSendHeaders((details, callback) => {
       const extra = details.webContentsId === undefined ? undefined : this.hintHeaders.get(details.webContentsId);
       callback({ requestHeaders: extra ? { ...details.requestHeaders, ...extra } : details.requestHeaders });
+    });
+    // Device windows belong to the app window.
+    window.on("close", () => {
+      for (const tab of [...this.tabs.values()]) if (tab.win) this.closeTab(tab.id);
     });
     void readFile(this.historyPath, "utf8")
       .then((text) => {
@@ -100,6 +114,7 @@ export class BrowserManager {
             canGoForward: wc.navigationHistory.canGoForward(),
             agent: tab.agent,
             viewport: tab.viewport,
+            surface: tab.win ? ("window" as const) : ("pane" as const),
           },
         ];
       }),
@@ -117,15 +132,20 @@ export class BrowserManager {
 
   // ── Tabs ───────────────────────────────────────────────────────────────────
 
-  createTab(url?: string, agent?: string): Tab {
+  private makeTab(agent?: string): Tab {
     const view = new WebContentsView({
       webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
     });
     view.setBackgroundColor("#ffffff");
-    const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent };
+    const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent, surface: "pane" };
     this.tabs.set(tab.id, tab);
     this.order.push(tab.id);
     this.wire(tab);
+    return tab;
+  }
+
+  createTab(url?: string, agent?: string): Tab {
+    const tab = this.makeTab(agent);
     this.activate(tab.id);
     if (url) void this.load(tab, url);
     return tab;
@@ -188,12 +208,20 @@ export class BrowserManager {
     this.tabs.delete(id);
     this.hintHeaders.delete(tab.view.webContents.id);
     if (this.attached === tab.view) this.detach();
+    // The tab is already gone, so the window's "closed" handler finds nothing to do.
+    if (tab.win && !tab.win.isDestroyed()) tab.win.close();
     tab.view.webContents.close();
+    if (this.paneId === id) {
+      this.paneId = undefined;
+      const next = [this.order[index], this.order[index - 1]].find((candidate) => candidate && this.tabs.get(candidate)?.surface === "pane");
+      if (next) this.paneId = next;
+    }
     if (this.activeId === id) {
       this.activeId = undefined;
       const next = this.order[index] ?? this.order[index - 1];
       if (next) this.activate(next);
     }
+    this.applyLayout();
     this.emitState();
   }
 
@@ -201,6 +229,7 @@ export class BrowserManager {
     if (!this.tabs.has(id)) return;
     if (this.annotating && this.activeId !== id) this.setAnnotating(false);
     this.activeId = id;
+    if (this.tabs.get(id)?.surface === "pane") this.paneId = id;
     this.applyLayout();
     this.emitState();
   }
@@ -237,6 +266,110 @@ export class BrowserManager {
     this.tabs.get(id)?.view.webContents.openDevTools({ mode: "detach" });
   }
 
+  // ── Windows ────────────────────────────────────────────────────────────────
+
+  /** Open a tab in its own window whose content is exactly spec.width x spec.height DIPs (the OS may clamp it to the screen). */
+  async openWindow(request: ViewportRequest, url?: string, agent?: string): Promise<Tab> {
+    this.assertWindowSlot();
+    const spec = resolveViewport(request);
+    const tab = this.makeTab(agent);
+    const win = this.attachWindow(tab, spec);
+    await this.setViewport(tab.id, request);
+    win.showInactive();
+    this.emitState();
+    if (url) await this.load(tab, normalizeAddress(url));
+    return tab;
+  }
+
+  /** Move a pane tab into a window sized to its viewport, or to the pane when it has none. */
+  async popOut(id: string): Promise<void> {
+    const tab = this.tabs.get(id);
+    if (!tab) throw new Error(`No browser tab ${id}`);
+    if (tab.win) return;
+    this.assertWindowSlot();
+    const zoom = this.window.webContents.getZoomFactor();
+    const { width, height } = this.layout.bounds;
+    const spec =
+      tab.viewport ?? resolveViewport({ width: width > 1 ? Math.round(width * zoom) : undefined, height: height > 1 ? Math.round(height * zoom) : undefined, source: "user" });
+    if (this.attached === tab.view) this.detach();
+    const win = this.attachWindow(tab, spec);
+    if (this.paneId === id) {
+      this.paneId = this.order.find((other) => other !== id && this.tabs.get(other)?.surface === "pane");
+    }
+    if (!tab.viewport) tab.autoViewport = true;
+    await this.setViewport(id, { width: spec.width, height: spec.height, dpr: spec.dpr, mobile: spec.mobile, source: "user" });
+    win.showInactive();
+    this.applyLayout();
+    this.emitState();
+  }
+
+  /** Move a window tab back into the pane and close its window. */
+  async returnToPane(id: string): Promise<void> {
+    const tab = this.tabs.get(id);
+    if (!tab) throw new Error(`No browser tab ${id}`);
+    const win = tab.win;
+    if (!win) return;
+    tab.win = undefined;
+    tab.surface = "pane";
+    if (!win.isDestroyed()) {
+      win.contentView.removeChildView(tab.view);
+      win.close();
+    }
+    if (tab.autoViewport) {
+      tab.autoViewport = false;
+      await this.setViewport(id, undefined);
+    }
+    this.activate(id);
+  }
+
+  /** Raise a window tab for the user; panes need nothing. */
+  focusWindow(id: string): void {
+    const win = this.tabs.get(id)?.win;
+    if (win && !win.isDestroyed()) win.show();
+  }
+
+  private assertWindowSlot(): void {
+    const open = [...this.tabs.values()].filter((tab) => tab.win).length;
+    if (open >= WINDOW_LIMIT) throw new Error(`At most ${WINDOW_LIMIT} browser windows can be open; close one first`);
+  }
+
+  private attachWindow(tab: Tab, spec: ViewportSpec): BrowserWindow {
+    const win = new BrowserWindow({
+      width: spec.width,
+      height: spec.height,
+      useContentSize: true,
+      show: false,
+      title: windowTitle(spec),
+      backgroundColor: "#ffffff",
+      autoHideMenuBar: true,
+      fullscreenable: false,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    win.removeMenu();
+    win.setAspectRatio(spec.width / spec.height);
+    win.contentView.addChildView(tab.view);
+    tab.win = win;
+    tab.surface = win.id;
+    win.on("resize", () => this.layoutWindow(tab));
+    win.on("closed", () => {
+      if (tab.win === win) this.closeTab(tab.id);
+    });
+    this.layoutWindow(tab);
+    return win;
+  }
+
+  private layoutWindow(tab: Tab): void {
+    const win = tab.win;
+    if (!win || win.isDestroyed()) return;
+    const [width = 0, height = 0] = win.getContentSize();
+    const fit = this.fitFor(tab);
+    tab.view.setBounds(fit ? { x: fit.bounds.x, y: fit.bounds.y, width: fit.bounds.width, height: fit.bounds.height } : { x: 0, y: 0, width, height });
+    if (fit && tab.emulatedScale !== fit.scale) {
+      tab.emulatedScale = fit.scale;
+      void this.emulate(tab).catch((error) => log.warn("browser", `viewport apply failed: ${(error as Error).message}`));
+    }
+  }
+
   // ── Viewport ───────────────────────────────────────────────────────────────
 
   /** Set (request) or reset (undefined) a tab's emulated viewport. Throws on an unknown tab. */
@@ -250,6 +383,7 @@ export class BrowserManager {
     const wc = tab.view.webContents;
     await this.emulate(tab);
     if ((before?.userAgent ?? "native") !== (spec?.userAgent ?? "native") && wc.getURL()) wc.reload();
+    this.layoutWindow(tab);
     this.applyLayout();
     this.emitState();
     return spec;
@@ -264,8 +398,14 @@ export class BrowserManager {
   /** Scale that fits the tab's viewport into the pane (window DIPs); 1 when nothing is emulated. */
   private fitFor(tab: Tab): ReturnType<typeof fitViewport> | undefined {
     if (!tab.viewport) return undefined;
-    const zoom = this.window.webContents.getZoomFactor();
-    const pane = { width: Math.round(this.layout.bounds.width * zoom), height: Math.round(this.layout.bounds.height * zoom) };
+    let pane: { width: number; height: number };
+    if (tab.win && !tab.win.isDestroyed()) {
+      const [width = 0, height = 0] = tab.win.getContentSize();
+      pane = { width, height };
+    } else {
+      const zoom = this.window.webContents.getZoomFactor();
+      pane = { width: Math.round(this.layout.bounds.width * zoom), height: Math.round(this.layout.bounds.height * zoom) };
+    }
     return fitViewport(pane.width > 1 && pane.height > 1 ? pane : { width: tab.viewport.width, height: tab.viewport.height }, tab.viewport);
   }
 
@@ -316,7 +456,7 @@ export class BrowserManager {
   }
 
   private applyLayout(): void {
-    const tab = this.active();
+    const tab = this.paneId ? this.tabs.get(this.paneId) : undefined;
     if (!this.layout.visible || !tab || this.layout.bounds.width < 2) {
       this.detach();
       return;
@@ -351,6 +491,11 @@ export class BrowserManager {
   /** Make sure a tab is drawn before the agent screenshots or clicks it. */
   async ensureVisible(tab: Tab): Promise<void> {
     if (this.activeId !== tab.id) this.activate(tab.id);
+    if (tab.win) {
+      // A window tab never reveals the pane; a minimized window cannot be captured.
+      if (!tab.win.isDestroyed() && tab.win.isMinimized()) tab.win.restore();
+      return;
+    }
     if (this.layout.visible) return;
     this.events.reveal();
     await new Promise<void>((resolve) => {
@@ -416,4 +561,8 @@ export class BrowserManager {
   destroy(): void {
     for (const id of [...this.order]) this.closeTab(id);
   }
+}
+
+function windowTitle(spec: ViewportSpec): string {
+  return `${spec.label} ${spec.width}x${spec.height} @${spec.dpr}x`;
 }

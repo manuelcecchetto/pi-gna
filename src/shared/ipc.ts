@@ -44,6 +44,8 @@ export const IPC = {
   browserAnnotate: "browser:annotate",
   browserInspect: "browser:inspect",
   browserViewport: "browser:viewport",
+  browserPopOut: "browser:pop-out",
+  browserReturn: "browser:return",
   browserHistory: "browser:history",
   browserGetState: "browser:get-state",
   browserState: "browser:state",
@@ -263,6 +265,10 @@ export interface BrowserApi {
   inspect(id: string): void;
   /** Set a tab's emulated viewport (resolved through resolveViewport) or reset it with null. Rejects invalid input. */
   viewport(id: string, request: ViewportRequest | null): Promise<ViewportSpec | null>;
+  /** Move a pane tab into its own window. Rejects at the window limit. */
+  popOut(id: string): Promise<void>;
+  /** Move a window tab back into the pane. */
+  returnToPane(id: string): Promise<void>;
   history(): Promise<HistoryEntry[]>;
   state(): Promise<BrowserState>;
   onState(listener: (state: BrowserState) => void): () => void;
