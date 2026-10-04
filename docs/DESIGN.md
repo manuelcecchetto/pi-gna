@@ -31,6 +31,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
     laments        LamentStore (userData/laments.json) and the lament tool's route; both stores are a JsonStore (store)
     github         Github: a project's repository and gh account, its issues and PRs through gh (userData/github.json: logins only)
+    atp            Atp: a project's ATP plans (watch, scan), the librarian CLI (claim, release, activate), commits, holds
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
     updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
@@ -39,6 +40,8 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
 resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
 resources/kanban-extension.ts    the same for the kanban_* tools
 resources/lament-extension.ts    the same for the lament tool
+resources/atp-extension.ts       ATP orchestrator chats only: atp_pause, atp_resume
+resources/atp/                   the ATP roles' system prompts and the vendored ATP skills (architects, librarian CLI)
 resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
 
@@ -78,7 +81,9 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   the files pi reads from disk (`resources/browser-extension.ts`, `resources/kanban-extension.ts`,
   `resources/lament-extension.ts`, `resources/pigna-prompt.md`, and the `src/shared/browser.ts`, `src/shared/board.ts`
   and `src/shared/laments.ts` they import), which are
-  also unpacked to `app.asar.unpacked/` (session-host points pi there).
+  also unpacked to `app.asar.unpacked/` (session-host points pi there; `onDisk` in `src/main/resources.ts`). The
+  ATP files (`resources/atp/`, `resources/atp-extension.ts`) ride along under `resources/**`; the librarian is a
+  Python script (`python3`, standard library only) that main runs from the unpacked copy.
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
   runtime, no notarization) and macOS asks once before opening a downloaded build (README). Squirrel.Mac
   (Electron's `autoUpdater`, electron-updater) cannot update such builds, so pi-gna has its own updater.
@@ -303,6 +308,62 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   dialog lists them with unlink and takes `#12` or a link to add one (`github:lookup` checks it with gh for its
   kind and title).
 
+## ATP
+
+- **What it is.** ATP (Agentic Task Protocol, github.com/manuelcecchetto/atp) breaks a big project into a DAG of
+  small nodes in a `<name>.atp.json` plan, and runs each node in a fresh agent context with only the context its
+  dependencies left, so a long project does not rot one context and a model cannot stop at "mostly done". It is for
+  big projects; Kanban is for features and fixes. The two are separate: no card, board or `kanban_*` tool is
+  involved, and a plan is not a card.
+- **Bundled stack** (`resources/atp/`): the skills `atp-architect` (macro: a plan from a goal), `atp-micro-architect`
+  (micro: a plan for one bounded change) and `atp-local-librarian` (the CLI, `atp_local_librarian.py`, which is the
+  only thing that changes a plan: claim, complete, decompose, release, activate, future patches; writes take an
+  fcntl lock on `<plan>.lock`). They are vendored from `~/.codex/skills` without their `agents/` and `tests/`
+  folders; update them by copying again. The Codex-only Sol orchestrator skill is not bundled: pi-gna's runner
+  replaces it. Never edit a `.atp.json` by hand or from pi-gna's code; `parsePlan` (`src/shared/atp.ts`) only reads.
+- **Plans** are found per project (`Atp.watch`, `src/main/atp.ts`): `rg --files` for `*.atp.json` (depth 5, skipping
+  `node_modules`, `.git` and build folders), then a non-recursive `fs.watch` on each folder holding a plan and on the
+  project root (debounced 150 ms), so a plan created in a new subfolder shows after Refresh. `Atp.activate` runs
+  `atp-activate-project` and adds `*.atp.json.lock` to the repository's `.git/info/exclude`, so `git add -A` never
+  commits the lock.
+- **The runner** (`state/atp.ts`, `startPlan`) is the renderer, not a scheduler, and nothing judges a node: like
+  atp-runner, per plan it claims the next READY node (`atp-claim-task --agent-id pigna-w1`; `parseClaim` reads
+  `TASK ASSIGNED`, `NO_TASKS_AVAILABLE` and "not ACTIVE"), starts a fresh worker chat with the worker prompt and
+  the claim packet (`workerMessage`), waits for its run, then reads the plan. A worker completes, fails or decomposes
+  its node itself through the librarian, and commits `node(<ID>): <title>`; if HEAD did not move and the tree is
+  dirty, main commits what it left (`Atp.commit`, `git add -A`). A node still claimed after the run gets one
+  nudge (`nudgeMessage`); after that the runner releases it, notes why on the page and stops. Stop aborts the
+  worker and releases its node. A node held by `pigna-w1` while nothing runs (pi-gna quit mid-node) shows as
+  Interrupted, and Start resumes it in a new worker that is told it is resuming. The worker's plan-file changes
+  stay uncommitted (the worker commits before it completes, as with atp-runner).
+- **Fixed config** (`ATP_CONFIG`): orchestrator `openai-codex/gpt-5.6-sol` at high thinking, workers
+  `claude-sonnet-5-5` at medium (picked by id like the triage model, preferring the chat's provider; a node's `reasoning_effort` is ignored), one worker per plan, a commit
+  per node. A settings page for these is later work.
+- **ATP chats are hidden** threads: `--session-dir <userData>/atp-sessions` keeps them out of `~/.pi/agent/sessions`
+  and the sidebar (`projectViews` skips them too). SessionHost (`atpArgs`) gives each role its skills (`--skill`),
+  its prompt (`resources/atp/worker.md` or `orchestrator.md`, `--append-system-prompt`) and its plan's path. The page
+  remembers which chat worked which node (localStorage) and opens them from the node panel. A worker chat closes
+  once its node is done, unless you are looking at it.
+- **The orchestrator** is one chat per plan, under the page: you ask it how the plan is going, or have it edit or
+  extend the plan with the librarian (decompose, future patches). It never works a node. Its extension's
+  `atp_pause` holds the plan in main (`Atp.setHeld`; the librarian has no pause) so the runner claims no new node,
+  and waits up to 4 minutes for running nodes to finish; `atp_resume` lifts it (and so does the page's Resume). The
+  librarian refuses future patches while any node is CLAIMED, SCOPE nodes included; the prompt says so. It starts
+  (or resumes from its session file) when the page shows the plan, without a model call, and idle ones stop when
+  the page closes. New ATP opens the same composer with the architect skills; the chat that writes the plan
+  becomes its orchestrator.
+- **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a rail of the project's plans with
+  their progress, the plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last
+  note), the graph, a docked node panel (instruction, context, report, its chats) and the orchestrator's transcript
+  and composer. View > ATP (⌘⇧A) and the sidebar's ATP row open it.
+- **The graph** (`components/AtpGraph.tsx`, `lib/atp-layout.ts`) is native SVG and HTML, no graph library: a
+  layered layout (longest-path layers, barycenter ordering, then straightened), cards positioned in one transformed
+  layer and edges as SVG paths with `vector-effect: non-scaling-stroke`. SCOPE nodes draw dotted edges to their
+  `scope_children`. Status sets the card's look (`lookOf`): running cards glow and their incoming edges are animated
+  dashes. Three levels of detail by zoom: cards, titles only, then status-colored blocks, so a 300-node plan reads as
+  a progress map when fitted. `--k` (the zoom) keeps outlines and glow screen-sized; selecting a node lights its
+  lineage. A canvas minimap shows only when zoomed well past fit.
+
 ## pi RPC notes (pi 1.0.0)
 
 Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-agent/docs/` (`rpc.md`,
@@ -350,7 +411,7 @@ Verified live (pi 1.0.0, Oct 2026):
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
-- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L) and "GitHub" (⌘⇧G) rows, then a
+- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L), "GitHub" (⌘⇧G) and "ATP" (⌘⇧A, with a count of running plans) rows, then a
   "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
   pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
@@ -515,7 +576,9 @@ them in a throwaway project under `/tmp` and delete its folder in `~/.pi/agent/s
 Your pi-gna may run from this checkout's `out/`, and other chats may build there too: test a change from a build of its
 own (`npx electron-vite build --outDir /tmp/<dir>/app/out`, copy `package.json` and symlink `node_modules` and
 `resources` into `/tmp/<dir>/app`, then start `$(node -e 'console.log(require("electron"))') /tmp/<dir>/app` with the
-test-instance env). A pasted screenshot is a File without a path: dispatch `new ClipboardEvent("paste", { clipboardData })`
+test-instance env). Set `PIGNA_CWD` in that env too (`PIGNA_CWD=/private/tmp/<project>`, or `env -u PIGNA_CWD`):
+an agent's shell inherits it from the pi-gna session it runs in, so a test instance otherwise opens the agent's
+own project (this repository) instead of the throwaway one. A pasted screenshot is a File without a path: dispatch `new ClipboardEvent("paste", { clipboardData })`
 with a `DataTransfer` holding a canvas `File` in `eval`, so the test does not touch your clipboard; `drop` covers
 Finder files.
 Browser tabs are separate CDP targets: `CDP_URL=localhost:8765 node scripts/cdp.mjs shot` captures a tab, and

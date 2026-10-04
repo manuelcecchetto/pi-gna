@@ -52,4 +52,6 @@ var methods: [String: Handler] = [:]
 
 func registerMethods() {
     registerCoreMethods()
+    registerAppMethods()
+    registerAXMethods()
 }

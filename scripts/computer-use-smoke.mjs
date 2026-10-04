@@ -41,6 +41,25 @@ const call = (method, params = {}) =>
 console.log('hello      ', JSON.stringify(await call('hello', { token, protocol: 1 })))
 console.log('ping       ', JSON.stringify(await call('ping')))
 console.log('permissions', JSON.stringify(await call('permissions')))
+const apps = await call('list_apps')
+const list = apps.result?.apps ?? []
+console.log('list_apps  ', list.length, 'apps; running:', list.filter((a) => a.isRunning).map((a) => a.displayName).join(', '))
+console.log('denylist   ', JSON.stringify((await call('resolve_app', { app: 'com.apple.Terminal' })).error))
+
+// Launch TextEdit in the background (does not take focus), print the full tree, then a diff after manual typing.
+console.log('resolve    ', JSON.stringify(await call('resolve_app', { app: 'TextEdit' })))
+const first = await call('get_app_state', { app: 'TextEdit' })
+console.log(first.error ? `get_app_state error: ${JSON.stringify(first.error)}` : first.result.text)
+console.log('\n>>> Type something into TextEdit, then press Enter here (or wait 20 s)...')
+await new Promise((r) => {
+  process.stdin.once('data', r)
+  setTimeout(r, 20000)
+})
+const second = await call('get_app_state', { app: 'TextEdit' })
+console.log(second.error ? `get_app_state error: ${JSON.stringify(second.error)}` : second.result.text)
+const calc = await call('get_app_state', { app: 'Calculator', disable_diff: true })
+console.log(calc.error ? `calculator error: ${JSON.stringify(calc.error)}` : calc.result.text)
+process.stdin.pause()
 conn.end()
 await new Promise((r) => setTimeout(r, 500))
 console.log('helper exited:', !existsSync(sock))
