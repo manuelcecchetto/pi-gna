@@ -21,8 +21,6 @@ const PAD = 48;
 /** Zoom below which a card only shows its title, and below which it is a colored block. */
 const LOD_MID = 0.6;
 const LOD_FAR = 0.34;
-/** Background dots: 24px apart at 100%, doubling when zoomed out so they never thicken into a grey wash. */
-const GRID = 24;
 
 type View = { x: number; y: number; k: number };
 
@@ -90,10 +88,6 @@ export const AtpGraph = forwardRef<
       element.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
       element.style.setProperty("--k", String(k));
       element.dataset.lod = k < LOD_FAR ? "far" : k < LOD_MID ? "mid" : "near";
-      let step = GRID * k;
-      while (step < 16) step *= 2;
-      outer.style.backgroundPosition = `${x}px ${y}px`;
-      outer.style.backgroundSize = `${step}px ${step}px`;
       // The minimap's frame: the part of the plan in view.
       const box = frame.current;
       const scale = minimapScale(layout);
@@ -272,7 +266,7 @@ export const AtpGraph = forwardRef<
   }, [layout, byId, related, stalled]);
 
   return (
-    <div ref={viewport} onPointerDown={onPointerDown} className="atp-viewport relative h-full min-h-0 cursor-grab overflow-hidden select-none active:cursor-grabbing">
+    <div ref={viewport} onPointerDown={onPointerDown} className="relative h-full min-h-0 cursor-grab overflow-hidden select-none active:cursor-grabbing">
       <div ref={layer} className="atp-layer absolute top-0 left-0 origin-top-left" style={{ width: layout.width, height: layout.height }}>
         <svg width={layout.width} height={layout.height} className="pointer-events-none absolute inset-0 overflow-visible" aria-hidden>
           {edges.map(({ edge, live, done, lit, dim }) => (
