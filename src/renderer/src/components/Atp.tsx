@@ -2,12 +2,12 @@
 // a graph of nodes that pi-gna runs one fresh worker chat at a time (state/atp.ts); the page draws it (AtpGraph),
 // starts and stops the run, shows a node's instruction, report and worker chats, and has the plan's orchestrator
 // at the bottom: a chat to ask how it is going, change the plan, or write a new one with the architect skills.
-import { ChevronDown, ChevronUp, FileWarning, MessagesSquare, Network, Pause, Play, Plus, RefreshCw, Search, Square, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, FileWarning, MessagesSquare, Network, Pause, Play, Plus, RefreshCw, Search, Square, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, planName, planProgress } from "../../../shared/atp";
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
-import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, ATP_RAIL, type AtpPanels, loadAtpPanels, type PanelBounds, saveAtpPanels } from "../lib/layout";
+import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
 import { activate, type PageState, prefill, showPage, useApp } from "../state/app";
 import {
   discardNewPlanChat,
@@ -53,7 +53,6 @@ export function AtpPage({ page }: { page: PageState }) {
   const [node, setNode] = useState<string>();
   const [query, setQuery] = useState("");
   const graph = useRef<GraphHandle>(null);
-  const middle = useRef<HTMLElement>(null);
   const graphArea = useRef<HTMLDivElement>(null);
   const [panels, setPanels] = useState(loadAtpPanels);
   const resize = (key: keyof AtpPanels) => (size: number, done: boolean) => {
@@ -129,6 +128,7 @@ export function AtpPage({ page }: { page: PageState }) {
         <Network size={15} className="text-muted" />
         <span className="text-[13.5px] font-medium text-fg">ATP</span>
         <ProjectSwitch cwd={page.cwd} options={switchable} openTitle="Open ATP" onPick={(cwd) => showPage("atp", cwd)} />
+        <PlanSwitch files={files} current={selected === "new" ? "new" : current?.path} runners={runners} held={held} onSelect={select} />
         <div className="flex-1" />
         {plan && (
           <label className="no-drag flex w-56 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 focus-within:border-line-strong">
@@ -161,17 +161,7 @@ export function AtpPage({ page }: { page: PageState }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <PlanRail
-          files={files}
-          current={selected === "new" ? "new" : current?.path}
-          runners={runners}
-          held={held}
-          onSelect={select}
-          width={fitWidth(panels.rail, ATP_RAIL, selectedNode ? ATP_DETAIL.min : 0)}
-          giver={() => graphArea.current ?? middle.current}
-          onResize={resize("rail")}
-        />
-        <section ref={middle} className="relative flex min-w-0 flex-1 flex-col">
+        <section className="relative flex min-w-0 flex-1 flex-col">
           {selected === "new" ? (
             <NewPlanIntro cwd={page.cwd} />
           ) : current && plan ? (
@@ -205,7 +195,7 @@ export function AtpPage({ page }: { page: PageState }) {
                       graph.current?.reveal(id);
                     }}
                     onClose={() => setNode(undefined)}
-                    width={fitWidth(panels.detail, ATP_DETAIL)}
+                    width={panels.detail}
                     giver={() => graphArea.current}
                     onResize={resize("detail")}
                   />
@@ -260,81 +250,89 @@ function NewPlanButton({ onPick }: { onPick: (skill: string) => void }) {
 
 // ── The plans ────────────────────────────────────────────────────────────────
 
-/** A side panel's remembered width as CSS, narrowed when the window is too small to leave the graph its minimum (and `reserve` more). */
-const fitWidth = (width: number, bounds: PanelBounds, reserve = 0) =>
-  `clamp(${bounds.min}px, ${width}px, calc(100% - ${ATP_GRAPH_MIN.width + reserve}px))`;
-
-function PlanRail({
+/** The plan you look at, next to the project in the header: a menu of the project's plans. */
+function PlanSwitch({
   files,
   current,
   runners,
   held,
   onSelect,
-  width,
-  giver,
-  onResize,
 }: {
   files: AtpPlanFile[];
   current: string | undefined;
   runners: Record<string, Runner>;
   held: string[];
   onSelect: (path: string) => void;
-  /** CSS, from fitWidth. */
-  width: string;
-  giver: () => Element | null;
-  onResize: (width: number, done: boolean) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   const home = window.studio.homeDir;
   if (!files.length && current !== "new") return null;
+  const file = files.find((other) => other.path === current);
   return (
-    <aside className="relative shrink-0 border-r border-line" style={{ width }}>
-      <div className="flex h-full flex-col gap-1 overflow-y-auto px-2 py-3">
-        <div className="px-2 pb-1 text-[11.5px] font-medium text-faint">Plans</div>
-        {current === "new" && (
-          <div className="rounded-lg bg-raised px-2.5 py-2 text-[12.5px] text-fg">
-            New plan
-            <div className="text-[11.5px] text-faint">The architect is writing it</div>
-          </div>
-        )}
-        {files.map((file) => {
-          const progress = file.plan && planProgress(file.plan);
-          const runner = runners[file.path];
-          return (
-            <button
-              key={file.path}
-              type="button"
-              onClick={() => onSelect(file.path)}
-              title={tildify(file.path, home)}
-              className={`flex flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left ${file.path === current ? "bg-raised" : "hover:bg-raised/60"}`}
-            >
-              <span className="flex min-w-0 items-center gap-1.5">
-                {runner ? <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" /> : null}
-                <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{file.plan?.name ?? planName(file.path)}</span>
-                {held.includes(file.path) && <Pause size={11} className="shrink-0 text-warn" />}
-              </span>
-              {progress ? (
-                <>
-                  <ProgressBar plan={file.plan as AtpPlan} />
-                  <span className="flex items-center gap-1.5 text-[11px] whitespace-nowrap text-faint">
-                    <ProjectStatus status={(file.plan as AtpPlan).status} />
-                    <span className="font-mono">
-                      {progress.completed}/{progress.total}
-                    </span>
-                    {progress.failed > 0 && <span className="font-mono text-bad">{progress.failed} failed</span>}
-                    <span className="ml-auto">{relativeTime(file.modifiedAt)}</span>
-                  </span>
-                </>
-              ) : (
-                <span className="flex items-center gap-1 text-[11px] text-bad">
-                  <FileWarning size={11} /> Cannot read it
+    <>
+      <ChevronRight size={13} className="shrink-0 text-faint" />
+      <div className="no-drag relative min-w-0">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          title={file ? tildify(file.path, home) : undefined}
+          className="flex max-w-80 min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] text-fg hover:bg-raised"
+        >
+          {file && runners[file.path] && <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
+          <span className="truncate">{current === "new" ? "New plan" : file ? (file.plan?.name ?? planName(file.path)) : "Plans"}</span>
+          {file && held.includes(file.path) && <Pause size={11} className="shrink-0 text-warn" />}
+          <ChevronDown size={12} className="shrink-0 text-faint" />
+        </button>
+        <Popover open={open} onClose={close} className="top-full left-0 mt-1 flex max-h-[70vh] w-80 flex-col gap-0.5 overflow-y-auto p-1">
+          {current === "new" && (
+            <div className="rounded-lg bg-raised/60 px-2.5 py-2 text-[12.5px] text-fg">
+              New plan
+              <div className="text-[11.5px] text-faint">The architect is writing it</div>
+            </div>
+          )}
+          {files.map((option) => {
+            const progress = option.plan && planProgress(option.plan);
+            const runner = runners[option.path];
+            return (
+              <button
+                key={option.path}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onSelect(option.path);
+                }}
+                title={tildify(option.path, home)}
+                className={`flex flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left hover:bg-raised ${option.path === current ? "bg-raised/60" : ""}`}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {runner ? <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" /> : null}
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{option.plan?.name ?? planName(option.path)}</span>
+                  {held.includes(option.path) && <Pause size={11} className="shrink-0 text-warn" />}
                 </span>
-              )}
-            </button>
-          );
-        })}
+                {progress ? (
+                  <>
+                    <ProgressBar plan={option.plan as AtpPlan} />
+                    <span className="flex items-center gap-1.5 text-[11px] whitespace-nowrap text-faint">
+                      <ProjectStatus status={(option.plan as AtpPlan).status} />
+                      <span className="font-mono">
+                        {progress.completed}/{progress.total}
+                      </span>
+                      {progress.failed > 0 && <span className="font-mono text-bad">{progress.failed} failed</span>}
+                      <span className="ml-auto">{relativeTime(option.modifiedAt)}</span>
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex items-center gap-1 text-[11px] text-bad">
+                    <FileWarning size={11} /> Cannot read it
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </Popover>
       </div>
-      <ResizeHandle edge="right" bounds={ATP_RAIL} giver={giver} keep={ATP_GRAPH_MIN.width} onResize={onResize} />
-    </aside>
+    </>
   );
 }
 
@@ -555,8 +553,7 @@ function NodePanel({
   stalled: boolean;
   onSelect: (id: string) => void;
   onClose: () => void;
-  /** CSS, from fitWidth. */
-  width: string;
+  width: number;
   giver: () => Element | null;
   onResize: (width: number, done: boolean) => void;
 }) {
@@ -600,7 +597,11 @@ function NodePanel({
     );
 
   return (
-    <aside className="relative flex shrink-0 flex-col overflow-hidden border-l border-line bg-panel" style={{ width }}>
+    <aside
+      className="relative flex shrink-0 flex-col overflow-hidden border-l border-line bg-panel"
+      // Narrowed when the window is too small to leave the graph its minimum; the remembered width stays.
+      style={{ width: `clamp(${ATP_DETAIL.min}px, ${width}px, calc(100% - ${ATP_GRAPH_MIN.width}px))` }}
+    >
       <ResizeHandle edge="left" bounds={ATP_DETAIL} giver={giver} keep={ATP_GRAPH_MIN.width} onResize={onResize} />
       <div className="dashed-b flex items-center gap-2 px-3.5 py-2.5">
         <StatusIcon node={node} stalled={stalled} />
@@ -720,7 +721,7 @@ function OrchestratorDock({ cwd, plan, height, onResize }: { cwd: string; plan?:
       )}
       <div className="flex items-center gap-2 px-5 pt-2 text-[11.5px] text-faint">
         <span className="font-medium text-muted">{plan ? "Orchestrator" : "Architect"}</span>
-        <span>{plan ? "Ask how it is going, or change the plan" : "Describe the project; the plan appears on the left once written"}</span>
+        <span>{plan ? "Ask how it is going, or change the plan" : "Describe the project; the plan opens here once written"}</span>
         <div className="flex-1" />
         {talked && (
           <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-raised hover:text-fg">

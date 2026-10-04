@@ -44,8 +44,8 @@ export function saveSidebar(layout: SidebarLayout): void {
   }
 }
 
-// ATP page panels: the plans rail, the node panel and the orchestrator's conversation are resized by dragging their
-// edge, giving room to (or taking it from) the graph, and remembered across restarts.
+// ATP page panels: the node panel and the orchestrator's conversation are resized by dragging their edge, giving room
+// to (or taking it from) the graph, and remembered across restarts.
 
 export interface PanelBounds {
   min: number;
@@ -53,7 +53,6 @@ export interface PanelBounds {
   fallback: number;
 }
 
-export const ATP_RAIL: PanelBounds = { min: 180, max: 480, fallback: 240 };
 export const ATP_DETAIL: PanelBounds = { min: 300, max: 900, fallback: 380 };
 export const ATP_DOCK: PanelBounds = { min: 120, max: 1200, fallback: 300 };
 /** A panel never squeezes the graph (or what stands in its place) below this. */
@@ -66,7 +65,6 @@ export function clampPanel(size: number, bounds: PanelBounds, room = Number.POSI
 }
 
 export interface AtpPanels {
-  rail: number;
   detail: number;
   dock: number;
 }
@@ -74,11 +72,11 @@ export interface AtpPanels {
 const ATP_KEY = "pigna:atp-panels";
 
 export function loadAtpPanels(): AtpPanels {
-  const fallback = { rail: ATP_RAIL.fallback, detail: ATP_DETAIL.fallback, dock: ATP_DOCK.fallback };
+  const fallback = { detail: ATP_DETAIL.fallback, dock: ATP_DOCK.fallback };
   try {
     const saved = JSON.parse(localStorage.getItem(ATP_KEY) ?? "null") as Partial<AtpPanels> | null;
     const pick = (key: keyof AtpPanels) => (typeof saved?.[key] === "number" ? (saved[key] as number) : fallback[key]);
-    return { rail: pick("rail"), detail: pick("detail"), dock: pick("dock") };
+    return { detail: pick("detail"), dock: pick("dock") };
   } catch {
     return fallback;
   }

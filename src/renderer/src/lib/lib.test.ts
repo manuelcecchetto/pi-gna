@@ -3,7 +3,7 @@ import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
 import { markdownToHtml } from "./markdown";
 import { applyQueueOp } from "./queue";
-import { ATP_RAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
+import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
@@ -186,11 +186,11 @@ describe("sidebarDrag", () => {
 
 describe("clampPanel", () => {
   it("keeps an ATP panel between its bounds and within the room the graph leaves", () => {
-    expect(clampPanel(300, ATP_RAIL)).toBe(300);
-    expect(clampPanel(120, ATP_RAIL)).toBe(180);
-    expect(clampPanel(900, ATP_RAIL)).toBe(480);
-    expect(clampPanel(400, ATP_RAIL, 350.6)).toBe(351); // the graph would get narrower than its minimum
-    expect(clampPanel(400, ATP_RAIL, 50)).toBe(180); // no room at all: the minimum still wins
-    expect(clampPanel(Number.NaN, ATP_RAIL)).toBe(240);
+    expect(clampPanel(500, ATP_DETAIL)).toBe(500);
+    expect(clampPanel(120, ATP_DETAIL)).toBe(300);
+    expect(clampPanel(2000, ATP_DETAIL)).toBe(900);
+    expect(clampPanel(600, ATP_DETAIL, 450.6)).toBe(451); // the graph would get narrower than its minimum
+    expect(clampPanel(600, ATP_DETAIL, 50)).toBe(300); // no room at all: the minimum still wins
+    expect(clampPanel(Number.NaN, ATP_DETAIL)).toBe(380);
   });
 });
