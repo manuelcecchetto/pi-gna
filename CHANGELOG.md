@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.3.1 - 2026-10-04
+
 - Responsive browser: a Dimensions bar in the browser pane (presets, width x height, DPR, rotate, mobile) emulates a
   device with its viewport, pixel ratio, touch and User-Agent together, so server-rendered pages serve the mobile
   version. pi can set it too (`browser_viewport`, shown with a "Set by pi" badge and kept until you reset it) and open
