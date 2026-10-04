@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
-import { markdownToHtml } from "./markdown";
+import { markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
 import { applyQueueOp } from "./queue";
 import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
@@ -96,6 +96,56 @@ describe("markdownToHtml", () => {
     expect(html).toContain('<span class="task-box" aria-hidden="true"></span>next');
     expect(html).not.toContain("<input");
     expect(html).toContain('<code data-lang="ts">');
+  });
+});
+
+describe("markdownToHtml visual fences", () => {
+  const on = { visuals: true };
+  const fence = (body: string) => "```visual\n" + body + "\n```";
+
+  it("emits a placeholder only when visuals are on", () => {
+    const md = "Answer.\n\n" + fence("<b>hi</b>");
+    const html = markdownToHtml(md, on);
+    expect(html).toContain('<div class="visual" data-visual>');
+    expect(html).toContain("&lt;b&gt;hi&lt;/b&gt;");
+    expect(html).not.toContain("<b>hi</b>");
+    for (const off of [markdownToHtml(md), markdownToHtml(md, { visuals: false })]) {
+      expect(off).not.toContain("data-visual");
+      expect(off).toContain('<code data-lang="visual">');
+    }
+  });
+
+  it("falls back to a labelled code block with a note over the cap", () => {
+    const html = markdownToHtml(fence("x".repeat(VISUAL_MAX_BYTES + 1)), on);
+    expect(html).not.toContain("data-visual");
+    expect(html).toContain("visual-note");
+    expect(html).toContain('<code data-lang="visual">');
+    expect(markdownToHtml(fence("x".repeat(VISUAL_MAX_BYTES)), on)).toContain("data-visual");
+  });
+
+  it("keeps an unterminated fence a code block while streaming", () => {
+    const html = markdownToHtml("```visual\n<div>partial", on);
+    expect(html).not.toContain("data-visual");
+    expect(html).toContain('<code data-lang="visual">');
+  });
+
+  it("handles several visuals, and visuals in lists and blockquotes", () => {
+    const html = markdownToHtml([fence("<i>1</i>"), "", "- item\n\n  " + "```visual\n  <i>2</i>\n  ```", "", "> " + "```visual\n> <i>3</i>\n> ```"].join("\n"), on);
+    expect(html.match(/data-visual/g)).toHaveLength(3);
+    expect(html).toContain("<li>");
+    expect(html).toContain("<blockquote>");
+  });
+
+  it("keeps a visual fence nested in a longer fence as code", () => {
+    const html = markdownToHtml("````md\n```visual\n<b>x</b>\n```\n````", on);
+    expect(html).not.toContain("data-visual");
+    expect(html).toContain('<code data-lang="md">');
+  });
+
+  it("never emits script or iframe tags from the fragment", () => {
+    const html = markdownToHtml(fence('<script>alert(1)</script><iframe src="x"></iframe>'), on);
+    expect(html).not.toMatch(/<(script|iframe)/i);
+    expect(html).toContain("&lt;script&gt;");
   });
 });
 
