@@ -7,6 +7,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 - Inline visuals (beta, off by default): turn on Settings > Agent > Beta > Inline visuals, and pi can add a small diagram,
   comparison or timeline to a reply, drawn in a sandboxed offline frame styled like pi-gna. Applies to chats you open afterwards.
+- The tok/s readout counts only text and thinking: tool calls, whose arguments often arrive in one burst, no longer
+  push it to ~300 tok/s.
 
 ## 0.4.4 - 2026-10-04
 
