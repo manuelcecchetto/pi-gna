@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenSessionResult, SessionSummary } from "../../../shared/ipc";
 import type { RpcCommand, RpcSessionState, SessionEntry } from "../../../shared/protocol";
-import { createSession, reduceSessionEvent } from "../../../shared/session-state";
+import { createSession, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
 import type { Card } from "../../../shared/board";
 import { cardBlock } from "../lib/board";
 import { emptySettings } from "../../../shared/settings";
@@ -16,6 +16,7 @@ import {
   openSession,
   openSettings,
   removeComposerCard,
+  respondDialog,
   send,
   sessionTitle,
   showPage,
@@ -44,27 +45,56 @@ afterEach(() => {
 });
 
 describe("interrupt action", () => {
-  it.each(["manual compaction", "agent run"])("aborts %s through RPC", async (operation) => {
+  const hostInterrupt = vi.fn(async (_handle: string) => ["queued steer", "queued follow-up"]);
+  beforeEach(() => {
+    hostInterrupt.mockClear();
+    vi.stubGlobal("window", { studio: { command, interrupt: hostInterrupt } });
+  });
+
+  it.each(["manual compaction", "agent run"])("asks the host to interrupt %s and returns the restored queue", async (operation) => {
     const session = operation === "manual compaction"
       ? reduceSessionEvent(createSession("h", "/repo"), { type: "compaction_start", reason: "manual" }, 1000)
       : { ...createSession("h", "/repo"), running: true };
     store.set((s) => ({ ...s, sessions: { h: session } }));
-    expect(await interrupt("h")).toEqual([]);
-    expect(command).toHaveBeenCalledExactlyOnceWith("h", { type: "abort" });
-  });
-
-  it("restores queues before aborting manual compaction", async () => {
-    const session = reduceSessionEvent(createSession("h", "/repo"), { type: "compaction_start", reason: "manual" }, 1000);
-    store.set((s) => ({ ...s, sessions: { h: { ...session, queue: { steering: ["queued steer"], followUp: ["queued follow-up"] } } } }));
     expect(await interrupt("h")).toEqual(["queued steer", "queued follow-up"]);
-    expect(command.mock.calls.map(([, cmd]) => cmd.type)).toEqual(["clear_queue", "abort"]);
+    expect(hostInterrupt).toHaveBeenCalledExactlyOnceWith("h");
+    expect(command).not.toHaveBeenCalled();
   });
 
   it("does nothing for an idle or missing session", async () => {
     store.set((s) => ({ ...s, sessions: { h: createSession("h", "/repo") } }));
     expect(await interrupt("h")).toEqual([]);
     expect(await interrupt("missing")).toEqual([]);
-    expect(command).not.toHaveBeenCalled();
+    expect(hostInterrupt).not.toHaveBeenCalled();
+  });
+});
+
+describe("answering a dialog", () => {
+  const dialog = { id: "d1", method: "confirm", title: "Run it?" } as unknown as SessionState["dialogs"][number];
+  const response = { type: "extension_ui_response", id: "d1", confirmed: true } as const;
+  const seed = () => store.set((s) => ({ ...s, toasts: [], sessions: { h: { ...createSession("h", "/repo"), dialogs: [dialog] } } }));
+
+  it("removes the card once the host took the answer, or says it was answered elsewhere", async () => {
+    for (const answer of [{ ok: true }, { ok: false, code: "already_answered", message: "" }] as const) {
+      seed();
+      vi.stubGlobal("window", { studio: { respondDialog: async () => answer } });
+      await respondDialog("h", response);
+      expect(store.get().sessions.h?.dialogs).toEqual([]);
+    }
+  });
+
+  it("keeps the card and says so when the answer fails", async () => {
+    seed();
+    vi.stubGlobal("window", { studio: { respondDialog: async () => ({ ok: false, code: "internal", message: "boom" }) } });
+    await respondDialog("h", response);
+    expect(store.get().sessions.h?.dialogs).toHaveLength(1);
+    expect(store.get().toasts.at(-1)?.text).toContain("boom");
+  });
+
+  it("drops the card on dialog_resolved from another client", () => {
+    seed();
+    handleBatch({ handle: "h", events: [{ kind: "dialog_resolved", id: "d1", by: { device: "phone" }, outcome: "answered" }] });
+    expect(store.get().sessions.h?.dialogs).toEqual([]);
   });
 });
 

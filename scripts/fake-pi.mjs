@@ -6,6 +6,7 @@
 // session file (in the temp folder) before writing anything, so cards and laments can link its chats; none is written.
 // FAKE_FIXTURE=<name> (see fake-pi-visuals.mjs) replies with that fixed text instead, FAKE_CHUNK chars per delta.
 // `abort` ends the answer early, as Stop and Esc do with pi.
+import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -18,6 +19,8 @@ const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
 let streaming = false;
 let aborted = false;
+// Queued messages (steer / follow_up while streaming) so clear_queue and queue edits behave like pi's.
+let queues = { steering: [], followUp: [] };
 const sessionFile = join(tmpdir(), "fake-pi-sessions", `${process.pid}.jsonl`);
 
 createInterface({ input: process.stdin }).on("line", (line) => {
@@ -32,7 +35,25 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       return reply({ sessionId: "fake", userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 });
     case "prompt":
       reply(undefined);
+      if (streaming) {
+        queues[command.streamingBehavior === "followUp" ? "followUp" : "steering"].push(command.message);
+        return out({ type: "queue_update", ...queues });
+      }
       return void run(command.message);
+    case "steer":
+    case "follow_up":
+      queues[command.type === "steer" ? "steering" : "followUp"].push(command.message);
+      out({ type: "queue_update", ...queues });
+      return reply(undefined);
+    case "clear_queue": {
+      const cleared = queues;
+      queues = { steering: [], followUp: [] };
+      out({ type: "queue_update", ...queues });
+      return reply(cleared);
+    }
+    // A prompt containing "ask-confirm" raises a confirm dialog; the answer is appended to FAKE_RESPONSES (default in the temp folder).
+    case "extension_ui_response":
+      return void appendFileSync(process.env.FAKE_RESPONSES || join(tmpdir(), "fake-pi-responses.log"), `${JSON.stringify(command)}\n`);
     case "abort":
       aborted = streaming;
       return reply(undefined);
@@ -45,6 +66,7 @@ async function run(text) {
   streaming = true;
   aborted = false;
   out({ type: "agent_start" });
+  if (text.includes("ask-confirm")) out({ type: "extension_ui_request", id: `confirm-${process.pid}-${Date.now()}`, method: "confirm", title: "Run the fake tool?", message: "Approve to continue." });
   out({ type: "message_start", message: { role: "user", content: text, timestamp: Date.now() } });
   out({ type: "message_end", message: { role: "user", content: text, timestamp: Date.now() } });
   const base = { role: "assistant", content: [], api: "fake", provider: "fake", model: "fake", usage, stopReason: "stop", timestamp: Date.now() };

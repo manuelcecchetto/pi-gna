@@ -9,7 +9,7 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
-import type { Revved } from "./host-api";
+import type { AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, QueueEdit, Revved } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type {
   ExtensionUiRequest,
@@ -25,8 +25,15 @@ export const IPC = {
   listSessions: "studio:list-sessions",
   openSession: "studio:open-session",
   closeSession: "studio:close-session",
+  detachSession: "studio:detach-session",
+  attachSession: "studio:attach-session",
+  viewing: "studio:viewing",
+  liveChats: "studio:live-chats",
+  attention: "studio:attention",
+  interrupt: "studio:interrupt",
+  editQueue: "studio:edit-queue",
   command: "studio:command",
-  respondUi: "studio:respond-ui",
+  respondDialog: "studio:respond-dialog",
   listFiles: "studio:list-files",
   pickFolder: "studio:pick-folder",
   pickAttachments: "studio:pick-attachments",
@@ -324,16 +331,18 @@ export interface OpenSessionResult {
   entries: SessionEntry[];
 }
 
-/** Everything the main process pushes to the renderer for one session handle. */
-export type HostEvent =
-  | { kind: "rpc"; record: SessionEvent | ExtensionUiRequest }
-  | { kind: "ready"; state: RpcSessionState }
-  | { kind: "exit"; code: number | null; signal: string | null; error?: string; stderrTail: string };
+/** Everything the main process pushes to the renderer for one session handle (src/shared/host-api.ts). */
+export type { HostEvent };
 
 export interface HostEventBatch {
   handle: string;
   events: HostEvent[];
+  /** The host `seq` of the batch's last event; an attach snapshot reflects every event up to its own `seq`. */
+  seq?: number;
 }
+
+/** What `respondDialog` answers: the card goes on `ok`, or when the dialog was settled elsewhere first. */
+export type DialogAnswer = { ok: true } | { ok: false; code: HostErrorCode; message: string };
 
 export interface StudioApi {
   homeDir: string;
@@ -350,9 +359,22 @@ export interface StudioApi {
   relaunch(): Promise<void>;
   listSessions(): Promise<ProjectGroup[]>;
   openSession(request: OpenSessionRequest): Promise<OpenSessionResult>;
+  /** Stop the chat's pi (explicit "Close chat"; also tells other clients). */
   closeSession(handle: string): Promise<void>;
+  /** Leave a chat without stopping it: pi stops only if nobody else holds it and it is disposable. */
+  detachSession(handle: string): Promise<void>;
+  /** Join a live chat (one another client started, or one this window had before a reload); null when it ended. */
+  attachSession(handle: string): Promise<(ChatSnapshot & { seq: number }) | null>;
+  /** This window shows (or stops showing) the chat in the foreground. */
+  viewing(handle: string, viewing: boolean): void;
+  /** Attention summaries of every live chat. */
+  liveChats(): Promise<AttentionSummary[]>;
+  onAttention(listener: (update: { chats: AttentionSummary[]; removed: string[] }) => void): () => void;
+  /** Esc/Stop: take the queued messages back (returned), then abort. */
+  interrupt(handle: string): Promise<string[]>;
+  editQueue(handle: string, op: QueueEdit): Promise<boolean>;
   command<T = unknown>(handle: string, command: RpcCommand): Promise<RpcResponse<T>>;
-  respondUi(handle: string, response: ExtensionUiResponse): void;
+  respondDialog(handle: string, response: ExtensionUiResponse): Promise<DialogAnswer>;
   listFiles(cwd: string): Promise<string[]>;
   /**
    * The git worktree to resolve a card in: made on first use, then reused. Null when the card's project is not in a

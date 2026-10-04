@@ -12,8 +12,8 @@ import type { ViewportRequest } from "../shared/viewport";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
-import { HostError } from "../shared/host-api";
-import { type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
+import { HostError, type QueueEdit } from "../shared/host-api";
+import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
 import { Atp, librarianPath } from "./atp";
@@ -105,12 +105,13 @@ hub.subscribe({
   deliver: (batch) => {
     const topic = batch[0]?.topic ?? "global";
     if (topic.startsWith("chat:")) {
-      send(IPC.events, { handle: topic.slice(5), events: batch.map((e) => e.event as HostEvent) } satisfies HostEventBatch);
+      send(IPC.events, { handle: topic.slice(5), events: batch.map((e) => e.event as HostEvent), seq: batch.at(-1)?.seq } satisfies HostEventBatch);
       return;
     }
     for (const { event } of batch) {
       const e = event as Record<string, any>;
       switch (e.kind) {
+        case "attention": send(IPC.attention, { chats: e.chats, removed: e.removed }); break;
         case "settings": send(IPC.settingsChanged, e.settings); break;
         case "board": send(IPC.boardChanged, e.board); break;
         case "laments": send(IPC.lamentsChanged, e.laments); break;
@@ -277,12 +278,28 @@ function registerIpc(shellEnv: Promise<void>): void {
   handle(IPC.openSession, async (request: OpenSessionRequest) => (await shellEnv, host.open(request, { client: DESKTOP })));
   handle(IPC.closeSession, (handle: string) => host.close(handle));
   handle(IPC.command, (handle: string, command: RpcCommand) => host.command(handle, command));
-  on(IPC.respondUi, (handle: string, response: ExtensionUiResponse) => {
+  handle(IPC.detachSession, (handle: string) => host.detach(handle, DESKTOP.clientId));
+  handle(IPC.attachSession, (handle: string) => {
+    try {
+      host.attach(handle, DESKTOP);
+    } catch {
+      return null; // it ended meanwhile
+    }
+    // Attach and snapshot in one turn: the snapshot's seq says which events the window must still apply.
+    return host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER }) ?? null;
+  });
+  on(IPC.viewing, (handle: string, viewing: boolean) => host.viewing(handle, DESKTOP.clientId, viewing === true));
+  handle(IPC.liveChats, () => host.attentionAll());
+  handle(IPC.interrupt, (handle: string) => host.interrupt(handle));
+  handle(IPC.editQueue, (handle: string, op: QueueEdit) => host.editQueue(handle, op));
+  handle(IPC.respondDialog, (handle: string, response: ExtensionUiResponse): DialogAnswer => {
     try {
       host.respondDialog(handle, response);
+      return { ok: true };
     } catch (error) {
-      // Answered elsewhere first (a phone): the window drops its card on dialog_resolved.
+      // Answered elsewhere first (a phone), or the chat ended: the window drops the card; anything else keeps it.
       if (!(error instanceof HostError)) throw error;
+      return { ok: false, code: error.code, message: error.message };
     }
   });
   handle(IPC.listFiles, async (cwd: string) => (await shellEnv, listFiles(cwd)));

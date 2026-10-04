@@ -16,7 +16,7 @@ import {
   type TaskModel,
   taskModel,
 } from "../../../shared/settings";
-import type { Revved } from "../../../shared/host-api";
+import type { AttentionSummary, Revved } from "../../../shared/host-api";
 import type { CardWorktree, HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
@@ -220,7 +220,15 @@ function start(cwd: string, summary?: Pick<SessionSummary, "path" | "title">, sh
 
 async function load(handle: string, cwd: string, sessionPath: string | undefined, atp: AtpSession | undefined): Promise<void> {
   try {
-    const { entries } = await studio().openSession({ handle, cwd, sessionPath, atp });
+    const opened = await studio().openSession({ handle, cwd, sessionPath, atp });
+    const { entries } = opened;
+    if (opened.handle && opened.handle !== handle) {
+      // The file was already live under the host's handle (a chat another client started): join that one.
+      const wasActive = store.get().active === handle;
+      removeSession(handle);
+      void adopt(opened.handle, wasActive);
+      return;
+    }
     patchSession(handle, (s) => {
       const loaded = s.loading ? { ...s, loading: undefined } : s;
       if (!entries.length) return loaded;
@@ -253,7 +261,49 @@ export function activate(handle: string | undefined): void {
   if (previous === handle) return;
   store.set((state) => ({ ...state, active: handle }));
   const prev = previous ? store.get().sessions[previous] : undefined;
-  if (prev && isDisposable(prev)) void closeSession(prev.handle, false);
+  // Leaving a chat nobody needs lets the host stop its pi (once no other client holds it).
+  if (prev && isDisposable(prev)) void detachSession(prev.handle);
+}
+
+/** Drop a chat from this window without stopping it; the host ends its pi when it is idle and nobody else is in it. */
+async function detachSession(handle: string): Promise<void> {
+  removeSession(handle);
+  await studio().detachSession(handle);
+}
+
+/** Events that arrive while a chat's snapshot is being fetched wait here, then apply if they are newer than it. */
+const attaching = new Map<string, HostEventBatch[]>();
+
+/** Join a chat the host already runs (another client started it, or this window had it before a reload). */
+async function adopt(handle: string, show = false): Promise<void> {
+  if (store.get().sessions[handle] || attaching.has(handle)) return;
+  attaching.set(handle, []);
+  const snapshot = await studio().attachSession(handle).catch(() => null);
+  const buffered = attaching.get(handle) ?? [];
+  attaching.delete(handle);
+  if (!snapshot) return;
+  const session = snapshot.state as unknown as SessionState;
+  store.set((state) => ({ ...state, sessions: { ...state.sessions, [handle]: session }, open: state.open.includes(handle) ? state.open : [...state.open, handle] }));
+  for (const batch of buffered) if ((batch.seq ?? Number.POSITIVE_INFINITY) > snapshot.seq) handleBatch(batch);
+  if (session.phase === "ready") void onReady(handle, { messageCount: session.items.length } as RpcSessionState);
+  if (show) activate(handle);
+}
+
+/** Attention updates: a chat that is doing something and is not here yet was started elsewhere; join it. */
+function onAttention(chats: AttentionSummary[], removed: string[]): void {
+  for (const handle of removed) if (store.get().sessions[handle]?.phase !== "exited" && !attaching.has(handle)) removeSession(handle);
+  for (const chat of chats) if (chat.attention !== "idle" && !store.get().sessions[chat.handle]) void adopt(chat.handle);
+}
+
+// Which chat the host is told this window is looking at.
+let reportedViewing: string | undefined;
+function syncViewing(): void {
+  const { active, page, sessions } = store.get();
+  const now = !page && windowFocused && active && sessions[active] ? active : undefined;
+  if (now === reportedViewing) return;
+  if (reportedViewing) studio().viewing(reportedViewing, false);
+  if (now) studio().viewing(now, true);
+  reportedViewing = now;
 }
 
 export async function closeSession(handle: string, pickNext = true): Promise<void> {
@@ -294,11 +344,20 @@ const seenStartupNotices = new Set<string>();
 
 export function handleBatch(batch: HostEventBatch): void {
   const { handle, events } = batch;
+  const waiting = attaching.get(handle);
+  if (waiting) {
+    waiting.push(batch);
+    return;
+  }
   if (!store.get().sessions[handle]) return;
   patchSession(handle, (session) => events.reduce((s, event) => reduceHostEvent(s, event, Date.now()), session));
 
   for (const event of events) {
     if (event.kind === "ready") void onReady(handle, event.state);
+    else if (event.kind === "closed") {
+      // Another client closed the chat: leave it (the desktop's own close already removed it).
+      if (event.by !== "desktop") removeSession(handle);
+    } else if (event.kind === "dialog_resolved" || event.kind === "lease") continue;
     else if (event.kind === "exit") {
       // A spawn failure (pi not installed) is explained in the session's banner; keep the toast short.
       if (event.error) toast("pi could not start", "error");
@@ -543,31 +602,17 @@ export function openLightbox(src: string | undefined): void {
   store.set((s) => ({ ...s, lightbox: src }));
 }
 
-/**
- * Edit pi's queues (trash, steer now, defer, take out to edit). RPC can only clear both queues and append,
- * so this clears, applies the op and re-queues the rest in order. Images on re-queued messages are lost.
- */
+/** Edit pi's queues (trash, steer now, defer, take out to edit); the host does it atomically per chat. */
 export async function editQueue(handle: string, op: QueueOp): Promise<boolean> {
   if (!store.get().sessions[handle]?.running) return false;
-  const cleared = await command<Queues>(handle, { type: "clear_queue" }, true);
-  if (!cleared.data) return false;
-  const { queues, found } = applyQueueOp(cleared.data, op);
-  for (const message of queues.steering) await command(handle, { type: "steer", message });
-  for (const message of queues.followUp) await command(handle, { type: "follow_up", message });
-  return found;
+  return studio().editQueue(handle, op);
 }
 
-/** Esc: restore queued messages, then abort the agent run or manual compaction. */
+/** Esc: the host restores queued messages (returned), then aborts the agent run or manual compaction. */
 export async function interrupt(handle: string): Promise<string[]> {
   const session = store.get().sessions[handle];
   if (!session || (!session.running && !session.compacting)) return [];
-  let restored: string[] = [];
-  if (session.queue.steering.length || session.queue.followUp.length) {
-    const cleared = await command<{ steering: string[]; followUp: string[] }>(handle, { type: "clear_queue" }, true);
-    restored = [...(cleared.data?.steering ?? []), ...(cleared.data?.followUp ?? [])];
-  }
-  await command(handle, { type: "abort" });
-  return restored;
+  return studio().interrupt(handle);
 }
 
 export async function setModel(handle: string, model: Model): Promise<void> {
@@ -588,9 +633,12 @@ export async function setThinking(handle: string, level: ThinkingLevel): Promise
   if (response.success) patchSession(handle, (s) => ({ ...s, thinkingLevel: level }));
 }
 
-export function respondDialog(handle: string, response: ExtensionUiResponse): void {
-  patchSession(handle, (s) => ({ ...s, dialogs: s.dialogs.filter((d) => d.id !== response.id) }));
-  studio().respondUi(handle, response);
+/** Answer a dialog. The card goes when the host took the answer, or says it was settled elsewhere first (dialog_resolved does the same). */
+export async function respondDialog(handle: string, response: ExtensionUiResponse): Promise<void> {
+  const drop = () => patchSession(handle, (s) => ({ ...s, dialogs: s.dialogs.filter((d) => d.id !== response.id) }));
+  const answer = await studio().respondDialog(handle, response).catch((error) => ({ ok: false as const, code: "internal" as const, message: remoteError(error) }));
+  if (answer.ok || answer.code === "already_answered" || answer.code === "not_found") drop();
+  else toast(`Could not answer: ${answer.message}`, "error");
 }
 
 export async function compact(handle: string): Promise<void> {
@@ -986,6 +1034,8 @@ export function boot(): void {
   if (booted) return;
   booted = true;
   studio().onEvents(handleBatch);
+  studio().onAttention(({ chats, removed }) => onAttention(chats, removed));
+  store.subscribe(syncViewing);
   void studio()
     .windowFocused()
     .then((focused) => {
@@ -996,6 +1046,7 @@ export function boot(): void {
   studio().onOpenProject(newSession);
   studio().onWindowFocus((focused) => {
     windowFocused = focused;
+    syncViewing();
     if (focused && !store.get().page) markRead(store.get().active);
   });
   studio().settings.onChange(onSettings);
@@ -1022,7 +1073,17 @@ export function boot(): void {
     .compactionSettings()
     .then((compaction) => store.set((s) => ({ ...s, compaction })));
   refreshProjects();
-  newSession(studio().launchCwd || studio().homeDir);
+  void resume();
+}
+
+/** Start: rejoin the chats the host still runs (a reloaded window), then show a draft in the launch folder. */
+async function resume(): Promise<void> {
+  const cwd = studio().launchCwd || studio().homeDir;
+  const live = await studio().liveChats().catch((): AttentionSummary[] => []);
+  await Promise.all(live.map((chat) => adopt(chat.handle)));
+  const draft = Object.values(store.get().sessions).find((s) => s.cwd === cwd && !s.atp && s.phase !== "exited" && isDraft(s));
+  if (draft) activate(draft.handle);
+  else newSession(cwd);
 }
 
 /** Name, else the sidebar's title while loading, else first user message, else "New session". */
