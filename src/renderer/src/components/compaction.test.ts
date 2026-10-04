@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, SessionEvent } from "../../../shared/protocol";
-import { createSession, reduceSessionEvent } from "../lib/session";
+import { createSession, reduceSessionEvent } from "../../../shared/session-state";
 import { CompactionProgress } from "./CompactionProgress";
 import { Composer } from "./Composer";
 import { Transcript } from "./Transcript";

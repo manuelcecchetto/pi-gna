@@ -2,7 +2,7 @@
 // when a response ends (Anthropic's message_delta, OpenAI's response.completed), so pi's message_update usage
 // is not live: while streaming, the count is estimated from the streamed characters. Only text and thinking count:
 // tool-call arguments often arrive in one burst after the provider buffered them, which reads as hundreds of tok/s.
-import type { AssistantItem, Item } from "./session";
+import type { AssistantItem, Item } from "./session-state";
 
 /** About four characters per token, as pi estimates. */
 const CHARS_PER_TOKEN = 4;

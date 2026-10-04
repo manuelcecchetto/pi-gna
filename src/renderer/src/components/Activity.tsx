@@ -18,7 +18,7 @@ import {
 import { memo, type ReactNode, useMemo } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
-import { userText } from "../lib/session";
+import { userText } from "../../../shared/session-state";
 import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { openLightbox, setExpanded, useApp } from "../state/app";

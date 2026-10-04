@@ -1,7 +1,7 @@
 import { Globe, ListChevronsDownUp, ListChevronsUpDown, Paperclip, SquareKanban } from "lucide-react";
 import { useRef, useState } from "react";
 import { cardOfChat } from "../../../shared/board";
-import { isDraft, type SessionState } from "../lib/session";
+import { isDraft, type SessionState } from "../../../shared/session-state";
 import { addChatToBoard, attachFiles, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";

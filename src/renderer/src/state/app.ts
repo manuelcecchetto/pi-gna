@@ -1,4 +1,4 @@
-// App state and actions. Session state transitions live in lib/session.ts (pure); this module
+// App state and actions. Session state transitions live in shared/session-state.ts (pure); this module
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
 import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
@@ -43,7 +43,7 @@ import { reviewName, reviewPrompt } from "../lib/github";
 import { fixPrompt } from "../lib/laments";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
-import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../lib/session";
+import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
 import { createStore, useStore } from "../lib/store";
 
 export interface Toast {

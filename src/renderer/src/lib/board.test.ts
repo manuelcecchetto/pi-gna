@@ -21,7 +21,7 @@ import {
   splitAttachments,
   triagePrompt,
 } from "./board";
-import { createSession, type SessionState } from "./session";
+import { createSession, type SessionState } from "../../../shared/session-state";
 
 const ops: BoardOp[] = [
   { type: "add", id: "aaaaaa", title: "Fix the flaky login test", notes: "Fails on CI\nabout 1 in 5 runs", cwd: "/repo", before: null },

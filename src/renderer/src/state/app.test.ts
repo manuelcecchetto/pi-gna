@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenSessionResult, SessionSummary } from "../../../shared/ipc";
 import type { RpcCommand, RpcSessionState, SessionEntry } from "../../../shared/protocol";
-import { createSession, reduceSessionEvent } from "../lib/session";
+import { createSession, reduceSessionEvent } from "../../../shared/session-state";
 import type { Card } from "../../../shared/board";
 import { cardBlock } from "../lib/board";
 import { emptySettings } from "../../../shared/settings";

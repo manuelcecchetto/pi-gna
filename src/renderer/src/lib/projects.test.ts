@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { worktreeCwd } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { projectViews } from "./projects";
-import { createSession, type SessionState } from "./session";
+import { createSession, type SessionState } from "../../../shared/session-state";
 
 const summary = (cwd: string, name: string, modifiedAt: number): SessionSummary => ({
   path: `${cwd}/${name}.jsonl`,

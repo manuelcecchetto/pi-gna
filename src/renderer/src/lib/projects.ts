@@ -4,7 +4,7 @@
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { isTriage } from "./board";
-import { isDraft, type SessionState } from "./session";
+import { isDraft, type SessionState } from "../../../shared/session-state";
 import { createStore, useStore } from "./store";
 
 export interface ProjectRow {

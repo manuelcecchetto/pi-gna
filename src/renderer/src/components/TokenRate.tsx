@@ -1,7 +1,7 @@
 // Output speed next to the context meter: tokens per second of the response streaming now, else of the last one.
 import { formatDuration, formatTokens } from "../lib/format";
-import type { SessionState } from "../lib/session";
-import { latestRate } from "../lib/token-rate";
+import type { SessionState } from "../../../shared/session-state";
+import { latestRate } from "../../../shared/token-rate";
 import { useNow } from "./primitives";
 
 export function TokenRate({ session }: { session: SessionState }) {

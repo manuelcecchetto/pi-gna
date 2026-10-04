@@ -1,4 +1,4 @@
-import type { CompactionItem } from "../lib/session";
+import type { CompactionItem } from "../../../shared/session-state";
 import { PiSpinner } from "./PiLogo";
 import { Elapsed } from "./primitives";
 

@@ -4,7 +4,7 @@ import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
 import type { Feature } from "../../../shared/settings";
 import { baseName, relativeTime, tildify } from "../lib/format";
-import { type Attention, attention, isDraft, strongestAttention } from "../lib/session";
+import { type Attention, attention, isDraft, strongestAttention } from "../../../shared/session-state";
 import { worstSeverity } from "../lib/laments";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";

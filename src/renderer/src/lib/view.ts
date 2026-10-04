@@ -2,7 +2,7 @@
 // and tool calls merge into one activity group so a long agent loop reads as a single line.
 import type { BashExecutionMessage, CustomMessage, StopReason, ToolCall, UserMessage } from "../../../shared/protocol";
 import { splitCardBlock, splitFileMentions } from "./attachments";
-import type { CompactionItem, Item, SessionState, ToolRun } from "./session";
+import type { CompactionItem, Item, SessionState, ToolRun } from "../../../shared/session-state";
 
 export type Step =
   | { kind: "thinking"; key: string; text: string; redacted: boolean; streaming: boolean; durationMs?: number }

@@ -19,7 +19,7 @@ import type { ImageContent, TextContent, UserMessage } from "../../../shared/pro
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { railItems } from "../lib/rail";
-import type { SessionState } from "../lib/session";
+import type { SessionState } from "../../../shared/session-state";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
 import { openLightbox, setExpanded, showBoard, useApp } from "../state/app";

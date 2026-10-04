@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ImageContent, TextContent, ToolCall, ToolResultLike } from "../../../shared/protocol";
 import { langFromPath } from "../lib/highlight";
-import type { ToolRun } from "../lib/session";
+import type { ToolRun } from "../../../shared/session-state";
 import { Ansi } from "./primitives";
 import { CodeView } from "./Markdown";
 

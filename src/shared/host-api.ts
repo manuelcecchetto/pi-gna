@@ -302,8 +302,8 @@ export interface RemoteStatus {
 // ── Chat contract ────────────────────────────────────────────────────────────
 
 /**
- * The session reducer's state (`SessionState`, src/renderer/src/lib/session.ts). Opaque here until T05 moves the
- * reducer to src/shared/session-state.ts and this alias becomes that type.
+ * The session reducer's state (`SessionState`, src/shared/session-state.ts). Kept opaque here because
+ * session-state.ts imports this file's `HostEvent`; main and clients cast to `SessionState` at the edge.
  */
 export type SessionStateJson = Record<string, unknown>;
 

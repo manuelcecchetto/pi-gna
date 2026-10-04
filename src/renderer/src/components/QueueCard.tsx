@@ -4,7 +4,7 @@ import { CornerDownRight, Ellipsis, ListEnd, Pencil, Trash2 } from "lucide-react
 import { useCallback, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import type { QueueKind } from "../lib/queue";
-import type { SessionState } from "../lib/session";
+import type { SessionState } from "../../../shared/session-state";
 import { editQueue } from "../state/app";
 import { Popover } from "./primitives";
 

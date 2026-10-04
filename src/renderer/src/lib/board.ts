@@ -5,7 +5,7 @@ import { refLine } from "../../../shared/github";
 import type { CardWorktree, ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import type { Model } from "../../../shared/protocol";
 import type { TaskModel } from "../../../shared/settings";
-import { type Attention, type SessionState, strongestAttention } from "./session";
+import { type Attention, type SessionState, strongestAttention } from "../../../shared/session-state";
 
 export function boardColumns(board: Board, cwd: string): Record<Column, Card[]> {
   const columns = Object.fromEntries(COLUMNS.map((column) => [column, [] as Card[]])) as Record<Column, Card[]>;

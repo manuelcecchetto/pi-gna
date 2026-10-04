@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { type ContextLevel, cacheHitRate, lastRequestUsage, summarizeContext } from "../lib/context";
 import { formatCost, formatTokens } from "../lib/format";
-import type { SessionState } from "../lib/session";
+import type { SessionState } from "../../../shared/session-state";
 import { compact, useApp } from "../state/app";
 
 const LEVEL_COLOR: Record<ContextLevel, string> = {

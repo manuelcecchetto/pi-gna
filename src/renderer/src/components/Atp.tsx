@@ -24,7 +24,7 @@ import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, planName, pla
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
-import type { SessionState } from "../lib/session";
+import type { SessionState } from "../../../shared/session-state";
 import { presentTool } from "../lib/tools";
 import { chatPeek, createRunDeriver, type PeekBubble, type Step } from "../lib/view";
 import { activate, type PageState, prefill, showPage, useApp } from "../state/app";

@@ -1,9 +1,6 @@
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AssistantMessage, SessionEntry, SessionEvent } from "../../../shared/protocol";
-import { type AssistantItem, createSession, hydrate, reduceSessionEvent, type SessionState } from "./session";
-import { TokenRate } from "../components/TokenRate";
+import { describe, expect, it } from "vitest";
+import type { AssistantMessage, SessionEntry, SessionEvent } from "./protocol";
+import { type AssistantItem, createSession, hydrate, reduceSessionEvent, type SessionState } from "./session-state";
 import { latestRate, responseRate } from "./token-rate";
 
 const usage = (output: number) => ({ input: 0, output, cacheRead: 0, cacheWrite: 0, totalTokens: output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
@@ -133,28 +130,5 @@ describe("token rate", () => {
     expect(latestRate(hydrate(createSession("h", "/repo"), entries).items, 10_000)).toBeUndefined();
     const crashed = play([[5000, { type: "agent_settled" }]], play(streamed));
     expect(latestRate(crashed.items, 10_000)).toBeUndefined();
-  });
-});
-
-describe("TokenRate", () => {
-  afterEach(() => vi.useRealTimers());
-  const render = (session: SessionState, now: number) => {
-    vi.useFakeTimers({ now });
-    return renderToStaticMarkup(createElement(TokenRate, { session }));
-  };
-
-  it("shows the live estimate, then the reported rate dimmed once the response ends", () => {
-    const live = render(play(streamed), 2000);
-    expect(live).toContain("~100 tok/s");
-    expect(live).toContain("text-muted");
-    expect(live).toContain("Output speed of the response streaming now: ~100 tokens in 1.0s");
-    const done = render(play([...streamed, ...ended(2000, 15), [3100, { type: "agent_settled" }]]), 60_000);
-    expect(done).toContain("15 tok/s");
-    expect(done).not.toContain("~");
-    expect(done).toContain("text-faint");
-  });
-
-  it("renders nothing before a response has a rate", () => {
-    expect(render(play(streamed.slice(0, 2)), 3000)).toBe("");
   });
 });

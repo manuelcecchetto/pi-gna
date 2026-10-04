@@ -1,6 +1,6 @@
 // What the context meter shows: how full the window is, and how far auto-compaction is.
 import type { SessionStats } from "../../../shared/protocol";
-import type { SessionState } from "./session";
+import type { SessionState } from "../../../shared/session-state";
 
 export type ContextLevel = "unknown" | "ok" | "warn" | "high";
 

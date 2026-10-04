@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { HostEvent } from "../../../shared/ipc";
+import type { HostEvent } from "../../../shared/host-api";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
-import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session";
+import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "../../../shared/session-state";
 import { liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "./tools";
 import { chatPeek, createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 

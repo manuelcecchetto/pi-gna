@@ -7,7 +7,7 @@ import { refLabel } from "../../../shared/github";
 import type { PickedPath } from "../../../shared/ipc";
 import { chatSummary, chatTitle, splitAttachments } from "../lib/board";
 import { formatStamp, relativeTime } from "../lib/format";
-import { attention } from "../lib/session";
+import { attention } from "../../../shared/session-state";
 import { applyBoard, openSession, remoteError, sessionTitle, setOverlay, useApp, useFeature } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { ColumnIcon } from "./ColumnIcon";

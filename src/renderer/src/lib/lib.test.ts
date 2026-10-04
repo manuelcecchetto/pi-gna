@@ -7,7 +7,7 @@ import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout
 import { cacheHitRate, summarizeContext } from "./context";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
-import { parsePartialJson } from "./partial-json";
+import { parsePartialJson } from "../../../shared/partial-json";
 
 describe("parsePartialJson", () => {
   it("closes an open string so streaming paths are visible early", () => {

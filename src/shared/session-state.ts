@@ -1,7 +1,7 @@
 // Pure session reducer: pi RPC events (and session-file hydration) -> renderable session state.
 // Immutable updates so unchanged transcript items keep their identity for memoized rendering.
-import type { AtpSession } from "../../../shared/atp";
-import type { HostEvent } from "../../../shared/ipc";
+import type { AtpSession } from "./atp";
+import type { HostEvent } from "./host-api";
 import type {
   AgentMessage,
   AssistantMessage,
@@ -17,7 +17,7 @@ import type {
   ThinkingLevel,
   ToolResultLike,
   UserMessage,
-} from "../../../shared/protocol";
+} from "./protocol";
 import { parsePartialJson } from "./partial-json";
 import { type StreamClock, tickStream } from "./token-rate";
 
@@ -210,6 +210,15 @@ export function reduceHostEvent(state: SessionState, event: HostEvent, now: numb
       return event.record.type === "extension_ui_request"
         ? reduceUiRequest(state, event.record, now)
         : reduceSessionEvent(state, event.record, now);
+    case "dialog_resolved": {
+      // Answered on another client (or cancelled/timed out host-side): drop the card here too.
+      const dialogs = state.dialogs.filter((dialog) => dialog.id !== event.id);
+      return dialogs.length === state.dialogs.length ? state : { ...state, dialogs };
+    }
+    // Lease changes and explicit closes concern the client's navigation, not the transcript.
+    case "lease":
+    case "closed":
+      return state;
   }
 }
 

@@ -4,7 +4,7 @@ import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
-import type { SessionState } from "../lib/session";
+import type { SessionState } from "../../../shared/session-state";
 import {
   attachFiles,
   composerCard,
