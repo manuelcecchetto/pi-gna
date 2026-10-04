@@ -12,7 +12,7 @@ func registerCoreMethods() {
     }
 
     methods["permissions"] = { params in
-        // docs/COMPUTER_USE.md: `permissions { prompt? }` is the status call; prompt triggers system prompts.
+        // docs/DESIGN.md, "Computer Use": `permissions { prompt? }` is the status call; prompt triggers system prompts.
         if params["prompt"] as? Bool == true { return try requestPermissions(params) }
         return permissionStatus()
     }

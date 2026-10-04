@@ -2,7 +2,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
-// Background input actions (docs/COMPUTER_USE.md, "Input strategy"). Order: AX action, then synthetic events posted to the
+// Background input actions (docs/DESIGN.md, "Computer Use"). Order: AX action, then synthetic events posted to the
 // target pid with a window number and window-local location (SkyLight SPI). Never activates an app, never moves the cursor,
 // never posts to the HID tap. What cannot be done in the background fails with background_unsupported.
 

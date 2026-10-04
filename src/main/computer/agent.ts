@@ -1,5 +1,5 @@
 // POST /computer on the agent bridge: the single gate between pi sessions and the Computer Use helper
-// (docs/COMPUTER_USE.md, "Policy"). Every call is authorized here, never in the extension: bash inherits
+// (docs/DESIGN.md, "Computer Use"). Every call is authorized here, never in the extension: bash inherits
 // PIGNA_TOKEN, so a direct curl must meet the same checks. Per chat, calls run one at a time (pi runs one
 // message's tool calls in parallel); per app, one chat at a time; different apps run in parallel.
 import { type AppInfo, ComputerError, ComputerErrorCode, type ComputerMethods, type ComputerNotification, type ComputerOp, type ComputerSettings, denyReason } from "../../shared/computer";

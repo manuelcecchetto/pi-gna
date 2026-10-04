@@ -3,7 +3,7 @@ import ApplicationServices
 import CoreGraphics
 import ScreenCaptureKit
 
-// Background window screenshots (docs/COMPUTER_USE.md, "Screenshot"). Capture is per window via
+// Background window screenshots (docs/DESIGN.md, "Computer Use"). Capture is per window via
 // SCContentFilter(desktopIndependentWindow:), so occluded windows are captured without what covers them.
 
 let maxScreenshotWidth = 1600.0

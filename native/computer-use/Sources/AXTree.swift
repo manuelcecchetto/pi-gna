@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-// get_app_state: indexed accessibility tree text with diffs (docs/COMPUTER_USE.md, "Accessibility tree text").
+// get_app_state: indexed accessibility tree text with diffs (docs/DESIGN.md, "Computer Use").
 
 let maxElements = 1500
 let maxDepth = 40

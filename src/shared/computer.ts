@@ -1,4 +1,4 @@
-// Wire protocol between Electron main and the native "pi-gna Computer Use" helper (docs/COMPUTER_USE.md).
+// Wire protocol between Electron main and the native "pi-gna Computer Use" helper (docs/DESIGN.md, "Computer Use").
 // Newline-delimited JSON-RPC 2.0 over a Unix socket; main is the only client.
 
 export const COMPUTER_PROTOCOL = 1;

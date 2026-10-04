@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-// App inventory, name resolution, background launch, and the hard denylist (docs/COMPUTER_USE.md, "Policy").
+// App inventory, name resolution, background launch, and the hard denylist (docs/DESIGN.md, "Computer Use").
 
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ id: UnsafeMutablePointer<CGWindowID>) -> AXError

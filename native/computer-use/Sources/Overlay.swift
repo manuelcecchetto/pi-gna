@@ -1,7 +1,7 @@
 import AppKit
 import QuartzCore
 
-// Virtual cursor + "pi is using <App> · Esc to cancel" pill (docs/COMPUTER_USE.md, "Overlay").
+// Virtual cursor + "pi is using <App> · Esc to cancel" pill (docs/DESIGN.md, "Computer Use").
 //
 // One entry (cursor window + pill window) per app being driven. Like Codex's VirtualCursor, the windows are ordered just
 // above the *target window's number* (`order(.above, relativeTo:)`), never as a full-screen top-level overlay: whatever

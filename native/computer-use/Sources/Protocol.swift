@@ -2,12 +2,12 @@ import Foundation
 
 /// Helper protocol version spoken on the socket and bumped only when the wire format changes.
 let protocolVersion = 1
-/// Bumped only when the helper's own behavior changes (see docs/COMPUTER_USE.md, "Install location").
+/// Bumped only when the helper's own behavior changes (see docs/DESIGN.md, "Computer Use").
 let helperVersion = 2
 
 typealias JSON = [String: Any]
 
-/// JSON-RPC error codes, helper range -32000...-32099 (docs/COMPUTER_USE.md, "Errors").
+/// JSON-RPC error codes, helper range -32000...-32099 (docs/DESIGN.md, "Computer Use").
 enum RPCErrorCode: Int {
     case permissionDenied = -32001
     case appNotFound = -32002
