@@ -46,16 +46,33 @@ describe("token rate", () => {
     expect(responseRate(item, 60_000)).toMatchObject({ perSecond: 50, seconds: 2 });
   });
 
-  it("does not count waits between stream events, like buffered tool input", () => {
-    const state = play([
+  it("does not count waits between stream events", () => {
+    const state = play([...streamed, text(20_000, 400), text(20_100, 400), text(50_000, 400)]);
+    // 1s of text, 1s of the 18s pause, 0.1s, 1s of the 30s pause; 1600 characters.
+    expect(responseRate(lastAssistant(state), 50_000)).toMatchObject({ tokens: 400, seconds: 3.1, live: true });
+  });
+
+  it("leaves out tool calls, whose arguments often arrive in one burst", () => {
+    const call = { type: "toolCall" as const, id: "c1", name: "write", arguments: { content: "y".repeat(4000) } };
+    const burst: [number, SessionEvent][] = [
       ...streamed,
       [2000, { type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "x".repeat(400) } }],
-      [20_000, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1, id: "c1", toolName: "write" } }],
-      [20_100, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: "y".repeat(400) } }],
-      [50_000, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: "y".repeat(400) } }],
+      [5000, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1, id: "c1", toolName: "write" } }],
+      [5010, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: JSON.stringify(call.arguments) } }],
+      [5020, { type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: 1, toolCall: call } }],
+    ];
+    // Neither the burst's 1000 tokens nor its time count: the text's 100 tokens in 1s.
+    expect(responseRate(lastAssistant(play(burst)), 5020)).toMatchObject({ perSecond: 100, tokens: 100, seconds: 1, live: true });
+    // The provider's count includes the arguments, so the estimate stays once the response ends.
+    const done = play([[5030, { type: "message_end", message: assistant([{ type: "text", text: "x".repeat(400) }, call], 1300) }]], play(burst));
+    expect(responseRate(lastAssistant(done), 60_000)).toEqual({ perSecond: 100, tokens: 100, seconds: 1, estimated: true, live: false });
+    // A response that only calls tools has no rate.
+    const only = play([
+      [0, { type: "message_start", message: assistant([]) }],
+      [0, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id: "c1", toolName: "write" } }],
+      [2000, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: "y".repeat(4000) } }],
     ]);
-    // 1s of text, 1s of the 18s pause, 0.1s, 1s of the 30s pause; 1200 characters.
-    expect(responseRate(lastAssistant(state), 50_000)).toMatchObject({ tokens: 300, seconds: 3.1, live: true });
+    expect(responseRate(lastAssistant(only), 2000)).toBeUndefined();
   });
 
   it("switches to the provider's output count once the response ends", () => {
@@ -82,15 +99,16 @@ describe("token rate", () => {
     expect(responseRate(lastAssistant(plain), 20_000)).toMatchObject({ tokens: 2100, estimated: false });
   });
 
-  it("counts thinking and streamed tool arguments, but not redacted thinking", () => {
+  it("counts thinking, but not tool arguments or redacted thinking", () => {
     const state = play([
       [0, { type: "message_start", message: assistant([]) }],
       [0, { type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } }],
-      [0, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "t".repeat(200) } }],
+      [0, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "t".repeat(100) } }],
+      [500, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: "t".repeat(100) } }],
       [500, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1, id: "c1", toolName: "read" } }],
       [600, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: '{"path": "/repo/sr' } }],
     ]);
-    expect(responseRate(lastAssistant(state), 1000)?.tokens).toBe(Math.round((200 + 18) / 4));
+    expect(responseRate(lastAssistant(state), 1000)).toMatchObject({ tokens: 50, seconds: 0.5 });
     const item = lastAssistant(state);
     const redacted = { ...item, message: { ...item.message, content: [{ type: "thinking" as const, thinking: "opaque", redacted: true }] } };
     expect(responseRate(redacted, 1000)).toBeUndefined();

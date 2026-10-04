@@ -441,8 +441,7 @@ function endAssistant(state: SessionState, message: AssistantMessage, now: numbe
     const time = times[Number(key)];
     if (time && time.end === undefined) times[Number(key)] = { ...time, end: now };
   }
-  const clock = item.clock && tickStream(item.clock, now);
-  return replaceItem(state, index, { ...item, message, streaming: false, partialArgs: undefined, times, clock });
+  return replaceItem(state, index, { ...item, message, streaming: false, partialArgs: undefined, times });
 }
 
 function updateAssistant(state: SessionState, event: AssistantMessageEvent, usage: AssistantMessage["usage"] | undefined, now: number): SessionState {
@@ -498,7 +497,9 @@ function updateAssistant(state: SessionState, event: AssistantMessageEvent, usag
     }
   }
   const message = { ...item.message, content, usage: usage ?? item.message.usage };
-  return replaceItem(state, index, { ...item, message, partialArgs, times, clock: tickStream(item.clock, now) });
+  // Tool-call events do not tick the output-speed clock: their arguments do not count (see token-rate.ts).
+  const clock = event.type.startsWith("toolcall") ? item.clock : tickStream(item.clock, now);
+  return replaceItem(state, index, { ...item, message, partialArgs, times, clock });
 }
 
 function basename(path: string): string {
