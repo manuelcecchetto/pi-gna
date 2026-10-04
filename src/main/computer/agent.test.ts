@@ -33,7 +33,7 @@ function setup(options: { enabled?: boolean; answer?: string; idleMs?: number } 
         return { bundleId: hit.bundleId, displayName: hit.displayName, pid: 1 };
       }
       if (method === "list_apps") return { apps: APPS };
-      if (method === "get_app_state") return { text: `state of ${id}` };
+      if (method === "get_app_state") return { text: `state of ${id}`, windowId: 42 };
       if (method === "screenshot") return { jpeg: "AAAA" };
       if (method === "overlay_show" || method === "overlay_hide") return {};
       if (gated.has(`${method}:${id}`)) await new Promise<void>((resolve) => gates.set(`${method}:${id}`, resolve));
@@ -194,6 +194,12 @@ describe("computer route locks and cleanup", () => {
     const t = setup();
     t.notify({ method: "cancelled", params: { session: "zz9", reason: "esc" } });
     expect(t.aborted).toEqual([]);
+  });
+
+  it("takes the screenshot of the window the state came from", async () => {
+    const t = setup();
+    await t.agent.run("a1", { action: "get_app_state", app: "Notes" });
+    expect(t.calls.find((c) => c.method === "screenshot")?.params).toMatchObject({ window_id: 42 });
   });
 
   it("opens a not-running app only after approval, and only for get_app_state", async () => {

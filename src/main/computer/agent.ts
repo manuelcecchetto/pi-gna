@@ -330,9 +330,10 @@ export class ComputerAgent {
     }
     const state = await this.service.call("get_app_state", { app, disable_diff: action === "get_app_state" ? body.disable_diff === true : undefined });
     const result: ComputerResult = { text: summary + state.text, app: info };
+    // The window the tree came from, not the app's largest one (TextEdit with several documents shows the difference).
     if (action === "get_app_state" || body.screenshot === true) {
       try {
-        result.image = (await this.service.call("screenshot", { app })).jpeg;
+        result.image = (await this.service.call("screenshot", { app, window_id: state.windowId })).jpeg;
       } catch (error) {
         result.text += `\n(No screenshot: ${error instanceof Error ? error.message : String(error)})`;
       }

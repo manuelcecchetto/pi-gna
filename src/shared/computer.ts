@@ -83,7 +83,7 @@ export interface ComputerMethods {
   list_apps: [Record<string, never>, { apps: AppInfo[] }];
   resolve_app: [{ app: string; launch?: boolean }, { bundleId: string; displayName: string; pid: number }];
   get_app_state: [{ app: string | AppTarget; window_id?: number; disable_diff?: boolean }, AppStateResult];
-  screenshot: [{ app: AppRef }, { jpeg: string; width: number; height: number; scale: number }];
+  screenshot: [{ app: AppRef; window_id?: number }, { jpeg: string; width: number; height: number; scale: number }];
   overlay_show: [{ app: AppRef; session_label: string; session: string; window_id?: number }, Record<string, unknown>];
   overlay_hide: [{ app?: AppRef }, Record<string, never>];
   click: [ActionParams & { element_index?: number; x?: number; y?: number; mouse_button?: "left" | "right" | "middle"; click_count?: number }, ActionResult];
