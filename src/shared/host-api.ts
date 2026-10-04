@@ -127,6 +127,9 @@ export type GlobalEvent =
   | { kind: "atp.runners"; runners: Record<string, AtpRunner> }
   | { kind: "atp.held"; plans: string[] }
   | { kind: "browser"; state: BrowserState }
+  /** The agent opened a browser tab: clients show the browser. */
+  | { kind: "browser.reveal" }
+  | { kind: "browser.annotation"; annotation: Annotation }
   | { kind: "update"; state: UpdateState }
   | { kind: "providers.login"; update: LoginUpdate }
   | { kind: "devices"; devices: DeviceInfo[] }

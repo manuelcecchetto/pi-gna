@@ -184,6 +184,12 @@ Every push goes through one in-process EventHub in main. The desktop window is o
     `computer`, `atp.plans`, `atp.runners`, `atp.held`, `browser`, `update`, `providers.login`, `devices`, `remote`,
     `ui`, `chat.opened`, `chat.closed`.
   - `chat:<handle>` events (`HostEvent`): the existing `rpc`, `ready`, `exit` plus `dialog_resolved`, `lease` and `closed`.
+- **Implementation (`src/main/event-hub.ts`):** `publish`/`publishBatch` (a batch is consecutive `seq`s delivered to each
+  subscriber in one call, which keeps the desktop's `IPC.events` batching), `subscribe({ topics, deliver, onClose })`
+  with `setTopics` and `close(reason)`, `since(bootId, seq)` (replay or resync via `planReplay`). The desktop window is
+  the `"all"` subscriber in `src/main/index.ts` and maps events back to the legacy IPC channels. `browser.reveal` and
+  `browser.annotation` are `global` events too. **Window-only pushes stay direct sends** (desktop shell, not host
+  state): `pageToggle`, `sidebarToggle`, `browserToggle`, `windowFocus`, `openProject`, `updateReveal`.
 - **Event envelope:** `{ bootId, seq, topic, event }`. `seq` is a host-global monotonic integer (one counter for
   all topics), `bootId` a random string per launch.
 - **Snapshot envelope:** `{ seq, value }`; `seq` is the last event the value reflects. A client applies only events

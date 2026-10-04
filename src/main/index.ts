@@ -1,3 +1,4 @@
+import { EventHub } from "./event-hub";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -11,7 +12,7 @@ import type { ViewportRequest } from "../shared/viewport";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
-import { type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
+import { type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { emptySettings, type Feature, type Settings, type SettingsOp } from "../shared/settings";
 import { Atp, librarianPath } from "./atp";
@@ -89,20 +90,51 @@ const bridge = new AgentBridge();
 const send = (channel: string, ...args: unknown[]) => {
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
 };
+// Window-only UI pushes stay direct `send`s (they are the desktop shell, not host state): menu toggles (pageToggle,
+// sidebarToggle, browserToggle), windowFocus, openProject and updateReveal. Everything else goes through the hub.
+const hub = new EventHub();
+const publish = (event: { kind: string; [key: string]: unknown }) => hub.publish("global", event);
+// The desktop window is one hub subscriber, on the same IPC channels and payloads as before the hub.
+hub.subscribe({
+  topics: "all",
+  deliver: (batch) => {
+    const topic = batch[0]?.topic ?? "global";
+    if (topic.startsWith("chat:")) {
+      send(IPC.events, { handle: topic.slice(5), events: batch.map((e) => e.event as HostEvent) } satisfies HostEventBatch);
+      return;
+    }
+    for (const { event } of batch) {
+      const e = event as Record<string, any>;
+      switch (e.kind) {
+        case "settings": send(IPC.settingsChanged, e.settings); break;
+        case "board": send(IPC.boardChanged, e.board); break;
+        case "laments": send(IPC.lamentsChanged, e.laments); break;
+        case "computer": send(IPC.computerChanged, e.settings); break;
+        case "atp.plans": send(IPC.atpPlans, e.plans); break;
+        case "atp.held": send(IPC.atpHeld, e.plans); break;
+        case "browser": send(IPC.browserState, e.state); break;
+        case "browser.reveal": send(IPC.browserReveal); break;
+        case "browser.annotation": send(IPC.browserAnnotation, e.annotation); break;
+        case "update": send(IPC.updateState, e.state); break;
+        case "providers.login": send(IPC.authUpdate, e.update); break;
+      }
+    }
+  },
+});
 const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"), (next) => {
-  send(IPC.settingsChanged, next);
+  publish({ kind: "settings", settings: next });
   applySettings(next);
 });
-const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
+const host = new SessionHost((batch: HostEventBatch) => void hub.publishBatch(`chat:${batch.handle}`, batch.events), bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
   ...(await settings.get()).features,
   computer: (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
 }));
-const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
+const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));
-const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => send(IPC.computerChanged, next));
-const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => send(IPC.lamentsChanged, next));
+const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => publish({ kind: "computer", settings: next }));
+const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => publish({ kind: "laments", laments: next }));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
@@ -125,8 +157,8 @@ bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) =
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
 const atp = new Atp(
-  (plans) => send(IPC.atpPlans, plans),
-  (held) => send(IPC.atpHeld, held),
+  (plans) => publish({ kind: "atp.plans", plans }),
+  (held) => publish({ kind: "atp.held", plans: held }),
 );
 bridge.route("/atp", settings.gate("atp", atp.route()));
 const auth = new PiAuth({ script: onDisk("resources", "pi-auth.mts") });
@@ -185,16 +217,16 @@ function createWindow(): void {
   });
 
   browser = new BrowserManager(window, {
-    state: (state) => send(IPC.browserState, state),
-    reveal: () => send(IPC.browserReveal),
-    annotation: (annotation) => send(IPC.browserAnnotation, annotation),
+    state: (state) => publish({ kind: "browser", state }),
+    reveal: () => publish({ kind: "browser.reveal" }),
+    annotation: (annotation) => publish({ kind: "browser.annotation", annotation }),
   });
   agent = new BrowserAgent(browser);
   attachContextMenu(window.webContents, {
     page: false,
     openTab: (url) => {
       browser?.createTab(url);
-      send(IPC.browserReveal);
+      publish({ kind: "browser.reveal" });
     },
   });
 
@@ -319,7 +351,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     return auth.signIn(provider, method, (update) => {
       // As pi's /login does, open the sign-in page in the browser (Claude Code opens its own).
       if (update.kind === "event" && update.event.type === "auth_url" && !update.event.opened) openExternal(update.event.url);
-      send(IPC.authUpdate, update);
+      publish({ kind: "providers.login", update });
     });
   });
   on(IPC.authAnswer, (n: number, value: string) => auth.answer(Number(n), String(value)));
@@ -463,7 +495,7 @@ function init(): void {
   buildMenu();
   const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv() : Promise.resolve();
 
-  updater = new Updater(logFile, (state) => send(IPC.updateState, state));
+  updater = new Updater(logFile, (state) => publish({ kind: "update", state }));
   // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
   app.on("will-quit", () => updater?.installOnQuit());
 
