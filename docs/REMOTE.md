@@ -98,20 +98,19 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `computer.preview` | remote | no | new. Latest-only read-only frame of the app a chat holds (T37). |
 | `ui.get`, `ui.setPins`, `ui.setBookmarks` | remote | set yes | new (T24): pins and bookmarks move from renderer localStorage to a host store. |
 
-**atp** (the runner moves to main in T23)
+**atp** (the runner is in main: `src/main/atp-runner.ts`)
 
 | Method | Scope | Mutates | Replaces / notes |
 |---|---|---|---|
 | `atp.plans` | remote | no | `atpWatch` + `atpPlans` push. Starts watching a project for this client; `{ seq, value: AtpProjectPlans }`; updates ride `global` as `atp.plans`. |
 | `atp.read` | remote | no | `atpRead`. |
-| `atp.start` | remote | yes | `startPlan`. Idempotent: a running plan is a no-op. Activates, runs workers. Doubles as resume. |
+| `atp.start` | remote | yes | `startPlan`. Idempotent: a running plan is a no-op. Returns once the run is registered; it goes on in main (activates, runs workers). Doubles as resume. |
 | `atp.stop` | remote | yes | `stopPlan`. |
 | `atp.releaseInterrupted` | remote | yes | `releaseInterrupted`. |
 | `atp.liftHold` | remote | yes | `liftHold` / `atpSetHeld`. |
-| `atp.threads` | remote | no | new (T24): worker/orchestrator threads of a plan, from the host store replacing `state/atp.ts:55` localStorage. |
-| `atp.orchestrator` | remote | yes | `orchestrator` (`atp.ts:333`): opens or reuses the orchestrator chat for a project/plan; `{ handle }`. |
-| `atp.state` | remote | no | new: runners and held plans (`{ runners, held }`), mirrors `global` `atp.runners`/`atp.held`. |
-| `atp.claim`, `atp.release`, `atp.activate`, `atp.head`, `atp.commit`, `atp.info` | desktop | yes (except head/info) | `atpClaim`, `atpRelease`, `atpActivate`, `atpHead`, `atpCommit`, `atpInfo`. Become host-internal in T23 (the runner calls them in-process), then leave the table. |
+| `atp.threads` | remote | no | worker/orchestrator session files of a plan (`AtpPlanThreads`), from `<userData>/atp-threads.json` (replaces the renderer's localStorage); changes ride `global` as `atp.threads`. `atp.importThreads` (desktop) merges the window's old copy once. |
+| `atp.orchestrator` | remote | yes | `orchestrator`: opens or reuses the orchestrator chat for a project/plan, with the caller's client lease; `{ handle }`. Without `plan`: the chat for a plan being written (it becomes the plan's orchestrator when the plan appears). `atp.releaseOrchestrators` drops the caller's leases (idle chats stop, busy ones when done); `atp.discardNewPlan {cwd}` drops the new-plan chat. |
+| `atp.state` | remote | no | `{ runners, notes, orchestrators, held }`; `global` `atp.runners` carries the first three whole on every change, `atp.held` the last. |
 
 **browser** (T33–T35)
 
@@ -181,7 +180,7 @@ Every push goes through one in-process EventHub in main. The desktop window is o
 
 - **Topics:** `global` and `chat:<handle>`.
   - `global` events (`GlobalEvent`, kind in `host-api.ts`): `projects`, `attention`, `board`, `laments`, `settings`,
-    `computer`, `atp.plans`, `atp.runners`, `atp.held`, `browser`, `update`, `providers.login`, `devices`, `remote`,
+    `computer`, `atp.plans`, `atp.runners`, `atp.threads`, `atp.held`, `browser`, `update`, `providers.login`, `devices`, `remote`,
     `ui`, `chat.opened`, `chat.closed`.
   - `chat:<handle>` events (`HostEvent`): the existing `rpc`, `ready`, `exit` plus `dialog_resolved`, `lease` and `closed`.
 - **Implementation (`src/main/event-hub.ts`):** `publish`/`publishBatch` (a batch is consecutive `seq`s delivered to each

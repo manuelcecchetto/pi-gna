@@ -1,5 +1,5 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
-import type { AtpClaim, AtpHead, AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
+import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
@@ -9,7 +9,7 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
-import type { AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, NewCardAttachment, QueueEdit, Revved, TaskStarted, TaskTarget } from "./host-api";
+import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, NewCardAttachment, QueueEdit, Revved, TaskStarted, TaskTarget } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type {
   ExtensionUiRequest,
@@ -97,15 +97,19 @@ export const IPC = {
   atpWatch: "atp:watch",
   atpPlans: "atp:plans",
   atpRead: "atp:read",
-  atpActivate: "atp:activate",
-  atpClaim: "atp:claim",
-  atpRelease: "atp:release",
-  atpHead: "atp:head",
-  atpCommit: "atp:commit",
   atpHeld: "atp:held",
-  atpGetHeld: "atp:get-held",
-  atpSetHeld: "atp:set-held",
-  atpInfo: "atp:info",
+  atpRunners: "atp:runners",
+  atpThreadsChanged: "atp:threads-changed",
+  atpState: "atp:state",
+  atpStart: "atp:start",
+  atpStop: "atp:stop",
+  atpReleaseInterrupted: "atp:release-interrupted",
+  atpLiftHold: "atp:lift-hold",
+  atpThreads: "atp:threads",
+  atpOrchestrator: "atp:orchestrator",
+  atpReleaseOrchestrators: "atp:release-orchestrators",
+  atpDiscardNewPlan: "atp:discard-new-plan",
+  atpImportThreads: "atp:import-threads",
   startTask: "studio:start-task",
   addCard: "studio:add-card",
   updateGet: "update:get",
@@ -194,30 +198,37 @@ export interface GithubApi {
 }
 
 /**
- * ATP plans (src/shared/atp.ts): main finds a project's `*.atp.json` files and pushes them as they change, runs the
- * librarian CLI the runner claims nodes with, and git around each node. The runner itself is the window's
- * (state/atp.ts): it starts the worker chats.
+ * ATP plans (src/shared/atp.ts): main finds a project's `*.atp.json` files and pushes them as they change, and runs
+ * them (src/main/atp-runner.ts): the runner claims nodes with the librarian CLI, starts the worker chats, commits after
+ * each node, and keeps the orchestrator chats and the plans' threads. The page is a view of that state.
  */
 export interface AtpApi {
   /** The project's plans, pushed again (onPlans) whenever one changes, until another project is watched (or null). */
   watch(cwd: string | null): Promise<AtpProjectPlans | null>;
   onPlans(listener: (plans: AtpProjectPlans) => void): () => void;
   read(plan: string): Promise<AtpPlan>;
-  /** DRAFT or PAUSED -> ACTIVE. */
-  activate(plan: string): Promise<string>;
-  claim(plan: string, agent: string): Promise<AtpClaim>;
-  release(plan: string, node: string, agent: string, reason: string): Promise<string>;
-  /** The project's branch and commit; null outside a git repository. */
-  head(cwd: string): Promise<AtpHead | null>;
-  /** Commit what a node's worker left uncommitted (atp-runner's fallback); says who committed. */
-  commit(cwd: string, node: string, title: string, before: AtpHead | null): Promise<{ kind: "committed"; sha: string } | { kind: "worker" | "clean" | "no-repo" }>;
-  /** Plans an orchestrator paused (atp_pause); the runner claims none of their nodes. */
-  held(): Promise<string[]>;
+  /** Runs, run notes and orchestrator chats, and the plans an orchestrator paused (atp_pause: the runner claims none of their nodes). */
+  state(): Promise<AtpRunnerState & { held: string[] }>;
+  onRunners(listener: (state: AtpRunnerState) => void): () => void;
   onHeld(listener: (plans: string[]) => void): () => void;
-  /** Lift (or set) a plan's pause from the page. */
-  setHeld(plan: string, held: boolean): Promise<void>;
-  /** The bundled librarian CLI (a Python script), for the workers' prompts. */
-  info(): Promise<{ librarian: string }>;
+  /** Run the plan in the project (activating it); also resumes a stopped plan. The run goes on in main, window or not. */
+  start(plan: string, cwd: string): Promise<null>;
+  /** Abort the plan's worker; its node goes back to READY. */
+  stop(plan: string): Promise<null>;
+  /** Give back a node a run that ended without it still holds. */
+  releaseInterrupted(plan: string, node: string): Promise<null>;
+  /** Let the runner claim nodes of a plan its orchestrator paused. */
+  liftHold(plan: string): Promise<null>;
+  /** The chats that worked on a plan, pushed again (onThreads) when they change. */
+  threads(plan: string): Promise<AtpPlanThreads>;
+  onThreads(listener: (change: { plan: string; threads: AtpPlanThreads }) => void): () => void;
+  /** The plan's orchestrator chat, started or resumed; without a plan, a chat for one the architect is about to write. The window attaches to it. */
+  orchestrator(cwd: string, plan?: string): Promise<{ handle: string }>;
+  /** The page closed: idle orchestrators stop, busy ones when they finish. */
+  releaseOrchestrators(): Promise<null>;
+  discardNewPlan(cwd: string): Promise<null>;
+  /** The threads this window kept in localStorage before they lived in main; merged once. */
+  importThreads(threads: unknown): Promise<null>;
 }
 
 /** The git worktree a card's Resolve chat, or a lament's Fix chat, works in, on a branch of its own (src/main/worktree.ts). */

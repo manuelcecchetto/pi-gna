@@ -27,7 +27,7 @@ import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, sav
 import type { SessionState } from "../../../shared/session-state";
 import { presentTool } from "../lib/tools";
 import { chatPeek, createRunDeriver, type PeekBubble, type Step } from "../lib/view";
-import { activate, type PageState, prefill, showPage, useApp } from "../state/app";
+import { activate, type PageState, prefill, showPage, toast, useApp } from "../state/app";
 import {
   discardNewPlanChat,
   liftHold,
@@ -133,11 +133,14 @@ export function AtpPage({ page }: { page: PageState }) {
     setNode(id);
   };
 
-  const newPlan = (skill: string) => {
-    discardNewPlanChat(page.cwd);
+  const newPlan = async (skill: string) => {
     select("new");
-    const handle = orchestrator(page.cwd, undefined);
-    prefill(handle, `/skill:${skill} `);
+    await discardNewPlanChat(page.cwd);
+    try {
+      prefill(await orchestrator(page.cwd, undefined), `/skill:${skill} `);
+    } catch (error) {
+      toast(`Could not start the architect: ${(error as Error).message}`, "error");
+    }
   };
 
   const dock = (selected === "new" || plan) && (
@@ -743,7 +746,16 @@ function OrchestratorDock({
   const room = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<string>();
-  useEffect(() => setHandle(orchestrator(cwd, plan)), [cwd, plan]);
+  useEffect(() => {
+    let current = true;
+    orchestrator(cwd, plan).then(
+      (started) => current && setHandle(started),
+      (error: Error) => toast(`Could not start the orchestrator: ${error.message}`, "error"),
+    );
+    return () => {
+      current = false;
+    };
+  }, [cwd, plan]);
   // A new plan's chat moves to the plan once the architect writes it: keep showing it.
   const adopted = useAtp((state) => (plan ? state.orchestrators[plan] : state.orchestrators[`new:${cwd}`]));
   const session = useApp((state) => {

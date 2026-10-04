@@ -17,6 +17,8 @@ import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenS
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
 import { Atp, librarianPath } from "./atp";
+import { AtpRuns } from "./atp-runner";
+import { AtpThreads } from "./atp-threads";
 import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
 import { attachContextMenu } from "./context-menu";
@@ -120,6 +122,8 @@ hub.subscribe({
         case "computer": send(IPC.computerChanged, e.settings); break;
         case "atp.plans": send(IPC.atpPlans, e.plans); break;
         case "atp.held": send(IPC.atpHeld, e.plans); break;
+        case "atp.runners": send(IPC.atpRunners, { runners: e.runners, notes: e.notes, orchestrators: e.orchestrators }); break;
+        case "atp.threads": send(IPC.atpThreadsChanged, { plan: e.plan, threads: e.threads }); break;
         case "browser": send(IPC.browserState, e.state); break;
         case "browser.reveal": send(IPC.browserReveal); break;
         case "browser.annotation": send(IPC.browserAnnotation, e.annotation); break;
@@ -166,10 +170,19 @@ host.onExit((handle) => browser?.closeWindowsOf(handle));
 bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) => host.identify(handle))));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
+// The runner and its chats start once the shell environment is known (registerIpc); plans and holds reach it through these.
+let atpRuns: AtpRuns | undefined;
 const atp = new Atp(
-  (plans) => publish({ kind: "atp.plans", plans }),
-  (held) => publish({ kind: "atp.held", plans: held }),
+  (plans) => {
+    publish({ kind: "atp.plans", plans });
+    void atpRuns?.plansChanged(plans);
+  },
+  (held) => {
+    publish({ kind: "atp.held", plans: held });
+    atpRuns?.heldChanged();
+  },
 );
+const atpThreads = new AtpThreads(join(app.getPath("userData"), "atp-threads.json"), (plan, threads) => publish({ kind: "atp.threads", plan, threads }));
 bridge.route("/atp", settings.gate("atp", atp.route()));
 const auth = new PiAuth({ script: onDisk("resources", "pi-auth.mts") });
 
@@ -283,6 +296,7 @@ const desktopContext: HostContext = {
 
 function registerIpc(shellEnv: Promise<void>): void {
   const tasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv });
+  atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
   const core = createHostCore({
     shellEnv,
     host,
@@ -295,6 +309,8 @@ function registerIpc(shellEnv: Promise<void>): void {
     laments,
     github,
     atp,
+    atpRuns,
+    atpThreads,
     auth,
     browser: () => browser,
     updater: () => updater,

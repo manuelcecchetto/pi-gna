@@ -2,6 +2,7 @@
 // request's Review, and a new card with its triage. The host holds the chat while it sets it up and while its first
 // run goes, so a closed window or a phone going to sleep changes nothing; the client only adopts the chat afterwards.
 import { randomUUID } from "node:crypto";
+import type { AtpSession } from "../shared/atp";
 import { type Board, type BoardOp, type Card, freshId, LIMITS } from "../shared/board";
 import { type ClientPresence, HostError, type NewCardAttachment, type TaskNotice, type TaskStarted, type TaskTarget } from "../shared/host-api";
 import type { CardWorktree, OpenSessionRequest } from "../shared/ipc";
@@ -41,8 +42,10 @@ export interface ChatTasksDeps {
 }
 
 /** What a started chat does once pi is ready, in order: join the card or lament, switch model, send the prompt, name the chat. */
-interface Setup {
+export interface Setup {
   cwd: string;
+  /** An ATP worker (src/main/atp-runner.ts): the chat gets the plan's skills and lives in the ATP session folder. */
+  atp?: AtpSession;
   name: string;
   prompt: string;
   model?: TaskModel;
@@ -74,7 +77,14 @@ export class ChatTasks {
       return this.started(handle, notices);
     }
     const setup = await this.plan(target, notices);
-    return this.run(setup, notices);
+    return (await this.run(setup, notices)).started;
+  }
+
+  /** Start a chat of the host's own (an ATP worker): `failed` says why the setup did not get as far as a running prompt. */
+  async launch(setup: Setup): Promise<{ handle: string; failed?: string }> {
+    await this.deps.shellEnv;
+    const { started, failed } = await this.run(setup, []);
+    return { handle: started.handle, failed };
   }
 
   /**
@@ -186,11 +196,12 @@ export class ChatTasks {
   }
 
   /** Open the chat under a host lease, wait for pi, and do the setup in order; the lease ends when its first run settles. */
-  private async run(setup: Setup, notices: TaskNotice[]): Promise<TaskStarted> {
+  private async run(setup: Setup, notices: TaskNotice[]): Promise<{ started: TaskStarted; failed?: string }> {
     const { host } = this.deps;
     const hold = `task:${randomUUID()}`;
-    const request: OpenSessionRequest = { cwd: setup.cwd };
+    const request: OpenSessionRequest = { cwd: setup.cwd, ...(setup.atp ? { atp: setup.atp } : {}) };
     const { handle } = await host.open(request, { hold });
+    let failed: string | undefined;
     try {
       // pi answers once it is ready.
       const ready = await host.command(handle, { type: "get_state" });
@@ -207,9 +218,10 @@ export class ChatTasks {
       // Left open and unhandled by anyone: the client finds it (and its error) in the sidebar.
       this.running.delete(handle);
       host.release(handle, hold);
-      notices.push({ level: "warning", text: `Could not set up “${setup.name}”: ${(error as Error).message}` });
+      failed = (error as Error).message;
+      notices.push({ level: "warning", text: `Could not set up “${setup.name}”: ${failed}` });
     }
-    return this.started(handle, notices);
+    return { started: this.started(handle, notices), failed };
   }
 
   private started(handle: string, notices: TaskNotice[]): TaskStarted {
@@ -251,7 +263,7 @@ export class ChatTasks {
   }
 
   /** Switch a new chat to a task's model. For this chat only: pi keeps your default model and thinking level. */
-  private async useModel(handle: string, want: TaskModel, notices: TaskNotice[]): Promise<void> {
+  async useModel(handle: string, want: TaskModel, notices: TaskNotice[] = []): Promise<void> {
     const { host } = this.deps;
     const models = (await host.command(handle, { type: "get_available_models" })) as RpcResponse<{ models: Model[] }>;
     const model = pickModel(models.data?.models ?? [], want, host.stateOf(handle)?.model?.provider);

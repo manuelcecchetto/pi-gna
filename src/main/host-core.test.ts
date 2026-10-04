@@ -19,7 +19,7 @@ const deps = {
   computerHelper: {},
   laments: {},
   github: { project: record("github.project"), list: record("github.list") },
-  atp: { head: record("atp.head"), watch: record("atp.watch") },
+  atp: { watch: record("atp.watch") },
   auth: {
     signIn: async (_provider: string, _method: string, onUpdate: (update: unknown) => void) => {
       onUpdate({ kind: "event", event: { type: "auth_url", url: "https://login.example/x", opened: false } });
@@ -42,7 +42,7 @@ describe("host methods table", () => {
     expect(new Set(routed).size).toBe(routed.length);
     for (const route of IPC_ROUTES) expect(core[route.method], route.method).toBeDefined();
     // Channels the main process pushes to the window have no route; every invoke/send channel does.
-    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.settingsChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pageToggle, IPC.sidebarToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
+    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.settingsChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pageToggle, IPC.sidebarToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
     expect(channels.filter((channel) => !pushes.has(channel) && !routed.includes(channel))).toEqual([]);
   });
 
@@ -50,13 +50,13 @@ describe("host methods table", () => {
     for (const name of DESKTOP_ONLY_METHODS) if (core[name]) expect(core[name].scope, name).toBe("desktop");
     // Desktop-scoped here but not in the shared list: renderer-side orchestration that moves to main in later nodes.
     const extra = Object.keys(core).filter((name) => core[name]?.scope === "desktop" && methodScope(name as HostMethod) !== "desktop");
-    expect(extra.sort()).toEqual(["atp.getHeld", "atp.setHeld", "atp.watch"]);
+    expect(extra.sort()).toEqual(["atp.watch"]);
   });
 
   it("refuses desktop-only methods from a remote client, before validating or running", async () => {
     calls.length = 0;
     expect(() => dispatch(core, phone(), "fs.pickFolder", {})).toThrow(expect.objectContaining({ code: "scope_denied" }));
-    expect(() => dispatch(core, phone(), "atp.head", { cwd: "relative" })).toThrow(expect.objectContaining({ code: "scope_denied" }));
+    expect(() => dispatch(core, phone(), "atp.importThreads", { threads: {} })).toThrow(expect.objectContaining({ code: "scope_denied" }));
     expect(calls).toEqual([]);
     await dispatch(core, desktop(), "fs.pickFolder", {});
     expect(calls).toEqual([["pickFolder"]]);
@@ -70,7 +70,8 @@ describe("host methods table", () => {
 
   it("keeps the project() absolute-path check", () => {
     expect(() => dispatch(core, desktop(), "github.project", { cwd: "repo" })).toThrow("a project is an absolute path");
-    expect(() => dispatch(core, desktop(), "atp.head", { cwd: "repo" })).toThrow("a project is an absolute path");
+    expect(() => dispatch(core, desktop(), "atp.start", { plan: "/p.atp.json", cwd: "repo" })).toThrow("a project is an absolute path");
+    expect(() => dispatch(core, desktop(), "atp.stop", { plan: "relative.atp.json" })).toThrow("not an ATP plan path");
     expect(() => dispatch(core, desktop(), "github.list", { cwd: "/r", kind: "issue", filter: "merged" })).toThrow("cannot list merged issues");
     expect(() => dispatch(core, desktop(), "providers.login", { provider: "x", method: "magic" })).toThrow("Unknown login");
     expect(() => dispatch(core, desktop(), "browser.viewport", { id: 3 })).toThrow("Invalid browser tab");

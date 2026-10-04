@@ -128,7 +128,8 @@ export type GlobalEvent =
   | { kind: "computer"; settings: Revved<ComputerSettings> }
   | { kind: "ui"; ui: Revved<UiState> }
   | { kind: "atp.plans"; plans: AtpProjectPlans }
-  | { kind: "atp.runners"; runners: Record<string, AtpRunner> }
+  | ({ kind: "atp.runners" } & AtpRunnerState)
+  | { kind: "atp.threads"; plan: string; threads: AtpPlanThreads }
   | { kind: "atp.held"; plans: string[] }
   | { kind: "browser"; state: BrowserState }
   /** The agent opened a browser tab: clients show the browser. */
@@ -142,14 +143,39 @@ export type GlobalEvent =
 /** A store value with its revision (incremented on every applied change; files without one load as 0). */
 export type Revved<T> = T & { rev: number };
 
+/** One plan's run, while the host runs it (src/main/atp-runner.ts). */
 export interface AtpRunner {
   plan: string;
+  /** The project the workers work in. */
   cwd: string;
+  phase: "starting" | "claiming" | "working" | "nudging" | "committing" | "held" | "stopping";
   /** The node being worked, when a worker is running. */
   node?: string;
+  title?: string;
   /** The worker chat's handle. */
   handle?: string;
-  startedAt: number;
+  since: number;
+}
+
+/** Why a plan's run stopped by itself, or what it did last; until the plan starts again. */
+export interface AtpRunNote {
+  level: "info" | "error";
+  text: string;
+  at: number;
+}
+
+/** What the host knows of ATP runs: published whole on every change (a few plans at most). */
+export type AtpRunnerState = {
+  runners: Record<string, AtpRunner>;
+  notes: Record<string, AtpRunNote>;
+  /** Live orchestrator chats: by plan, or `new:<project>` for a plan the architect is still writing. */
+  orchestrators: Record<string, string>;
+};
+
+/** Which chats worked on a plan: its orchestrator's session file and, per node, its workers' (oldest first; a node runs again after a stop). */
+export interface AtpPlanThreads {
+  orchestrator?: string;
+  workers: Record<string, string[]>;
 }
 
 /** Pins, bookmarks and ATP threads, host-side (they were renderer localStorage). */
@@ -451,15 +477,16 @@ export interface HostMethods {
   "atp.stop": { args: { plan: string }; result: null };
   "atp.releaseInterrupted": { args: { plan: string; node: string }; result: null };
   "atp.liftHold": { args: { plan: string }; result: null };
-  "atp.threads": { args: { plan: string }; result: { path: string; title: string; atp: AtpSession }[] };
+  "atp.threads": { args: { plan: string }; result: AtpPlanThreads };
+  /** Opens (or joins) the plan's orchestrator chat for this client; without `plan`, the chat for a plan the architect is about to write. */
   "atp.orchestrator": { args: { cwd: string; plan?: string }; result: { handle: string } };
-  "atp.state": { args: Record<string, never>; result: Snapshot<{ runners: Record<string, AtpRunner>; held: string[] }> };
-  "atp.claim": { args: { plan: string; agent: string }; result: unknown };
-  "atp.release": { args: { plan: string; node: string; agent: string; reason: string }; result: string };
-  "atp.activate": { args: { plan: string }; result: string };
-  "atp.head": { args: { cwd: string }; result: unknown };
-  "atp.commit": { args: { cwd: string; node: string; title: string; before: unknown }; result: unknown };
-  "atp.info": { args: Record<string, never>; result: { librarian: string } };
+  /** The client no longer shows the plans: idle orchestrators stop, busy ones when they finish. */
+  "atp.releaseOrchestrators": { args: Record<string, never>; result: null };
+  /** Drop the project's new-plan chat, so the next one starts fresh. */
+  "atp.discardNewPlan": { args: { cwd: string }; result: null };
+  /** The desktop's threads from before they lived in the host (localStorage), merged once. */
+  "atp.importThreads": { args: { threads: unknown }; result: null };
+  "atp.state": { args: Record<string, never>; result: Snapshot<AtpRunnerState & { held: string[] }> };
 
   // browser
   "browser.state": { args: Record<string, never>; result: Snapshot<BrowserState> };
@@ -545,12 +572,7 @@ export const DESKTOP_ONLY_METHODS = [
   "chat.rawCommand",
   "settings.revealPi",
   "computer.openSettings",
-  "atp.claim",
-  "atp.release",
-  "atp.activate",
-  "atp.head",
-  "atp.commit",
-  "atp.info",
+  "atp.importThreads",
   "browser.layout",
   "browser.popOut",
   "browser.returnToPane",

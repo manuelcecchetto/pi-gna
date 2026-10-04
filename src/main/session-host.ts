@@ -75,6 +75,7 @@ export class SessionHost {
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
   private readonly endListeners = new Set<(handle: string) => void>();
   private readonly exitListeners = new Set<(handle: string) => void>();
+  private readonly presenceListeners = new Set<(handle: string) => void>();
   private readonly settleListeners = new Set<(handle: string, outcome: RunOutcome) => void>();
   private readonly working = new Set<string>();
   private readonly runningListeners = new Set<() => void>();
@@ -398,6 +399,7 @@ export class SessionHost {
 
   private presenceChanged(handle: string): void {
     this.push(handle, [{ kind: "lease", clients: this.presence(handle) }]);
+    for (const listener of this.presenceListeners) listener(handle);
   }
 
   private disposeIfIdle(handle: string): void {
@@ -430,6 +432,12 @@ export class SessionHost {
   onSettled(listener: (handle: string, outcome: RunOutcome) => void): () => void {
     this.settleListeners.add(listener);
     return () => this.settleListeners.delete(listener);
+  }
+
+  /** Called when a client attaches to, detaches from or starts or stops viewing a chat. Returns an unsubscribe. */
+  onPresence(listener: (handle: string) => void): () => void {
+    this.presenceListeners.add(listener);
+    return () => this.presenceListeners.delete(listener);
   }
 
   /** Called when a chat's pi process exits (the session closed). Returns an unsubscribe. */

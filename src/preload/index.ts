@@ -6,7 +6,7 @@ import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
 import type { Settings, SettingsSection } from "../shared/settings";
-import type { Revved } from "../shared/host-api";
+import type { AtpPlanThreads, AtpRunnerState, Revved } from "../shared/host-api";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -90,15 +90,19 @@ const api: StudioApi = {
     watch: (cwd) => ipcRenderer.invoke(IPC.atpWatch, cwd),
     onPlans: (listener) => subscribe<AtpProjectPlans>(IPC.atpPlans, listener),
     read: (plan) => ipcRenderer.invoke(IPC.atpRead, plan),
-    activate: (plan) => ipcRenderer.invoke(IPC.atpActivate, plan),
-    claim: (plan, agent) => ipcRenderer.invoke(IPC.atpClaim, plan, agent),
-    release: (plan, node, agent, reason) => ipcRenderer.invoke(IPC.atpRelease, plan, node, agent, reason),
-    head: (cwd) => ipcRenderer.invoke(IPC.atpHead, cwd),
-    commit: (cwd, node, title, before) => ipcRenderer.invoke(IPC.atpCommit, cwd, node, title, before),
-    held: () => ipcRenderer.invoke(IPC.atpGetHeld),
+    state: () => ipcRenderer.invoke(IPC.atpState),
+    onRunners: (listener) => subscribe<AtpRunnerState>(IPC.atpRunners, listener),
     onHeld: (listener) => subscribe<string[]>(IPC.atpHeld, listener),
-    setHeld: (plan, held) => ipcRenderer.invoke(IPC.atpSetHeld, plan, held),
-    info: () => ipcRenderer.invoke(IPC.atpInfo),
+    start: (plan, cwd) => ipcRenderer.invoke(IPC.atpStart, plan, cwd),
+    stop: (plan) => ipcRenderer.invoke(IPC.atpStop, plan),
+    releaseInterrupted: (plan, node) => ipcRenderer.invoke(IPC.atpReleaseInterrupted, plan, node),
+    liftHold: (plan) => ipcRenderer.invoke(IPC.atpLiftHold, plan),
+    threads: (plan) => ipcRenderer.invoke(IPC.atpThreads, plan),
+    onThreads: (listener) => subscribe<{ plan: string; threads: AtpPlanThreads }>(IPC.atpThreadsChanged, listener),
+    orchestrator: (cwd, plan) => ipcRenderer.invoke(IPC.atpOrchestrator, cwd, plan),
+    releaseOrchestrators: () => ipcRenderer.invoke(IPC.atpReleaseOrchestrators),
+    discardNewPlan: (cwd) => ipcRenderer.invoke(IPC.atpDiscardNewPlan, cwd),
+    importThreads: (threads) => ipcRenderer.invoke(IPC.atpImportThreads, threads),
   },
   laments: {
     get: () => ipcRenderer.invoke(IPC.lamentsGet),

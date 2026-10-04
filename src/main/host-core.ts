@@ -1,4 +1,4 @@
-import type { AtpHead } from "../shared/atp";
+import { isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import type { BoardOp, Column } from "../shared/board";
 import type { BrowserCommand } from "../shared/browser";
@@ -10,13 +10,14 @@ import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import type { SettingsOp } from "../shared/settings";
 import type { ViewportRequest } from "../shared/viewport";
-import { librarianPath } from "./atp";
 import { listFiles } from "./files";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
 import { describePaths } from "./attachments";
 import { log } from "./log";
 import type { Atp } from "./atp";
+import type { AtpRuns } from "./atp-runner";
+import type { AtpThreads } from "./atp-threads";
 import type { ChatTasks } from "./chat-tasks";
 import type { BoardStore } from "./board";
 import type { BrowserManager } from "./browser/manager";
@@ -62,6 +63,8 @@ export interface HostDeps {
   laments: LamentStore;
   github: Github;
   atp: Atp;
+  atpRuns: AtpRuns;
+  atpThreads: AtpThreads;
   auth: PiAuth;
   browser(): BrowserManager | undefined;
   updater(): Updater | undefined;
@@ -88,13 +91,19 @@ const tabId = (raw: { id: unknown }) => {
 const presence = (ctx: HostContext) => ({ clientId: ctx.clientId, actor: ctx.client === "desktop" ? "desktop" : ctx.client.device });
 
 /** gh and git run on a project: an absolute folder. */
+/** An ATP plan is an absolute `.atp.json` path. */
+const planPath = (plan: unknown): string => {
+  if (!isPlanPath(plan)) throw new Error(`not an ATP plan path: ${String(plan)}`);
+  return plan;
+};
+
 export const project = (cwd: unknown): string => {
   if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");
   return cwd;
 };
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, tasks, board, settings, computerPolicy, computerHelper, laments, github, atp, auth, native } = deps;
+  const { host, tasks, board, settings, computerPolicy, computerHelper, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
   return {
@@ -276,18 +285,24 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     // python3, rg and git come from the login shell's PATH.
     "atp.watch": method<{ cwd: string | null }>("desktop", (raw) => ({ cwd: raw.cwd === null ? null : project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.watch(cwd))),
     "atp.read": any<{ plan: string }>("remote", (_ctx, { plan }) => atp.read(plan)),
-    "atp.activate": any<{ plan: string }>("desktop", async (_ctx, { plan }) => (await env(), atp.activate(plan))),
-    "atp.claim": any<{ plan: string; agent: string }>("desktop", async (_ctx, { plan, agent }) => (await env(), atp.claim(plan, String(agent)))),
-    "atp.release": any<{ plan: string; node: string; agent: string; reason: string }>("desktop", async (_ctx, { plan, node, agent, reason }) => (await env(), atp.release(plan, String(node), String(agent), String(reason)))),
-    "atp.head": method<{ cwd: string }>("desktop", (raw) => ({ cwd: project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.head(cwd))),
-    "atp.commit": method<{ cwd: string; node: string; title: string; before: AtpHead | null }>(
-      "desktop",
-      (raw) => ({ cwd: project(raw.cwd), node: String(raw.node), title: String(raw.title), before: raw.before }),
-      async (_ctx, { cwd, node, title, before }) => (await env(), atp.commit(cwd, node, title, before)),
+    "atp.start": method<{ plan: string; cwd: string }>("remote", (raw) => ({ plan: planPath(raw.plan), cwd: project(raw.cwd) }), (_ctx, { plan, cwd }) => (atpRuns.start(plan, cwd), null)),
+    "atp.stop": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), async (_ctx, { plan }) => (await atpRuns.stop(plan), null)),
+    "atp.releaseInterrupted": method<{ plan: string; node: string }>(
+      "remote",
+      (raw) => ({ plan: planPath(raw.plan), node: String(raw.node) }),
+      async (_ctx, { plan, node }) => (await env(), await atpRuns.releaseInterrupted(plan, node), null),
     ),
-    "atp.getHeld": any("desktop", () => atp.heldPlans()),
-    "atp.setHeld": any<{ plan: string; held: boolean }>("desktop", (_ctx, { plan, held }) => atp.setHeld(plan, held === true)),
-    "atp.info": any("desktop", () => ({ librarian: librarianPath() })),
+    "atp.liftHold": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), (_ctx, { plan }) => (atpRuns.liftHold(plan), null)),
+    "atp.threads": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), (_ctx, { plan }) => atpThreads.get(plan)),
+    "atp.orchestrator": method<{ cwd: string; plan?: string }>(
+      "remote",
+      (raw) => ({ cwd: project(raw.cwd), plan: raw.plan === undefined ? undefined : planPath(raw.plan) }),
+      (ctx, { cwd, plan }) => atpRuns.orchestrator(presence(ctx), cwd, plan),
+    ),
+    "atp.releaseOrchestrators": any("remote", (ctx) => (atpRuns.releaseOrchestrators(presence(ctx)), null)),
+    "atp.discardNewPlan": method<{ cwd: string }>("remote", (raw) => ({ cwd: project(raw.cwd) }), (_ctx, { cwd }) => (atpRuns.discardNewPlan(cwd), null)),
+    "atp.importThreads": any<{ threads: unknown }>("desktop", async (_ctx, { threads }) => (await atpThreads.importLegacy(threads), null)),
+    "atp.state": any("remote", () => ({ ...atpRuns.state(), held: atp.heldPlans() })),
   };
 }
 
@@ -376,14 +391,16 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.githubLookup, "github.lookup", (cwd, input) => ({ cwd, input })),
   route(IPC.atpWatch, "atp.watch", (cwd) => ({ cwd })),
   route(IPC.atpRead, "atp.read", (plan) => ({ plan })),
-  route(IPC.atpActivate, "atp.activate", (plan) => ({ plan })),
-  route(IPC.atpClaim, "atp.claim", (plan, agent) => ({ plan, agent })),
-  route(IPC.atpRelease, "atp.release", (plan, node, agent, reason) => ({ plan, node, agent, reason })),
-  route(IPC.atpHead, "atp.head", (cwd) => ({ cwd })),
-  route(IPC.atpCommit, "atp.commit", (cwd, node, title, before) => ({ cwd, node, title, before })),
-  route(IPC.atpGetHeld, "atp.getHeld"),
-  route(IPC.atpSetHeld, "atp.setHeld", (plan, held) => ({ plan, held })),
-  route(IPC.atpInfo, "atp.info"),
+  route(IPC.atpState, "atp.state"),
+  route(IPC.atpStart, "atp.start", (plan, cwd) => ({ plan, cwd })),
+  route(IPC.atpStop, "atp.stop", (plan) => ({ plan })),
+  route(IPC.atpReleaseInterrupted, "atp.releaseInterrupted", (plan, node) => ({ plan, node })),
+  route(IPC.atpLiftHold, "atp.liftHold", (plan) => ({ plan })),
+  route(IPC.atpThreads, "atp.threads", (plan) => ({ plan })),
+  route(IPC.atpOrchestrator, "atp.orchestrator", (cwd, plan) => ({ cwd, plan })),
+  route(IPC.atpReleaseOrchestrators, "atp.releaseOrchestrators"),
+  route(IPC.atpDiscardNewPlan, "atp.discardNewPlan", (cwd) => ({ cwd })),
+  route(IPC.atpImportThreads, "atp.importThreads", (threads) => ({ threads })),
   route(IPC.relaunch, "host.relaunch"),
   route(IPC.updateGet, "update.get"),
   route(IPC.updateDownload, "update.download"),

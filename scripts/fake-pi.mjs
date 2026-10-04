@@ -5,8 +5,11 @@
 // FAKE_LINES paragraphs, one every FAKE_DELAY ms (about 13 tokens each, so 150 ms is ~89 tok/s). Like pi, it names a
 // session file (in the temp folder) before writing anything, so cards and laments can link its chats; none is written.
 // FAKE_FIXTURE=<name> (see fake-pi-visuals.mjs) replies with that fixed text instead, FAKE_CHUNK chars per delta.
+// FAKE_ATP=1: a prompt that assigns an ATP node (the runner's claim packet) is answered by completing that node with the
+// plan's librarian CLI, so a throwaway plan runs end to end; FAKE_ATP=idle leaves the node claimed (a worker that gave up).
 // `abort` ends the answer early, as Stop and Esc do with pi.
-import { appendFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -62,7 +65,19 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
 });
 
+/** The worker's part of an ATP node: complete it through the librarian, like a pi following the claim packet. */
+function completeNode(text) {
+  const node = text.match(/TASK ASSIGNED: (\S+)/)?.[1];
+  const plan = text.match(/plan_path: (\S+)/)?.[1];
+  const librarian = text.match(/librarian: python3 '([^']+)'/)?.[1];
+  if (!node || !plan || !librarian || process.env.FAKE_ATP !== "1") return;
+  const report = join(tmpdir(), `fake-pi-${process.pid}-report.md`);
+  writeFileSync(report, "## Outcome\nDone by fake-pi.\n");
+  execFileSync("python3", [librarian, "atp-complete-task", "--plan-path", plan, "--node-id", node, "--status", "DONE", "--report-file", report]);
+}
+
 async function run(text) {
+  completeNode(text);
   streaming = true;
   aborted = false;
   out({ type: "agent_start" });

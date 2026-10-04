@@ -272,7 +272,7 @@ async function detachSession(handle: string): Promise<void> {
 const attaching = new Map<string, HostEventBatch[]>();
 
 /** Join a chat the host already runs (another client started it, or this window had it before a reload). */
-async function adopt(handle: string, show = false): Promise<void> {
+export async function adopt(handle: string, show = false): Promise<void> {
   if (store.get().sessions[handle] || attaching.has(handle)) return;
   attaching.set(handle, []);
   const snapshot = await studio().attachSession(handle).catch(() => null);
@@ -317,10 +317,6 @@ export async function closeSession(handle: string, pickNext = true): Promise<voi
 }
 
 function removeSession(handle: string): void {
-  // Its exit event finds no session any more: whoever waits for its run hears it now.
-  if (store.get().sessions[handle]) settled(handle, "exited");
-  settleListeners.delete(handle);
-  setups.delete(handle);
   removeComposerCard(handle);
   store.set((state) => {
     const { [handle]: _removed, ...sessions } = state.sessions;
@@ -357,7 +353,6 @@ export function handleBatch(batch: HostEventBatch): void {
       // A spawn failure (pi not installed) is explained in the session's banner; keep the toast short.
       if (event.error) toast("pi could not start", "error");
       else if (event.code !== 0 && event.signal !== "SIGTERM") toast(`pi exited (${event.signal ?? `code ${event.code}`})`, "error");
-      settled(handle, "exited");
     } else if (event.record.type === "extension_ui_request" && event.record.method === "notify") {
       const level = event.record.notifyType === "error" ? "error" : event.record.notifyType === "warning" ? "warning" : "info";
       // Every pi process repeats the same extension startup notices; show each one once per app run.
@@ -369,7 +364,6 @@ export function handleBatch(batch: HostEventBatch): void {
       toast(event.record.message, level);
     } else if (event.record.type === "agent_settled") {
       const outcome = runOutcome(store.get().sessions[handle]?.items ?? []);
-      settled(handle, outcome);
       // Finished while you were not looking: another chat or a page was open, or the window was in the background.
       // (A card's background chat that ended well is closed by the host, so it never gets here.)
       if (!viewing(handle)) patchSession(handle, (s) => ({ ...s, unread: outcome }));
@@ -393,30 +387,6 @@ async function onReady(handle: string, state: RpcSessionState): Promise<void> {
     models: models?.data?.models ?? s.models,
   }));
   if (state.messageCount > 0) void refreshStats(handle);
-  const setup = setups.get(handle);
-  if (setup) {
-    setups.delete(handle);
-    void setUp(handle, setup);
-  }
-}
-
-/** How a chat's run ended, or that its pi exited. */
-export type Settled = RunOutcome | "exited";
-const settleListeners = new Map<string, Set<(how: Settled) => void>>();
-
-/** Listen for a chat's runs ending (agent_settled) and for its pi exiting. */
-export function onSettle(handle: string, listener: (how: Settled) => void): () => void {
-  const listeners = settleListeners.get(handle) ?? new Set();
-  listeners.add(listener);
-  settleListeners.set(handle, listeners);
-  return () => {
-    listeners.delete(listener);
-    if (!listeners.size) settleListeners.delete(handle);
-  };
-}
-
-function settled(handle: string, how: Settled): void {
-  for (const listener of [...(settleListeners.get(handle) ?? [])]) listener(how);
 }
 
 async function onSettled(handle: string): Promise<void> {
@@ -901,36 +871,9 @@ export function removeComposerCard(handle: string): void {
   });
 }
 
-/** What pi-gna does with an ATP chat it starts itself, once pi is ready: switch its model, then send it a first prompt. */
-export interface ChatSetup {
-  /** Session name, set with the prompt. */
-  name?: string;
-  /** For this chat only: pi keeps your default model and thinking level. */
-  model?: TaskModel;
-  prompt?: string;
-}
-const setups = new Map<string, ChatSetup>();
-
-async function setUp(handle: string, setup: ChatSetup): Promise<void> {
-  if (setup.model) await useModel(handle, setup.model);
-  if (setup.prompt === undefined || !store.get().sessions[handle]) return;
-  // Written by pi-gna, not the composer: no attachments or browser comments ride along. Named right away, before
-  // pi confirms it, so the sidebar never shows it under another title (or a triage chat at all).
-  patchSession(handle, (s) => ({ ...s, prompted: true, name: setup.name ?? s.name }));
-  const sent = await command(handle, { type: "prompt", message: setup.prompt });
-  if (sent.success && setup.name) await command(handle, { type: "set_session_name", name: setup.name }, true);
-  // No run started, so none will settle: tell whoever waits for it (the ATP runner).
-  if (!sent.success) settled(handle, "error");
-}
-
-/**
- * Start an ATP chat in the background (ATP page): new, or an earlier one from its session file. It never shows in
- * the sidebar; the ATP page opens it.
- */
-export function startAtpChat(cwd: string, atp: AtpSession, options: { resume?: { path: string; title: string }; setup?: ChatSetup } = {}): string {
-  const handle = start(cwd, options.resume, false, atp);
-  if (options.setup) setups.set(handle, options.setup);
-  return handle;
+/** Open an earlier ATP chat (a node's worker, an orchestrator) from its session file, in the background: it never shows in the sidebar, the ATP page opens it. */
+export function startAtpChat(cwd: string, atp: AtpSession, resume: { path: string; title: string }): string {
+  return start(cwd, resume, false, atp);
 }
 
 /** Put a chat on a card, by its session file (the first message of a "Chat about it" chat). */
@@ -940,17 +883,6 @@ async function joinCard(handle: string, card: string): Promise<void> {
   const path = session.sessionPath ?? (await command<RpcSessionState>(handle, { type: "get_state" }, true)).data?.sessionFile;
   if (path) await applyBoard({ type: "attach", id: card, chat: { path, cwd: session.cwd } });
   else toast("This chat has no session file, so it cannot be put on the card", "warning");
-}
-
-/** Switch a new chat to a card task's model. For this chat only: pi keeps your default model and thinking level. */
-async function useModel(handle: string, want: TaskModel): Promise<void> {
-  const model = pickModel(store.get().models, want, store.get().sessions[handle]?.model?.provider);
-  if (!model) {
-    toast(`${want.provider ? `${want.provider}/` : ""}${want.id} is not available, so this chat runs on your default model`, "warning");
-    return;
-  }
-  await setModel(handle, model);
-  await setThinking(handle, want.thinking);
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────

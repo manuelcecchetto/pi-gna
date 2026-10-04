@@ -339,7 +339,7 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `src/shared/task-prompts.ts`. `addCard` adds the card, saves its images, lists them in the notes and starts the
   triage without waiting for it. "Chat about it" stays client-side (the composer chip); `chat.send` composes the
   card's block host-side from a `cardId` (attachments and annotations follow with the phone's uploads); the desktop
-  still composes its own send. ATP chats still set themselves up in the renderer (`ChatSetup`) until the runner moves.
+  still composes its own send. ATP workers start through the same setup (`ChatTasks.launch`).
 - **Card actions** (`state/card-actions.ts`, `registerCardAction`) fill the right-click menu, the card's "…" button
   and its dialog. Investigate, Resolve and QA start a chat in the background (you stay on the board), attach it when
   pi is ready (a new chat's session file is named before anything is written) and only then send the prompt, so
@@ -498,7 +498,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   project root (debounced 150 ms), so a plan created in a new subfolder shows after Refresh. `Atp.activate` runs
   `atp-activate-project` and adds `*.atp.json.lock` to the repository's `.git/info/exclude`, so `git add -A` never
   commits the lock.
-- **The runner** (`state/atp.ts`, `startPlan`) is the renderer, not a scheduler, and nothing judges a node: like
+- **The runner** (`AtpRuns`, `src/main/atp-runner.ts`) lives in main, so a plan keeps running with no window (a hidden
+  one included) and any client can start, stop and watch it (`atp.start`, `atp.stop`, `atp.state`; its runs, run notes
+  and orchestrator chats go out whole as the `atp.runners` global event). It is not a scheduler, and nothing judges a node: like
   atp-runner, per plan it claims the next READY node (`atp-claim-task --agent-id pigna-w1`; `parseClaim` reads
   `TASK ASSIGNED`, `NO_TASKS_AVAILABLE` and "not ACTIVE"), starts a fresh worker chat with the worker prompt and
   the claim packet (`workerMessage`), waits for its run, then reads the plan. A worker completes, fails or decomposes
@@ -507,22 +509,28 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   nudge (`nudgeMessage`); after that the runner releases it, notes why on the page and stops. Stop aborts the
   worker and releases its node. A node held by `pigna-w1` while nothing runs (pi-gna quit mid-node) shows as
   Interrupted, and Start resumes it in a new worker that is told it is resuming. The worker's plan-file changes
-  stay uncommitted (the worker commits before it completes, as with atp-runner).
+  stay uncommitted (the worker commits before it completes, as with atp-runner). The worker chat is started by
+  `ChatTasks.launch` (model, prompt, name, as for card tasks); its settles come from `SessionHost.onSettled`. A
+  finished worker chat closes unless a client has it in the foreground (`presence`), and then once none does
+  (`SessionHost.onPresence`). The ATP page is a view of this state (`state/atp.ts`); `scripts/fake-pi.mjs` with
+  `FAKE_ATP=1` completes the nodes it is assigned, to run a throwaway plan end to end.
 - **Fixed config** (`ATP_CONFIG`): orchestrator `openai-codex/gpt-5.6-sol` at high thinking, workers
   `claude-sonnet-5-5` at medium (picked by id like the triage model, preferring the chat's provider; a node's `reasoning_effort` is ignored), one worker per plan, a commit
   per node. A settings page for these is later work.
 - **ATP chats are hidden** threads: `--session-dir <userData>/atp-sessions` keeps them out of `~/.pi/agent/sessions`
   and the sidebar (`projectViews` skips them too). SessionHost (`atpArgs`) gives each role its skills (`--skill`),
   its prompt (`resources/atp/worker.md` or `orchestrator.md`, `--append-system-prompt`) and its plan's path. The page
-  remembers which chat worked which node (localStorage) and opens them from the node panel. A worker chat closes
-  once its node is done, unless you are looking at it.
+  remembers which chat worked which node (`AtpThreads`, `<userData>/atp-threads.json`, `atp.threads`; the window's
+  older localStorage copy is merged in once, `atp.importThreads`) and opens them from the node panel. A worker chat
+  closes once its node is done, unless you are looking at it.
 - **The orchestrator** is one chat per plan, floating over the graph: you ask it how the plan is going, or have it edit or
   extend the plan with the librarian (decompose, future patches). It never works a node. Its extension's
   `atp_pause` holds the plan in main (`Atp.setHeld`; the librarian has no pause) so the runner claims no new node,
   and waits up to 4 minutes for running nodes to finish; `atp_resume` lifts it (and so does the page's Resume). The
   librarian refuses future patches while any node is CLAIMED, SCOPE nodes included; the prompt says so. It starts
-  (or resumes from its session file) when the page shows the plan, without a model call, and idle ones stop when
-  the page closes. New ATP opens the same composer with the architect skills; the chat that writes the plan
+  (or resumes from its session file) when a client shows the plan (`atp.orchestrator`, a client lease on the chat),
+  without a model call, and idle ones stop when that client leaves (`atp.releaseOrchestrators`; busy ones once they
+  finish, unless a client is back in them). New ATP opens the same composer with the architect skills; the chat that writes the plan
   becomes its orchestrator.
 - **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a header breadcrumb (project, then
   the plan; `PlanSwitch` opens a menu of the project's plans with their progress, in place of an always-on rail), the
