@@ -61,8 +61,16 @@ export const LOOK_LABEL: Record<NodeLook, string> = {
 
 export const AtpGraph = forwardRef<
   GraphHandle,
-  { plan: AtpPlan; selected?: string; stalled?: string; matches: Set<string>; onSelect: (id: string | undefined) => void }
->(function AtpGraph({ plan, selected, stalled, matches, onSelect }, ref) {
+  {
+    plan: AtpPlan;
+    selected?: string;
+    stalled?: string;
+    matches: Set<string>;
+    onSelect: (id: string | undefined) => void;
+    /** The bottom of the view the orchestrator floats over: fitting and centering keep the plan above it. */
+    inset?: number;
+  }
+>(function AtpGraph({ plan, selected, stalled, matches, onSelect, inset = 0 }, ref) {
   const viewport = useRef<HTMLDivElement>(null);
   const layer = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -73,6 +81,10 @@ export const AtpGraph = forwardRef<
   const fitK = useRef(1);
   const [zoom, setZoom] = useState(1);
   const [overview, setOverview] = useState(false);
+  const covered = useRef(inset);
+  covered.current = inset;
+  /** The view is as fit() left it: the orchestrator growing or shrinking fits the plan again. */
+  const untouched = useRef(false);
 
   const shape = shapeOf(plan.nodes);
   // The shape string stands in for the nodes: a status change keeps the layout.
@@ -121,11 +133,13 @@ export const AtpGraph = forwardRef<
       const outer = viewport.current;
       if (!outer) return;
       focus.current = undefined;
-      const { width, height } = outer.getBoundingClientRect();
+      const { width } = outer.getBoundingClientRect();
+      const height = outer.getBoundingClientRect().height - covered.current;
       const k = fitScale(width, height);
       fitK.current = k;
       view.current = { k, x: (width - layout.width * k) / 2, y: Math.max(PAD, (height - layout.height * k) / 2) };
       apply(animate);
+      untouched.current = true;
     },
     [layout, apply, fitScale],
   );
@@ -137,7 +151,8 @@ export const AtpGraph = forwardRef<
       if (!outer || !laid) return;
       const { width, height } = outer.getBoundingClientRect();
       const k = Math.max(view.current.k, 0.8);
-      view.current = { k, x: width / 2 - (laid.x + NODE_W / 2) * k, y: height / 2 - (laid.y + NODE_H / 2) * k };
+      view.current = { k, x: width / 2 - (laid.x + NODE_W / 2) * k, y: (height - covered.current) / 2 - (laid.y + NODE_H / 2) * k };
+      untouched.current = false;
       apply(animate);
     },
     [layout, apply],
@@ -152,6 +167,13 @@ export const AtpGraph = forwardRef<
   );
 
   useImperativeHandle(ref, () => ({ fit: () => fit(true), reveal }), [fit, reveal]);
+
+  // Only the orchestrator resizing refits: a plan that grows keeps your view.
+  const refit = useRef(fit);
+  refit.current = fit;
+  useEffect(() => {
+    if (untouched.current) refit.current();
+  }, [inset]);
 
   // A new plan (or one opened again) starts fitted; a plan that grows keeps your view.
   const fitted = useRef<string>(undefined);
@@ -173,13 +195,13 @@ export const AtpGraph = forwardRef<
       const { width, height } = outer.getBoundingClientRect();
       const v = { ...view.current, x: view.current.x + (width - size.width) / 2, y: view.current.y + (height - size.height) / 2 };
       size = outer.getBoundingClientRect();
-      fitK.current = fitScale(width, height);
+      fitK.current = fitScale(width, height - covered.current);
       if (focus.current) return center(focus.current, false);
       const laid = selectedRef.current ? layout.nodes.get(selectedRef.current) : undefined;
       if (laid) {
         const into = (start: number, length: number, room: number) => (start + length > room - 16 ? room - 16 - start - length : start < 16 ? 16 - start : 0);
         v.x += into(v.x + laid.x * v.k, NODE_W * v.k, width);
-        v.y += into(v.y + laid.y * v.k, NODE_H * v.k, height);
+        v.y += into(v.y + laid.y * v.k, NODE_H * v.k, height - covered.current);
       }
       view.current = v;
       apply();
@@ -195,6 +217,7 @@ export const AtpGraph = forwardRef<
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       focus.current = undefined;
+      untouched.current = false;
       const v = view.current;
       if (event.ctrlKey || event.metaKey) {
         const rect = outer.getBoundingClientRect();
@@ -221,6 +244,7 @@ export const AtpGraph = forwardRef<
       if (!moved && Math.hypot(dx, dy) < 4) return;
       moved = true;
       focus.current = undefined;
+      untouched.current = false;
       view.current = { ...start.view, x: start.view.x + dx, y: start.view.y + dy };
       apply();
     };
@@ -238,10 +262,12 @@ export const AtpGraph = forwardRef<
   const zoomBy = (factor: number) => {
     const outer = viewport.current;
     if (!outer) return;
-    const { width, height } = outer.getBoundingClientRect();
+    const { width } = outer.getBoundingClientRect();
+    const middle = (outer.getBoundingClientRect().height - covered.current) / 2;
     const v = view.current;
     const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.k * factor));
-    view.current = { k, x: width / 2 - ((width / 2 - v.x) * k) / v.k, y: height / 2 - ((height / 2 - v.y) * k) / v.k };
+    view.current = { k, x: width / 2 - ((width / 2 - v.x) * k) / v.k, y: middle - ((middle - v.y) * k) / v.k };
+    untouched.current = false;
     apply(true);
   };
 
@@ -250,9 +276,10 @@ export const AtpGraph = forwardRef<
     const outer = viewport.current;
     if (!outer) return;
     focus.current = undefined;
+    untouched.current = false;
     const { width, height } = outer.getBoundingClientRect();
     const v = view.current;
-    view.current = { ...v, x: width / 2 - px * v.k, y: height / 2 - py * v.k };
+    view.current = { ...v, x: width / 2 - px * v.k, y: (height - covered.current) / 2 - py * v.k };
     apply(animate);
   };
 
@@ -305,7 +332,7 @@ export const AtpGraph = forwardRef<
           );
         })}
       </div>
-      <div className="absolute bottom-3 left-3 flex items-center gap-0.5 rounded-lg border border-line bg-panel/90 p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)] backdrop-blur">
+      <div style={{ bottom: inset + 12 }} className="absolute left-3 flex items-center gap-0.5 rounded-lg border border-line bg-panel/90 p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)] backdrop-blur">
         <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)} className="rounded-md p-1 hover:bg-raised hover:text-fg">
           <Minus size={13} />
         </button>
@@ -317,7 +344,7 @@ export const AtpGraph = forwardRef<
           <Maximize size={13} />
         </button>
       </div>
-      {overview && <Minimap plan={plan} layout={layout} stalled={stalled} frame={frame} onPan={panTo} onReady={apply} />}
+      {overview && <Minimap plan={plan} layout={layout} stalled={stalled} frame={frame} bottom={inset + 12} onPan={panTo} onReady={apply} />}
     </div>
   );
 });
@@ -344,6 +371,7 @@ function Minimap({
   layout,
   stalled,
   frame,
+  bottom,
   onPan,
   onReady,
 }: {
@@ -351,6 +379,7 @@ function Minimap({
   layout: PlanLayout;
   stalled?: string;
   frame: React.RefObject<HTMLDivElement | null>;
+  bottom: number;
   onPan: (x: number, y: number, animate: boolean) => void;
   onReady: () => void;
 }) {
@@ -407,7 +436,8 @@ function Minimap({
       data-minimap
       onPointerDown={onPointerDown}
       title="The whole plan: press or drag to look elsewhere"
-      className="absolute right-3 bottom-3 cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-panel/90 p-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] backdrop-blur"
+      style={{ bottom }}
+      className="absolute right-3 cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-panel/90 p-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] backdrop-blur"
     >
       <div className="relative overflow-hidden" style={{ width, height }}>
         <canvas ref={canvas} style={{ width, height }} className="block" />
