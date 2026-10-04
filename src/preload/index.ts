@@ -55,6 +55,7 @@ const api: StudioApi = {
     command: (id, command) => ipcRenderer.send(IPC.browserCommand, id, command),
     annotate: (on) => ipcRenderer.send(IPC.browserAnnotate, on),
     inspect: (id) => ipcRenderer.send(IPC.browserInspect, id),
+    viewport: (id, request) => ipcRenderer.invoke(IPC.browserViewport, id, request),
     history: () => ipcRenderer.invoke(IPC.browserHistory),
     state: () => ipcRenderer.invoke(IPC.browserGetState),
     onState: (listener) => subscribe<BrowserState>(IPC.browserState, listener),

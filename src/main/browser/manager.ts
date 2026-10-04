@@ -12,8 +12,10 @@ import {
   type HistoryEntry,
   normalizeAddress,
 } from "../../shared/browser";
+import { fitViewport, resolveViewport, userAgentFor, type ViewportRequest, type ViewportSpec } from "../../shared/viewport";
 import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
+import { cdp } from "./cdp";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 
 export const PARTITION = "persist:pigna-browser";
@@ -32,6 +34,9 @@ export interface Tab {
   view: WebContentsView;
   console: ConsoleEntry[];
   agent?: string;
+  viewport?: ViewportSpec;
+  /** Fit scale last sent to Emulation.setDeviceMetricsOverride; undefined when not applied yet. */
+  emulatedScale?: number;
 }
 
 export interface BrowserEvents {
@@ -53,6 +58,8 @@ export class BrowserManager {
   private visibleWaiters: (() => void)[] = [];
   private history: HistoryEntry[] = [];
   private historyTimer?: ReturnType<typeof setTimeout>;
+  /** Client-hint headers Electron does not send itself, by webContents id, for emulated tabs. */
+  private readonly hintHeaders = new Map<number, Record<string, string>>();
   private readonly historyPath = join(app.getPath("userData"), "browser-history.json");
 
   constructor(
@@ -62,6 +69,10 @@ export class BrowserManager {
     const profile = session.fromPartition(PARTITION);
     // Pages get no camera, microphone, location or notifications.
     profile.setPermissionRequestHandler((_wc, permission, callback) => callback(["clipboard-sanitized-write", "fullscreen"].includes(permission)));
+    profile.webRequest.onBeforeSendHeaders((details, callback) => {
+      const extra = details.webContentsId === undefined ? undefined : this.hintHeaders.get(details.webContentsId);
+      callback({ requestHeaders: extra ? { ...details.requestHeaders, ...extra } : details.requestHeaders });
+    });
     void readFile(this.historyPath, "utf8")
       .then((text) => {
         this.history = JSON.parse(text) as HistoryEntry[];
@@ -88,6 +99,7 @@ export class BrowserManager {
             canGoBack: wc.navigationHistory.canGoBack(),
             canGoForward: wc.navigationHistory.canGoForward(),
             agent: tab.agent,
+            viewport: tab.viewport,
           },
         ];
       }),
@@ -134,7 +146,12 @@ export class BrowserManager {
     wc.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
       if (isMainFrame && code !== -3) this.pushConsole(tab, "error", `Failed to load ${url}: ${description} (${code})`, "browser");
     });
-    wc.on("render-process-gone", (_event, details) => this.pushConsole(tab, "error", `Page crashed: ${details.reason}`, "browser"));
+    wc.on("render-process-gone", (_event, details) => {
+      this.pushConsole(tab, "error", `Page crashed: ${details.reason}`, "browser");
+      this.reapply(tab);
+    });
+    // The user can cancel debugging from the DevTools banner; emulation goes with the session.
+    wc.debugger.on("detach", () => this.reapply(tab));
     wc.on("console-message", (details) => {
       // Electron's dev-mode security banner is about the host app, not the page.
       if (details.message.startsWith("Electron Security Warning")) return;
@@ -169,6 +186,7 @@ export class BrowserManager {
     const index = this.order.indexOf(id);
     this.order.splice(index, 1);
     this.tabs.delete(id);
+    this.hintHeaders.delete(tab.view.webContents.id);
     if (this.attached === tab.view) this.detach();
     tab.view.webContents.close();
     if (this.activeId === id) {
@@ -219,6 +237,74 @@ export class BrowserManager {
     this.tabs.get(id)?.view.webContents.openDevTools({ mode: "detach" });
   }
 
+  // ── Viewport ───────────────────────────────────────────────────────────────
+
+  /** Set (request) or reset (undefined) a tab's emulated viewport. Throws on an unknown tab. */
+  async setViewport(id: string, request: ViewportRequest | undefined): Promise<ViewportSpec | undefined> {
+    const tab = this.tabs.get(id);
+    if (!tab) throw new Error(`No browser tab ${id}`);
+    const before = tab.viewport;
+    const spec = request ? resolveViewport(request) : undefined;
+    tab.viewport = spec;
+    tab.emulatedScale = undefined;
+    const wc = tab.view.webContents;
+    await this.emulate(tab);
+    if ((before?.userAgent ?? "native") !== (spec?.userAgent ?? "native") && wc.getURL()) wc.reload();
+    this.applyLayout();
+    this.emitState();
+    return spec;
+  }
+
+  private reapply(tab: Tab): void {
+    if (!tab.viewport || !this.tabs.has(tab.id)) return;
+    tab.emulatedScale = undefined;
+    void this.emulate(tab).catch((error) => log.warn("browser", `viewport re-apply failed: ${(error as Error).message}`));
+  }
+
+  /** Scale that fits the tab's viewport into the pane (window DIPs); 1 when nothing is emulated. */
+  private fitFor(tab: Tab): ReturnType<typeof fitViewport> | undefined {
+    if (!tab.viewport) return undefined;
+    const zoom = this.window.webContents.getZoomFactor();
+    const pane = { width: Math.round(this.layout.bounds.width * zoom), height: Math.round(this.layout.bounds.height * zoom) };
+    return fitViewport(pane.width > 1 && pane.height > 1 ? pane : { width: tab.viewport.width, height: tab.viewport.height }, tab.viewport);
+  }
+
+  /** Send the tab's whole emulation (metrics, touch, UA) over CDP, or clear it. */
+  private async emulate(tab: Tab): Promise<void> {
+    const wc = tab.view.webContents;
+    const spec = tab.viewport;
+    if (!spec) {
+      this.hintHeaders.delete(wc.id);
+      if (!wc.debugger.isAttached()) return;
+      await cdp(wc, "Emulation.clearDeviceMetricsOverride");
+      await cdp(wc, "Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp(wc, "Emulation.setEmitTouchEventsForMouse", { enabled: false });
+      await cdp(wc, "Emulation.setUserAgentOverride", { userAgent: "" });
+      return;
+    }
+    const scale = this.fitFor(tab)?.scale ?? 1;
+    tab.emulatedScale = scale;
+    await cdp(wc, "Emulation.setDeviceMetricsOverride", {
+      width: spec.width,
+      height: spec.height,
+      deviceScaleFactor: spec.dpr,
+      mobile: spec.mobile,
+      screenWidth: spec.width,
+      screenHeight: spec.height,
+      scale,
+    });
+    await cdp(wc, "Emulation.setTouchEmulationEnabled", { enabled: spec.touch, maxTouchPoints: 5 });
+    await cdp(wc, "Emulation.setEmitTouchEventsForMouse", { enabled: spec.touch, configuration: "mobile" });
+    const ua = userAgentFor(spec.userAgent, process.versions.chrome);
+    if (ua) {
+      this.hintHeaders.set(wc.id, ua.headers);
+      await cdp(wc, "Emulation.setUserAgentOverride", { userAgent: ua.userAgent, platform: ua.platform, userAgentMetadata: ua.metadata });
+    } else {
+      this.hintHeaders.delete(wc.id);
+      await cdp(wc, "Emulation.setUserAgentOverride", { userAgent: "" });
+    }
+  }
+
   // ── Layout ─────────────────────────────────────────────────────────────────
 
   setLayout(layout: BrowserLayout): void {
@@ -243,7 +329,18 @@ export class BrowserManager {
     // Renderer bounds are CSS pixels; scale by the app's zoom to get window DIPs.
     const zoom = this.window.webContents.getZoomFactor();
     const { x, y, width, height } = this.layout.bounds;
-    tab.view.setBounds({ x: Math.round(x * zoom), y: Math.round(y * zoom), width: Math.round(width * zoom), height: Math.round(height * zoom) });
+    const pane = { x: Math.round(x * zoom), y: Math.round(y * zoom), width: Math.round(width * zoom), height: Math.round(height * zoom) };
+    const fit = this.fitFor(tab);
+    if (!fit) {
+      tab.view.setBounds(pane);
+      return;
+    }
+    // Emulated viewports are scaled down to fit and centred in the pane.
+    tab.view.setBounds({ x: pane.x + fit.bounds.x, y: pane.y + fit.bounds.y, width: fit.bounds.width, height: fit.bounds.height });
+    if (tab.emulatedScale !== fit.scale) {
+      tab.emulatedScale = fit.scale;
+      void this.emulate(tab).catch((error) => log.warn("browser", `viewport apply failed: ${(error as Error).message}`));
+    }
   }
 
   private detach(): void {

@@ -7,6 +7,7 @@ import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import type { BoardOp } from "../shared/board";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
+import type { ViewportRequest } from "../shared/viewport";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
@@ -245,6 +246,12 @@ function registerIpc(shellEnv: Promise<void>): void {
   on(IPC.browserCommand, (id: string, command: BrowserCommand) => browser?.command(id, command));
   on(IPC.browserAnnotate, (enabled: boolean) => browser?.setAnnotating(enabled));
   on(IPC.browserInspect, (id: string) => browser?.inspect(id));
+  handle(IPC.browserViewport, async (id: string, request: unknown) => {
+    if (typeof id !== "string" || !browser) throw new Error("Invalid browser tab");
+    if (request !== null && (typeof request !== "object" || Array.isArray(request))) throw new Error("Invalid viewport request");
+    // Whatever the renderer sends, the user is the source.
+    return (await browser.setViewport(id, request ? { ...(request as ViewportRequest), source: "user" } : undefined)) ?? null;
+  });
   handle(IPC.browserHistory, () => browser?.getHistory() ?? []);
   handle(IPC.browserGetState, () => browser?.snapshot());
 

@@ -3,6 +3,7 @@ import type { AtpClaim, AtpHead, AtpPlan, AtpProjectPlans, AtpSession } from "./
 import type { Board, BoardOp } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
+import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
@@ -42,6 +43,7 @@ export const IPC = {
   browserCommand: "browser:command",
   browserAnnotate: "browser:annotate",
   browserInspect: "browser:inspect",
+  browserViewport: "browser:viewport",
   browserHistory: "browser:history",
   browserGetState: "browser:get-state",
   browserState: "browser:state",
@@ -259,6 +261,8 @@ export interface BrowserApi {
   command(id: string, command: BrowserCommand): void;
   annotate(on: boolean): void;
   inspect(id: string): void;
+  /** Set a tab's emulated viewport (resolved through resolveViewport) or reset it with null. Rejects invalid input. */
+  viewport(id: string, request: ViewportRequest | null): Promise<ViewportSpec | null>;
   history(): Promise<HistoryEntry[]>;
   state(): Promise<BrowserState>;
   onState(listener: (state: BrowserState) => void): () => void;

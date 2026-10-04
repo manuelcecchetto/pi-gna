@@ -5,6 +5,7 @@ import { nativeImage, type WebContents } from "electron";
 import { type AgentAction, type AgentResult, normalizeAddress } from "../../shared/browser";
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
+import { cdp } from "./cdp";
 import type { BrowserManager, Tab } from "./manager";
 import { focusForTyping, ISOLATED_WORLD, locate, SNAPSHOT } from "./page-scripts";
 
@@ -211,12 +212,6 @@ export class BrowserAgent {
     await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: text ? "keyDown" : "rawKeyDown", text, unmodifiedText: text });
     await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: "keyUp" });
   }
-}
-
-/** Send a CDP command to a tab, attaching the debugger on first use. */
-async function cdp(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  if (!wc.debugger.isAttached()) wc.debugger.attach("1.3");
-  return wc.debugger.sendCommand(method, params);
 }
 
 function waitForStop(wc: WebContents, timeoutMs: number): Promise<void> {
