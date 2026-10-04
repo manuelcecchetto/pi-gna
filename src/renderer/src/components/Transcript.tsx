@@ -438,7 +438,7 @@ function splitComments(text: string): [string, { body: string; count: number } |
 function BlockView({ block, cwd, home }: { block: Block; cwd: string; home: string }) {
   switch (block.kind) {
     case "text":
-      return <Markdown text={block.text} streaming={block.streaming} />;
+      return <Markdown text={block.text} streaming={block.streaming} visuals />;
     case "activity":
       return null; // rendered inside the work accordion
     case "error":

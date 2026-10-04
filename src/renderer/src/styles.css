@@ -337,6 +337,59 @@ body,
   background: var(--raised);
   color: var(--fg);
 }
+.visual {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunken);
+  overflow: hidden;
+  margin: 0.8em 0;
+}
+.visual.pending {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.visual > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  border-bottom: 1px solid var(--line);
+}
+.visual > header button {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.visual > header button:hover {
+  background: var(--raised);
+  color: var(--fg);
+}
+.visual-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color-scheme: normal;
+}
+.visual-error {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--bad);
+}
+.visual-note {
+  font-size: 12px;
+  color: var(--faint);
+}
+.visual pre.code {
+  border-top: 1px solid var(--line);
+}
+
 .code-block pre,
 pre.code {
   margin: 0;

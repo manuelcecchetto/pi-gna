@@ -1,4 +1,7 @@
 import { memo, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
+import { useApp } from "../state/app";
+import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
 
@@ -21,12 +24,50 @@ function onProseClick(event: MouseEvent<HTMLElement>): void {
   }
 }
 
-export const Markdown = memo(function Markdown({ text, streaming = false }: { text: string; streaming?: boolean }) {
-  const html = useMemo(() => renderMarkdown(text), [text]);
+const OPEN_VISUAL = /(^|\n)(```+|~~~+)[ \t]*visual\b[^\n]*\n(?![\s\S]*\n\2[ \t]*(\n|$))[\s\S]*$/;
+
+export const Markdown = memo(function Markdown({
+  text,
+  streaming = false,
+  visuals = false,
+}: {
+  text: string;
+  streaming?: boolean;
+  visuals?: boolean;
+}) {
+  const enabled = useApp((s) => s.settings.visuals) && visuals;
+  const html = useMemo(() => {
+    // An unfinished visual fence streams as a placeholder instead of raw source.
+    const src = enabled && streaming ? text.replace(OPEN_VISUAL, "$1*Drawing visual…*\n") : text;
+    return renderMarkdown(src, { visuals: enabled });
+  }, [text, enabled, streaming]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!streaming) highlightWithin(ref.current);
   }, [html, streaming]);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !enabled) return;
+    const roots: ReturnType<typeof createRoot>[] = [];
+    for (const el of root.querySelectorAll<HTMLElement>(".visual[data-visual]")) {
+      const source = el.querySelector(".visual-src")?.textContent ?? "";
+      if (streaming) {
+        el.classList.add("pending");
+        el.textContent = "Drawing visual…";
+        continue;
+      }
+      el.textContent = "";
+      const mount = createRoot(el);
+      mount.render(<VisualFrame source={source} />);
+      roots.push(mount);
+    }
+    return () => {
+      // Unmount outside the current render pass.
+      setTimeout(() => {
+        for (const mount of roots) mount.unmount();
+      }, 0);
+    };
+  }, [html, streaming, enabled]);
   return (
     <div ref={ref} className="prose selectable" onClick={onProseClick} dangerouslySetInnerHTML={{ __html: html }} />
   );
