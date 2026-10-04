@@ -56,7 +56,7 @@ struct InputTarget {
     var pid: pid_t
 }
 
-private func inputTarget(_ params: JSON) throws -> InputTarget {
+func inputTarget(_ params: JSON) throws -> InputTarget {
     guard AXIsProcessTrusted() else {
         throw RPCError(.permissionDenied, "Accessibility permission is not granted to pi-gna Computer Use.", data: ["missing": ["accessibility"]])
     }
@@ -477,8 +477,10 @@ func registerInputMethods() {
         default: throw RPCError(.invalidParams, "mouse_button must be left, right or middle")
         }
         let count = max(1, min(3, int(params, "click_count") ?? 1))
+        var cursorMoved = false
         if params["element_index"] != nil {
             let e = try cachedElement(t, params)
+            overlayAct(t, wid: e.windowId, global: CGPoint(x: e.frame.midX, y: e.frame.midY), click: true); cursorMoved = true
             let actions = rawActions(e.el)
             // AXConfirm commits a text field's edit (and drops its focus), so it is not a click there.
             let role = axString(e.el, kAXRoleAttribute as String) ?? ""
@@ -492,6 +494,7 @@ func registerInputMethods() {
             }
         }
         let (w, p, _) = try pointTarget(t, params)
+        if !cursorMoved { overlayAct(t, wid: w.id, global: CGPoint(x: w.frame.minX + p.x, y: w.frame.minY + p.y), click: true) }
         let r = try background(t, wid: w.id, pointer: true) { try synthClick(t, w, p, button: button, count: count) }
         return finish(t, wid: w.id, params, r)
     }
@@ -501,6 +504,8 @@ func registerInputMethods() {
         guard num(params, "from_x") != nil, num(params, "to_x") != nil else { throw RPCError(.invalidParams, "from_x, from_y, to_x, to_y are required") }
         let a = try pointTarget(t, params, xKey: "from_x", yKey: "from_y")
         let b = try pointTarget(t, params, xKey: "to_x", yKey: "to_y")
+        overlayAct(t, wid: a.w.id, global: CGPoint(x: a.w.frame.minX + a.p.x, y: a.w.frame.minY + a.p.y), click: true)
+        overlayAct(t, wid: a.w.id, global: CGPoint(x: b.w.frame.minX + b.p.x, y: b.w.frame.minY + b.p.y), click: false)
         let r = try background(t, wid: a.w.id, pointer: true) { try synthDrag(t, a.w, from: a.p, to: b.p) }
         return finish(t, wid: a.w.id, params, r)
     }
@@ -512,6 +517,7 @@ func registerInputMethods() {
         }
         let pages = max(0.1, min(20, num(params, "pages") ?? 1))
         let (w, p, _) = try pointTarget(t, params)
+        overlayAct(t, wid: w.id, global: CGPoint(x: w.frame.minX + p.x, y: w.frame.minY + p.y), click: false)
         let extent = (dir == "up" || dir == "down") ? w.frame.height : w.frame.width
         var remaining = Int(pages * extent * 0.9)
         let r = try background(t, wid: w.id, pointer: true) {
@@ -559,6 +565,7 @@ func registerInputMethods() {
     methods["set_value"] = { params in
         let t = try inputTarget(params)
         let e = try cachedElement(t, params)
+        overlayAct(t, wid: e.windowId, global: CGPoint(x: e.frame.midX, y: e.frame.midY), click: false)
         guard let value = params["value"] as? String else { throw RPCError(.invalidParams, "value (string) is required") }
         if axString(e.el, kAXSubroleAttribute as String) == "AXSecureTextField" { throw deniedError("Secure text fields") }
         var settable: DarwinBoolean = false
@@ -575,6 +582,7 @@ func registerInputMethods() {
     methods["select_text"] = { params in
         let t = try inputTarget(params)
         let e = try cachedElement(t, params)
+        overlayAct(t, wid: e.windowId, global: CGPoint(x: e.frame.midX, y: e.frame.midY), click: false)
         let type = params["selection_type"] as? String ?? "text"
         guard ["text", "cursor_before", "cursor_after"].contains(type) else { throw RPCError(.invalidParams, "selection_type must be text, cursor_before or cursor_after") }
         guard let needle = params["text"] as? String, !needle.isEmpty else { throw RPCError(.invalidParams, "text is required") }
@@ -598,6 +606,7 @@ func registerInputMethods() {
     methods["perform_secondary_action"] = { params in
         let t = try inputTarget(params)
         let e = try cachedElement(t, params)
+        overlayAct(t, wid: e.windowId, global: CGPoint(x: e.frame.midX, y: e.frame.midY), click: false)
         guard let action = params["action"] as? String, !action.isEmpty else { throw RPCError(.invalidParams, "action is required") }
         let raw = rawActions(e.el)
         let shown = raw.map(displayName)

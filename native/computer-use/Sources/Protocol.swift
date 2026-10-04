@@ -57,4 +57,5 @@ func registerMethods() {
     registerAXMethods()
     registerCaptureMethods()
     registerInputMethods()
+    registerOverlayMethods()
 }

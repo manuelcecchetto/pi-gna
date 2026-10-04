@@ -50,7 +50,11 @@ final class Server {
                 if errno == EINTR { continue }
                 shutdownHelper()
             }
-            if serve(client) { shutdownHelper() }
+            if serve(client) {
+                // Client gone: take the overlay down with it (the process exits right after).
+                DispatchQueue.main.sync { Overlay.shared.hide(bundleId: nil) }
+                shutdownHelper()
+            }
             close(client)
         }
     }
@@ -73,12 +77,22 @@ final class Server {
                     let (reply, ok) = handle(line, authed: false)
                     if !ok { send(fd, reply); return false }
                     authed = true
+                    clientLock.lock(); clientFd = fd; clientLock.unlock()
                     send(fd, reply)
                     continue
                 }
                 if dispatch(line, fd: fd) { return true }
             }
         }
+    }
+
+    private var clientFd: Int32 = -1
+    private let clientLock = NSLock()
+
+    /// JSON-RPC notification (no id) to the authenticated client; dropped when none is connected.
+    func notify(_ method: String, _ params: JSON) {
+        clientLock.lock(); let fd = clientFd; clientLock.unlock()
+        if fd >= 0 { send(fd, ["jsonrpc": "2.0", "method": method, "params": params]) }
     }
 
     private let sendLock = NSLock()

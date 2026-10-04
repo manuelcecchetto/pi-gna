@@ -25,8 +25,8 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
 registerMethods()
-let server = Server(path: path, token: token)
-do { try server.start() } catch {
+let server: Server? = Server(path: path, token: token)
+do { try server!.start() } catch {
     FileHandle.standardError.write(Data("computer-use: \(error)\n".utf8))
     exit(1)
 }

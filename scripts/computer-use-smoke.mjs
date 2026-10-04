@@ -33,13 +33,15 @@ for (let i = 0; i < 50 && !existsSync(sock); i++) await new Promise((r) => setTi
 const conn = createConnection(sock)
 let buf = ''
 const waiters = new Map()
+const notifications = []
 conn.on('data', (d) => {
   buf += d
   let nl
   while ((nl = buf.indexOf('\n')) >= 0) {
     const msg = JSON.parse(buf.slice(0, nl))
     buf = buf.slice(nl + 1)
-    waiters.get(msg.id)?.(msg)
+    if (msg.id === undefined) notifications.push(msg)
+    else waiters.get(msg.id)?.(msg)
   }
 })
 let next = 1
@@ -243,6 +245,41 @@ async function runFixture() {
   await Promise.all([call('click', { app: A.bundle, element_index: btnA }), call('click', { app: A.bundle, element_index: btnA })])
   const serial = Date.now() - t0
   check('two actions on one app are serialized', serial >= 1900, `${serial} ms`)
+
+  // Overlay: cursor + pill windows are ordered directly above the target window, click-through and not capturable.
+  execFileSync('swiftc', ['-O', '-o', join(work, 'wins'), join(src, 'wins.swift')])
+  const stack = () => execFileSync(join(work, 'wins'), { encoding: 'utf8' }).trim().split(' ').map((x) => x.split(':').map(Number))
+  const helperPid = (await call('hello', { token, protocol: 1 })).result?.pid ?? helperProc?.pid
+  const aWin = (await state(A)).windowId
+  const show = await call('overlay_show', { app: A.bundle, session_label: 'smoke' })
+  check('overlay_show', show.result?.shown === true, JSON.stringify(show.error ?? show.result))
+  await call('click', { app: A.bundle, x: 60, y: 125, ...SETTLE })
+  await new Promise((r) => setTimeout(r, 500))
+  const st1 = stack()
+  const mine = st1.filter((w) => w[0] === helperPid)
+  const ai = st1.findIndex((w) => w[1] === aWin)
+  check('overlay has a cursor and a pill window', mine.length === 2, JSON.stringify(mine))
+  check('overlay windows are directly above the target window', ai >= 2 && st1[ai - 1][0] === helperPid && st1[ai - 2][0] === helperPid, `target index ${ai}`)
+  check('overlay windows are excluded from captures (sharingState 0)', mine.length > 0 && mine.every((w) => w[3] === 0))
+  check('screenshot while overlay is shown is the target window only', !!(await state(A)).screenshot)
+  console.log('overlay shown over the fixture for 3 s ...')
+  await new Promise((r) => setTimeout(r, 3000))
+  const hid = await call('overlay_hide', { app: A.bundle })
+  await new Promise((r) => setTimeout(r, 300))
+  console.log('hide:', JSON.stringify(hid), 'stack:', JSON.stringify(stack().filter((w) => w[0] === helperPid)))
+  check('overlay_hide removes the windows', stack().every((w) => w[0] !== helperPid))
+  // Esc cannot be sent without posting a real key event (forbidden on the user's desktop); verify the notification by hand:
+  //   node scripts/computer-use-smoke.mjs --fixture --esc   (shows the overlay for 20 s; press Esc while pi-gna/the fixture
+  //   is frontmost or the pointer is over the fixture window; prints the cancelled notification)
+  if (process.argv.includes('--esc')) {
+    await call('overlay_show', { app: A.bundle, session_label: 'smoke' })
+    console.log('>>> press Esc now (pointer over the fixture window); waiting 20 s for the cancelled notification')
+    for (let i = 0; i < 200 && notifications.length === 0; i++) await new Promise((r) => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 1000))
+    console.log('notifications:', JSON.stringify(notifications))
+    check('Esc produced exactly one cancelled notification', notifications.filter((x) => x.method === 'cancelled').length === 1)
+    check('overlay gone after cancel', stack().every((w) => w[0] !== helperPid))
+  }
 
   const after = desk()
   console.log('desktop after: ', after)

@@ -365,25 +365,26 @@ an action finished less than 1 s earlier, so a model that reads state immediatel
 
 ## Overlay
 
-Created by the helper (borderless `NSWindow`s, one per screen containing the target window; `level =
-CGShieldingWindowLevel()` (higher than any app; verify it also covers fullscreen Spaces),
-`collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]`, `ignoresMouseEvents = true`,
-`sharingType = .none` so it is excluded from screenshots and the user's screen sharing, no shadow, transparent).
+Implemented in `native/computer-use/Sources/Overlay.swift`. Per app being driven (apps run in parallel) the helper owns two
+borderless, transparent, click-through `NSWindow`s (never key/main, join all Spaces, `sharingType = .none` so they are not
+capturable; screenshots are per-window anyway): the agent cursor and the pill. Like Codex's `VirtualCursor`, they are **not** a
+full-screen top-level overlay: they use the target window's level and are ordered with `order(.above, relativeTo: <target window
+number>)` (cursor, then the pill above it), re-applied every 250 ms while the target moves, resizes, closes or changes Space. Whatever covers
+the target therefore covers the cursor, and nothing sits over the user's other work. The helper never activates.
 
-- **Virtual cursor**: an arrow (SVG-like `NSBezierPath`, accent `#339cff` from the helper's `config.json` strings
-  like Codex's is optional) drawn at the global point of the last action with a short ease-out move (200 ms), a ripple on
-  click, and a small trailing label for typing. It is purely visual; the real pointer is never moved.
-- **Pill**: a rounded capsule pinned to the top-center of the target window, 28 pt high, text
-  `pi is using <App name> · Esc to cancel` (localizable strings in the helper's `strings.json`, default en),
-  dark translucent background (`NSVisualEffectView .hudWindow`), no focus. Shown on `begin_session`, hidden on
-  `end_session`.
-- **Esc**: while a session is active the helper listens with a **listen-only `CGEvent.tapCreate(.cgSessionEventTap,
-  .headInsertEventTap, .listenOnly, keyDown mask)`** (requires Accessibility, which it has). Esc (keycode 53, no
-  modifiers) triggers the `cancelled` flow: abort the in-flight RPC with `-32006`, hide overlays, emit `cancelled`
-  to main. The tap does not swallow the key. If the tap cannot be created (permission), the pill shows "Esc to cancel
-  unavailable" and main falls back to the Stop button in pi-gna. A second signal, the **Stop** button in pi-gna,
-  also calls `cancel`.
-- `end_session` removes the overlay for that session; one overlay per app (see "one session per app").
+- Methods: `overlay_show {app, session_label, session?, window_id?}` -> `{shown, escAvailable, windowId, reducedMotion}`,
+  `overlay_hide {app?}` (no app = all). Input actions (click, drag, scroll, set_value, select_text, perform_secondary_action)
+  move the cursor to the action point automatically while the overlay is shown (200 ms ease-out, blocking so the action lands where
+  the cursor is; a ripple on clicks). With Reduce Motion the cursor jumps and the ripple is a plain fade.
+- **Pill**: `pi is using <App> · Esc to cancel` (capsule, 28 pt, `.hudWindow` material, accent border) at the top-center of the
+  target window; without Accessibility the "Esc to cancel" part is dropped (`escAvailable: false`) and the Stop button in pi-gna is the only way.
+- **Esc** (global `NSEvent` keyDown monitor, keycode 53, no modifiers, installed only while an overlay is up; does not swallow the key).
+  The user types in other apps while pi works, so Esc counts for an app only when the user is evidently looking at that run: the target
+  app is frontmost, the pointer is over the target window or its pill, or pi-gna (`--parent` pid) / the helper is frontmost. When pi-gna
+  is frontmost every overlay counts; otherwise only matching apps. Anything else is ignored.
+- A counted Esc removes that app's overlay and sends exactly one JSON-RPC notification `cancelled {app, name, reason: "esc", session?}`
+  (a second Esc finds no overlay). Aborting the in-flight call is main's job on receipt (`cancel`/queue abort); the helper does not yet return -32006 itself.
+- When the target app quits the overlay goes and `app_gone {app, session?}` is sent. When the client disconnects the helper hides all overlays and exits.
 
 ## Tools (resources/computer-extension.ts)
 
