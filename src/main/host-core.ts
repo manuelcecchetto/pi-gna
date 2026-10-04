@@ -322,7 +322,14 @@ export function dispatch(core: HostCore, ctx: HostContext, name: string, args: u
   const def = Object.hasOwn(core, name) ? core[name] : undefined;
   if (!def) throw new HostError("not_found", `unknown method ${name}`);
   if (def.scope === "desktop" && ctx.client !== "desktop") throw new HostError("scope_denied", `${name} is only available on the Mac`);
-  return def.run(ctx, def.validate(args ?? {}));
+  let checked: unknown;
+  try {
+    checked = def.validate(args ?? {});
+  } catch (error) {
+    // Bad input is the caller's fault: a HostError keeps its code, anything else becomes bad_request (not a 500).
+    throw error instanceof HostError ? error : new HostError("bad_request", error instanceof Error ? error.message : String(error));
+  }
+  return def.run(ctx, checked);
 }
 
 /** How the desktop window reaches the table: its IPC channel, the method, and how positional arguments become the argument object. */

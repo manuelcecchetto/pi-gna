@@ -408,3 +408,11 @@ Additional decisions made while writing the contract:
 | Remote settings, pairing UI | T14 |
 | Security suite | T15 |
 | Host-side chat setups / ATP runner / pins | T22–T24 |
+
+### RemoteServer implementation notes (T13, `src/main/remote-server.ts`)
+
+- Built from injected parts (`DeviceStore`, `EventHub`, `IdempotencyCache`, a `call`/`scopeOf` pair over the HostCore table, `allowedHosts()`), so it
+  listens only after `start(port)`; wiring to settings/tailscale is T14. `devicesChanged` must be passed as the `DeviceStore` `changed` callback.
+- A call names its client with `X-Pigna-Stream: <stream id>` (falls back to the device id). `/api/hello` returns `buildId` (and `build`).
+- Pairing is rate limited at 10/minute globally and per Tailscale login; `GET /api/pair/<id>/wait` long-polls 25 s.
+- `dispatch` turns any non-`HostError` thrown by `validate` into `bad_request`; unexpected `run` errors answer `500 internal` with a generic message.
