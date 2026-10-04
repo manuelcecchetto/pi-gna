@@ -84,4 +84,7 @@ contextBridge.exposeInMainWorld("studio", api);
     get: () => ipcRenderer.invoke(IPC.computerGet),
     apply: (op) => ipcRenderer.invoke(IPC.computerApply, op),
     onChange: (listener) => subscribe<ComputerSettings>(IPC.computerChanged, listener),
+    permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
+    requestPermissions: () => ipcRenderer.invoke(IPC.computerRequest),
+    openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
   },

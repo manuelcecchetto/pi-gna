@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserPane } from "./components/BrowserPane";
 import { GithubPage } from "./components/GitHub";
+import { ComputerPage } from "./components/Computer";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
 import { Ansi } from "./components/primitives";
@@ -67,7 +68,9 @@ export function App() {
       <Sidebar />
       <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
-          {page?.kind === "laments" ? (
+          {page?.kind === "computer" ? (
+            <ComputerPage />
+          ) : page?.kind === "laments" ? (
             <LamentsPage key={page.cwd} page={page} />
           ) : page?.kind === "github" ? (
             <GithubPage key={page.cwd} page={page} />

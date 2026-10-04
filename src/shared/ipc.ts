@@ -4,7 +4,7 @@ import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEn
 import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { LamentOp, Laments } from "./laments";
-import type { ComputerOp, ComputerSettings } from "./computer";
+import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -58,6 +58,10 @@ export const IPC = {
   computerGet: "computer:get",
   computerApply: "computer:apply",
   computerChanged: "computer:changed",
+  computerPermissions: "computer:permissions",
+  computerRequest: "computer:request",
+  computerOpenSettings: "computer:open-settings",
+  boardSaveImage: "board:save-image",
   githubProject: "github:project",
   githubChoose: "github:choose",
   githubList: "github:list",
@@ -78,7 +82,7 @@ export interface ComputerApi {
   onChange(listener: (settings: ComputerSettings) => void): () => void;
 }
 
-export type Page = "kanban" | "laments" | "github" | "atp";
+export type Page = "kanban" | "laments" | "github" | "atp" | "computer";
 
 /** The laments live in main, which agents file them with; every change is pushed back. */
 export interface LamentsApi {
@@ -260,7 +264,7 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
-  /** View > Kanban (⌘⇧K), View > Laments (⌘⇧L), View > GitHub (⌘⇧G): page toggles from the menu. */
+  /** View > Kanban (⌘⇧K), Laments (⌘⇧L), GitHub (⌘⇧G), ATP (⌘⇧A), Computer Use (⌘⇧U): page toggles from the menu. */
   onPageToggle(listener: (page: Page) => void): () => void;
   /** Another launch (say `pi --pigna` in a different project) asks for a new chat in `cwd`. */
   onOpenProject(listener: (cwd: string) => void): () => void;

@@ -23,6 +23,7 @@ import { Github, GithubStore } from "./github";
 import { kanbanRoute } from "./kanban";
 import { LamentStore, lamentRoute } from "./laments";
 import { readCompactionSettings } from "./pi-settings";
+import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { cardWorktree } from "./worktree";
 import { debugRpc, log, logToFile } from "./log";
@@ -81,6 +82,10 @@ bridge.route("/browser", browserRoute(() => agent));
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => send(IPC.lamentsChanged, next));
 bridge.route("/kanban", kanbanRoute(board, (handle) => host.identify(handle)));
 const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => send(IPC.computerChanged, next));
+// The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
+const computerHelper = new ComputerService(
+  defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
+);
 bridge.route("/lament", lamentRoute(laments, (handle) => host.identify(handle)));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
@@ -220,6 +225,15 @@ function registerIpc(shellEnv: Promise<void>): void {
   });
   handle(IPC.computerGet, () => computerPolicy.get());
   handle(IPC.computerApply, (op: ComputerOp) => computerPolicy.apply(op));
+  handle(IPC.computerPermissions, () => computerHelper.call("permissions", {}));
+  handle(IPC.computerRequest, async () => {
+    await computerHelper.call("request_permissions", {});
+    return computerHelper.call("permissions", {});
+  });
+  handle(IPC.computerOpenSettings, async (pane: "accessibility" | "screen_recording") => {
+    if (pane !== "accessibility" && pane !== "screen_recording") throw new Error("Unknown settings pane");
+    await computerHelper.call("open_settings", { pane });
+  });
   handle(IPC.boardSaveImage, async (card: string, image: { mimeType: string; data: string }) => {
     if (!(await board.get()).cards.some((other) => other.id === card)) throw new Error(`no card ${String(card)}`);
     return cardImages.save(card, image);
@@ -287,6 +301,7 @@ function buildMenu(): void {
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
           { label: "Kanban", accelerator: "CmdOrCtrl+Shift+K", click: () => send(IPC.pageToggle, "kanban") },
           { label: "Laments", accelerator: "CmdOrCtrl+Shift+L", click: () => send(IPC.pageToggle, "laments") },
+          { label: "Computer Use Settings…", click: () => send(IPC.pageToggle, "computer") },
           { label: "GitHub", accelerator: "CmdOrCtrl+Shift+G", click: () => send(IPC.pageToggle, "github") },
           { type: "separator" },
           { role: "reload" },
@@ -306,6 +321,8 @@ function buildMenu(): void {
           { label: "Show Logs", click: () => void shell.openPath(logFile) },
           { type: "separator" },
           { label: "pi Documentation", click: () => openExternal("https://pi.dev") },
+          { label: "ATP", accelerator: "CmdOrCtrl+Shift+A", click: () => send(IPC.pageToggle, "atp") },
+          { label: "Computer Use", accelerator: "CmdOrCtrl+Shift+U", click: () => send(IPC.pageToggle, "computer") },
           { label: "Report an Issue", click: () => openExternal(bugs.url) },
         ],
       },
@@ -330,7 +347,7 @@ function init(): void {
     event.preventDefault();
     quitting = true;
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), githubSettings.flushed()]).finally(() => app.quit());
+    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), githubSettings.flushed(), computerHelper.stop()]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
