@@ -385,6 +385,11 @@ export class BrowserManager {
     const spec = request ? resolveViewport(request) : undefined;
     tab.viewport = spec;
     tab.emulatedScale = undefined;
+    // A window's content size follows its viewport, so the toolbar resizes the window.
+    if (spec && tab.win && !tab.win.isDestroyed()) {
+      tab.win.setAspectRatio(spec.width / spec.height);
+      tab.win.setContentSize(spec.width, spec.height);
+    }
     const wc = tab.view.webContents;
     await this.emulate(tab);
     if ((before?.userAgent ?? "native") !== (spec?.userAgent ?? "native") && wc.getURL()) wc.reload();
@@ -461,7 +466,8 @@ export class BrowserManager {
   }
 
   private applyLayout(): void {
-    const tab = this.paneId ? this.tabs.get(this.paneId) : undefined;
+    // While the addressed tab lives in a window the pane shows a DOM placeholder, so no native view may cover it.
+    const tab = this.paneId && (this.active()?.surface ?? "pane") === "pane" ? this.tabs.get(this.paneId) : undefined;
     if (!this.layout.visible || !tab || this.layout.bounds.width < 2) {
       this.detach();
       return;

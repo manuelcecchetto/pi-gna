@@ -11,7 +11,9 @@ import {
   MessageSquarePlus,
   Minimize2,
   MonitorSmartphone,
+  PanelTop,
   Plus,
+  AppWindow,
   RotateCw,
   RotateCcw,
   SquareArrowOutUpRight,
@@ -44,7 +46,8 @@ export function BrowserPane() {
   // An active viewport keeps the row visible so an agent-set one can never be hidden.
   const showDimensions = Boolean(active) && (dimensionsOpen || Boolean(active?.viewport));
   // Native views draw above the DOM, so hide the page while a DOM overlay must cover it.
-  const visible = pane.open && Boolean(active) && !lightbox && !suggesting && !overlay;
+  const inWindow = active?.surface === "window";
+  const visible = pane.open && Boolean(active) && !inWindow && !lightbox && !suggesting && !overlay;
 
   useLayoutEffect(() => {
     const element = viewport.current;
@@ -121,6 +124,15 @@ export function BrowserPane() {
           >
             <MonitorSmartphone size={15} />
           </IconButton>
+          {inWindow ? (
+            <IconButton title="Return to pane" onClick={() => void browser().returnToPane(active.id).catch(() => {})}>
+              <PanelTop size={15} />
+            </IconButton>
+          ) : (
+            <IconButton title="Pop out into window" onClick={() => void browser().popOut(active.id).catch(() => {})}>
+              <AppWindow size={15} />
+            </IconButton>
+          )}
           <IconButton title="Inspect" onClick={() => browser().inspect(active.id)}>
             <Code2 size={15} />
           </IconButton>
@@ -134,7 +146,8 @@ export function BrowserPane() {
 
       <div ref={viewport} className="relative min-h-0 flex-1 bg-sunken">
         {!active && <StartPage />}
-        {active && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
+        {active && inWindow && <WindowPlaceholder tab={active} />}
+        {active && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
         {active?.viewport && visible && <DeviceFrame spec={active.viewport} stage={stage} />}
       </div>
       {state.annotating && (
@@ -143,6 +156,27 @@ export function BrowserPane() {
         </div>
       )}
       {menu}
+    </div>
+  );
+}
+
+function WindowPlaceholder({ tab }: { tab: BrowserTab }) {
+  const spec = tab.viewport;
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <AppWindow size={22} className="text-faint" />
+      <div className="text-[13px] text-muted">
+        Open in a separate window{spec ? `: ${spec.width}x${spec.height} @${spec.dpr}x` : ""}
+      </div>
+      <div className="max-w-full truncate font-mono text-[11.5px] text-faint">{tab.title || tab.url}</div>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => browser().activate(tab.id)} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised">
+          Focus
+        </button>
+        <button type="button" onClick={() => void browser().returnToPane(tab.id).catch(() => {})} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised">
+          Return to pane
+        </button>
+      </div>
     </div>
   );
 }
@@ -157,6 +191,12 @@ function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
       ...(/^https?:/i.test(tab.url)
         ? [{ label: "Open in default browser", icon: <SquareArrowOutUpRight size={13} />, onSelect: () => window.studio.openExternal(tab.url) }]
         : []),
+    ],
+    [
+      tab.surface === "window"
+        ? { label: "Return to pane", icon: <PanelTop size={13} />, onSelect: () => void browser().returnToPane(tab.id).catch(() => {}) }
+        : { label: "Pop out into window", icon: <AppWindow size={13} />, onSelect: () => void browser().popOut(tab.id).catch(() => {}) },
+      ...(tab.surface === "window" ? [{ label: "Close window", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) }] : []),
     ],
     [
       { label: "Close tab", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) },
@@ -185,7 +225,9 @@ function TabPill({
       className={`group flex h-8 max-w-48 min-w-24 shrink-0 items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[12px] ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/50"}`}
     >
       <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.url}>
-        {tab.agent ? (
+        {tab.surface === "window" ? (
+          <AppWindow size={12} className="shrink-0 text-accent" />
+        ) : tab.agent ? (
           <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
         ) : (
           <Globe size={12} className={`shrink-0 text-faint ${tab.loading ? "pulse-dot" : ""}`} />
