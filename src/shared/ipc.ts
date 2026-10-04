@@ -79,6 +79,7 @@ export const IPC = {
   atpSetHeld: "atp:set-held",
   atpInfo: "atp:info",
   cardWorktree: "studio:card-worktree",
+  lamentWorktree: "studio:lament-worktree",
   updateGet: "update:get",
   updateState: "update:state",
   updateDownload: "update:download",
@@ -160,7 +161,7 @@ export interface AtpApi {
   info(): Promise<{ librarian: string }>;
 }
 
-/** The git worktree a card's Resolve chat works in, on a branch of its own (src/main/worktree.ts). */
+/** The git worktree a card's Resolve chat, or a lament's Fix chat, works in, on a branch of its own (src/main/worktree.ts). */
 export interface CardWorktree {
   /** Where the chat runs: the project's folder in the worktree (worktreeCwd). */
   cwd: string;
@@ -296,6 +297,8 @@ export interface StudioApi {
    * git repository; rejects when git fails.
    */
   cardWorktree(card: string): Promise<CardWorktree | null>;
+  /** The same for fixing a lament, on a branch pigna/<lament id>-fix-…. */
+  lamentWorktree(lament: string): Promise<CardWorktree | null>;
   pickFolder(): Promise<string | null>;
   /** Native picker: "photos" for images, "files" for files and folders. */
   pickAttachments(kind: "photos" | "files"): Promise<PickedPath[]>;

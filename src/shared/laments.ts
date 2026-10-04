@@ -1,7 +1,8 @@
 // The Lamenting boards: what agents could not do because a tool or capability was missing, unavailable or failing,
 // one board per project (laments carry their project's cwd, like cards). Agents file laments through the lament
-// tool (resources/lament-extension.ts) at the point of friction; you read them to fix your tooling, then resolve
-// them. Main owns the laments and applies every change through applyLamentOp, from the renderer and agents alike.
+// tool (resources/lament-extension.ts) at the point of friction; you read them to fix your tooling (yourself, or with
+// a Fix chat in a git worktree), then mark them resolved. Main owns the laments and applies every change through
+// applyLamentOp, from the renderer and agents alike.
 
 /** How bad the gap was, mildest first; a lament is as bad as its worst report. */
 export const SEVERITIES = ["annoying", "costly", "blocking"] as const;
@@ -13,7 +14,7 @@ export const SEVERITY: Record<Severity, { emoji: string; label: string; about: s
   blocking: { emoji: "🤬", label: "Blocking", about: "it could not be done or verified at all" },
 };
 
-export const LAMENT_LIMITS = { title: 200, text: 8_000, reports: 30 } as const;
+export const LAMENT_LIMITS = { title: 200, text: 8_000, reports: 30, fixes: 10, branch: 200 } as const;
 
 /** One time an agent hit the gap: what it tried, what was missing and how it worked around it (Markdown). */
 export interface LamentReport {
@@ -24,6 +25,14 @@ export interface LamentReport {
   chat?: { path: string; cwd: string };
 }
 
+/** A chat its Fix started (Laments page), which works in the lament's git worktree. */
+export interface LamentFix {
+  at: number;
+  chat: { path: string; cwd: string };
+  /** The worktree's branch; none when the project is not in git and the chat works in the project folder. */
+  branch?: string;
+}
+
 export interface Lament {
   id: string;
   title: string;
@@ -31,6 +40,8 @@ export interface Lament {
   cwd: string;
   /** Oldest first: the first is the lament as filed, later ones are repeats (the first and the last ones are kept). */
   reports: LamentReport[];
+  /** The chats that worked on a fix, oldest first (the latest ten). */
+  fixes?: LamentFix[];
   /** When you marked it resolved; a repeat reopens it. */
   resolvedAt?: number;
   createdAt: number;
@@ -46,6 +57,8 @@ export type LamentOp =
   | { type: "file"; id?: string; title: string; text: string; severity: Severity; cwd: string; chat?: { path: string; cwd: string } }
   /** The same gap again: adds the report and reopens the lament. */
   | { type: "repeat"; id: string; text: string; severity: Severity; chat?: { path: string; cwd: string } }
+  /** A Fix chat started: you mark the lament resolved once its fix is in. */
+  | { type: "fix"; id: string; chat: { path: string; cwd: string }; branch?: string }
   | { type: "resolve"; id: string; resolved: boolean }
   | { type: "remove"; id: string };
 
@@ -109,6 +122,14 @@ export function applyLamentOp(laments: Laments, op: LamentOp, now: number): Lame
       const kept = reports.length > LAMENT_LIMITS.reports ? [reports[0] as LamentReport, ...reports.slice(1 - LAMENT_LIMITS.reports)] : reports;
       return update(laments, { ...lament, reports: kept, resolvedAt: undefined, updatedAt: now });
     }
+    case "fix": {
+      const lament = find(laments, op.id);
+      const fix: LamentFix = { at: now, chat: chatRef(op.chat) };
+      if (op.branch !== undefined) fix.branch = branch(op.branch);
+      // A chat recorded again moves to the end rather than repeating. Not news about the gap, so updatedAt stays.
+      const fixes = [...(lament.fixes ?? []).filter((other) => other.chat.path !== fix.chat.path), fix].slice(-LAMENT_LIMITS.fixes);
+      return update(laments, { ...lament, fixes });
+    }
     case "resolve": {
       const lament = find(laments, op.id);
       if (Boolean(lament.resolvedAt) === Boolean(op.resolved)) return laments;
@@ -139,10 +160,16 @@ function isLament(value: unknown): value is Lament {
     Array.isArray(lament.reports) &&
     lament.reports.length > 0 &&
     lament.reports.every((report) => typeof report?.text === "string" && typeof report.at === "number" && isSeverity(report.severity)) &&
+    (lament.fixes === undefined || (Array.isArray(lament.fixes) && lament.fixes.every(isFix))) &&
     (lament.resolvedAt === undefined || typeof lament.resolvedAt === "number") &&
     typeof lament.createdAt === "number" &&
     typeof lament.updatedAt === "number"
   );
+}
+
+function isFix(value: unknown): value is LamentFix {
+  const fix = value as Partial<LamentFix> | null;
+  return typeof fix?.at === "number" && typeof fix.chat?.path === "string" && typeof fix.chat.cwd === "string" && (fix.branch === undefined || typeof fix.branch === "string");
 }
 
 const rank = (severity: Severity) => SEVERITIES.indexOf(severity);
@@ -152,8 +179,20 @@ function report(op: { text: unknown; severity: unknown; chat?: { path: unknown; 
   const body = text(op.text, "body", LAMENT_LIMITS.text).trim();
   if (!body) throw new LamentError("a lament needs a body: what was missing and how you worked around it");
   const entry: LamentReport = { at: now, text: body, severity: op.severity };
-  if (op.chat) entry.chat = { path: path(op.chat.path, "chat path"), cwd: path(op.chat.cwd, "chat cwd") };
+  if (op.chat) entry.chat = chatRef(op.chat);
   return entry;
+}
+
+function chatRef(chat: { path: unknown; cwd: unknown } | undefined): { path: string; cwd: string } {
+  return { path: path(chat?.path, "chat path"), cwd: path(chat?.cwd, "chat cwd") };
+}
+
+/** A branch name like the ones pi-gna makes (pigna/<id>-<words>): letters, digits and . _ - / +, without "..". */
+function branch(value: unknown): string {
+  if (typeof value !== "string" || value.length > LAMENT_LIMITS.branch || !/^[\w./+-]+$/.test(value) || value.includes("..")) {
+    throw new LamentError(`invalid branch ${String(value)}`);
+  }
+  return value;
 }
 
 function find(laments: Laments, id: string): Lament {

@@ -31,6 +31,7 @@ const api: StudioApi = {
   describePaths: (paths) => ipcRenderer.invoke(IPC.describePaths, paths),
   compactionSettings: () => ipcRenderer.invoke(IPC.compactionSettings),
   cardWorktree: (card) => ipcRenderer.invoke(IPC.cardWorktree, card),
+  lamentWorktree: (lament) => ipcRenderer.invoke(IPC.lamentWorktree, lament),
   windowFocused: () => ipcRenderer.invoke(IPC.windowFocused),
   onWindowFocus: (listener) => subscribe<boolean>(IPC.windowFocus, listener),
   onSidebarToggle: (listener) => subscribe<void>(IPC.sidebarToggle, listener),

@@ -174,20 +174,21 @@ export function resolvePrompt(card: Card, worktree: CardWorktree | null = null):
   return [
     "Resolve this card from the project's Kanban board: make the change, verify it, and tell me what you did.",
     cardBlock(card),
-    ...(worktree ? [worktreeNote(card, worktree)] : []),
+    ...(worktree ? [worktreeNote(card.cwd, worktree)] : []),
     "This chat is attached to the card. Move it to in_progress with kanban_update when you start; when you are done, move it to in_review with a short report of what changed and how you verified it.",
   ].join("\n\n");
 }
 
 const WORKTREE_FILES = "The worktree has the committed files only, not ignored ones such as installed dependencies, .env files and builds: set up what you need in it.";
 
-function worktreeNote(card: Card, worktree: CardWorktree): string {
+/** Where a chat that changes `project` works (`task`: what it was started from, a card or a lament). */
+export function worktreeNote(project: string, worktree: CardWorktree, task = "card"): string {
   return [
     `You work in a git worktree of the project, on branch ${worktree.branch}: your working directory, ${worktree.cwd}, is the project's folder in it.`,
-    worktree.created ? "" : "The worktree and branch are from an earlier chat on this card: build on what is there.",
+    worktree.created ? "" : `The worktree and branch are from an earlier chat on this ${task}: build on what is there.`,
     WORKTREE_FILES,
     worktree.dirty ? "The checkout has uncommitted changes, which are not in the worktree either." : "",
-    `When the change is verified, commit it on the branch and name the branch in your report. Do not push or merge, and leave the checkout at ${card.cwd} as it is.`,
+    `When the change is verified, commit it on the branch and name the branch in your report. Do not push or merge, and leave the checkout at ${project} as it is.`,
   ]
     .filter(Boolean)
     .join(" ");

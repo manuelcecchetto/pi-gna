@@ -2,7 +2,10 @@
 // Dev tool: a stand-in for `pi --mode rpc` that streams a long text answer to every prompt, for
 // checking streaming UI (scrolling, live states) without a model. Point a test instance at it:
 //   PIGNA_PI_BIN=$PWD/scripts/fake-pi.mjs FAKE_LINES=400 FAKE_DELAY=100 node bin/pi-gna.mjs ...
-// FAKE_LINES paragraphs, one every FAKE_DELAY ms (about 13 tokens each, so 150 ms is ~89 tok/s). No session file is written.
+// FAKE_LINES paragraphs, one every FAKE_DELAY ms (about 13 tokens each, so 150 ms is ~89 tok/s). Like pi, it names a
+// session file (in the temp folder) before writing anything, so cards and laments can link its chats; none is written.
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 
 const out = (record) => process.stdout.write(`${JSON.stringify(record)}\n`);
@@ -11,13 +14,14 @@ const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0
 const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
 let streaming = false;
+const sessionFile = join(tmpdir(), "fake-pi-sessions", `${process.pid}.jsonl`);
 
 createInterface({ input: process.stdin }).on("line", (line) => {
   const command = JSON.parse(line);
   const reply = (data) => out({ type: "response", id: command.id, command: command.type, success: true, data });
   switch (command.type) {
     case "get_state":
-      return reply({ model, thinkingLevel: "off", isStreaming: streaming, isCompacting: false, steeringMode: "all", followUpMode: "all", sessionId: "fake", autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 });
+      return reply({ model, thinkingLevel: "off", isStreaming: streaming, isCompacting: false, steeringMode: "all", followUpMode: "all", sessionId: "fake", sessionFile, autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 });
     case "get_session_stats":
       return reply({ sessionId: "fake", userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 });
     case "prompt":

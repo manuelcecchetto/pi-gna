@@ -264,6 +264,12 @@ function registerIpc(shellEnv: Promise<void>): void {
     if (!card) throw new Error(`no card ${String(id)}`);
     return cardWorktree(card.cwd, card);
   });
+  handle(IPC.lamentWorktree, async (id: string) => {
+    await shellEnv;
+    const lament = (await laments.get()).laments.find((other) => other.id === id);
+    if (!lament) throw new Error(`no lament ${String(id)}`);
+    return cardWorktree(lament.cwd, { id: lament.id, title: `fix ${lament.title}` });
+  });
   // gh runs with the login shell's PATH; a project is an absolute folder.
   const project = (cwd: unknown) => {
     if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");

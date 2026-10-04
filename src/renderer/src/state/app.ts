@@ -3,8 +3,8 @@
 import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
-import { emptyLaments, type LamentOp, type Laments } from "../../../shared/laments";
-import type { HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
+import { emptyLaments, type Lament, type LamentOp, type Laments } from "../../../shared/laments";
+import type { CardWorktree, HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
   ImageContent,
@@ -27,6 +27,7 @@ import {
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
 import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, type TaskModel, TRIAGE_MODEL, triageName, triagePrompt } from "../lib/board";
+import { fixPrompt } from "../lib/laments";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
 import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../lib/session";
@@ -652,7 +653,7 @@ export function togglePage(page: Page): void {
 
 // ── Laments ──────────────────────────────────────────────────────────────────
 
-/** Resolve, reopen or delete a lament. Main applies it and pushes the laments back. */
+/** Resolve, reopen or delete a lament, or record its Fix chat. Main applies it and pushes the laments back. */
 export async function applyLament(op: LamentOp): Promise<boolean> {
   try {
     await studio().laments.apply(op);
@@ -661,6 +662,31 @@ export async function applyLament(op: LamentOp): Promise<boolean> {
     toast(remoteError(error), "error");
     return false;
   }
+}
+
+/**
+ * Fix a lament: a new chat in the background works in the lament's git worktree, on a branch of its own (made by
+ * main, reused by later Fixes), and is recorded on the lament once pi knows its session file. It does not resolve
+ * the lament: you mark it resolved once the fix is in.
+ */
+export async function fixLament(lament: Lament): Promise<void> {
+  let worktree: CardWorktree | null;
+  try {
+    worktree = await studio().lamentWorktree(lament.id);
+  } catch (error) {
+    toast(`Could not make a git worktree to fix “${lament.title}”: ${remoteError(error)}`, "error");
+    return;
+  }
+  const branch = worktree?.branch;
+  const handle = start(worktree?.cwd ?? lament.cwd, undefined, false);
+  setups.set(handle, {
+    name: `Fix: ${lament.title}`,
+    prompt: fixPrompt(lament, worktree),
+    link: (chat) => applyLament({ type: "fix", id: lament.id, chat, ...(branch ? { branch } : {}) }),
+  });
+  if (!worktree) toast(`Fixing “${lament.title}” in a new chat, in the project folder: it is not in a git repository`);
+  else if (worktree.dirty) toast(`Fixing “${lament.title}” on branch ${worktree.branch}. Your checkout's uncommitted changes are not in its worktree.`, "warning");
+  else toast(`Fixing “${lament.title}” on branch ${worktree.branch}`);
 }
 
 export function showUpdate(open: boolean): void {
@@ -781,10 +807,17 @@ export interface ChatSetup {
   /** For this chat only: pi keeps your default model and thinking level. */
   model?: TaskModel;
   prompt?: string;
+  /** Record the chat (say, on a lament) by its session file, before its prompt is sent. */
+  link?: (chat: { path: string; cwd: string }) => Promise<unknown>;
 }
 const setups = new Map<string, ChatSetup>();
 
 async function setUp(handle: string, setup: ChatSetup): Promise<void> {
+  if (setup.link) {
+    const chat = await sessionFile(handle);
+    if (chat) await setup.link(chat);
+    else toast("This chat has no session file, so pi-gna cannot link to it", "warning");
+  }
   if (setup.model) await useModel(handle, setup.model);
   if (setup.prompt === undefined || !store.get().sessions[handle]) return;
   // Written by pi-gna, not the composer: no attachments or browser comments ride along. Named right away, before
@@ -808,12 +841,19 @@ export function startAtpChat(cwd: string, atp: AtpSession, options: { resume?: {
 
 /** Put a chat on a card, by its session file. */
 async function attachChat(handle: string, card: string, label?: string): Promise<void> {
+  if (!store.get().sessions[handle]) return;
+  const chat = await sessionFile(handle);
+  if (chat) await applyBoard({ type: "attach", id: card, chat: { ...chat, label } });
+  else toast("This chat has no session file, so it cannot be put on the card", "warning");
+}
+
+/** A chat's session file and cwd, which a card or lament keeps to open it. */
+async function sessionFile(handle: string): Promise<{ path: string; cwd: string } | undefined> {
   const session = store.get().sessions[handle];
-  if (!session) return;
+  if (!session) return undefined;
   // Set by the ready event; a new chat's file is named before anything is written to it.
   const path = session.sessionPath ?? (await command<RpcSessionState>(handle, { type: "get_state" }, true)).data?.sessionFile;
-  if (path) await applyBoard({ type: "attach", id: card, chat: { path, cwd: session.cwd, label } });
-  else toast("This chat has no session file, so it cannot be put on the card", "warning");
+  return path ? { path, cwd: session.cwd } : undefined;
 }
 
 /** Switch a new chat to a card task's model. For this chat only: pi keeps your default model and thinking level. */

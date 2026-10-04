@@ -49,6 +49,21 @@ describe("lament ops", () => {
     expect(applyLamentOp(laments, { type: "remove", id: "aaaaaa" }, 9).laments).toEqual([]);
   });
 
+  it("records the chats its Fix started, the same chat once, the latest ten", () => {
+    const fixer = { path: "/s/fix.jsonl", cwd: "/home/.pi-gna/worktrees/aaaaaa/repo" };
+    let laments = run([file("aaaaaa"), { type: "fix", id: "aaaaaa", chat: fixer, branch: "pigna/aaaaaa-fix-missing-aaaaaa" }]);
+    expect(laments.laments[0]).toMatchObject({ updatedAt: 1000, fixes: [{ at: 1001, chat: fixer, branch: "pigna/aaaaaa-fix-missing-aaaaaa" }] });
+    laments = run([{ type: "fix", id: "aaaaaa", chat }, { type: "fix", id: "aaaaaa", chat: fixer }], laments);
+    expect(laments.laments[0]?.fixes?.map((fix) => [fix.chat.path, fix.branch])).toEqual([
+      ["/s/chat.jsonl", undefined],
+      ["/s/fix.jsonl", undefined],
+    ]);
+    const many: LamentOp[] = Array.from({ length: LAMENT_LIMITS.fixes + 3 }, (_, index) => ({ type: "fix", id: "aaaaaa", chat: { ...chat, path: `/s/${index}.jsonl` } }));
+    const fixes = run(many, laments).laments[0]?.fixes ?? [];
+    expect(fixes).toHaveLength(LAMENT_LIMITS.fixes);
+    expect(fixes.at(-1)?.chat.path).toBe(`/s/${LAMENT_LIMITS.fixes + 2}.jsonl`);
+  });
+
   it("rejects bad input from the renderer or an agent", () => {
     const laments = run([file("aaaaaa")]);
     const bad: unknown[] = [
@@ -63,6 +78,12 @@ describe("lament ops", () => {
       { ...file("bbbbbb"), id: "../etc" },
       { type: "repeat", id: "zzzzzz", text: "x", severity: "annoying" },
       { type: "remove", id: "zzzzzz" },
+      { type: "fix", id: "zzzzzz", chat },
+      { type: "fix", id: "aaaaaa" },
+      { type: "fix", id: "aaaaaa", chat: { path: "relative", cwd: "/repo" } },
+      { type: "fix", id: "aaaaaa", chat, branch: "has space" },
+      { type: "fix", id: "aaaaaa", chat, branch: "pigna/../main" },
+      { type: "fix", id: "aaaaaa", chat, branch: "" },
       { type: "explode" },
       null,
     ];
@@ -85,9 +106,10 @@ describe("lament ops", () => {
 
   it("reads a laments file, skipping malformed laments", () => {
     const good = run([file("aaaaaa")]).laments[0];
-    const { laments, dropped } = parseLaments({ version: 1, laments: [good, { id: "broken" }, { ...good, reports: [] }] });
-    expect(laments.laments).toEqual([good]);
-    expect(dropped).toBe(2);
+    const fixed = run([{ type: "fix", id: "aaaaaa", chat, branch: "pigna/aaaaaa-fix" }], run([file("aaaaaa")])).laments[0];
+    const { laments, dropped } = parseLaments({ version: 1, laments: [good, fixed, { id: "broken" }, { ...good, reports: [] }, { ...good, fixes: [{ at: 1 }] }] });
+    expect(laments.laments).toEqual([good, fixed]);
+    expect(dropped).toBe(3);
     expect(() => parseLaments({ cards: [] })).toThrow(LamentError);
   });
 });

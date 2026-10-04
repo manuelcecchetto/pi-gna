@@ -332,13 +332,22 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `src/shared/laments.ts`: title 200 / report 8k characters, a known severity, absolute paths; the first report
   and the latest 29 are kept), serialized tmp + rename writes, a file that does not parse moved to
   `laments.corrupt-<ts>.json`. The whole value is pushed after each change (`laments:changed`); the renderer only
-  sends resolve, reopen and remove (`applyLament`) and waits for the push.
+  sends resolve, reopen, remove and fix (`applyLament`) and waits for the push.
 - **The page** (`components/Laments.tsx`, `page.kind === "laments"`, keyed by project) lists open laments worst
   first (a lament is as bad as its worst report), then the most recent, with Open and Resolved tabs. A row shows
   the severity emoji, the title, ×n when it was hit again and the latest report; it expands to every report
-  (Markdown) with the chat that filed it. Right-click, or the expanded row, resolves, reopens or deletes. View >
+  (Markdown) with the chat that filed it. Right-click, or the expanded row, fixes, marks resolved, reopens or
+  deletes. Mark resolved is manual: no chat runs, the lament moves to Resolved (a repeat reopens it). View >
   Laments (⌘⇧L), the sidebar's Laments row (the worst open lament's emoji and the count, for the project it
   opens) and a project's context menu open it; switching between the two pages keeps the project (`showPage`).
+- **Fix** (`fixLament`, `state/app.ts`) is a card's Resolve for a lament: main makes the lament's git worktree
+  (`lamentWorktree` IPC, `cardWorktree` keyed by the lament's id, branch `pigna/<lament>-fix-<title>`; reused by later
+  Fixes), and a background chat there gets `fixPrompt` (`lib/laments.ts`): the lament (`lamentBlock`: the first
+  report and the latest two, whole), find and fix the cause, verify by doing what the lament wanted, leave fixes that
+  belong outside the project (`~/.pi/agent`, another repository, an app) to you, commit on the branch. Once pi knows
+  the chat's session file (`ChatSetup.link`), the `fix` op records it and the branch on the lament (`fixes`, the
+  latest ten): the row shows a wrench while it is open, and its details link to each Fix chat. The chat does not
+  resolve the lament; you mark it resolved once you merged the fix.
 
 ## GitHub
 
@@ -634,7 +643,8 @@ Background test windows are `document.visibilityState === "hidden"`: smooth scro
 fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
-`PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model. For board checks, seed
+`PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model; it names a session file
+(never written), so a card's or lament's chats link as with pi. For board checks, seed
 `$PIGNA_USER_DATA/board.json` (`{ "version": 1, "cards": [...] }`) with cards of a throwaway git project under `/tmp`
 (give cards its real path, `/private/tmp/…`: the launch cwd is resolved, so `/tmp/…` cards sit on another board):
 the board's project picker lists every project with cards, and card actions then start fake-pi chats there. Tests with the real

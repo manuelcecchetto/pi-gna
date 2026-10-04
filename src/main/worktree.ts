@@ -1,5 +1,6 @@
 // Resolve chats work in a git worktree of their card's project, on a branch of their own, so what they change stays
-// off your checkout until you merge it. The worktree lives outside the project (shared/board.ts worktreeCwd) and
+// off your checkout until you merge it; a lament's Fix chats do the same, keyed by the lament's id (lament and card
+// ids are both six random characters). The worktree lives outside the project (shared/board.ts worktreeCwd) and
 // stays until you remove it (`git worktree remove`): the chat reopens there, and a second Resolve reuses it.
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";

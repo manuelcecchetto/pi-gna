@@ -1,13 +1,14 @@
 // The Laments page: one project's laments, which agents file with the lament tool when a tool or capability they
 // needed was missing, unavailable or failing. Worst first, each with the emoji of its severity; open one to read its
-// reports, open the chat that filed it, and resolve it once the tooling is fixed (a repeat reopens it).
-import { Angry, ChevronRight, CircleCheck, MessagesSquare, RotateCcw, Trash2 } from "lucide-react";
+// reports, open the chat that filed it, have a new chat fix it in a git worktree (Fix), and mark it resolved once
+// the fix is in (a repeat reopens it).
+import { Angry, ChevronRight, CircleCheck, MessagesSquare, RotateCcw, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type Lament, type LamentReport, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
+import { type Lament, type LamentFix, type LamentReport, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
 import { findSummary } from "../lib/board";
 import { baseName, formatStamp, relativeTime } from "../lib/format";
-import { lamentProjects, lamentSnippet, reportChat } from "../lib/laments";
-import { applyLament, openSession, type PageState, sessionTitle, showPage, useApp } from "../state/app";
+import { fixChat, lamentProjects, lamentSnippet, reportChat } from "../lib/laments";
+import { applyLament, fixLament, openSession, type PageState, sessionTitle, showPage, useApp } from "../state/app";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Markdown } from "./Markdown";
 import { useNow } from "./primitives";
@@ -15,6 +16,9 @@ import { ProjectSwitch } from "./ProjectSwitch";
 import { COLLAPSED_INSET } from "./Sidebar";
 
 type Menu = { lament: Lament; at: { x: number; y: number }; confirmDelete?: boolean };
+
+const FIX_HINT = "A new chat fixes it in a git worktree, on a branch of its own; you merge it and mark the lament resolved";
+const RESOLVE_HINT = "You fixed it: no chat runs, the lament moves to Resolved";
 
 /** Keyed by project (App), so another project starts on its open laments, none expanded. */
 export function LamentsPage({ page }: { page: PageState }) {
@@ -40,12 +44,18 @@ export function LamentsPage({ page }: { page: PageState }) {
     }
     const latest = lament.reports.findLast((report) => report.chat);
     const chat = latest && reportChat(projects, latest);
+    const fix = lament.fixes?.at(-1);
+    const fixer = fix && fixChat(projects, fix);
     return [
-      chat ? [{ label: "Open the chat that filed it", icon: <MessagesSquare size={13} />, hint: chat.title, onSelect: () => openSession(chat) }] : [],
       [
+        ...(chat ? [{ label: "Open the chat that filed it", icon: <MessagesSquare size={13} />, hint: chat.title, onSelect: () => openSession(chat) }] : []),
+        ...(fixer ? [{ label: "Open the Fix chat", icon: <Wrench size={13} />, hint: fix?.branch ?? fixer.title, onSelect: () => openSession(fixer) }] : []),
+      ],
+      [
+        ...(lament.resolvedAt ? [] : [{ label: "Fix", icon: <Wrench size={13} />, hint: FIX_HINT, onSelect: () => void fixLament(lament) }]),
         lament.resolvedAt
           ? { label: "Reopen", icon: <RotateCcw size={13} />, onSelect: () => void applyLament({ type: "resolve", id: lament.id, resolved: false }) }
-          : { label: "Resolve", icon: <CircleCheck size={13} />, hint: "The tooling is fixed", onSelect: () => void applyLament({ type: "resolve", id: lament.id, resolved: true }) },
+          : { label: "Mark resolved", icon: <CircleCheck size={13} />, hint: RESOLVE_HINT, onSelect: () => void applyLament({ type: "resolve", id: lament.id, resolved: true }) },
         // A second menu asks first: a lament's reports cannot be brought back.
         { label: "Delete…", icon: <Trash2 size={13} />, danger: true, onSelect: () => setMenu({ lament, at: menu?.at ?? { x: 0, y: 0 }, confirmDelete: true }) },
       ],
@@ -131,6 +141,7 @@ function Empty({ project, resolved }: { project: string; resolved: boolean }) {
 function LamentView({ lament, expanded, onToggle, onMenu }: { lament: Lament; expanded: boolean; onToggle: () => void; onMenu: (at: { x: number; y: number }) => void }) {
   const severity = lamentSeverity(lament);
   const repeats = lament.reports.length - 1;
+  const fixing = lament.resolvedAt ? undefined : lament.fixes?.at(-1);
   return (
     <article
       onContextMenu={(event) => {
@@ -156,6 +167,11 @@ function LamentView({ lament, expanded, onToggle, onMenu }: { lament: Lament; ex
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className={`min-w-0 flex-1 text-[13.5px] leading-snug text-fg ${expanded ? "" : "line-clamp-2"}`}>{lament.title}</span>
+            {fixing && (
+              <span className="flex shrink-0 items-center self-center text-muted" title={fixing.branch ? `A Fix chat works on it, on branch ${fixing.branch}` : "A Fix chat works on it"}>
+                <Wrench size={11} />
+              </span>
+            )}
             {repeats > 0 && (
               <span className="shrink-0 rounded-full border border-line px-1.5 font-mono text-[10.5px] leading-4 text-muted" title={`Hit ${lament.reports.length} times`}>
                 ×{lament.reports.length}
@@ -188,14 +204,33 @@ function LamentDetail({ lament }: { lament: Lament }) {
           <ReportView key={`${report.at}-${index}`} report={report} first={index === lament.reports.length - 1} />
         ))}
       </ol>
+      {lament.fixes?.length ? (
+        <ul className="mt-4 flex flex-col gap-1 pl-[34px]">
+          {[...lament.fixes].reverse().map((fix) => (
+            <FixView key={fix.chat.path} fix={fix} />
+          ))}
+        </ul>
+      ) : null}
       <div className="mt-4 flex items-center gap-1.5 pl-[34px]">
+        {!lament.resolvedAt && (
+          <button
+            type="button"
+            title={FIX_HINT}
+            onClick={() => void fixLament(lament)}
+            className="flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised"
+          >
+            <Wrench size={13} className="text-muted" />
+            Fix
+          </button>
+        )}
         <button
           type="button"
+          title={lament.resolvedAt ? undefined : RESOLVE_HINT}
           onClick={() => void applyLament({ type: "resolve", id: lament.id, resolved: !lament.resolvedAt })}
           className="flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised"
         >
           {lament.resolvedAt ? <RotateCcw size={13} className="text-muted" /> : <CircleCheck size={13} className="text-ok" />}
-          {lament.resolvedAt ? "Reopen" : "Resolve"}
+          {lament.resolvedAt ? "Reopen" : "Mark resolved"}
         </button>
         <span className="flex-1 pl-1 text-[11.5px] text-faint">
           {lament.resolvedAt ? `Resolved ${formatStamp(lament.resolvedAt)}; the next repeat reopens it` : `Filed ${formatStamp(lament.createdAt)}`}
@@ -214,6 +249,24 @@ function LamentDetail({ lament }: { lament: Lament }) {
         </button>
       </div>
     </div>
+  );
+}
+
+/** A chat the lament's Fix started: open it, with its branch. */
+function FixView({ fix }: { fix: LamentFix }) {
+  const projects = useApp((state) => state.projects);
+  const sessions = useApp((state) => state.sessions);
+  const live = Object.values(sessions).find((session) => session.sessionPath === fix.chat.path);
+  const chat = fixChat(projects, fix);
+  return (
+    <li className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11.5px] text-faint">
+      <Wrench size={11} />
+      <span>Fix started {formatStamp(fix.at)}</span>
+      <button type="button" onClick={() => openSession(chat)} className="flex min-w-0 items-center gap-1 rounded px-1 hover:bg-raised hover:text-fg" title="Open this chat">
+        · <MessagesSquare size={11} /> <span className="max-w-64 truncate">{live ? sessionTitle(live) : chat.title}</span>
+      </button>
+      {fix.branch && <span className="selectable font-mono text-[11px]">· {fix.branch}</span>}
+    </li>
   );
 }
 

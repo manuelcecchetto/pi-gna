@@ -80,7 +80,8 @@ updates the `--pigna` flag.
   Chats on a card show their mark on it, and pi gets `kanban_*` tools to take a card, move it and report on it.
 - **Laments.** When pi needs a tool or capability that is missing, unavailable or failing, it files a lament on the
   project's Lamenting board with its `lament` tool, then carries on with a workaround: 😒 annoying, 😠 costly or
-  🤬 blocking. Read them (Cmd+Shift+L) to see what your setup lacks; resolve one once it is fixed.
+  🤬 blocking. Read them (Cmd+Shift+L) to see what your setup lacks. Fix one to have a new chat fix it in a git
+  worktree, on a branch of its own, then mark it resolved once the fix is in.
 - **Attachments.** Drop, paste or pick files and folders (sent by path) and images (sent to the model).
 - **Right-click anything.** Copy or save images (screenshots pi took, attachments, pages in the browser), copy and
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
