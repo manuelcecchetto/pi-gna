@@ -83,6 +83,9 @@ updates the `--pigna` flag.
   project's Lamenting board with its `lament` tool, then carries on with a workaround: 😒 annoying, 😠 costly or
   🤬 blocking. Read them (Cmd+Shift+L) to see what your setup lacks. Fix one to have a new chat fix it in a git
   worktree, on a branch of its own, then mark it resolved once the fix is in.
+- **Inline visuals (beta).** Turn on Settings > Agent > Beta > Inline visuals and, in chats you open afterwards, pi can
+  put a small diagram, comparison or timeline in a reply as an HTML fragment. It runs in a sandbox with no network, and the
+  text around it always answers on its own.
 - **Attachments.** Drop, paste or pick files and folders (sent by path) and images (sent to the model).
 - **Right-click anything.** Copy or save images (screenshots pi took, attachments, pages in the browser), copy and
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
