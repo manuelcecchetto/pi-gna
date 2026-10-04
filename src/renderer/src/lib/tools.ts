@@ -158,6 +158,13 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       const target = [str(args.preset) || size || str(args.aspect), args.dpr ? `@${String(args.dpr)}x` : ""].filter(Boolean).join(" ");
       return { category: "browser", verb: "Set viewport", activeVerb: "Setting viewport", target };
     }
+    case "browser_window": {
+      if (args.op === "close") return { category: "browser", verb: "Closed a window", activeVerb: "Closing a window", target: "" };
+      if (args.op === "list") return { category: "browser", verb: "Listed windows", activeVerb: "Listing windows", target: "" };
+      const size = args.width || args.height ? `${String(args.width ?? "auto")}x${String(args.height ?? "auto")}` : "";
+      const target = [str(args.preset) || size || str(args.aspect), args.dpr ? `@${String(args.dpr)}x` : ""].filter(Boolean).join(" ");
+      return { category: "browser", verb: "Opened a window", activeVerb: "Opening a window", target };
+    }
     case "browser_console":
       return { category: "browser", verb: "Read the console", activeVerb: "Reading the console", target: "" };
     case "kanban_list":

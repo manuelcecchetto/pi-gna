@@ -2,8 +2,8 @@
 // screenshots go through CDP (webContents.debugger): OS-level input and capturePage need composited
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
 import { nativeImage, type WebContents } from "electron";
-import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize } from "../../shared/browser";
-import { resolveViewport } from "../../shared/viewport";
+import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize, viewportLine } from "../../shared/browser";
+import { resolveViewport, type ViewportSpec } from "../../shared/viewport";
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import { cdp } from "./cdp";
@@ -51,7 +51,7 @@ function keyDef(name: string): KeyDef {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state", "viewport"]);
+const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state", "viewport", "window"]);
 
 /** POST /browser on the agent bridge: the browser_* tools. */
 export function browserRoute(agent: () => BrowserAgent | undefined): Route {
@@ -89,8 +89,9 @@ export class BrowserAgent {
   }
 
   private async dispatch(handle: string, request: AgentAction): Promise<AgentResult> {
-    if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false);
-    const tab = this.tabFor(handle);
+    if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false, request.tab);
+    if (request.action === "window") return this.window(handle, request);
+    const tab = this.tabFor(handle, request.tab);
     const wc = tab.view.webContents;
     log.info("browser", `${handle.slice(0, 4)} ${request.action}${"ref" in request ? ` [${request.ref}]` : ""}`);
     switch (request.action) {
@@ -163,10 +164,45 @@ export class BrowserAgent {
     }
   }
 
-  private async open(handle: string, input: string, newTab: boolean): Promise<AgentResult> {
+  private async window(handle: string, request: Extract<AgentAction, { action: "window" }>): Promise<AgentResult> {
+    log.info("browser", `${handle.slice(0, 4)} window ${request.op}`);
+    if (request.op === "list") {
+      const windows = [...this.browser.tabs.values()].filter((tab) => tab.win);
+      const text = windows.length
+        ? windows.map((tab) => `[${tab.id}] ${tab.viewport ? viewportLine(tab.viewport) : "no viewport"} ${tab.view.webContents.getURL()}${tab.agent === handle ? "" : " (not yours)"}`).join("\n")
+        : "No browser windows are open.";
+      return { url: "", title: "", text };
+    }
+    if (request.op === "close") {
+      const tab = request.tab ? this.tabFor(handle, request.tab) : this.agentTab(handle);
+      if (!tab?.win) throw new Error("Give the tab id of a window to close (see op: list).");
+      const result = this.where(tab.view.webContents);
+      this.browser.closeTab(tab.id);
+      return { ...result, text: `Closed window [${tab.id}].` };
+    }
+    let spec: ViewportSpec;
+    try {
+      spec = resolveViewport({ ...request.set, source: "agent" });
+    } catch (error) {
+      throw new Error(`Invalid window size: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const url = request.url ? normalizeAddress(request.url) : undefined;
+    if (url && !/^(https?|file|about):/i.test(url)) throw new Error(`Only http(s) and file URLs can be opened, got ${url}`);
+    const tab = await this.browser.openWindow({ ...request.set, source: "agent" }, url, handle);
+    this.browser.activate(tab.id);
+    const wc = tab.view.webContents;
+    const viewport = tab.viewport ?? spec;
+    const [width = 0, height = 0] = tab.win?.getContentSize() ?? [];
+    const clamped = width !== viewport.width || height !== viewport.height ? ` The screen limited the window to ${width}x${height}; the page still sees ${viewport.width}x${viewport.height}.` : "";
+    const note = `Opened window [${tab.id}] at ${viewport.width}x${viewport.height} @${viewport.dpr}x. It is now your current tab; pass tab: "${tab.id}" to other browser tools to address it later.${clamped}`;
+    const snap = url ? await this.snapshot(wc).catch(() => this.where(wc)) : this.where(wc);
+    return { ...snap, tab: tab.id, viewport, text: `${note}${snap.text ? `\n\n${snap.text}` : ""}` };
+  }
+
+  private async open(handle: string, input: string, newTab: boolean, tabId?: string): Promise<AgentResult> {
     const url = normalizeAddress(input);
     if (!/^(https?|file):/i.test(url)) throw new Error(`Only http(s) and file URLs can be opened, got ${url}`);
-    const existing = newTab ? undefined : this.agentTab(handle);
+    const existing = tabId ? this.tabFor(handle, tabId) : newTab ? undefined : this.agentTab(handle);
     const tab = existing ?? this.browser.createTab(undefined, handle);
     tab.agent = handle;
     log.info("browser", `${handle.slice(0, 4)} open ${url}`);
@@ -176,7 +212,14 @@ export class BrowserAgent {
   }
 
   /** The session's own tab, else adopt the tab the user is looking at. */
-  private tabFor(handle: string): Tab {
+  private tabFor(handle: string, id?: string): Tab {
+    if (id) {
+      const named = this.browser.tabs.get(id);
+      if (!named) throw new Error(`No browser tab ${id}. Use browser_window with op: list.`);
+      if (named.agent && named.agent !== handle) throw new Error(`Browser tab ${id} belongs to another chat.`);
+      named.agent = handle;
+      return named;
+    }
     const own = this.agentTab(handle);
     if (own) return own;
     const active = this.browser.active();

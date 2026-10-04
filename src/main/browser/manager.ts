@@ -281,6 +281,11 @@ export class BrowserManager {
     return tab;
   }
 
+  /** Close the device windows a chat spawned, when its session ends. */
+  closeWindowsOf(agent: string): void {
+    for (const tab of [...this.tabs.values()]) if (tab.win && tab.agent === agent) this.closeTab(tab.id);
+  }
+
   /** Move a pane tab into a window sized to its viewport, or to the pane when it has none. */
   async popOut(id: string): Promise<void> {
     const tab = this.tabs.get(id);

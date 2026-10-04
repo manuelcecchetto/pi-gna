@@ -12,6 +12,7 @@ interface BridgeResult {
   title: string;
   text?: string;
   image?: string;
+  tab?: string;
   viewport?: ViewportSpec;
 }
 
@@ -73,12 +74,13 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       url: Type.String({ description: "URL to open; bare localhost:PORT works" }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing this session's tab" })),
+      tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
       const target = normalizeAddress(params.url);
       if (!(await allowed(target, ctx))) throw new Error(`Opening ${target} was blocked by the user.`);
       // Redirects can land on another origin; guard the final URL too.
-      return reply(await guard(await call({ action: "open", url: target, newTab: params.newTab }, signal), ctx, signal));
+      return reply(await guard(await call({ action: "open", url: target, newTab: params.newTab, tab: params.tab }, signal), ctx, signal));
     },
   });
 
@@ -86,9 +88,10 @@ export default function (pi: ExtensionAPI) {
     name: "browser_snapshot",
     label: "Browser snapshot",
     description: `${ABOUT}Return a text outline of the current page: headings, text and interactive elements with [ref] numbers. Refs change after navigation; take a new snapshot when an action reports the page changed.`,
-    parameters: Type.Object({}),
-    async execute(_id, _params, signal) {
-      return reply(await call({ action: "snapshot" }, signal));
+    parameters: Type.Object({ tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
+}),
+    async execute(_id, params, signal) {
+      return reply(await call({ action: "snapshot", tab: params.tab }, signal));
     },
   });
 
@@ -96,9 +99,10 @@ export default function (pi: ExtensionAPI) {
     name: "browser_click",
     label: "Browser click",
     description: `${ABOUT}Click the element with the given ref from the latest browser_snapshot.`,
-    parameters: Type.Object({ ref: Type.Number({ description: "Element ref from browser_snapshot" }) }),
+    parameters: Type.Object({ ref: Type.Number({ description: "Element ref from browser_snapshot" }), tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
+}),
     async execute(_id, params, signal, _onUpdate, ctx) {
-      return reply(await guard(await call({ action: "click", ref: params.ref }, signal), ctx, signal));
+      return reply(await guard(await call({ action: "click", ref: params.ref, tab: params.tab }, signal), ctx, signal));
     },
   });
 
@@ -111,6 +115,7 @@ export default function (pi: ExtensionAPI) {
       text: Type.String(),
       submit: Type.Optional(Type.Boolean({ description: "Press Enter afterwards" })),
       clear: Type.Optional(Type.Boolean({ description: "Replace existing content (default true)" })),
+      tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
       return reply(await guard(await call({ action: "type", ...params }, signal), ctx, signal));
@@ -121,9 +126,10 @@ export default function (pi: ExtensionAPI) {
     name: "browser_press",
     label: "Browser key press",
     description: `${ABOUT}Press a key in the page, e.g. Enter, Escape, Tab, ArrowDown, PageDown, or a chord like Meta+A.`,
-    parameters: Type.Object({ key: Type.String() }),
+    parameters: Type.Object({ key: Type.String(), tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
+}),
     async execute(_id, params, signal, _onUpdate, ctx) {
-      return reply(await guard(await call({ action: "press", key: params.key }, signal), ctx, signal));
+      return reply(await guard(await call({ action: "press", key: params.key, tab: params.tab }, signal), ctx, signal));
     },
   });
 
@@ -148,9 +154,10 @@ export default function (pi: ExtensionAPI) {
     name: "browser_evaluate",
     label: "Browser evaluate",
     description: `${ABOUT}Run JavaScript in the current page and return the result (promises are awaited, values JSON-serialized). Useful for reading state, computed styles or DOM details.`,
-    parameters: Type.Object({ expression: Type.String({ description: "JavaScript expression or statements; the last value is returned" }) }),
+    parameters: Type.Object({ expression: Type.String({ description: "JavaScript expression or statements; the last value is returned" }), tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
+}),
     async execute(_id, params, signal, _onUpdate, ctx) {
-      return reply(await guard(await call({ action: "evaluate", expression: params.expression }, signal), ctx, signal));
+      return reply(await guard(await call({ action: "evaluate", expression: params.expression, tab: params.tab }, signal), ctx, signal));
     },
   });
 
@@ -176,12 +183,39 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    name: "browser_window",
+    label: "Browser window",
+    description: `${ABOUT}Open, list or close standalone browser windows at an exact device size (responsive testing). op "open" creates a window with width/height in CSS px, or aspect ('9:16', '16/9' or a number) plus one of width or height, dpr (1-4), mobile (touch, mobile User-Agent and layout) and orientation; or use a preset (${DEVICE_PRESETS.map((p) => p.id).join(", ")}). It returns the window's tab id and a snapshot when a url is given, and becomes your current tab; pass that id as tab to browser_snapshot, browser_click, browser_screenshot, etc. Up to 4 windows can be open. op "close" closes the window (tab, default your current window); op "list" lists open windows.`,
+    parameters: Type.Object({
+      op: Type.Union([Type.Literal("open"), Type.Literal("close"), Type.Literal("list")]),
+      url: Type.Optional(Type.String({ description: "URL to load in the new window (open only)" })),
+      tab: Type.Optional(Type.String({ description: "Window tab id (close only)" })),
+      preset: Type.Optional(Type.String({ description: `One of: ${DEVICE_PRESETS.map((p) => p.id).join(", ")}` })),
+      width: Type.Optional(Type.Number({ description: "CSS px" })),
+      height: Type.Optional(Type.Number({ description: "CSS px" })),
+      aspect: Type.Optional(Type.String({ description: "width:height such as '9:16'; combine with width or height" })),
+      dpr: Type.Optional(Type.Number({ description: "Device pixel ratio, 1-4" })),
+      mobile: Type.Optional(Type.Boolean({ description: "Mobile emulation: touch, mobile User-Agent and layout" })),
+      orientation: Type.Optional(Type.Union([Type.Literal("portrait"), Type.Literal("landscape")])),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      const { op, url, tab, ...size } = params;
+      const target = url ? normalizeAddress(url) : undefined;
+      if (target && !(await allowed(target, ctx))) throw new Error(`Opening ${target} was blocked by the user.`);
+      const set = Object.fromEntries(Object.entries(size).filter(([, value]) => value !== undefined));
+      const result = await call({ action: "window", op, url: target, tab, set: op === "open" ? set : undefined }, signal);
+      return reply(op === "open" && target ? await guard(result, ctx, signal) : result);
+    },
+  });
+
+  pi.registerTool({
     name: "browser_console",
     label: "Browser console",
     description: `${ABOUT}Return recent console messages, page errors and failed loads from the current tab.`,
-    parameters: Type.Object({ clear: Type.Optional(Type.Boolean({ description: "Clear the log after reading" })) }),
+    parameters: Type.Object({ clear: Type.Optional(Type.Boolean({ description: "Clear the log after reading" })), tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
+}),
     async execute(_id, params, signal) {
-      return reply(await call({ action: "console", clear: params.clear }, signal));
+      return reply(await call({ action: "console", clear: params.clear, tab: params.tab }, signal));
     },
   });
 }

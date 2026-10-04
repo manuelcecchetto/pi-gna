@@ -31,6 +31,7 @@ export class SessionHost {
   /** Choices main asked of the user (requestChoice). Answered from the window only; pi never sees them. */
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
   private readonly endListeners = new Set<(handle: string) => void>();
+  private readonly exitListeners = new Set<(handle: string) => void>();
   /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
   private readonly extensions = { browser: onDisk("resources", "browser-extension.ts"), kanban: onDisk("resources", "kanban-extension.ts"), laments: onDisk("resources", "lament-extension.ts") };
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
@@ -101,6 +102,7 @@ export class SessionHost {
           this.sessions.delete(handle);
           this.cwds.delete(handle);
           this.bridge.unregister(handle);
+          for (const listener of this.exitListeners) listener(handle);
           this.emit({ handle, events: [{ kind: "exit", ...exit }] });
         },
       },
@@ -141,6 +143,12 @@ export class SessionHost {
   onRunEnd(listener: (handle: string) => void): () => void {
     this.endListeners.add(listener);
     return () => this.endListeners.delete(listener);
+  }
+
+  /** Called when a chat's pi process exits (the session closed). Returns an unsubscribe. */
+  onExit(listener: (handle: string) => void): () => void {
+    this.exitListeners.add(listener);
+    return () => this.exitListeners.delete(listener);
   }
 
   private ended(handle: string): void {

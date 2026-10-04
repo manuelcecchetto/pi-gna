@@ -114,6 +114,7 @@ const computerAgent = new ComputerAgent(
 );
 bridge.route("/computer", computerRoute(() => computerAgent));
 host.onRunEnd((handle) => void computerAgent.release(handle));
+host.onExit((handle) => browser?.closeWindowsOf(handle));
 bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) => host.identify(handle))));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);

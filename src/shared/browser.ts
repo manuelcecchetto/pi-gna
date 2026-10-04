@@ -52,7 +52,7 @@ export interface Annotation {
 export type BrowserCommand = "back" | "forward" | "reload" | "stop";
 
 /** Agent tool calls from the pi extension, routed through the localhost bridge. */
-export type AgentAction =
+export type AgentAction = (
   | { action: "open"; url: string; newTab?: boolean }
   | { action: "snapshot" }
   | { action: "click"; ref: number }
@@ -63,7 +63,12 @@ export type AgentAction =
   | { action: "console"; clear?: boolean }
   | { action: "back" }
   | { action: "state" }
-  | { action: "viewport"; set?: ViewportRequest; reset?: boolean };
+  | { action: "viewport"; set?: ViewportRequest; reset?: boolean }
+  | { action: "window"; op: "open" | "close" | "list"; url?: string; set?: ViewportRequest }
+) & {
+  /** Tab id to act on (from browser_window); default is the session's current tab. */
+  tab?: string;
+};
 
 export interface AgentResult {
   url: string;
@@ -71,6 +76,8 @@ export interface AgentResult {
   text?: string;
   /** base64 JPEG for screenshots */
   image?: string;
+  /** Id of the tab the result is about; pass it as `tab` to address a window. */
+  tab?: string;
   /** Emulated viewport of the tab; absent when none is active. */
   viewport?: ViewportSpec;
 }
