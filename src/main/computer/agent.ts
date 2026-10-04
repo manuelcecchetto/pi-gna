@@ -326,7 +326,7 @@ export class ComputerAgent {
         params[key === "secondary_action" ? "action" : key] = value;
       }
       const result = await this.service.call(action as keyof ComputerMethods & "click", params as unknown as ComputerMethods["click"][0]);
-      summary = `${action} done${result.method ? ` (${result.method})` : ""}${result.settled === false ? "; the app was still busy" : ""}.\n\n`;
+      summary = `${action} done${result.method ? ` (${result.method})` : ""}${result.target ? `, keys went to ${result.target}` : ""}${result.settled === false ? "; the app was still busy" : ""}.\n\n`;
     }
     const state = await this.service.call("get_app_state", { app, disable_diff: action === "get_app_state" ? body.disable_diff === true : undefined });
     const result: ComputerResult = { text: summary + state.text, app: info };

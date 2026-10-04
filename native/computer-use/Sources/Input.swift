@@ -450,6 +450,92 @@ private func finish(_ t: InputTarget, wid: Int?, _ params: JSON, _ result: JSON)
     return out
 }
 
+// MARK: Key focus
+
+// Keystrokes and Paste go to whatever has keyboard focus in the app, not to an element. A click does not always move it
+// there: a web view embedded in a background window (an Office add-in task pane, an Electron pane) takes the click but
+// not key focus, so typing landed in the document next to it while reporting success. The helper remembers the text
+// element the agent last clicked, selected in or set, and refuses key input unless focus is confirmed on it.
+
+private struct KeyTarget { var element: AXUIElement; var point: CGPoint }   // point: global, inside the element
+private var keyTargets: [String: KeyTarget] = [:]
+private let keyTargetLock = NSLock()
+private let textEntryRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+
+private func axParent(_ el: AXUIElement) -> AXUIElement? {
+    guard let p = attr(el, kAXParentAttribute), CFGetTypeID(p) == AXUIElementGetTypeID() else { return nil }
+    return (p as! AXUIElement)
+}
+
+/// The element, or its nearest ancestor, that takes typed text (a click often hits a text run inside the field).
+private func textEntry(_ el: AXUIElement?) -> AXUIElement? {
+    var cur = el
+    for _ in 0..<6 {
+        guard let c = cur else { return nil }
+        if textEntryRoles.contains(axString(c, kAXRoleAttribute as String) ?? "") { return c }
+        cur = axParent(c)
+    }
+    return nil
+}
+
+/// Records where the agent pointed: a text element there becomes the key target, anything else clears it.
+private func aimKeys(_ t: InputTarget, at el: AXUIElement?, point: CGPoint) {
+    let entry = textEntry(el)
+    keyTargetLock.lock(); keyTargets[t.bundleId] = entry.map { KeyTarget(element: $0, point: point) }; keyTargetLock.unlock()
+}
+
+private func aimKeys(_ t: InputTarget, atWindowPoint p: CGPoint, _ w: ActionWindow) {
+    let g = CGPoint(x: w.frame.minX + p.x, y: w.frame.minY + p.y)
+    var hit: AXUIElement?
+    _ = AXUIElementCopyElementAtPosition(AXUIElementCreateApplication(t.pid), Float(g.x), Float(g.y), &hit)
+    aimKeys(t, at: hit, point: g)
+}
+
+/// After our own keys: focus they moved (Tab, Return in a form) is where the next keys are meant to go.
+private func followKeys(_ t: InputTarget) {
+    let f = focusedElement(t.pid)
+    let point = f.flatMap(axFrame).map { CGPoint(x: $0.midX, y: $0.midY) } ?? .zero
+    aimKeys(t, at: f, point: point)
+}
+
+private func keysReach(_ target: KeyTarget, _ focused: AXUIElement) -> Bool {
+    var cur: AXUIElement? = focused
+    for _ in 0..<40 {
+        guard let c = cur else { break }
+        if CFEqual(c, target.element) { return true }
+        cur = axParent(c)
+    }
+    // A field that swaps in its own editor on click: focus is on another text element at the same spot.
+    if textEntry(focused) != nil, let f = axFrame(focused), f.contains(target.point) { return true }
+    return false
+}
+
+private func describe(_ t: InputTarget, _ el: AXUIElement) -> String {
+    cacheLock.lock()
+    let index = appCaches[t.bundleId]?.elements.first(where: { CFEqual($0.value.element, el) })?.key
+    cacheLock.unlock()
+    let role = axString(el, kAXRoleAttribute as String) ?? "element"
+    let name = [kAXTitleAttribute, kAXDescriptionAttribute].lazy.compactMap { axString(el, $0 as String) }.first(where: { !$0.isEmpty })
+    return (index.map { "[\($0)] " } ?? "") + role + (name.map { " \"\($0)\"" } ?? "")
+}
+
+/// Before key input: throws, with nothing sent, unless keyboard focus is confirmed on the text element the agent aimed at
+/// (AX focus is tried first). An app that reports no focus fails too: Word then still routes keys to its document while
+/// the add-in pane's textarea claims AXFocused. Returns where the keys go, for the result.
+private func ensureKeyFocus(_ t: InputTarget, sending what: String) throws -> String? {
+    keyTargetLock.lock(); let target = keyTargets[t.bundleId]; keyTargetLock.unlock()
+    guard let target, attr(target.element, kAXRoleAttribute as String) != nil else { return focusedElement(t.pid).map { describe(t, $0) } }
+    if let f = focusedElement(t.pid), keysReach(target, f) { return describe(t, f) }
+    _ = AXUIElementSetAttributeValue(target.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)   // in-app focus only
+    usleep(150_000)
+    let focused = focusedElement(t.pid)
+    if let f = focused, keysReach(target, f) { return describe(t, f) }
+    let goal = describe(t, target.element)
+    let set = goal.hasPrefix("[") ? "computer_set_value on element \(goal.dropFirst().prefix(while: { $0 != "]" }))" : "computer_set_value on it"
+    let state = focused.map { "Keyboard focus in \(t.name) is on \(describe(t, $0)), not on" } ?? "\(t.name) does not report its keyboard focus, so it is not confirmed on"
+    throw unsupported("\(state) \(goal) that you last clicked, and \(what) could land elsewhere, e.g. in a document; nothing was sent. Web views embedded in a background app (Office add-in task panes, Electron panes) do not take key focus from a click. Enter the text with \(set) and press buttons by element_index instead.", "key_focus_elsewhere")
+}
+
 // MARK: Handlers
 
 private func rawActions(_ el: AXUIElement) -> [String] {
@@ -484,7 +570,8 @@ func registerInputMethods() {
             let actions = rawActions(e.el)
             // AXConfirm commits a text field's edit (and drops its focus), so it is not a click there.
             let role = axString(e.el, kAXRoleAttribute as String) ?? ""
-            let textual = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
+            let textual = textEntryRoles.contains(role)
+            aimKeys(t, at: e.el, point: CGPoint(x: e.frame.midX, y: e.frame.midY))
             let wanted: [String] = button == .right ? ["AXShowMenu"] : button == .middle ? [] : (count == 2 && actions.contains("AXOpen") ? ["AXOpen"] : ["AXPress", "AXPick"] + (textual ? [] : ["AXConfirm"]))
             if let action = wanted.first(where: { actions.contains($0) }) {
                 var last = AXError.success
@@ -493,8 +580,9 @@ func registerInputMethods() {
                 // AX refused; fall through to a synthesized click at the element center.
             }
         }
-        let (w, p, _) = try pointTarget(t, params)
+        let (w, p, hit) = try pointTarget(t, params)
         if !cursorMoved { overlayAct(t, wid: w.id, global: CGPoint(x: w.frame.minX + p.x, y: w.frame.minY + p.y), click: true) }
+        if hit == nil { aimKeys(t, atWindowPoint: p, w) }
         let r = try background(t, wid: w.id, pointer: true) { try synthClick(t, w, p, button: button, count: count) }
         return finish(t, wid: w.id, params, r)
     }
@@ -504,6 +592,7 @@ func registerInputMethods() {
         guard num(params, "from_x") != nil, num(params, "to_x") != nil else { throw RPCError(.invalidParams, "from_x, from_y, to_x, to_y are required") }
         let a = try pointTarget(t, params, xKey: "from_x", yKey: "from_y")
         let b = try pointTarget(t, params, xKey: "to_x", yKey: "to_y")
+        aimKeys(t, atWindowPoint: a.p, a.w)
         overlayAct(t, wid: a.w.id, global: CGPoint(x: a.w.frame.minX + a.p.x, y: a.w.frame.minY + a.p.y), click: true)
         overlayAct(t, wid: a.w.id, global: CGPoint(x: b.w.frame.minX + b.p.x, y: b.w.frame.minY + b.p.y), click: false)
         let r = try background(t, wid: a.w.id, pointer: true) { try synthDrag(t, a.w, from: a.p, to: b.p) }
@@ -539,11 +628,14 @@ func registerInputMethods() {
         let t = try inputTarget(params)
         guard let key = params["key"] as? String, !key.trimmingCharacters(in: .whitespaces).isEmpty else { throw RPCError(.invalidParams, "key is required") }
         let w = try actionWindow(t, params, screenshotCoords: false)
+        let into = try ensureKeyFocus(t, sending: "\"\(key)\"")
         var method = "cgevent"
         var r = try background(t, wid: w.id, pointer: false) {
             for spec in key.split(whereSeparator: { $0 == " " }) { method = try sendChord(t, wid: w.id, String(spec)); usleep(30_000) }
         }
         r["method"] = method
+        if let into { r["target"] = into }
+        followKeys(t)
         return finish(t, wid: w.id, params, r)
     }
 
@@ -551,7 +643,8 @@ func registerInputMethods() {
         let t = try inputTarget(params)
         guard let text = params["text"] as? String else { throw RPCError(.invalidParams, "text is required") }
         let w = try actionWindow(t, params, screenshotCoords: false)
-        let r = try background(t, wid: w.id, pointer: false) {
+        let into = try ensureKeyFocus(t, sending: "the text")
+        var r = try background(t, wid: w.id, pointer: false) {
             for ch in text {
                 if ch == "\n" || ch == "\r\n" { try postKey(t, wid: w.id, vk: 36, flags: [], chars: "\r") }
                 else if ch == "\t" { try postKey(t, wid: w.id, vk: 48, flags: [], chars: "\t") }
@@ -559,6 +652,8 @@ func registerInputMethods() {
                 usleep(6_000)
             }
         }
+        if let into { r["target"] = into }
+        followKeys(t)
         return finish(t, wid: w.id, params, r)
     }
 
@@ -576,6 +671,7 @@ func registerInputMethods() {
         let newValue: CFTypeRef = isNumber ? NSNumber(value: Double(value) ?? 0) : value as CFString
         let r = AXUIElementSetAttributeValue(e.el, kAXValueAttribute as CFString, newValue)
         guard r == .success else { throw axFail("Setting the value", r) }
+        aimKeys(t, at: e.el, point: CGPoint(x: e.frame.midX, y: e.frame.midY))
         return finish(t, wid: e.windowId, params, ["method": "ax"])
     }
 
@@ -600,6 +696,7 @@ func registerInputMethods() {
         _ = AXUIElementSetAttributeValue(e.el, kAXFocusedAttribute as CFString, kCFBooleanTrue)   // in-app focus only
         let r = AXUIElementSetAttributeValue(e.el, kAXSelectedTextRangeAttribute as CFString, value)
         guard r == .success else { throw axFail("Selecting the text", r) }
+        aimKeys(t, at: e.el, point: CGPoint(x: e.frame.midX, y: e.frame.midY))
         return finish(t, wid: e.windowId, params, ["method": "ax", "range": [range.location, range.length]])
     }
 
@@ -625,6 +722,7 @@ func registerInputMethods() {
         let format = params["format"] as? String ?? "text"
         guard ["text", "md", "html"].contains(format) else { throw RPCError(.invalidParams, "format must be text, md or html") }
         let w = try actionWindow(t, params, screenshotCoords: false)
+        let into = try ensureKeyFocus(t, sending: "the paste")
         pasteboardLock.lock(); defer { pasteboardLock.unlock() }
         let pb = NSPasteboard.general
         let saved: [[(NSPasteboard.PasteboardType, Data)]] = (pb.pasteboardItems ?? []).map { item in
@@ -670,6 +768,8 @@ func registerInputMethods() {
             r["formatLost"] = format == "html"
         }
         r["method"] = method
+        if let into { r["target"] = into }
+        followKeys(t)
         return finish(t, wid: w.id, params, r)
     }
 }

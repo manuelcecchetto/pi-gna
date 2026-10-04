@@ -37,6 +37,7 @@ function setup(options: { enabled?: boolean; answer?: string; idleMs?: number } 
       if (method === "screenshot") return { jpeg: "AAAA" };
       if (method === "overlay_show" || method === "overlay_hide") return {};
       if (gated.has(`${method}:${id}`)) await new Promise<void>((resolve) => gates.set(`${method}:${id}`, resolve));
+      if (method === "type_text") return { method: "cgevent", settled: true, target: '[9] AXTextArea "chat"' };
       return { method: "ax", settled: true };
     }),
   };
@@ -212,6 +213,13 @@ describe("computer route locks and cleanup", () => {
     const state = await allowed.agent.run("a1", { action: "get_app_state", app: "Notes" });
     expect(state).toMatchObject({ text: "state of com.apple.Notes", image: "AAAA" });
     expect(allowed.calls.some((c) => c.method === "resolve_app" && c.params.launch === true)).toBe(true);
+  });
+
+  it("names the element a key action's keys went to", async () => {
+    const t = setup();
+    const result = await t.agent.run("a1", { action: "type_text", app: "TextEdit", text: "hi" });
+    expect(result.text).toContain('type_text done (cgevent), keys went to [9] AXTextArea "chat".');
+    expect((await t.agent.run("a1", click("TextEdit"))).text).toContain("click done (ax).");
   });
 
   it("forwards only the declared parameters and maps the secondary action name", async () => {

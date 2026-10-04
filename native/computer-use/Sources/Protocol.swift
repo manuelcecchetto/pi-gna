@@ -3,7 +3,7 @@ import Foundation
 /// Helper protocol version spoken on the socket and bumped only when the wire format changes.
 let protocolVersion = 1
 /// Bumped only when the helper's own behavior changes (see docs/DESIGN.md, "Computer Use").
-let helperVersion = 2
+let helperVersion = 3
 
 typealias JSON = [String: Any]
 

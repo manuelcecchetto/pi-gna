@@ -10,6 +10,11 @@ moves those lines under the new version, and they become its GitHub release note
   version. pi can set it too (`browser_viewport`, shown with a "Set by pi" badge and kept until you reset it) and open
   standalone windows at an exact size, aspect ratio and DPR (`browser_window`, up to 4); pop a tab out into a window
   and return it.
+- Computer Use no longer types into the wrong element: when you last clicked, selected in or set a text element,
+  `computer_type_text`, `computer_press_key` and `computer_paste` send keys only if the app's keyboard focus is
+  confirmed on it, and otherwise fail with nothing sent. Before, text meant for a Word add-in's chat landed in the
+  document. Key actions now name the element their keys went to. The helper is version 3, so macOS asks for
+  Accessibility and Screen Recording again.
 
 ## 0.3.0 - 2026-10-04
 

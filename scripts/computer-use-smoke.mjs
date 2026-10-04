@@ -113,7 +113,7 @@ async function runFixture() {
     execFileSync('swiftc', ['-O', '-o', join(dir, 'MacOS/Fixture'), join(src, 'Fixture.swift')])
     writeFileSync(join(dir, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.pigna.fixture${n.toLowerCase()}</string><key>CFBundleExecutable</key><string>Fixture</string><key>CFBundleName</key><string>PiFixture${n}</string><key>CFBundlePackageType</key><string>APPL</string><key>NSPrincipalClass</key><string>NSApplication</string></dict></plist>`)
     execFileSync('codesign', ['--force', '--sign', '-', join(work, `Fixture${n}.app`)], { stdio: 'ignore' })
-    return { n, bundle: `dev.pigna.fixture${n.toLowerCase()}`, path: join(work, `Fixture${n}.app`), log: join(work, `${n}.log`), x: 120 + i * 700 }
+    return { n, bundle: `dev.pigna.fixture${n.toLowerCase()}`, path: join(work, `Fixture${n}.app`), log: join(work, `${n}.log`), x: 120 + i * 960 }
   })
   for (const f of fixtures) {
     // -g: do not activate; no -j so the window stays on screen (hidden windows drop background clicks).
@@ -220,6 +220,43 @@ async function runFixture() {
   r = await call('paste', { app: A.bundle, text: 'PASTED', ...SETTLE })
   check('paste text', await seen(A, n, 'TV PASTED'), JSON.stringify(r.error ?? r.result))
   check('clipboard restored after paste', execFileSync('pbpaste', { encoding: 'utf8' }) === clip0)
+
+  // Embedded web pane (like an Office add-in task pane) in a background window: a click does not give it key focus, so
+  // keystrokes would land in the text view that still has it. Key input must fail and send nothing instead.
+  st = await state(A)
+  const chat = idx(st.text, 'AXTextArea "chat"')
+  n = lines(A)
+  await call('click', { app: A.bundle, element_index: chat, ...SETTLE })
+  r = await call('type_text', { app: A.bundle, text: 'WEBTEXT', ...SETTLE })
+  if (r.error) {
+    check('type_text after clicking a web textarea refuses with key_focus_elsewhere', r.error.code === -32011 && r.error.data?.cause === 'key_focus_elsewhere', r.error.message)
+  } else {
+    check('type_text after clicking a web textarea reaches it', r.result.target?.includes('chat') && (await seen(A, n, 'WEB chat=WEBTEXT')), JSON.stringify(r.result))
+  }
+  await new Promise((r) => setTimeout(r, 500))
+  check('the text view did not receive the keys', !/ TV .*WEBTEXT/.test(since(A, n)))
+  if (screenshotOk) {
+    st = await state(A)
+    const wv = st.screenshot.width / 900
+    n = lines(A)
+    await call('click', { app: A.bundle, x: 700 * wv, y: 40 * wv, ...SETTLE })
+    r = await call('press_key', { app: A.bundle, key: 'Return', ...SETTLE })
+    // A synthesized click does give a WKWebView key focus (WebKit may not report it): Return reaches the web textarea.
+    const reached = r.error ? r.error.data?.cause === 'key_focus_elsewhere' : await seen(A, n, /WEB chat=\n/)
+    check('press_key after an x,y click on the web textarea reaches it or refuses, never the text view', reached && !/ TV /.test(since(A, n)), JSON.stringify(r.error?.message ?? r.result))
+  }
+  st = await state(A)
+  n = lines(A)
+  r = await call('set_value', { app: A.bundle, element_index: idx(st.text, 'AXTextArea "chat"'), value: 'via set_value', ...SETTLE })
+  check('set_value fills the web textarea', r.result?.method === 'ax' && (await seen(A, n, 'WEB chat=via set_value')), JSON.stringify(r.error ?? r.result))
+  r = await call('press_key', { app: A.bundle, key: 'Return', ...SETTLE })
+  check('Return after set_value on the web textarea is not sent to the text view', !/ TV /.test(since(A, n)), JSON.stringify(r.error?.message ?? r.result))
+  // Back on the native text view, keys flow again and the result names their target.
+  st = await state(A)
+  await call('click', { app: A.bundle, element_index: idx(st.text, 'AXTextField'), ...SETTLE })
+  n = lines(A)
+  r = await call('type_text', { app: A.bundle, text: '!', ...SETTLE })
+  check('type_text after clicking a native field reaches it and names it', (await seen(A, n, "TEXT field='world!'")) && /AXTextField/.test(r.result?.target ?? ''), JSON.stringify(r.error ?? r.result))
 
   st = await state(A)
   r = await call('perform_secondary_action', { app: A.bundle, element_index: textArea ?? 0, action: 'Bogus', ...SETTLE })

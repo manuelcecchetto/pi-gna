@@ -70,6 +70,8 @@ export interface ActionParams {
 export interface ActionResult {
   method?: string;
   settled?: boolean;
+  /** type_text, press_key, paste: the element that had keyboard focus, e.g. `[9] AXTextArea "chat"`. */
+  target?: string;
   [key: string]: unknown;
 }
 
