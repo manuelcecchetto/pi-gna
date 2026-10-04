@@ -656,12 +656,17 @@ Verified live (pi 1.0.0, Oct 2026):
   compaction is when context gets summarized. Stats refresh after every `turn_end` and `compaction_end`
   (`get_session_stats` takes a few ms even on a 40 MB session). Right after compaction pi does not know the
   size until the next response, shown as a dashed ring.
-- Output speed (`TokenRate`, `lib/token-rate.ts`): tok/s beside the context meter, per response, from its first
-  streamed block to its last (time to first token and tool runs do not count). Providers report output tokens
-  only when a response ends (pi's `message_update` usage is not live), so while it streams the count is estimated
-  from the streamed text, thinking and tool arguments (4 characters a token, shown as `~`), and `message_end`'s
-  `usage.output` replaces it. The last response's rate stays, dimmed, after the run; responses read from a session
-  file have no timings, so they show none.
+- Output speed (`TokenRate`, `lib/token-rate.ts`): tok/s beside the context meter, per response, over the time it
+  spent streaming tokens only. A `StreamClock` on the assistant item starts at the first streamed block (time to
+  first token does not count) and advances with each stream event by the gap since the last one, capped at
+  `STALL_MS` (1s): longer pauses inside a response (tool input the provider buffers, reasoning it does not stream,
+  a stall) are waits, so the live readout holds instead of dropping; tool runs fall between responses. Providers
+  report output tokens only when a response ends (pi's `message_update` usage is not live), so while it streams the
+  count is estimated from the streamed text, thinking and tool arguments (4 characters a token, shown as `~`), and
+  `message_end`'s `usage.output` replaces it. When the provider reports `usage.reasoning`, the reasoning tokens are
+  swapped for the estimate of the reasoning that streamed (summaries), since the rest was produced during waits
+  that do not count. The last response's rate stays, dimmed, after the run; responses read from a session file
+  have no timings, so they show none.
 - Compaction visibility: `compaction_start` adds a running transcript record; `compaction_end` updates that
   same keyed record to completed, failed or interrupted. Show one live indicator with elapsed time in the
   chat, including manual compaction outside an agent run; do not repeat it above the composer or beside the

@@ -17,29 +17,69 @@ function play(events: [number, SessionEvent][], start: SessionState = createSess
 }
 const lastAssistant = (state: SessionState) => state.items.findLast((item): item is AssistantItem => item.kind === "assistant")!;
 
-// 400 characters: about 100 tokens.
+const text = (at: number, chars: number): [number, SessionEvent] =>
+  [at, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "x".repeat(chars) } }];
+
+// 400 characters (about 100 tokens) in one second, a delta every quarter second.
 const streamed: [number, SessionEvent][] = [
   [0, { type: "agent_start" }],
   [100, { type: "message_start", message: assistant([]) }],
   [1000, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
-  [1500, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "x".repeat(400) } }],
+  text(1250, 100), text(1500, 100), text(1750, 100), text(2000, 100),
+];
+const ended = (at: number, output: number, reasoning?: number, more: AssistantMessage["content"] = []): [number, SessionEvent][] => [
+  [at, { type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "x".repeat(400) } }],
+  [at, { type: "message_end", message: { ...assistant([{ type: "text", text: "x".repeat(400) }, ...more], output), usage: { ...usage(output), reasoning } } }],
 ];
 
 describe("token rate", () => {
   it("estimates from the streamed text, timed from the first block, while the response streams", () => {
-    const rate = responseRate(lastAssistant(play(streamed)), 3000);
-    expect(rate).toEqual({ perSecond: 50, tokens: 100, seconds: 2, estimated: true, live: true });
+    const rate = responseRate(lastAssistant(play(streamed)), 2000);
+    expect(rate).toEqual({ perSecond: 100, tokens: 100, seconds: 1, estimated: true, live: true });
+  });
+
+  it("stops the clock when nothing streams, so waits do not lower the rate", () => {
+    const item = lastAssistant(play(streamed));
+    // Up to a second of a pause counts, then the rate holds.
+    expect(responseRate(item, 2500)?.seconds).toBe(1.5);
+    expect(responseRate(item, 3000)?.seconds).toBe(2);
+    expect(responseRate(item, 60_000)).toMatchObject({ perSecond: 50, seconds: 2 });
+  });
+
+  it("does not count waits between stream events, like buffered tool input", () => {
+    const state = play([
+      ...streamed,
+      [2000, { type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "x".repeat(400) } }],
+      [20_000, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1, id: "c1", toolName: "write" } }],
+      [20_100, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: "y".repeat(400) } }],
+      [50_000, { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 1, delta: "y".repeat(400) } }],
+    ]);
+    // 1s of text, 1s of the 18s pause, 0.1s, 1s of the 30s pause; 1200 characters.
+    expect(responseRate(lastAssistant(state), 50_000)).toMatchObject({ tokens: 300, seconds: 3.1, live: true });
   });
 
   it("switches to the provider's output count once the response ends", () => {
-    const state = play([
-      ...streamed,
-      [3000, { type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "x".repeat(400) } }],
-      [3000, { type: "message_end", message: assistant([{ type: "text", text: "x".repeat(400) }], 180) }],
-      [3100, { type: "agent_settled" }],
-    ]);
+    const state = play([...streamed, ...ended(2000, 180), [3100, { type: "agent_settled" }]]);
     // Later clocks do not change a finished response.
-    expect(responseRate(lastAssistant(state), 60_000)).toEqual({ perSecond: 90, tokens: 180, seconds: 2, estimated: false, live: false });
+    expect(responseRate(lastAssistant(state), 60_000)).toEqual({ perSecond: 180, tokens: 180, seconds: 1, estimated: false, live: false });
+  });
+
+  it("leaves out reasoning the provider did not stream", () => {
+    const thought: [number, SessionEvent][] = [
+      [0, { type: "message_start", message: assistant([]) }],
+      [0, { type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 1 } }],
+      [500, { type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 1, delta: "t".repeat(200) } }],
+      [500, { type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 1, content: "t".repeat(200) } }],
+      [10_000, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
+      [10_500, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "x".repeat(400) } }],
+    ];
+    // 2000 reasoning tokens over the 10s pause, 50 of them streamed as a summary; 100 text tokens.
+    const summary: AssistantMessage["content"] = [{ type: "thinking", thinking: "t".repeat(200) }];
+    const hidden = play([...thought, ...ended(10_500, 2100, 2000, summary)]);
+    expect(responseRate(lastAssistant(hidden), 20_000)).toMatchObject({ tokens: 150, seconds: 2, estimated: true });
+    // Providers without a reasoning breakdown: their count as reported.
+    const plain = play([...thought, ...ended(10_500, 2100, undefined, summary)]);
+    expect(responseRate(lastAssistant(plain), 20_000)).toMatchObject({ tokens: 2100, estimated: false });
   });
 
   it("counts thinking and streamed tool arguments, but not redacted thinking", () => {
@@ -57,17 +97,14 @@ describe("token rate", () => {
   });
 
   it("waits for half a second of streaming, keeping the previous response meanwhile", () => {
-    const first = play([
-      ...streamed,
-      [3000, { type: "message_end", message: assistant([{ type: "text", text: "x".repeat(400) }], 180) }],
-    ]);
+    const first = play([...streamed, ...ended(2000, 180)]);
     const next = play([
       [4000, { type: "message_start", message: assistant([]) }],
       [4100, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
       [4200, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "y".repeat(40) } }],
     ], first);
     expect(responseRate(lastAssistant(next), 4300)).toBeUndefined();
-    expect(latestRate(next.items, 4300)).toMatchObject({ perSecond: 90, live: false });
+    expect(latestRate(next.items, 4300)).toMatchObject({ perSecond: 180, live: false });
     expect(latestRate(next.items, 5100)).toMatchObject({ perSecond: 10, tokens: 10, live: true });
   });
 
@@ -89,12 +126,12 @@ describe("TokenRate", () => {
   };
 
   it("shows the live estimate, then the reported rate dimmed once the response ends", () => {
-    const live = render(play(streamed), 3000);
-    expect(live).toContain("~50 tok/s");
+    const live = render(play(streamed), 2000);
+    expect(live).toContain("~100 tok/s");
     expect(live).toContain("text-muted");
-    expect(live).toContain("Output speed of the response streaming now: ~100 tokens in 2.0s");
-    const done = render(play([...streamed, [3000, { type: "message_end", message: assistant([{ type: "text", text: "x".repeat(400) }], 15) }], [3100, { type: "agent_settled" }]]), 60_000);
-    expect(done).toContain("7.5 tok/s");
+    expect(live).toContain("Output speed of the response streaming now: ~100 tokens in 1.0s");
+    const done = render(play([...streamed, ...ended(2000, 15), [3100, { type: "agent_settled" }]]), 60_000);
+    expect(done).toContain("15 tok/s");
     expect(done).not.toContain("~");
     expect(done).toContain("text-faint");
   });

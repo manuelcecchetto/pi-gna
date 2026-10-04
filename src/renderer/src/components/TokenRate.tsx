@@ -5,7 +5,7 @@ import { latestRate } from "../lib/token-rate";
 import { useNow } from "./primitives";
 
 export function TokenRate({ session }: { session: SessionState }) {
-  // Ticks while pi runs, so the rate of a stalled stream drops instead of freezing.
+  // Ticks while pi runs: the rate follows the stream, and holds once a pause outlasts STALL_MS.
   useNow(500, session.running);
   const rate = latestRate(session.items, Date.now());
   if (!rate) return null;

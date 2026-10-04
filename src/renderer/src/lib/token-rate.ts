@@ -7,34 +7,48 @@ import type { AssistantItem, Item } from "./session";
 const CHARS_PER_TOKEN = 4;
 /** Shorter streams give noisy rates, for example a tool call that arrives in one burst. */
 const MIN_SECONDS = 0.5;
+/**
+ * A longer pause between stream events is a wait, not streaming: tool input the provider buffers, reasoning it
+ * does not stream, a stalled connection. At most this much of each pause counts.
+ */
+export const STALL_MS = 1000;
+
+/** Time a response spent streaming: `ms` up to the stream event at `at`. */
+export interface StreamClock {
+  ms: number;
+  at: number;
+}
+
+/** The clock after a stream event at `now`; the first event starts it, so time to first token does not count. */
+export function tickStream(clock: StreamClock | undefined, now: number): StreamClock {
+  return clock ? { ms: clock.ms + Math.min(now - clock.at, STALL_MS), at: now } : { ms: 0, at: now };
+}
 
 export interface ResponseRate {
   perSecond: number;
   tokens: number;
   seconds: number;
-  /** Counted from the streamed characters; the provider's count replaces it when the response ends. */
+  /** Counted from the streamed characters, wholly or for reasoning; the provider's count replaces it where it can. */
   estimated: boolean;
   /** The response is still streaming. */
   live: boolean;
 }
 
 /**
- * Output tokens per second of one response, from its first streamed block to its last (or now, while it
- * streams): time to first token and tool runs do not count. Undefined without timings (responses read from
- * a session file) or while too short to tell.
+ * Output tokens per second of one response while it streams tokens: time to first token, waits between stream
+ * events (see `STALL_MS`) and tool runs do not count. Undefined without timings (responses read from a session
+ * file) or while too short to tell.
  */
 export function responseRate(item: AssistantItem, now: number): ResponseRate | undefined {
+  const clock = item.clock;
+  if (!clock) return undefined;
   const times = Object.values(item.times ?? {});
-  if (!times.length) return undefined;
   if (!item.streaming && times.some((time) => time.end === undefined)) return undefined; // cut off: no end time
-  const start = Math.min(...times.map((time) => time.start));
-  const end = item.streaming ? now : Math.max(...times.map((time) => time.end ?? time.start));
-  const seconds = (end - start) / 1000;
+  const seconds = (item.streaming ? tickStream(clock, now).ms : clock.ms) / 1000;
   if (seconds < MIN_SECONDS) return undefined;
-  const reported = item.streaming ? 0 : (item.message.usage?.output ?? 0);
-  const tokens = reported > 0 ? reported : estimateTokens(item);
+  const { tokens, estimated } = countTokens(item);
   if (tokens <= 0) return undefined;
-  return { perSecond: tokens / seconds, tokens, seconds, estimated: reported <= 0, live: item.streaming };
+  return { perSecond: tokens / seconds, tokens, seconds, estimated, live: item.streaming };
 }
 
 /** The newest response with a rate: the one streaming, else the last one measured (also after the run). */
@@ -48,12 +62,24 @@ export function latestRate(items: Item[], now: number): ResponseRate | undefined
   return undefined;
 }
 
-function estimateTokens(item: AssistantItem): number {
-  let chars = 0;
+function countTokens(item: AssistantItem): { tokens: number; estimated: boolean } {
+  const chars = streamedChars(item);
+  const usage = item.streaming ? undefined : item.message.usage;
+  const output = usage?.output ?? 0;
+  if (output <= 0) return { tokens: Math.round((chars.thinking + chars.other) / CHARS_PER_TOKEN), estimated: true };
+  if (!usage?.reasoning) return { tokens: output, estimated: false };
+  // Reasoning tokens include reasoning that was never streamed (OpenAI's hidden reasoning, Claude's summarized
+  // thinking), produced while nothing streamed: count only the reasoning text that did stream.
+  const visible = Math.max(0, output - usage.reasoning);
+  return { tokens: visible + Math.round(chars.thinking / CHARS_PER_TOKEN), estimated: chars.thinking > 0 };
+}
+
+function streamedChars(item: AssistantItem): { thinking: number; other: number } {
+  const chars = { thinking: 0, other: 0 };
   item.message.content.forEach((block, index) => {
-    if (block.type === "text") chars += block.text.length;
-    else if (block.type === "thinking" && !block.redacted) chars += block.thinking.length;
-    else if (block.type === "toolCall") chars += item.partialArgs?.[index]?.length ?? JSON.stringify(block.arguments).length;
+    if (block.type === "text") chars.other += block.text.length;
+    else if (block.type === "thinking" && !block.redacted) chars.thinking += block.thinking.length;
+    else if (block.type === "toolCall") chars.other += item.partialArgs?.[index]?.length ?? JSON.stringify(block.arguments).length;
   });
-  return Math.round(chars / CHARS_PER_TOKEN);
+  return chars;
 }
