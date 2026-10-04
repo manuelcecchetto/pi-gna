@@ -32,6 +32,8 @@ export class SessionHost {
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
   private readonly endListeners = new Set<(handle: string) => void>();
   private readonly exitListeners = new Set<(handle: string) => void>();
+  private readonly working = new Set<string>();
+  private readonly runningListeners = new Set<() => void>();
   /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
   private readonly extensions = { browser: onDisk("resources", "browser-extension.ts"), kanban: onDisk("resources", "kanban-extension.ts"), laments: onDisk("resources", "lament-extension.ts") };
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
@@ -99,6 +101,7 @@ export class SessionHost {
       {
         onRecords: (records) => {
           this.emit({ handle, events: records.map((record) => ({ kind: "rpc", record })) });
+          if (records.some((record) => record.type === "agent_start")) this.started(handle);
           if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
         },
         onExit: (exit) => {
@@ -156,7 +159,26 @@ export class SessionHost {
     return () => this.exitListeners.delete(listener);
   }
 
+  /** How many chats are mid-run. */
+  get running(): number {
+    return this.working.size;
+  }
+
+  /** Called whenever the number of running chats changes. Returns an unsubscribe. */
+  onRunningChange(listener: () => void): () => void {
+    this.runningListeners.add(listener);
+    return () => this.runningListeners.delete(listener);
+  }
+
+  private started(handle: string): void {
+    if (!this.working.has(handle)) {
+      this.working.add(handle);
+      for (const listener of this.runningListeners) listener();
+    }
+  }
+
   private ended(handle: string): void {
+    if (this.working.delete(handle)) for (const listener of this.runningListeners) listener();
     for (const listener of this.endListeners) {
       try {
         listener(handle);

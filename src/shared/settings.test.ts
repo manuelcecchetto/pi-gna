@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySettingsOp, emptySettings, parseSettings, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel } from "./settings";
+import { applySettingsOp, emptySettings, parseSettings, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake } from "./settings";
 
 const start = emptySettings();
 
@@ -96,5 +96,50 @@ describe("settingsConflict", () => {
     expect(settingsConflict(emptySettings(), { ...dark, models: { triage: { id: "m", thinking: "low" } } }, { type: "model", task: "triage", model: null })).toBe(true);
     expect(settingsConflict(emptySettings(), dark, { type: "visuals", on: true })).toBe(false);
     expect(settingsConflict(undefined, dark, { type: "theme", theme: "light" })).toBe(true);
+  });
+});
+
+describe("remote access and host lifecycle", () => {
+  const on = applySettingsOp(start, { type: "remoteEnabled", on: true });
+
+  it("is off by default, on port 4517, keeping the Mac awake while it works", () => {
+    expect(start.remote).toEqual({ enabled: false, port: 4517, keepAwake: "while-working" });
+    expect(start.openAtLogin).toBe(false);
+  });
+
+  it("applies each change and returns the same value when nothing changes", () => {
+    expect(on.remote.enabled).toBe(true);
+    expect(applySettingsOp(on, { type: "remoteEnabled", on: true })).toBe(on);
+    expect(applySettingsOp(on, { type: "remotePort", port: 5000 }).remote.port).toBe(5000);
+    expect(applySettingsOp(on, { type: "remotePort", port: 4517 })).toBe(on);
+    expect(applySettingsOp(on, { type: "keepAwake", mode: "always" }).remote.keepAwake).toBe("always");
+    expect(applySettingsOp(on, { type: "keepAwake", mode: "while-working" })).toBe(on);
+    expect(applySettingsOp(start, { type: "openAtLogin", on: true }).openAtLogin).toBe(true);
+    expect(applySettingsOp(start, { type: "openAtLogin", on: false })).toBe(start);
+  });
+
+  it("rejects invalid values", () => {
+    for (const port of [80, 70000, 4517.5, "4517", NaN]) expect(() => applySettingsOp(start, { type: "remotePort", port: port as number })).toThrow(SettingsError);
+    expect(() => applySettingsOp(start, { type: "keepAwake", mode: "sometimes" as never })).toThrow(SettingsError);
+    expect(() => applySettingsOp(start, { type: "remoteEnabled", on: "yes" as never })).toThrow(SettingsError);
+    expect(() => applySettingsOp(start, { type: "openAtLogin", on: 1 as never })).toThrow(SettingsError);
+  });
+
+  it("changes behaviour only while remote access is on", () => {
+    const always = applySettingsOp(start, { type: "keepAwake", mode: "always" });
+    expect(hidesOnClose(start)).toBe(false);
+    expect(wantsKeepAwake(always, true)).toBe(false);
+    expect(hidesOnClose(on)).toBe(true);
+    expect(wantsKeepAwake(on, false)).toBe(false);
+    expect(wantsKeepAwake(on, true)).toBe(true);
+    expect(wantsKeepAwake(applySettingsOp(on, { type: "keepAwake", mode: "always" }), false)).toBe(true);
+    expect(wantsKeepAwake(applySettingsOp(on, { type: "keepAwake", mode: "off" }), true)).toBe(false);
+  });
+
+  it("reads the saved values, dropping bad ones", () => {
+    const { settings, dropped } = parseSettings({ openAtLogin: true, remote: { enabled: true, port: 80, keepAwake: "always" } });
+    expect(settings.remote).toEqual({ enabled: true, port: 4517, keepAwake: "always" });
+    expect(settings.openAtLogin).toBe(true);
+    expect(dropped).toBe(1);
   });
 });

@@ -41,6 +41,21 @@ export const TASK_DEFAULTS: Readonly<Record<Task, TaskModel>> = {
   worker: { id: "claude-sonnet-5-5", thinking: "medium" },
 };
 
+/** When the Mac may not idle-sleep while remote access is on: never, only while a chat or ATP plan runs, or always. */
+export const KEEP_AWAKE_MODES = ["off", "while-working", "always"] as const;
+export type KeepAwake = (typeof KEEP_AWAKE_MODES)[number];
+
+export const KEEP_AWAKE_LABELS: Readonly<Record<KeepAwake, string>> = { off: "Off", "while-working": "While working", always: "Always" };
+
+/** Remote access (docs/REMOTE.md): the phone's window onto this Mac. Off by default; the port is always on 127.0.0.1. */
+export interface RemoteSettings {
+  enabled: boolean;
+  port: number;
+  keepAwake: KeepAwake;
+}
+
+export const REMOTE_DEFAULT_PORT = 4517;
+
 export interface Settings {
   version: 1;
   features: Record<Feature, boolean>;
@@ -52,6 +67,9 @@ export interface Settings {
   visuals: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
+  remote: RemoteSettings;
+  /** Start pi-gna when you log in to the Mac. */
+  openAtLogin: boolean;
 }
 
 export type SettingsOp =
@@ -60,11 +78,15 @@ export type SettingsOp =
   | { type: "wallpaper"; wallpaper: Wallpaper }
   | { type: "wallpaperLoop"; loop: boolean }
   | { type: "visuals"; on: boolean }
+  | { type: "remoteEnabled"; on: boolean }
+  | { type: "remotePort"; port: number }
+  | { type: "keepAwake"; mode: KeepAwake }
+  | { type: "openAtLogin"; on: boolean }
   /** null: back to the default. */
   | { type: "model"; task: Task; model: TaskModel | null };
 
 /** The sections of the Settings page; main opens it at one (View > Computer Use). */
-export const SETTINGS_SECTIONS = ["general", "appearance", "shortcuts", "providers", "models", "agent", "features", "computer"] as const;
+export const SETTINGS_SECTIONS = ["general", "appearance", "shortcuts", "providers", "models", "agent", "features", "remote", "computer"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const isSettingsSection = (value: unknown): value is SettingsSection => SETTINGS_SECTIONS.includes(value as SettingsSection);
@@ -79,7 +101,18 @@ export const emptySettings = (): Settings => ({
   wallpaperLoop: false,
   visuals: false,
   models: {},
+  remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
+  openAtLogin: false,
 });
+
+const isPort = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1024 && (value as number) <= 65535;
+
+/** Whether the Mac must be kept from idle-sleeping: only with remote access on, and per the keep-awake mode. */
+export const wantsKeepAwake = (settings: Settings, working: boolean): boolean =>
+  settings.remote.enabled && (settings.remote.keepAwake === "always" || (settings.remote.keepAwake === "while-working" && working));
+
+/** Whether closing the window hides it instead of quitting (so the Mac keeps serving). */
+export const hidesOnClose = (settings: Settings): boolean => settings.remote.enabled;
 
 const NAME = 200;
 const isName = (value: unknown): value is string => typeof value === "string" && value.trim() !== "" && value.length <= NAME;
@@ -120,6 +153,22 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
     case "visuals": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn visuals ${String(op.on)}`);
       return settings.visuals === op.on ? settings : { ...settings, visuals: op.on };
+    }
+    case "remoteEnabled": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
+      return settings.remote.enabled === op.on ? settings : { ...settings, remote: { ...settings.remote, enabled: op.on } };
+    }
+    case "remotePort": {
+      if (!isPort(op.port)) throw new SettingsError(`not a port between 1024 and 65535: ${String(op.port)}`);
+      return settings.remote.port === op.port ? settings : { ...settings, remote: { ...settings.remote, port: op.port } };
+    }
+    case "keepAwake": {
+      if (!KEEP_AWAKE_MODES.includes(op.mode)) throw new SettingsError(`unknown keep-awake mode ${String(op.mode)}`);
+      return settings.remote.keepAwake === op.mode ? settings : { ...settings, remote: { ...settings.remote, keepAwake: op.mode } };
+    }
+    case "openAtLogin": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn open at login ${String(op.on)}`);
+      return settings.openAtLogin === op.on ? settings : { ...settings, openAtLogin: op.on };
     }
     case "model": {
       if (!TASKS.includes(op.task)) throw new SettingsError(`unknown task ${String(op.task)}`);
@@ -163,6 +212,15 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.wallpaperLoop !== undefined) dropped++;
   if (typeof file.visuals === "boolean") settings.visuals = file.visuals;
   else if (file.visuals !== undefined) dropped++;
+  if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
+  else if (file.openAtLogin !== undefined) dropped++;
+  const remote = (file.remote ?? {}) as Record<string, unknown>;
+  if (typeof remote.enabled === "boolean") settings.remote.enabled = remote.enabled;
+  else if (remote.enabled !== undefined) dropped++;
+  if (isPort(remote.port)) settings.remote.port = remote.port;
+  else if (remote.port !== undefined) dropped++;
+  if (KEEP_AWAKE_MODES.includes(remote.keepAwake as KeepAwake)) settings.remote.keepAwake = remote.keepAwake as KeepAwake;
+  else if (remote.keepAwake !== undefined) dropped++;
   const models = (file.models ?? {}) as Record<string, unknown>;
   for (const task of TASKS) {
     if (models[task] === undefined) continue;

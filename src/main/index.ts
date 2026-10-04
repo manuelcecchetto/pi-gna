@@ -2,7 +2,7 @@ import { EventHub } from "./event-hub";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, session, shell } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, powerSaveBlocker, session, shell } from "electron";
 import { bugs, description } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
@@ -14,7 +14,7 @@ import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
 import { type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
-import { emptySettings, type Feature, type Settings, type SettingsOp } from "../shared/settings";
+import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
 import { Atp, librarianPath } from "./atp";
 import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
@@ -83,6 +83,10 @@ function adoptProfile(oldName: string, oldPartition: string): void {
 }
 
 let window: BrowserWindow | undefined;
+let current: Settings = emptySettings();
+let keepAwakeId: number | undefined;
+/** Set once the app is really quitting, so the window closes instead of hiding. */
+let quitting = false;
 let browser: BrowserManager | undefined;
 let agent: BrowserAgent | undefined;
 let updater: Updater | undefined;
@@ -194,6 +198,12 @@ function createWindow(): void {
     if (details.level === "warning" || details.level === "error") {
       log[details.level === "error" ? "error" : "warn"]("renderer", `${details.message}  (${details.sourceId.split("/").at(-1)}:${details.lineNumber})`);
     }
+  });
+  // With remote access on, closing hides the window: the app, its chats and the browser pane keep running.
+  window.on("close", (event) => {
+    if (quitting || !hidesOnClose(current)) return;
+    event.preventDefault();
+    window?.hide();
   });
   window.on("focus", () => send(IPC.windowFocus, true));
   window.on("blur", () => send(IPC.windowFocus, false));
@@ -424,10 +434,44 @@ async function checkForUpdates(): Promise<void> {
   }
 }
 
-/** The window follows its appearance setting; the menu shows only the pages of features that are on. */
+/** The window follows its appearance setting; the menu shows only the pages of features that are on. Remote access
+ * adds the host lifecycle: closing hides the window, the Mac may be kept awake, and pi-gna may open at login. */
 function applySettings(next: Settings): void {
+  current = next;
   nativeTheme.themeSource = next.theme;
   buildMenu(next.features);
+  syncKeepAwake();
+  // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
+  if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
+}
+
+/** Holds a power-save blocker (no idle sleep; the display may still sleep) exactly while the keep-awake setting wants
+ * it. It cannot keep a closed MacBook lid awake: macOS sleeps then unless on power with an external display. */
+function syncKeepAwake(): void {
+  const wanted = wantsKeepAwake(current, host.running > 0);
+  if (wanted && keepAwakeId === undefined) {
+    keepAwakeId = powerSaveBlocker.start("prevent-app-suspension");
+    log.info("pigna", `keep-awake on (${current.remote.keepAwake}, ${host.running} chat(s) running)`);
+  } else if (!wanted && keepAwakeId !== undefined) {
+    powerSaveBlocker.stop(keepAwakeId);
+    keepAwakeId = undefined;
+    log.info("pigna", `keep-awake off (${current.remote.enabled ? current.remote.keepAwake : "remote access off"}, ${host.running} chat(s) running)`);
+  }
+}
+
+/** Quit asks first when remote access is on and something would be cut off. Paired devices will count too once pairing exists. */
+function confirmQuit(): boolean {
+  const running = host.running;
+  if (!hidesOnClose(current) || running === 0) return true;
+  const choice = dialog.showMessageBoxSync({
+    type: "warning",
+    buttons: ["Quit", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    message: "Quit pi-gna?",
+    detail: `${running} chat${running === 1 ? " is" : "s are"} still running, and remote access stops. Close the window instead to keep serving.`,
+  });
+  return choice === 0;
 }
 
 function buildMenu(features: Record<Feature, boolean> = emptySettings().features): void {
@@ -499,18 +543,35 @@ function init(): void {
   // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
   app.on("will-quit", () => updater?.installOnQuit());
 
-  let quitting = false;
+  let forced = false;
   app.on("before-quit", (event) => {
+    if (!quitting && !forced && !confirmQuit()) {
+      event.preventDefault();
+      return;
+    }
     bridge.stop();
     auth.close();
     if (quitting) return;
     event.preventDefault();
     quitting = true;
+    if (keepAwakeId !== undefined) powerSaveBlocker.stop(keepAwakeId);
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
     void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
-  app.on("window-all-closed", () => app.quit());
-  for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
+  app.on("window-all-closed", () => {
+    if (!hidesOnClose(current)) app.quit();
+  });
+  // Dock click while the window is hidden (remote access on) shows it again.
+  app.on("activate", () => {
+    if (!window || window.isDestroyed()) createWindow();
+    else window.show();
+  });
+  host.onRunningChange(syncKeepAwake);
+  for (const signal of ["SIGINT", "SIGTERM"] as const)
+    process.on(signal, () => {
+      forced = true;
+      app.quit();
+    });
   // A second launch on this profile (say `pi --pigna` in another project) opens a chat here instead.
   app.on("second-instance", (_event, _argv, _cwd, data) => {
     if (!window) return;

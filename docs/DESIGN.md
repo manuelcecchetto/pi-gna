@@ -544,6 +544,12 @@ sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appeara
 Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible chat rows everywhere else
 (`useCommandDigits`). ⌘⇧U opens the Computer use section.
 
+- **Host mode** (Settings > Remote access, `remote.enabled`, off by default; `docs/REMOTE.md`): while on, closing the
+  window hides it (`window-all-closed` does not quit; the Dock `activate` shows it), so the BrowserManager keeps its
+  window; Quit asks first when chats are running. `remote.keepAwake` (`off`, `while-working` = any chat running, `always`)
+  holds `powerSaveBlocker('prevent-app-suspension')` (`syncKeepAwake`, transitions logged); it prevents idle sleep only,
+  not closed-lid sleep. `openAtLogin` uses `app.setLoginItemSettings` (never from test instances). With remote off none
+  of this applies.
 - **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
   `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
   and the models of the chats pi-gna starts itself (card triage, ATP orchestrator and worker; `pickModel` tries the

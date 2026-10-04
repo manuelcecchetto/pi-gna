@@ -1,10 +1,10 @@
 // The Settings page (⌘,): pi-gna's own settings (main's settings.json: features, appearance, the models of the chats
 // pi-gna starts), the pi settings it edits in pi's settings.json (pi reads them when a chat starts, so they apply to
 // new chats) and Computer Use. While it is open, the sidebar lists its sections instead of the chats (SettingsNav).
-import { ArrowLeft, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, ToggleRight, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
-import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
+import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { tildify } from "../lib/format";
 import { WALLPAPER_LABELS, wallpaperStyle } from "../lib/wallpapers";
 import { applySettings, closeSettings, openSettings, type PageState, remoteError, showUpdate, toast, useApp } from "../state/app";
@@ -62,6 +62,14 @@ const SECTIONS: SectionInfo[] = [
     group: "Integrations",
     about: "Turn off what you do not use. A feature that is off leaves the sidebar and the menus, and new chats get none of its tools; chats already open are refused when they call them.",
     keywords: "kanban board cards laments github issues pull requests atp plans computer use turn off disable tools",
+  },
+  {
+    id: "remote",
+    label: "Remote access",
+    icon: Smartphone,
+    group: "Integrations",
+    about: "Serve pi-gna to your phone over Tailscale. Chats, tools and files stay on this Mac.",
+    keywords: "iphone phone mobile tailscale remote keep awake sleep login lid clamshell port",
   },
   { id: "computer", label: "Computer use", icon: Monitor, group: "Integrations", about: "The computer_* tools: what pi may operate on this Mac, and the macOS permissions they need.", keywords: "apps mac accessibility screen recording permissions always allowed denylist" },
 ];
@@ -177,6 +185,8 @@ export function SettingsPage({ page }: { page: PageState }) {
             <AgentSection pi={pi} />
           ) : section.id === "features" ? (
             <FeaturesSection />
+          ) : section.id === "remote" ? (
+            <RemoteSection />
           ) : (
             <ComputerSection />
           )}
@@ -499,6 +509,32 @@ const FEATURE_ABOUT: Record<Feature, string> = {
   github: "A project's issues and pull requests, and GitHub links on cards.",
   atp: "Plans that worker chats run node by node, their orchestrator, and its tools.",
 };
+
+/** The host-mode switches; pairing, the URL and devices come with the rest of remote access. */
+function RemoteSection() {
+  const remote = useApp((state) => state.settings.remote);
+  const openAtLogin = useApp((state) => state.settings.openAtLogin);
+  return (
+    <>
+      <Card>
+        <Row title="Remote access" about="While on, closing the window hides it and pi-gna keeps running, so your phone can still reach it. Quit from the menu to stop.">
+          <Switch on={remote.enabled} onChange={(on) => void applySettings({ type: "remoteEnabled", on })} />
+        </Row>
+        <Row title="Port" about="Listens on 127.0.0.1 only; Tailscale serve forwards to it.">
+          <NumberField value={remote.port} min={1024} max={65535} onCommit={(port) => void applySettings({ type: "remotePort", port })} />
+        </Row>
+        <Row title="Open at login" about="Start pi-gna when you log in to this Mac.">
+          <Switch on={openAtLogin} onChange={(on) => void applySettings({ type: "openAtLogin", on })} />
+        </Row>
+      </Card>
+      <Card title="Keep awake" note="Keep awake prevents idle sleep only. A MacBook with its lid closed sleeps anyway, unless it is on power with an external display (clamshell mode). For use that does not depend on a laptop, run pi-gna on an always-on Mac.">
+        <Row title="Prevent idle sleep" about="Only while remote access is on.">
+          <Segmented value={remote.keepAwake} options={KEEP_AWAKE_MODES} labels={KEEP_AWAKE_LABELS} onChange={(mode) => void applySettings({ type: "keepAwake", mode })} />
+        </Row>
+      </Card>
+    </>
+  );
+}
 
 function FeaturesSection() {
   const features = useApp((state) => state.settings.features);

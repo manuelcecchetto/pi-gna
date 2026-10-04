@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > Remote access (off by default): while on, closing the window hides it and pi-gna keeps running, Quit asks first when chats are running, and the Mac can be kept from idle-sleeping (never while the lid is closed on battery). Also: open at login.
 ## 0.4.5 - 2026-10-04
 
 - Inline visuals (beta, off by default): turn on Settings > Agent > Beta > Inline visuals, and pi can add a small diagram,
