@@ -3,6 +3,7 @@
 // check the node, commit what the worker left, repeat until nothing is READY. Workers complete, fail or decompose
 // their node themselves; nothing here judges them. ATP chats never show in the sidebar: the page opens them.
 import { ATP_CONFIG, type AtpClaim, type AtpNode, type AtpProjectPlans, type AtpSession, planName, workerMessage, workingNodes, nudgeMessage } from "../../../shared/atp";
+import { taskModel } from "../../../shared/settings";
 import { createStore, useStore } from "../lib/store";
 import { activate, closeSession, command, interrupt, onSettle, remoteError, type Settled, startAtpChat, store as app, toast } from "./app";
 
@@ -209,7 +210,7 @@ async function runNode(plan: string, cwd: string, cli: string, claim: Extract<At
   const atp: AtpSession = { role: "worker", plan, node: claim.node };
   const name = `ATP ${claim.node}: ${claim.title}`;
   const message = workerMessage({ project: cwd, plan, branch: head?.branch ?? "", librarian: cli, claim, resumed });
-  const handle = startAtpChat(cwd, atp, { setup: { name, model: ATP_CONFIG.worker, prompt: message } });
+  const handle = startAtpChat(cwd, atp, { setup: { name, model: taskModel(app.get().settings, "worker"), prompt: message } });
   patchRunner(plan, { phase: "working", node: claim.node, title: claim.title, handle, since: Date.now() });
 
   let how = await settledOnce(handle);
@@ -338,7 +339,7 @@ export function orchestrator(cwd: string, plan: string | undefined): string {
   const atp: AtpSession = { role: "orchestrator", plan };
   const handle = path
     ? startAtpChat(cwd, atp, { resume: { path, title: `${planName(plan as string)} orchestrator` } })
-    : startAtpChat(cwd, atp, { setup: { model: ATP_CONFIG.orchestrator } });
+    : startAtpChat(cwd, atp, { setup: { model: taskModel(app.get().settings, "orchestrator") } });
   atpStore.set((s) => ({ ...s, orchestrators: { ...s.orchestrators, [key]: handle } }));
   // Remembered once it has a session file worth resuming: after its first run.
   const off = onSettle(handle, (how) => {

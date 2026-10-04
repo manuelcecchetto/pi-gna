@@ -1,7 +1,8 @@
-import { Angry, ChevronRight, Copy, Folder, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, SquareKanban, SquarePen, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Angry, ChevronRight, Copy, Folder, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
+import type { Feature } from "../../../shared/settings";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, isDraft, strongestAttention } from "../lib/session";
 import { worstSeverity } from "../lib/laments";
@@ -14,6 +15,7 @@ import {
   newChat,
   newSession,
   openSession,
+  openSettings,
   sessionTitle,
   setSidebar,
   showBoard,
@@ -26,6 +28,8 @@ import { useAtp } from "../state/atp";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
+import { DigitHint, useCommandDigits } from "./primitives";
+import { SettingsNav } from "./Settings";
 import { UpdateRow } from "./Update";
 
 const SESSIONS_PER_PROJECT = 6;
@@ -44,6 +48,7 @@ export function Sidebar() {
   const openLaments = useMemo(() => (pageCwd ? projectLaments(laments, pageCwd) : []), [laments, pageCwd]);
   const worst = worstSeverity(openLaments);
   const runningPlans = useAtp((state) => Object.keys(state.runners).length);
+  const features = useApp((state) => state.settings.features);
   const active = useApp((state) => (state.page ? undefined : state.active));
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
@@ -58,6 +63,21 @@ export function Sidebar() {
   const activeSession = active ? sessions[active] : undefined;
   const inDraft = Boolean(activeSession && isDraft(activeSession));
   const width = clampSidebarWidth(layout.width, window.innerWidth);
+
+  // Which projects are open and show all their chats, here rather than in each section: ⌘1…⌘9 number the chat rows
+  // you can see. A project opens as it was when it first showed: the first four, and the active chat's.
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
+  const [showAll, setShowAll] = useState<Record<string, boolean>>({});
+  const firstOpen = useRef(new Map<string, boolean>());
+  groups.forEach((group, index) => {
+    if (!firstOpen.current.has(group.cwd)) firstOpen.current.set(group.cwd, index < 4 || group.cwd === activeCwd);
+  });
+  const isOpen = (cwd: string) => opened[cwd] ?? firstOpen.current.get(cwd) ?? false;
+  const visible = groups.flatMap((group) => (isOpen(group.cwd) ? (showAll[group.cwd] ? group.rows : group.rows.slice(0, SESSIONS_PER_PROJECT)) : []));
+  const numbered = visible.slice(0, 9);
+  const settingsMode = page?.kind === "settings";
+  const hints = useCommandDigits(numbered.map((row) => () => openRow(row)), !settingsMode);
+  const digits = new Map(numbered.map((row, index) => [row.key, index + 1]));
 
   const openFolder = async () => {
     const folder = await window.studio.pickFolder();
@@ -101,90 +121,116 @@ export function Sidebar() {
           </IconButton>
         </div>
 
-        <div className="px-2 pb-2">
-          <button
-            type="button"
-            onClick={newChat}
-            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${inDraft ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
-          >
-            <SquarePen size={14} className="shrink-0 text-muted" />
-            <span className="flex-1">New chat</span>
-            <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘N</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => page?.kind !== "kanban" && showPage("kanban", page?.cwd)}
-            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "kanban" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
-          >
-            <SquareKanban size={14} className="shrink-0 text-muted" />
-            <span className="flex-1">Kanban</span>
-            <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧K</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => page?.kind !== "laments" && showPage("laments", page?.cwd)}
-            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "laments" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
-          >
-            <Angry size={14} className="shrink-0 text-muted" />
-            <span className="flex-1">Laments</span>
-            {worst && (
-              <span className="flex items-center gap-1 group-hover:hidden" title={`${openLaments.length} open, the worst ${SEVERITY[worst].label.toLowerCase()}`}>
-                <span className="text-[12px] leading-none">{SEVERITY[worst].emoji}</span>
-                <span className="font-mono text-[11px] text-faint">{openLaments.length}</span>
-              </span>
-            )}
-            <span className={`font-mono text-[11px] text-faint ${worst ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧L</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => page?.kind !== "github" && showPage("github", page?.cwd)}
-            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "github" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
-          >
-            <GitPullRequest size={14} className="shrink-0 text-muted" />
-            <span className="flex-1">GitHub</span>
-            <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧G</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => page?.kind !== "atp" && showPage("atp", page?.cwd)}
-            className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "atp" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
-          >
-            <Network size={14} className="shrink-0 text-muted" />
-            <span className="flex-1">ATP</span>
-            {runningPlans > 0 && (
-              <span className="flex items-center gap-1 group-hover:hidden" title={`${runningPlans} plan${runningPlans === 1 ? "" : "s"} running`}>
-                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" />
-                <span className="font-mono text-[11px] text-faint">{runningPlans}</span>
-              </span>
-            )}
-            <span className={`font-mono text-[11px] text-faint ${runningPlans > 0 ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧A</span>
-          </button>
-        </div>
+        {settingsMode ? (
+          <SettingsNav current={page.section} />
+        ) : (
+          <>
+            <div className="px-2 pb-2">
+              <button
+                type="button"
+                onClick={newChat}
+                className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${inDraft ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+              >
+                <SquarePen size={14} className="shrink-0 text-muted" />
+                <span className="flex-1">New chat</span>
+                <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘N</span>
+              </button>
+              {features.kanban && (
+                <button
+                  type="button"
+                  onClick={() => page?.kind !== "kanban" && showPage("kanban", page?.cwd)}
+                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "kanban" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                >
+                  <SquareKanban size={14} className="shrink-0 text-muted" />
+                  <span className="flex-1">Kanban</span>
+                  <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧K</span>
+                </button>
+              )}
+              {features.laments && (
+                <button
+                  type="button"
+                  onClick={() => page?.kind !== "laments" && showPage("laments", page?.cwd)}
+                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "laments" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                >
+                  <Angry size={14} className="shrink-0 text-muted" />
+                  <span className="flex-1">Laments</span>
+                  {worst && (
+                    <span className="flex items-center gap-1 group-hover:hidden" title={`${openLaments.length} open, the worst ${SEVERITY[worst].label.toLowerCase()}`}>
+                      <span className="text-[12px] leading-none">{SEVERITY[worst].emoji}</span>
+                      <span className="font-mono text-[11px] text-faint">{openLaments.length}</span>
+                    </span>
+                  )}
+                  <span className={`font-mono text-[11px] text-faint ${worst ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧L</span>
+                </button>
+              )}
+              {features.github && (
+                <button
+                  type="button"
+                  onClick={() => page?.kind !== "github" && showPage("github", page?.cwd)}
+                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "github" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                >
+                  <GitPullRequest size={14} className="shrink-0 text-muted" />
+                  <span className="flex-1">GitHub</span>
+                  <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧G</span>
+                </button>
+              )}
+              {features.atp && (
+                <button
+                  type="button"
+                  onClick={() => page?.kind !== "atp" && showPage("atp", page?.cwd)}
+                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "atp" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                >
+                  <Network size={14} className="shrink-0 text-muted" />
+                  <span className="flex-1">ATP</span>
+                  {runningPlans > 0 && (
+                    <span className="flex items-center gap-1 group-hover:hidden" title={`${runningPlans} plan${runningPlans === 1 ? "" : "s"} running`}>
+                      <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" />
+                      <span className="font-mono text-[11px] text-faint">{runningPlans}</span>
+                    </span>
+                  )}
+                  <span className={`font-mono text-[11px] text-faint ${runningPlans > 0 ? "hidden group-hover:inline" : "opacity-0 group-hover:opacity-100"}`}>⌘⇧A</span>
+                </button>
+              )}
+            </div>
 
-        <div className="group/projects flex items-center px-4 pt-2 pb-1">
-          <span className="flex-1 text-[12.5px] font-medium text-faint">Projects</span>
-          <button
-            type="button"
-            title="Open folder…"
-            onClick={() => void openFolder()}
-            className="rounded-md p-0.5 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover/projects:opacity-100 focus-visible:opacity-100"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          {groups.map((group, index) => (
-            <ProjectSection
-              key={group.cwd}
-              group={group}
-              home={home}
-              active={active}
-              defaultOpen={index < 4 || group.cwd === activeCwd}
-              onMenu={openMenu}
-            />
-          ))}
-        </nav>
-        <UpdateRow />
+            <div className="group/projects flex items-center px-4 pt-2 pb-1">
+              <span className="flex-1 text-[12.5px] font-medium text-faint">Projects</span>
+              <button
+                type="button"
+                title="Open folder…"
+                onClick={() => void openFolder()}
+                className="rounded-md p-0.5 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover/projects:opacity-100 focus-visible:opacity-100"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+            <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+              {groups.map((group) => (
+                <ProjectSection
+                  key={group.cwd}
+                  group={group}
+                  home={home}
+                  active={active}
+                  features={features}
+                  open={isOpen(group.cwd)}
+                  onOpen={(open) => setOpened((all) => ({ ...all, [group.cwd]: open }))}
+                  showAll={showAll[group.cwd] ?? false}
+                  onShowAll={(all) => setShowAll((shown) => ({ ...shown, [group.cwd]: all }))}
+                  digits={hints ? digits : undefined}
+                  onMenu={openMenu}
+                />
+              ))}
+            </nav>
+            <UpdateRow />
+            <div className="shrink-0 px-2 py-2">
+              <button type="button" onClick={() => openSettings()} className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-fg/90 hover:bg-raised/60">
+                <Settings size={14} className="shrink-0 text-muted" />
+                <span className="flex-1">Settings</span>
+                <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘,</span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {!layout.collapsed && (
@@ -228,37 +274,48 @@ function ProjectSection({
   group,
   home,
   active,
-  defaultOpen,
+  features,
+  open,
+  onOpen,
+  showAll,
+  onShowAll,
+  digits,
   onMenu,
 }: {
   group: ProjectView;
   home: string;
   active?: string;
-  defaultOpen: boolean;
+  features: Record<Feature, boolean>;
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  showAll: boolean;
+  onShowAll: (all: boolean) => void;
+  /** ⌘1…⌘9 of the rows that have one, while ⌘ is held. */
+  digits?: Map<string, number>;
   onMenu: OpenMenu;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [showAll, setShowAll] = useState(false);
   const rows = showAll ? group.rows : group.rows.slice(0, SESSIONS_PER_PROJECT);
   // A collapsed project still says when one of its chats is running, waiting or unread.
   const rollup = open ? undefined : strongestAttention(group.rows.flatMap((row) => (row.live ? [row.live] : [])));
   return (
     <div className="mb-1">
-      <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50" onContextMenu={(event) => onMenu(event, projectMenu(group))}>
-        <button type="button" onClick={() => setOpen(!open)} title={tildify(group.cwd, home)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left">
+      <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50" onContextMenu={(event) => onMenu(event, projectMenu(group, features))}>
+        <button type="button" onClick={() => onOpen(!open)} title={tildify(group.cwd, home)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left">
           <ChevronRight size={12} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
           <Folder size={13} className="shrink-0 text-faint" />
           <span className="truncate text-[13px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
           {rollup && <Indicator level={rollup} />}
         </button>
-        <button
-          type="button"
-          title="Kanban board"
-          onClick={() => showBoard(group.cwd)}
-          className="rounded-md p-1 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover:opacity-100"
-        >
-          <SquareKanban size={12} />
-        </button>
+        {features.kanban && (
+          <button
+            type="button"
+            title="Kanban board"
+            onClick={() => showBoard(group.cwd)}
+            className="rounded-md p-1 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover:opacity-100"
+          >
+            <SquareKanban size={12} />
+          </button>
+        )}
         {/* Pinned projects keep their pin visible; hovering it offers to unpin. */}
         <button
           type="button"
@@ -288,10 +345,10 @@ function ProjectSection({
       {open && (
         <div className="ml-3 flex flex-col">
           {rows.map((row) => (
-            <SessionRow key={row.key} row={row} active={row.live?.handle === active && active !== undefined} onMenu={onMenu} />
+            <SessionRow key={row.key} row={row} active={row.live?.handle === active && active !== undefined} kanban={features.kanban} digit={digits?.get(row.key)} onMenu={onMenu} />
           ))}
           {group.rows.length > SESSIONS_PER_PROJECT && (
-            <button type="button" onClick={() => setShowAll(!showAll)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
+            <button type="button" onClick={() => onShowAll(!showAll)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
               {showAll ? "Show less" : `Show ${group.rows.length - SESSIONS_PER_PROJECT} more`}
             </button>
           )}
@@ -303,13 +360,13 @@ function ProjectSection({
 
 type OpenMenu = (event: React.MouseEvent, sections: MenuItem[][]) => void;
 
-function projectMenu(group: ProjectView): MenuItem[][] {
+function projectMenu(group: ProjectView, features: Record<Feature, boolean>): MenuItem[][] {
   return [
     [
       { label: "New chat here", icon: <SquarePen size={13} />, onSelect: () => newSession(group.cwd) },
-      { label: "Kanban board", icon: <SquareKanban size={13} />, onSelect: () => showBoard(group.cwd) },
-      { label: "Laments", icon: <Angry size={13} />, onSelect: () => showPage("laments", group.cwd) },
-      { label: "GitHub issues and PRs", icon: <GitPullRequest size={13} />, onSelect: () => showPage("github", group.cwd) },
+      ...(features.kanban ? [{ label: "Kanban board", icon: <SquareKanban size={13} />, onSelect: () => showBoard(group.cwd) }] : []),
+      ...(features.laments ? [{ label: "Laments", icon: <Angry size={13} />, onSelect: () => showPage("laments", group.cwd) }] : []),
+      ...(features.github ? [{ label: "GitHub issues and PRs", icon: <GitPullRequest size={13} />, onSelect: () => showPage("github", group.cwd) }] : []),
     ],
     [
       group.pinned
@@ -320,7 +377,7 @@ function projectMenu(group: ProjectView): MenuItem[][] {
   ];
 }
 
-function sessionMenu(row: ProjectRow, open: () => void, active: boolean): MenuItem[][] {
+function sessionMenu(row: ProjectRow, open: () => void, active: boolean, kanban: boolean): MenuItem[][] {
   const live = row.live;
   const path = live?.sessionPath ?? row.summary?.path;
   const card = path ? cardOfChat(store.get().board, path) : undefined;
@@ -328,34 +385,39 @@ function sessionMenu(row: ProjectRow, open: () => void, active: boolean): MenuIt
   const addable = live && !card && live.sessionPath && !isDraft(live) && live.phase !== "exited" ? live : undefined;
   return [
     active ? [] : [{ label: "Open", icon: <MessagesSquare size={13} />, onSelect: open }],
-    card
-      ? [{ label: "Show on the board", icon: <SquareKanban size={13} />, hint: card.title, onSelect: () => showBoard(card.cwd, card.id) }]
-      : addable
-        ? [{ label: "Add to the Kanban board", icon: <SquareKanban size={13} />, onSelect: () => void addChatToBoard(addable.handle) }]
-        : [],
+    !kanban
+      ? []
+      : card
+        ? [{ label: "Show on the board", icon: <SquareKanban size={13} />, hint: card.title, onSelect: () => showBoard(card.cwd, card.id) }]
+        : addable
+          ? [{ label: "Add to the Kanban board", icon: <SquareKanban size={13} />, onSelect: () => void addChatToBoard(addable.handle) }]
+          : [],
     live ? [{ label: "Close chat", icon: <X size={13} />, hint: "Stops its pi process", onSelect: () => void closeSession(live.handle) }] : [],
   ];
 }
 
-function SessionRow({ row, active, onMenu }: { row: ProjectRow; active: boolean; onMenu: OpenMenu }) {
+/** Open a sidebar row's chat: switch to it while it runs, else load it from its session file. */
+function openRow(row: ProjectRow): void {
+  if (row.live) activate(row.live.handle);
+  else if (row.summary) openSession(row.summary);
+}
+
+function SessionRow({ row, active, kanban, digit, onMenu }: { row: ProjectRow; active: boolean; kanban: boolean; digit?: number; onMenu: OpenMenu }) {
   const live = row.live;
   const title = live ? sessionTitle(live) : (row.summary?.title ?? "New session");
   const level = live ? attention(live) : undefined;
   const needsYou = level === "waiting" || level === "failed" || level === "unread";
-  const onClick = () => {
-    if (live) activate(live.handle);
-    else if (row.summary) openSession(row.summary);
-  };
+  const onClick = () => openRow(row);
   return (
     <button
       type="button"
       onClick={onClick}
-      onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active))}
+      onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active, kanban))}
       className={`group flex items-center gap-2 rounded-lg px-2.5 py-[5px] text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
     >
       <span className="grid w-3 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
       <span className={`min-w-0 flex-1 truncate text-[13px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
-      {row.time && <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(row.time)}</span>}
+      {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(row.time)}</span>}
     </button>
   );
 }

@@ -145,12 +145,16 @@ describe("adding a card from a description", () => {
     expect(triagePrompt(card("aaaaaa"), [])).not.toContain("reusing");
   });
 
-  it("runs the triage on the chat's own provider when it has the model", () => {
+  it("runs a task on its own provider, else the chat's when it has the model, else any", () => {
     const model = (provider: string, id: string) => ({ provider, id }) as Model;
     const models = [model("anthropic", "claude-opus-5-5"), model("anthropic", "claude-sonnet-5-5"), model("claude-bridge", "claude-sonnet-5-5")];
-    expect(pickModel(models, "claude-sonnet-5-5", "claude-bridge")).toBe(models[2]);
-    expect(pickModel(models, "claude-sonnet-5-5", "openai")).toBe(models[1]);
-    expect(pickModel(models, "claude-sonnet-9", "anthropic")).toBeUndefined();
+    const sonnet = { id: "claude-sonnet-5-5" };
+    expect(pickModel(models, sonnet, "claude-bridge")).toBe(models[2]);
+    expect(pickModel(models, sonnet, "openai")).toBe(models[1]);
+    expect(pickModel(models, sonnet, undefined)).toBe(models[1]);
+    expect(pickModel(models, { ...sonnet, provider: "anthropic" }, "claude-bridge")).toBe(models[1]);
+    expect(pickModel(models, { ...sonnet, provider: "openai" }, "claude-bridge")).toBe(models[2]);
+    expect(pickModel(models, { id: "claude-sonnet-9" }, "anthropic")).toBeUndefined();
   });
 });
 

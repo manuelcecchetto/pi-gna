@@ -15,6 +15,7 @@
 //   node scripts/cdp.mjs main "require('electron').app.getName()"  # evaluate in main (`require` works)
 //   node scripts/cdp.mjs menus                          # record native menus instead of showing them; list them
 //   node scripts/cdp.mjs menu "Copy Image"              # click an item of the last recorded menu
+//   node scripts/cdp.mjs capture /tmp/pigna.png          # screenshot the window from main, even while it is covered
 //   CDP_SCHEME=light node scripts/cdp.mjs shot          # render with prefers-color-scheme light (or dark)
 // Uses Node's built-in WebSocket; no dependencies.
 import { writeFileSync } from "node:fs";
@@ -23,7 +24,7 @@ const port = process.env.CDP_PORT || "9333";
 const [command, ...args] = process.argv.slice(2);
 
 // CDP_URL picks a target by URL substring (browser tabs are separate targets); default: the app window.
-const inMain = ["main", "menus", "menu"].includes(command);
+const inMain = ["main", "menus", "menu", "capture"].includes(command);
 const targets = await (await fetch(`http://127.0.0.1:${inMain ? process.env.CDP_MAIN || "9334" : port}/json/list`)).json();
 const match = process.env.CDP_URL;
 const page = inMain
@@ -47,10 +48,20 @@ ws.onmessage = (event) => {
     pending.delete(message.id);
   }
 };
+// Node's WebSocket does not keep the process alive while it waits: without the timer, a reply that waits for a frame
+// (a screenshot of a hidden background window) let Node exit with code 13 and no output.
 const send = (method, params = {}) =>
   new Promise((resolve, reject) => {
     const id = ++seq;
-    pending.set(id, (message) => (message.error ? reject(new Error(message.error.message)) : resolve(message.result)));
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`${method}: no answer in 60 s`));
+    }, 60_000);
+    pending.set(id, (message) => {
+      clearTimeout(timer);
+      if (message.error) reject(new Error(message.error.message));
+      else resolve(message.result);
+    });
     ws.send(JSON.stringify({ id, method, params }));
   });
 
@@ -103,6 +114,20 @@ switch (command) {
     const { data } = await send("Page.captureScreenshot", { format: "png", ...(clip ? { clip } : {}) });
     writeFileSync(args[0] ?? "/tmp/pigna.png", Buffer.from(data, "base64"));
     console.log(args[0] ?? "/tmp/pigna.png");
+    break;
+  }
+  case "capture": {
+    // A test window behind other windows counts as hidden and draws no frames, so `shot` waits forever; main can ask
+    // for a frame anyway (stayHidden). Device pixels, so twice the CSS size on a Retina screen.
+    const path = args[0] ?? "/tmp/pigna.png";
+    await evaluate(`((require) => (async () => {
+      const window = require("electron").BrowserWindow.getAllWindows().find((w) => !w.webContents.getURL().startsWith("devtools:"));
+      // The first capture after a change can still be the frame before it.
+      await window.webContents.capturePage(undefined, { stayHidden: true });
+      const image = await window.webContents.capturePage(undefined, { stayHidden: true });
+      require("fs").writeFileSync(${JSON.stringify(path)}, image.toPNG());
+      return ${JSON.stringify(path)};
+    })())(require)`);
     break;
   }
   case "eval":

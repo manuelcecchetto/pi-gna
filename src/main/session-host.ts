@@ -6,6 +6,7 @@ import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
 import type { HostEventBatch, OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
+import type { Feature } from "../shared/settings";
 import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
 import { log } from "./log";
@@ -20,6 +21,10 @@ const HANDLE = /^[a-z0-9]{6,32}$/;
 /** Tools that would compete with the integrated browser (Stagehand's). Override with PIGNA_EXCLUDE_TOOLS. */
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
+/** What is on when a chat starts: the Settings page's features, and Computer Use. */
+export type SessionFeatures = Record<Feature | "computer", boolean>;
+const NONE: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false };
+
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();
   private readonly cwds = new Map<string, string>();
@@ -27,7 +32,7 @@ export class SessionHost {
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
   private readonly endListeners = new Set<(handle: string) => void>();
   /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
-  private readonly extensions = ["browser-extension.ts", "kanban-extension.ts", "lament-extension.ts"].map((name) => onDisk("resources", name));
+  private readonly extensions = { browser: onDisk("resources", "browser-extension.ts"), kanban: onDisk("resources", "kanban-extension.ts"), laments: onDisk("resources", "lament-extension.ts") };
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
 
@@ -36,14 +41,16 @@ export class SessionHost {
     private readonly bridge: AgentBridge,
     /** Where ATP chats keep their session files, apart from pi's, so they stay out of the sidebar. */
     private readonly atpSessions: string,
-    /** Read at spawn: the computer_* tools exist only in chats opened while Computer Use is enabled. */
-    private readonly computerEnabled: () => Promise<boolean> = async () => false,
+    /** Read at spawn: a feature's tools exist only in chats opened while it is on. */
+    private readonly features: () => Promise<SessionFeatures> = async () => NONE,
   ) {}
 
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
-  private piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, computer: boolean): { args: string[]; env: Record<string, string> } {
-    const args = [...this.extensions.flatMap((path) => ["-e", path]), "--append-system-prompt", this.prompt];
-    if (computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
+  private piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, features: SessionFeatures): { args: string[]; env: Record<string, string> } {
+    const args = ["-e", this.extensions.browser, "--append-system-prompt", this.prompt];
+    if (features.kanban) args.push("-e", this.extensions.kanban);
+    if (features.laments) args.push("-e", this.extensions.laments);
+    if (features.computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
     if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
     if (trust !== undefined) args.push(trust ? "--approve" : "--no-approve");
     if (atp) args.push(...this.atpArgs(atp));
@@ -79,9 +86,10 @@ export class SessionHost {
     const project = projectOf(cwd);
     const trust = project === cwd ? undefined : await projectTrust(project);
 
-    const computer = await this.computerEnabled().catch(() => false);
+    const features = await this.features().catch(() => NONE);
+    if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
     const pi = new PiProcess(
-      { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, computer) },
+      { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) },
       {
         onRecords: (records) => {
           this.emit({ handle, events: records.map((record) => ({ kind: "rpc", record })) });

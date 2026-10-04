@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { Board } from "../shared/board";
 import type { AtpProjectPlans } from "../shared/atp";
+import type { LoginUpdate } from "../shared/auth";
 import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
+import type { Settings, SettingsSection } from "../shared/settings";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -35,7 +37,11 @@ const api: StudioApi = {
   windowFocused: () => ipcRenderer.invoke(IPC.windowFocused),
   onWindowFocus: (listener) => subscribe<boolean>(IPC.windowFocus, listener),
   onSidebarToggle: (listener) => subscribe<void>(IPC.sidebarToggle, listener),
-  onPageToggle: (listener) => subscribe<Page>(IPC.pageToggle, listener),
+  onPageToggle: (listener) => {
+    const handler = (_event: unknown, page: Page, section?: SettingsSection) => listener(page, section);
+    ipcRenderer.on(IPC.pageToggle, handler);
+    return () => ipcRenderer.off(IPC.pageToggle, handler);
+  },
   onOpenProject: (listener) => subscribe<string>(IPC.openProject, listener),
   pathForFile: (file) => webUtils.getPathForFile(file),
   openExternal: (url) => ipcRenderer.send(IPC.openExternal, url),
@@ -94,6 +100,22 @@ const api: StudioApi = {
     permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
     requestPermissions: () => ipcRenderer.invoke(IPC.computerRequest),
     openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
+  },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC.settingsGet),
+    apply: (op) => ipcRenderer.invoke(IPC.settingsApply, op),
+    onChange: (listener) => subscribe<Settings>(IPC.settingsChanged, listener),
+    pi: () => ipcRenderer.invoke(IPC.piSettingsGet),
+    setPi: (patch) => ipcRenderer.invoke(IPC.piSettingsApply, patch),
+    revealPi: () => ipcRenderer.invoke(IPC.piSettingsReveal),
+  },
+  auth: {
+    list: () => ipcRenderer.invoke(IPC.authList),
+    login: (provider, method) => ipcRenderer.invoke(IPC.authLogin, provider, method),
+    onUpdate: (listener) => subscribe<LoginUpdate>(IPC.authUpdate, listener),
+    answer: (n, value) => ipcRenderer.send(IPC.authAnswer, n, value),
+    cancel: () => ipcRenderer.send(IPC.authCancel),
+    logout: (provider) => ipcRenderer.invoke(IPC.authLogout, provider),
   },
   update: {
     state: () => ipcRenderer.invoke(IPC.updateGet),

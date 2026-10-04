@@ -7,7 +7,7 @@ import { type Card, COLUMN_LABELS, COLUMNS, type Column, githubKey } from "../..
 import { refLabel } from "../../../shared/github";
 import { boardColumns, boardProjects, cardAttention, cardSnippet, chatSummary, chatTitle, splitAttachments } from "../lib/board";
 import { baseName, relativeTime } from "../lib/format";
-import { applyBoard, openCard, openSession, type PageState, sessionTitle, showBoard, useApp } from "../state/app";
+import { applyBoard, openCard, openSession, type PageState, sessionTitle, showBoard, useApp, useFeature } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { CardDialog } from "./CardDialog";
 import { ColumnIcon } from "./ColumnIcon";
@@ -183,6 +183,7 @@ function CardView({
 }) {
   const snippet = cardSnippet(card);
   const attached = splitAttachments(card.notes).paths.length;
+  const github = useFeature("github") ? card.github : [];
   return (
     <div
       data-card={card.id}
@@ -237,7 +238,7 @@ function CardView({
             {attached}
           </span>
         )}
-        {card.github.slice(0, GITHUB_BADGES).map((ref) => (
+        {github.slice(0, GITHUB_BADGES).map((ref) => (
           <button
             key={githubKey(ref)}
             type="button"
@@ -253,7 +254,7 @@ function CardView({
             {ref.number}
           </button>
         ))}
-        {card.github.length > GITHUB_BADGES && <span title={`${card.github.length} GitHub links`}>+{card.github.length - GITHUB_BADGES}</span>}
+        {github.length > GITHUB_BADGES && <span title={`${github.length} GitHub links`}>+{github.length - GITHUB_BADGES}</span>}
         <span className="ml-auto font-mono text-[10.5px]" title="Last change">
           {relativeTime(card.updatedAt)}
         </span>

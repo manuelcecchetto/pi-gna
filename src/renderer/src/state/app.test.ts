@@ -4,7 +4,24 @@ import type { RpcCommand, RpcSessionState, SessionEntry } from "../../../shared/
 import { createSession, reduceSessionEvent } from "../lib/session";
 import type { Card } from "../../../shared/board";
 import { cardBlock } from "../lib/board";
-import { activate, addCard, composerCard, handleBatch, interrupt, openSession, removeComposerCard, send, sessionTitle, store } from "./app";
+import { emptySettings } from "../../../shared/settings";
+import {
+  activate,
+  addCard,
+  applySettings,
+  closeSettings,
+  composerCard,
+  handleBatch,
+  interrupt,
+  openSession,
+  openSettings,
+  removeComposerCard,
+  send,
+  sessionTitle,
+  showPage,
+  store,
+  togglePage,
+} from "./app";
 import { cardActions } from "./card-actions";
 
 vi.mock("../lib/layout", () => ({ loadSidebar: () => ({ width: 268, collapsed: false }), saveSidebar: vi.fn() }));
@@ -295,5 +312,54 @@ describe("adding a card with screenshots", () => {
     expect(store.get().board.cards).toEqual([]);
     expect(store.get().toasts.at(-1)?.text).toBe("Could not attach that to the card: the image is too large (30 MB)");
     expect(store.get().open).toEqual([]);
+  });
+});
+
+describe("the Settings page", () => {
+  const apply = vi.fn(async () => undefined);
+  beforeEach(() => {
+    apply.mockClear();
+    vi.stubGlobal("window", { studio: { command, launchCwd: "/repo", homeDir: "/home", settings: { apply, get: async () => emptySettings() } } });
+    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => undefined });
+    store.set((s) => ({ ...s, settings: emptySettings(), page: undefined, toasts: [], sessions: {}, active: undefined }));
+  });
+
+  it("covers the page it was opened from and goes back to it", () => {
+    showPage("kanban", "/repo");
+    openSettings();
+    expect(store.get().page).toMatchObject({ kind: "settings", section: "general", back: { kind: "kanban", cwd: "/repo" } });
+    togglePage("settings", "computer");
+    expect(store.get().page).toMatchObject({ kind: "settings", section: "computer" });
+    togglePage("settings", "computer");
+    expect(store.get().page).toMatchObject({ kind: "kanban", cwd: "/repo" });
+    togglePage("settings");
+    closeSettings();
+    expect(store.get().page?.kind).toBe("kanban");
+  });
+
+  it("turning a feature off closes its page and keeps it closed", async () => {
+    showPage("atp", "/repo");
+    openSettings("features");
+    expect(await applySettings({ type: "feature", feature: "atp", enabled: false })).toBe(true);
+    expect(apply).toHaveBeenCalledWith({ type: "feature", feature: "atp", enabled: false });
+    expect(store.get().page).toMatchObject({ kind: "settings", back: undefined });
+    closeSettings();
+    expect(store.get().page).toBeUndefined();
+
+    showPage("atp", "/repo");
+    expect(store.get().page).toBeUndefined();
+    expect(store.get().toasts.at(-1)?.text).toContain("ATP is turned off");
+
+    showPage("laments", "/repo");
+    await applySettings({ type: "feature", feature: "laments", enabled: false });
+    expect(store.get().page).toBeUndefined();
+  });
+
+  it("puts the settings back when main refuses the change", async () => {
+    apply.mockRejectedValueOnce(new Error("Error invoking remote method 'settings:apply': SettingsError: no"));
+    const before = store.get().settings;
+    expect(await applySettings({ type: "theme", theme: "dark" })).toBe(false);
+    await vi.runAllTimersAsync();
+    expect(store.get().settings).toEqual(before);
   });
 });

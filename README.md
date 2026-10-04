@@ -87,6 +87,11 @@ updates the `--pigna` flag.
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
 - **Context at a glance.** A meter shows context use, auto-compaction and cache hits; compaction shows its
   progress.
+- **Settings in one place.** Cmd+, opens Settings: the theme, the models of the chats pi-gna starts itself, pi's
+  own settings (default model, compaction, retries and more, for new chats), switches to turn Kanban, Laments,
+  GitHub, ATP and Computer Use off, and **Providers**, to sign in to pi's model providers as pi's `/login` does,
+  with an account or an API key. With [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge)
+  installed, your Claude plan signs in through Claude Code's own login instead of pi's.
 
 ## Computer Use setup
 
@@ -131,7 +136,10 @@ environment if an extension wants to know where it runs.
 | Cmd+B | Show or hide the browser |
 | Cmd+Shift+K | Show or hide the project's Kanban board |
 | Cmd+Shift+L | Show or hide the project's laments |
-| Cmd+Shift+U | Show or hide Computer Use settings |
+| Cmd+Shift+G / Cmd+Shift+A | Show or hide the project's GitHub issues and PRs / ATP plans |
+| Cmd+, | Open Settings |
+| Cmd+Shift+U | Show or hide Settings > Computer use |
+| Cmd+1 … Cmd+9 | Open the chat numbered in the sidebar (hold Cmd to see the numbers; in Settings, its sections) |
 | Esc (while pi is using an app) | Stop pi's computer use |
 | Cmd+Shift+S | Show or hide the sidebar (drag its edge to resize) |
 | `/` and `@` | Commands, skills and prompt templates / project files |

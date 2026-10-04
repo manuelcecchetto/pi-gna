@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { projectTrust } from "./pi-settings";
+import { projectTrust, readPiSettings, writePiSettings } from "./pi-settings";
 
 let root: string;
 
@@ -33,5 +33,54 @@ describe("projectTrust", () => {
     expect(await projectTrust(join(root, "repo"))).toBeUndefined();
     await writeFile(join(root, "agent", "trust.json"), "{ not json");
     expect(await projectTrust(join(root, "repo"))).toBeUndefined();
+  });
+});
+
+describe("pi's settings.json", () => {
+  const file = () => join(root, "agent", "settings.json");
+
+  it("changes the Settings page's keys and keeps the rest of the file", async () => {
+    await writeFile(file(), JSON.stringify({ packages: ["npm:x"], compaction: { modelOverrides: {} }, defaultModel: "a" }), { mode: 0o600 });
+    const state = await writePiSettings({ defaultModel: "claude-opus-5-5", "compaction.enabled": false });
+    expect(state.values).toEqual({ defaultModel: "claude-opus-5-5", "compaction.enabled": false });
+    expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({ packages: ["npm:x"], compaction: { modelOverrides: {}, enabled: false }, defaultModel: "claude-opus-5-5" });
+    expect((await stat(file())).mode & 0o777).toBe(0o600);
+    expect(await readPiSettings()).toEqual({ path: file(), values: state.values });
+  });
+
+  it("starts the file when there is none, and writes through a symlink", async () => {
+    await writePiSettings({ cacheWarming: "off" });
+    expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({ cacheWarming: "off" });
+    const dotfiles = join(root, "dotfiles.json");
+    await rm(file());
+    await writeFile(dotfiles, "{}");
+    await symlink(dotfiles, file());
+    await writePiSettings({ steeringMode: "all" });
+    expect((await lstat(file())).isSymbolicLink()).toBe(true);
+    expect(JSON.parse(await readFile(dotfiles, "utf8"))).toEqual({ steeringMode: "all" });
+  });
+
+  it("never writes over a file it cannot read, and reports why", async () => {
+    await writeFile(file(), "{ broken");
+    await expect(writePiSettings({ cacheWarming: "off" })).rejects.toThrow("not valid JSON");
+    expect(await readFile(file(), "utf8")).toBe("{ broken");
+    expect((await readPiSettings()).problem).toContain("not valid JSON");
+  });
+
+  it("waits for pi's lock, and takes over a stale one", async () => {
+    await mkdir(`${file()}.lock`);
+    const write = writePiSettings({ cacheWarming: "idle" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await rm(`${file()}.lock`, { recursive: true });
+    await write;
+    expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({ cacheWarming: "idle" });
+
+    await mkdir(`${file()}.lock`);
+    await expect(writePiSettings({ cacheWarming: "off" })).rejects.toThrow("try again");
+    const old = new Date(Date.now() - 60_000);
+    await utimes(`${file()}.lock`, old, old);
+    await writePiSettings({ cacheWarming: "off" });
+    expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({ cacheWarming: "off" });
+    await expect(stat(`${file()}.lock`)).rejects.toThrow();
   });
 });

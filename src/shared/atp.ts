@@ -116,12 +116,11 @@ export function parseClaim(stdout: string): AtpClaim {
 }
 
 /**
- * The models and the runner's settings, fixed until pi-gna has settings. Like atp-runner's defaults: one worker per
- * plan, a commit per node. Workers claim as WORKER_AGENT, so a restarted run gets back the node it was working on.
+ * The runner's settings (its models are in Settings > Models, src/shared/settings.ts). Like atp-runner's defaults:
+ * one worker per plan, a commit per node. Workers claim as `agentId`, so a restarted run gets back the node it was
+ * working on.
  */
 export const ATP_CONFIG = {
-  orchestrator: { provider: "openai-codex", id: "gpt-5.6-sol", thinking: "high" },
-  worker: { provider: "anthropic", id: "claude-sonnet-5-5", thinking: "medium" },
   workers: 1,
   commitPerNode: true,
   agentId: "pigna-w1",

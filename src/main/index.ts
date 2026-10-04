@@ -4,13 +4,15 @@ import { basename, dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, session, shell } from "electron";
 import { bugs, description } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
+import type { AuthMethod } from "../shared/auth";
 import type { BoardOp } from "../shared/board";
 import type { BrowserCommand, BrowserLayout } from "../shared/browser";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
-import { type HostEventBatch, IPC, type OpenSessionRequest } from "../shared/ipc";
+import { type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
+import { emptySettings, type Feature, type Settings, type SettingsOp } from "../shared/settings";
 import { Atp, librarianPath } from "./atp";
 import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
@@ -27,7 +29,10 @@ import { ComputerAgent, computerRoute } from "./computer/agent";
 import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
-import { readCompactionSettings } from "./pi-settings";
+import { PiAuth } from "./pi-auth";
+import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
+import { onDisk } from "./resources";
+import { SettingsStore } from "./settings";
 import { cardWorktree } from "./worktree";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
@@ -78,13 +83,20 @@ const bridge = new AgentBridge();
 const send = (channel: string, ...args: unknown[]) => {
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
 };
-const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge, join(app.getPath("userData"), "atp-sessions"), async () => (await computerPolicy.get()).enabled);
+const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"), (next) => {
+  send(IPC.settingsChanged, next);
+  applySettings(next);
+});
+const host = new SessionHost((batch: HostEventBatch) => send(IPC.events, batch), bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
+  ...(await settings.get()).features,
+  computer: (await computerPolicy.get()).enabled,
+}));
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => send(IPC.boardChanged, next));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));
 const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => send(IPC.computerChanged, next));
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => send(IPC.lamentsChanged, next));
-bridge.route("/kanban", kanbanRoute(board, (handle) => host.identify(handle)));
+bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
   defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
@@ -101,14 +113,15 @@ const computerAgent = new ComputerAgent(
 );
 bridge.route("/computer", computerRoute(() => computerAgent));
 host.onRunEnd((handle) => void computerAgent.release(handle));
-bridge.route("/lament", lamentRoute(laments, (handle) => host.identify(handle)));
+bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) => host.identify(handle))));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
 const atp = new Atp(
   (plans) => send(IPC.atpPlans, plans),
   (held) => send(IPC.atpHeld, held),
 );
-bridge.route("/atp", atp.route());
+bridge.route("/atp", settings.gate("atp", atp.route()));
+const auth = new PiAuth({ script: onDisk("resources", "pi-auth.mts") });
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -247,6 +260,32 @@ function registerIpc(shellEnv: Promise<void>): void {
     if (pane !== "accessibility" && pane !== "screen_recording") throw new Error("Unknown settings pane");
     await computerHelper.call("open_settings", { pane });
   });
+  handle(IPC.settingsGet, () => settings.get());
+  handle(IPC.settingsApply, (op: SettingsOp) => settings.apply(op));
+  // PI_CODING_AGENT_DIR can come from the login shell.
+  handle(IPC.piSettingsGet, async () => (await shellEnv, readPiSettings()));
+  handle(IPC.piSettingsApply, async (patch: unknown) => (await shellEnv, writePiSettings(patch)));
+  handle(IPC.piSettingsReveal, async () => {
+    await shellEnv;
+    shell.showItemInFolder((await readPiSettings()).path);
+  });
+  // pi's logins (/login), with the pi found on the login shell's PATH.
+  handle(IPC.authList, async () => (await shellEnv, auth.list()));
+  handle(IPC.authLogin, async (provider: string, method: AuthMethod) => {
+    if (typeof provider !== "string" || (method !== "oauth" && method !== "api_key")) throw new Error("Unknown login");
+    await shellEnv;
+    return auth.signIn(provider, method, (update) => {
+      // As pi's /login does, open the sign-in page in the browser (Claude Code opens its own).
+      if (update.kind === "event" && update.event.type === "auth_url" && !update.event.opened) openExternal(update.event.url);
+      send(IPC.authUpdate, update);
+    });
+  });
+  on(IPC.authAnswer, (n: number, value: string) => auth.answer(Number(n), String(value)));
+  on(IPC.authCancel, () => auth.cancel());
+  handle(IPC.authLogout, async (provider: string) => {
+    await shellEnv;
+    await auth.signOut(String(provider));
+  });
   handle(IPC.lamentsGet, () => laments.get());
   handle(IPC.lamentsApply, (op: LamentOp) => laments.apply(op));
   handle(IPC.boardApply, async (op: BoardOp) => {
@@ -311,7 +350,15 @@ async function checkForUpdates(): Promise<void> {
   }
 }
 
-function buildMenu(): void {
+/** The window follows its appearance setting; the menu shows only the pages of features that are on. */
+function applySettings(next: Settings): void {
+  nativeTheme.themeSource = next.theme;
+  buildMenu(next.features);
+}
+
+function buildMenu(features: Record<Feature, boolean> = emptySettings().features): void {
+  const page = (feature: Feature, label: string, accelerator: string, page: Page): Electron.MenuItemConstructorOptions[] =>
+    features[feature] ? [{ label, accelerator, click: () => send(IPC.pageToggle, page) }] : [];
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -320,7 +367,8 @@ function buildMenu(): void {
         submenu: [
           { role: "about" },
           { label: "Check for Updates…", click: () => void checkForUpdates() },
-          { label: "Computer Use Settings…", click: () => send(IPC.pageToggle, "computer") },
+          { type: "separator" },
+          { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => send(IPC.pageToggle, "settings") },
           { type: "separator" },
           { role: "services" },
           { type: "separator" },
@@ -337,11 +385,11 @@ function buildMenu(): void {
         submenu: [
           { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+Shift+S", click: () => send(IPC.sidebarToggle) },
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
-          { label: "Kanban", accelerator: "CmdOrCtrl+Shift+K", click: () => send(IPC.pageToggle, "kanban") },
-          { label: "Laments", accelerator: "CmdOrCtrl+Shift+L", click: () => send(IPC.pageToggle, "laments") },
-          { label: "GitHub", accelerator: "CmdOrCtrl+Shift+G", click: () => send(IPC.pageToggle, "github") },
-          { label: "ATP", accelerator: "CmdOrCtrl+Shift+A", click: () => send(IPC.pageToggle, "atp") },
-          { label: "Computer Use", accelerator: "CmdOrCtrl+Shift+U", click: () => send(IPC.pageToggle, "computer") },
+          ...page("kanban", "Kanban", "CmdOrCtrl+Shift+K", "kanban"),
+          ...page("laments", "Laments", "CmdOrCtrl+Shift+L", "laments"),
+          ...page("github", "GitHub", "CmdOrCtrl+Shift+G", "github"),
+          ...page("atp", "ATP", "CmdOrCtrl+Shift+A", "atp"),
+          { label: "Computer Use", accelerator: "CmdOrCtrl+Shift+U", click: () => send(IPC.pageToggle, "settings", "computer") },
           { type: "separator" },
           { role: "reload" },
           { role: "toggleDevTools" },
@@ -380,11 +428,12 @@ function init(): void {
   let quitting = false;
   app.on("before-quit", (event) => {
     bridge.stop();
+    auth.close();
     if (quitting) return;
     event.preventDefault();
     quitting = true;
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());
@@ -413,6 +462,8 @@ function init(): void {
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
     if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));
     registerIpc(shellEnv);
+    // Before the window, so it opens in its appearance (and with its background color).
+    applySettings(await settings.get());
     await bridge.start();
     createWindow();
     updater?.start();

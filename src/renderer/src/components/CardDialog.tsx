@@ -8,7 +8,7 @@ import type { PickedPath } from "../../../shared/ipc";
 import { chatSummary, chatTitle, splitAttachments } from "../lib/board";
 import { formatStamp, relativeTime } from "../lib/format";
 import { attention } from "../lib/session";
-import { applyBoard, openSession, remoteError, sessionTitle, setOverlay, useApp } from "../state/app";
+import { applyBoard, openSession, remoteError, sessionTitle, setOverlay, useApp, useFeature } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { ColumnIcon } from "./ColumnIcon";
 import { RefIcon } from "./GitHub";
@@ -18,6 +18,7 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
   const dialog = useRef<HTMLDialogElement>(null);
   const sessions = useApp((state) => state.sessions);
   const projects = useApp((state) => state.projects);
+  const github = useFeature("github");
   const live = useMemo(() => Object.values(sessions), [sessions]);
   const [title, setTitle] = useState(card.title);
   const [notes, setNotes] = useState(card.notes);
@@ -129,7 +130,7 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
             ))}
           </div>
 
-          <GithubLinks card={card} />
+          {github && <GithubLinks card={card} />}
 
           {card.chats.length > 0 && (
             <section className="mt-5">

@@ -33,6 +33,8 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     laments        LamentStore (userData/laments.json) and the lament tool's route; both stores are a JsonStore (store)
     github         Github: a project's repository and gh account, its issues and PRs through gh (userData/github.json: logins only)
     atp            Atp: a project's ATP plans (watch, scan), the librarian CLI (claim, release, activate), commits, holds
+    settings       SettingsStore (userData/settings.json: features, theme, task models); pi-settings writes pi's settings.json
+    pi-auth        PiAuth: provider logins (pi's /login) through resources/pi-auth.mts, run with pi's SDK
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
     updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
@@ -44,6 +46,7 @@ resources/kanban-extension.ts    the same for the kanban_* tools
 resources/lament-extension.ts    the same for the lament tool
 resources/atp-extension.ts       ATP orchestrator chats only: atp_pause, atp_resume
 resources/atp/                   the ATP roles' system prompts and the vendored ATP skills (architects, librarian CLI)
+resources/pi-auth.mts            login helper run by the PATH `node` with pi's SDK (see Settings, Providers)
 native/computer-use/            Swift source of the helper app `pi-gna Computer Use.app` (built by `pnpm build:computer-use`)
 resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
@@ -205,15 +208,15 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   the bridge. Off by default (`enabled` in `userData/computer-use.json`, switch in Settings). Terminal apps, pi-gna,
   the helper and macOS security prompts are never operable (403, not listed, not launched), whatever was approved.
   Any other app asks once per chat with a card in the renderer: **Allow once** (until the run ends), **Always allow**
-  (persisted, listed and revocable on the Computer Use page) or **Deny** (remembered for the chat). A second chat
+  (persisted, listed and revocable in Settings > Computer use) or **Deny** (remembered for the chat). A second chat
   asking for an app another chat is driving gets 409 without an approval card. Run end, chat close, Stop and Esc
   release the chat's apps and its Allow once grants.
 - **Overlay and Esc**: per driven app the helper shows a click-through cursor and a pill ("pi is using App · Esc to
   cancel") ordered just above the target window (not a screen-wide overlay, so whatever covers the window covers
   them). A global Esc monitor counts only when the user is evidently looking at that run (the app or pi-gna is
   frontmost, or the pointer is over the window); it hides the overlay and notifies main, which stops the run.
-- **Permissions and install**: the helper needs Accessibility and Screen Recording (the Computer Use page, Cmd+Shift+U
-  or the app menu, shows both and opens the panes). It is ad-hoc signed, so macOS ties each grant to one exact
+- **Permissions and install**: the helper needs Accessibility and Screen Recording (Settings > Computer use, Cmd+Shift+U
+  or View > Computer Use, shows both and opens the panes). It is ad-hoc signed, so macOS ties each grant to one exact
   build: a new helper version, or any reinstalled build, needs both granted again. Stale entries with the same name
   can be cleared with `tccutil reset Accessibility|ScreenCapture io.github.manuelcecchetto.pigna.computeruse`. After
   a reset the helper is not listed under Screen & System Audio Recording until it asks; add it with **+** from
@@ -440,6 +443,52 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   a progress map when fitted. `--k` (the zoom) keeps outlines and glow screen-sized; selecting a node lights its
   lineage. A canvas minimap shows only when zoomed well past fit.
 
+## Settings
+
+Codex-style: a Settings row is fixed at the foot of the sidebar (⌘, or pi-gna > Settings…). While the page is open the
+sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appearance, Keyboard shortcuts), pi
+(Providers, Models, Agent) and Integrations (Features, Computer use), with a search over their labels and keywords.
+Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible chat rows everywhere else
+(`useCommandDigits`). ⌘⇧U opens the Computer use section.
+
+- **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
+  `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
+  and the models of the chats pi-gna starts itself (card triage, ATP orchestrator and worker; `pickModel` tries the
+  task's provider, then the chat's, then any provider with that model id). Computer Use keeps its `enabled` in
+  `computer-use.json`, next to its policy.
+- **Features** (Kanban, Laments, GitHub, ATP, Computer use): off hides the page, its sidebar row and its menu items, and
+  new chats start without its extension (`SessionFeatures`). Chats already open keep their tools, so the bridge route
+  is gated too (`SettingsStore.gate`: 403 "… is turned off in pi-gna's Settings"). ATP stays on while a plan runs.
+- **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global
+  `settings.json` (`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). `writePiSettings` changes only those keys, refuses a
+  file that is not a JSON object, takes pi's own proper-lockfile lock (a `<file>.lock` folder) and writes through a
+  temp file beside the target, so a symlinked settings.json stays a symlink. pi reads the file when a chat starts:
+  changes apply to new chats, and a project's `.pi/settings.json` can still override them.
+- **Providers** (pi's `/login` and `/logout`): RPC mode, the extension ModelRegistry and the `pi auth` CLI cannot log
+  in, so main (`PiAuth`, `src/main/pi-auth.ts`) runs `resources/pi-auth.mts` with pi's SDK: the
+  `@earendil-works/pi-coding-agent` package `pi` (or `PIGNA_PI_BIN`) resolves into, run by the `node` on the PATH
+  with type stripping. Not Electron's Node or a utilityProcess: the SDK needs Node ≥ 22.19 and has native modules.
+  JSONL both ways (`AuthRequest`/`AuthReply`, `src/shared/auth.ts`); a fresh `ModelRuntime` per operation, so logins
+  made in a terminal show up; one login at a time; the helper stops after a minute idle and logs nothing that
+  passes through (answers can be API keys). Account (OAuth) providers are cards, subscriptions first; API keys are a
+  searchable list. A login's prompts (select, text, secret, manual code) are answered inline under its row;
+  `auth_url` opens in your browser as in pi, with Open again and Copy link; device codes get Copy and Open page;
+  ✕ or Esc cancels.
+- **Claude plans go through Claude Code.** With pi-claude-bridge installed (found through pi's `DefaultPackageManager`,
+  user scope), its `claude-bridge` provider runs Claude via Claude Code, so it uses Claude Code's own login (the macOS
+  keychain item every Claude Code shares), never pi's `auth.json`. A Claude Code card then replaces pi's own Anthropic
+  account login (the Anthropic API key row stays); a notice offers to sign out of pi's Anthropic login while one is
+  saved. The helper runs the bridge's Claude Code (`pathToClaudeCodeExecutable` in `claude-bridge.json`, else the
+  Agent SDK's platform binary beside the bridge, else `claude` on the PATH): `claude auth status --json` (exit 1 when
+  signed out), `claude auth login --claudeai` and `claude auth logout`. The login opens its page itself (it calls back
+  to a local port), so its `auth_url` is marked `opened` and main does not open it again; the printed link (an OSC 8
+  hyperlink) is the fallback, whose page shows a `code#state` that the paste prompt writes to Claude Code's stdin
+  ("Invalid code" on stderr asks again). Sign out signs Claude Code out on the whole Mac, the terminal included.
+- **Logos** are real brand marks: `src/renderer/src/lib/provider-logos.ts`, generated by
+  `node scripts/provider-logos.mjs` from pinned LobeHub icons (MIT), drawn as LobeHub's Avatar draws them; Radius,
+  TypeSafe and Ant Ling come from the companies' own sites. A provider pi adds later shows its initial until it is
+  mapped in the script's `BRANDS`. Gradient ids get a per-instance prefix (`useId`), because a logo can show twice.
+
 ## pi RPC notes (pi 1.0.0)
 
 Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-agent/docs/` (`rpc.md`,
@@ -487,8 +536,9 @@ Verified live (pi 1.0.0, Oct 2026):
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
-- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L), "GitHub" (⌘⇧G) and "ATP" (⌘⇧A, with a count of running plans) rows, then a
-  "Projects" title whose hover "+" opens a folder, then the folders. Resizable from its right edge (220-480px,
+- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L), "GitHub" (⌘⇧G) and "ATP" (⌘⇧A, with a count of running plans) rows
+  (each only while its feature is on), then a "Projects" title whose hover "+" opens a folder, then the folders,
+  and "Settings" fixed at the foot. Holding ⌘ numbers the first nine chat rows you can see; ⌘1–⌘9 opens one. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
   pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
   the browser here). Width and collapsed state persist in localStorage. Collapsed, the sidebar is `inert` (not `aria-hidden`, which
@@ -651,9 +701,9 @@ the board's project picker lists every project with cards, and card actions then
 pi write real session files: pi 1.0.0 ignores `PI_CODING_AGENT_SESSION_DIR` (only pi-gna's index reads it), so run
 them in a throwaway project under `/tmp` and delete its folder in `~/.pi/agent/sessions` afterwards.
 Your pi-gna may run from this checkout's `out/`, and other chats may build there too: test a change from a build of its
-own (`npx electron-vite build --outDir /tmp/<dir>/app/out`, copy `package.json` and symlink `node_modules` and
-`resources` into `/tmp/<dir>/app`, then start `$(node -e 'console.log(require("electron"))') /tmp/<dir>/app` with the
-test-instance env). Set `PIGNA_CWD` in that env too (`PIGNA_CWD=/private/tmp/<project>`, or `env -u PIGNA_CWD`):
+own (`npx electron-vite build --outDir /tmp/<dir>/app/out`, copy `package.json` and symlink `node_modules`, `resources`
+and `src` into `/tmp/<dir>/app` (the extensions import `../src/shared`: without `src` a real pi cannot load them),
+then start `$(node -e 'console.log(require("electron"))') /tmp/<dir>/app` with the test-instance env). Set `PIGNA_CWD` in that env too (`PIGNA_CWD=/private/tmp/<project>`, or `env -u PIGNA_CWD`):
 an agent's shell inherits it from the pi-gna session it runs in, so a test instance otherwise opens the agent's
 own project (this repository) instead of the throwaway one. A pasted screenshot is a File without a path: dispatch `new ClipboardEvent("paste", { clipboardData })`
 with a `DataTransfer` holding a canvas `File` in `eval`, so the test does not touch your clipboard; `drop` covers
@@ -665,9 +715,20 @@ styles render in a background test window; `CDP_SCHEME=light|dark` renders the o
 do not include native tab views. `type … --enter` goes to whatever has focus, and a test instance starts in a new
 chat: check `document.activeElement` first, or the text is sent to a model as a prompt.
 CDP `shot` hung on background test windows (a packaged build, and a dev build after a few page switches) even
-though `requestAnimationFrame` ran;
-`screencapture -x -o -l <CGWindowID>` captures that window instead (the id is `kCGWindowNumber` from
+though `requestAnimationFrame` ran: `CDP_MAIN=<inspect port> node scripts/cdp.mjs capture <path>` asks main for the
+frame instead (`capturePage` with `stayHidden`, device pixels; needs `--inspect`), and
+`screencapture -x -o -l <CGWindowID>` captures the window as the screen shows it (the id is `kCGWindowNumber` from
 `CGWindowListCopyWindowInfo` for the app's pid, for example through `osascript -l JavaScript`).
+Provider logins (Settings > Providers) write `auth.json`: give test instances `PI_CODING_AGENT_DIR=/tmp/<dir>/agent`,
+never the real one. Flows that open a browser or ask a provider for a device code should not run for real in a test:
+put a fake SDK where `PIGNA_PI_BIN` resolves (a folder whose `package.json` is named `@earendil-works/pi-coding-agent`,
+with `dist/index.js` exporting `ModelRuntime`, `SettingsManager` and `getAgentDir`, as `src/main/pi-auth.test.ts`
+builds one) and give it an `auth_url` that is not http, so main opens no browser. For the Claude Code card, give the
+throwaway agent dir a `settings.json` installing `npm:pi-claude-bridge` and an `npm` symlink to the real one (a
+symlink to the package alone hides its hoisted dependencies from pi), and point `claude-bridge.json`'s
+`pathToClaudeCodeExecutable` at a fake `claude` (the test's `FAKE_CLAUDE`): the real `claude auth login` opens the
+browser. A synthetic `KeyboardEvent` needs `cancelable: true`, or `preventDefault` does nothing and Esc also leaves
+Settings; `node scripts/cdp.mjs key Escape` sends a real one.
 Native menus open on the real screen, where CDP cannot reach them: start the test instance with `--inspect=9334`
 as well, and `node scripts/cdp.mjs menus` makes its `Menu.popup` record menus instead of showing them (and lists
 what it recorded), `menu "Copy Image"` clicks an item of the last one, and `main "<expr>"` evaluates in the main
@@ -683,6 +744,9 @@ also prints "Downloading Electron binary..." on stdout: in a fresh worktree, run
 before launching with `$(node -e 'console.log(require("electron"))')`, or the launch gets that line as the path.
 Electron 44's `clipboard` is asynchronous and `ClipboardItem`-based (`read`, `write`, `readText`, `writeText`;
 no `readImage`/`writeImage`).
+An effect must never return what `scrollIntoView` returns (`useEffect(() => el.scrollIntoView(…))`): with
+`behavior: "smooth"` current Chromium returns a Promise, React calls it as the cleanup ("M is not a function") and
+the window goes blank. Give such effects a block body.
 electron-vite 5 does not minify the renderer unless `build.minify` is set. Sandboxed preloads must be CommonJS.
 The checks are `pnpm typecheck` and `pnpm test`; the repo has no formatter or linter config (`npx biome` fetches an
 unrelated npm package). To build and test without rewriting the `out/` a running pi-gna reloads from, build with

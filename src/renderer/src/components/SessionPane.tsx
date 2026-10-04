@@ -2,7 +2,7 @@ import { ChevronsDownUp, ChevronsUpDown, Globe, Paperclip, SquareKanban, X } fro
 import { useRef, useState } from "react";
 import { cardOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../lib/session";
-import { addChatToBoard, attachFiles, closeSession, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp } from "../state/app";
+import { addChatToBoard, attachFiles, closeSession, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -12,6 +12,7 @@ export function SessionPane({ session }: { session: SessionState }) {
   const expandAll = useApp((state) => state.expandAll);
   const browserOpen = useApp((state) => state.pane.open);
   const inset = useApp((state) => state.sidebar.collapsed);
+  const kanban = useFeature("kanban");
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
   const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("Files");
@@ -55,7 +56,7 @@ export function SessionPane({ session }: { session: SessionState }) {
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-fg">{sessionTitle(session)}</div>
         </div>
-        <CardChip session={session} />
+        {kanban && <CardChip session={session} />}
         <button
           type="button"
           onClick={toggleBrowser}

@@ -4,6 +4,17 @@ import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
 import { emptyLaments, type Lament, type LamentOp, type Laments } from "../../../shared/laments";
+import {
+  applySettingsOp,
+  emptySettings,
+  type Feature,
+  FEATURE_LABELS,
+  type Settings,
+  type SettingsOp,
+  type SettingsSection,
+  type TaskModel,
+  taskModel,
+} from "../../../shared/settings";
 import type { CardWorktree, HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
@@ -26,7 +37,7 @@ import {
   stripStudioBlocks,
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
-import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, type TaskModel, TRIAGE_MODEL, triageName, triagePrompt } from "../lib/board";
+import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, triageName, triagePrompt } from "../lib/board";
 import { fixPrompt } from "../lib/laments";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
@@ -71,6 +82,8 @@ export interface AppState {
   board: Board;
   /** Every project's laments, which agents file; main owns them and pushes each change. */
   laments: Laments;
+  /** pi-gna's own settings (features, appearance, task models); main owns them and pushes each change. */
+  settings: Settings;
   /** A full-window page shown instead of the active chat. */
   page?: PageState;
   /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
@@ -81,11 +94,15 @@ export interface AppState {
   updateOpen: boolean;
 }
 
-/** A page of one project: its Kanban board (maybe with a card open) or its laments. */
+/** A page of one project (its Kanban board, maybe with a card open, its laments, ...), or the Settings page. */
 export interface PageState {
   kind: Page;
   cwd: string;
   card?: string;
+  /** Settings: the section shown. */
+  section?: SettingsSection;
+  /** Settings: the page it was opened from, which "Back to app" returns to. */
+  back?: PageState;
 }
 
 export const store = createStore<AppState>({
@@ -108,6 +125,7 @@ export const store = createStore<AppState>({
   sidebar: loadSidebar(),
   board: emptyBoard(),
   laments: emptyLaments(),
+  settings: emptySettings(),
   overlay: false,
   update: { phase: "idle" },
   updateOpen: false,
@@ -621,8 +639,21 @@ export async function applyBoard(op: BoardOp): Promise<boolean> {
 
 const PAGE_PROJECT = "pigna:kanban-project";
 
+/** The feature a page belongs to; Settings is always there. */
+const pageFeature = (kind: Page): Feature | undefined => (kind === "settings" ? undefined : kind);
+const pageOn = (page: PageState | undefined, settings = store.get().settings): boolean => {
+  const feature = page && pageFeature(page.kind);
+  return feature === undefined || settings.features[feature];
+};
+
 /** Open a project's page: by default the active chat's project, else the project of the page you looked at last. */
 export function showPage(kind: Page, cwd?: string, card?: string): void {
+  if (kind === "settings") return openSettings();
+  const feature = pageFeature(kind);
+  if (feature && !store.get().settings.features[feature]) {
+    toast(`${FEATURE_LABELS[feature]} is turned off in Settings (⌘,)`, "warning");
+    return;
+  }
   const { active, sessions } = store.get();
   const chat = active && sessions[active]?.cwd;
   const project = cwd ?? (chat && projectOf(chat)) ?? localStorage.getItem(PAGE_PROJECT) ?? (studio().launchCwd || studio().homeDir);
@@ -645,11 +676,69 @@ export function closePage(): void {
   markRead(store.get().active);
 }
 
-export function togglePage(page: Page): void {
+/** From the menu: open a page or close it; Settings opens at `section`, or switches to it. */
+export function togglePage(page: Page, section?: SettingsSection): void {
   const current = store.get().page;
-  if (current?.kind === page) closePage();
-  else showPage(page, current?.cwd); // from the other page: the same project
+  if (page === "settings") {
+    if (current?.kind === "settings" && (!section || section === current.section)) closeSettings();
+    else openSettings(section);
+  } else if (current?.kind === page) closePage();
+  else showPage(page, current?.kind === "settings" ? (current.back?.cwd ?? current.cwd) : current?.cwd); // from the other page: the same project
 }
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+/** The Settings page, at `section` (General at first); it covers whatever was shown, which "Back to app" returns to. */
+export function openSettings(section?: SettingsSection): void {
+  const current = store.get().page;
+  if (current?.kind === "settings") {
+    if (section && section !== current.section) store.set((s) => ({ ...s, page: { ...current, section } }));
+    return;
+  }
+  const { active, sessions } = store.get();
+  const chat = active && sessions[active]?.cwd;
+  const cwd = current?.cwd ?? (chat ? projectOf(chat) : undefined) ?? localStorage.getItem(PAGE_PROJECT) ?? (studio().launchCwd || studio().homeDir);
+  store.set((s) => ({ ...s, page: { kind: "settings", cwd, section: section ?? "general", back: current } }));
+}
+
+/** Back to the page or chat Settings was opened from. */
+export function closeSettings(): void {
+  const current = store.get().page;
+  if (current?.kind !== "settings") return;
+  if (current.back && pageOn(current.back)) store.set((s) => ({ ...s, page: current.back }));
+  else closePage();
+}
+
+/** Change pi-gna's settings: applied here first, then main checks, saves and pushes them back. False after a toast. */
+export async function applySettings(op: SettingsOp): Promise<boolean> {
+  const before = store.get().settings;
+  try {
+    onSettings(applySettingsOp(before, op));
+    await studio().settings.apply(op);
+    return true;
+  } catch (error) {
+    void studio()
+      .settings.get()
+      .then(onSettings, () => onSettings(before));
+    toast(remoteError(error), "error");
+    return false;
+  }
+}
+
+/** New settings: a page of a feature you turned off closes (Settings forgets it as the page to go back to). */
+function onSettings(settings: Settings): void {
+  store.set((s) => {
+    if (s.settings === settings) return s;
+    const page = s.page;
+    if (!page || pageOn(page, settings)) {
+      const back = page?.back && !pageOn(page.back, settings) ? undefined : page?.back;
+      return { ...s, settings, page: page && back !== page.back ? { ...page, back } : page };
+    }
+    return { ...s, settings, page: undefined };
+  });
+}
+
+export const useFeature = (feature: Feature): boolean => useApp((state) => state.settings.features[feature]);
 
 // ── Laments ──────────────────────────────────────────────────────────────────
 
@@ -709,7 +798,7 @@ export async function addChatToBoard(handle: string): Promise<void> {
 
 /**
  * Add a card from one description and what you attached, at the bottom of `column`: titled with the description's
- * start until a quick chat in the background (TRIAGE_MODEL) names, tags and briefly investigates it.
+ * start until a quick chat in the background (the triage model, Settings > Models) names, tags and briefly investigates it.
  */
 export async function addCard(cwd: string, column: Column, description: string, attachments: Attachment[] = []): Promise<boolean> {
   const text = description.trim();
@@ -723,7 +812,7 @@ export async function addCard(cwd: string, column: Column, description: string, 
   const card = store.get().board.cards.find((other) => other.id === id);
   if (card) {
     const prompt = triagePrompt(card, boardTags(store.get().board, cwd));
-    startCardChat(cwd, { card: id, name: triageName(card), prompt, model: TRIAGE_MODEL, closeWhenDone: true });
+    startCardChat(cwd, { card: id, name: triageName(card), prompt, model: taskModel(store.get().settings, "triage"), closeWhenDone: true });
   }
   return true;
 }
@@ -858,9 +947,9 @@ async function sessionFile(handle: string): Promise<{ path: string; cwd: string 
 
 /** Switch a new chat to a card task's model. For this chat only: pi keeps your default model and thinking level. */
 async function useModel(handle: string, want: TaskModel): Promise<void> {
-  const model = pickModel(store.get().models, want.id, store.get().sessions[handle]?.model?.provider);
+  const model = pickModel(store.get().models, want, store.get().sessions[handle]?.model?.provider);
   if (!model) {
-    toast(`${want.id} is not available, so this chat runs on your default model`, "warning");
+    toast(`${want.provider ? `${want.provider}/` : ""}${want.id} is not available, so this chat runs on your default model`, "warning");
     return;
   }
   await setModel(handle, model);
@@ -886,6 +975,8 @@ export function boot(): void {
     windowFocused = focused;
     if (focused && !store.get().page) markRead(store.get().active);
   });
+  studio().settings.onChange(onSettings);
+  void studio().settings.get().then(onSettings);
   studio().board.onChange((board) => store.set((s) => ({ ...s, board })));
   studio().laments.onChange((laments) => store.set((s) => ({ ...s, laments })));
   void studio()

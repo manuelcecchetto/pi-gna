@@ -3,7 +3,8 @@
 import { type Board, COLUMN_LABELS, COLUMNS, type Card, type ChatRef, type Column, projectCards, projectOf } from "../../../shared/board";
 import { refLine } from "../../../shared/github";
 import type { CardWorktree, ProjectGroup, SessionSummary } from "../../../shared/ipc";
-import type { Model, ThinkingLevel } from "../../../shared/protocol";
+import type { Model } from "../../../shared/protocol";
+import type { TaskModel } from "../../../shared/settings";
 import { type Attention, type SessionState, strongestAttention } from "./session";
 
 export function boardColumns(board: Board, cwd: string): Record<Column, Card[]> {
@@ -76,23 +77,16 @@ export function splitAttachments(notes: string): { text: string; paths: string[]
   return { text, paths };
 }
 
-/** The model a chat started for a card runs on, for that chat only. */
-export interface TaskModel {
-  id: string;
-  thinking: ThinkingLevel;
-}
-
-/** Names, tags and briefly investigates every card you add: quick and cheap, since it runs for each one. */
-export const TRIAGE_MODEL: TaskModel = { id: "claude-sonnet-5-5", thinking: "low" };
-
 const TRIAGE = "Triage: ";
 /** The name of a card's triage chat. Triage chats stay out of the sidebar: they are reached from their card. */
 export const triageName = (card: Pick<Card, "title">): string => `${TRIAGE}${card.title}`;
 export const isTriage = (name: string | undefined): boolean => name?.startsWith(TRIAGE) ?? false;
 
-/** A model by id, from the chat's own provider when it has it (several providers serve the same model). */
-export function pickModel(models: Model[], id: string, provider: string | undefined): Model | undefined {
-  return models.find((model) => model.id === id && model.provider === provider) ?? models.find((model) => model.id === id);
+/** A task's model: from its own provider when it names one, else the chat's own provider when that has it (several
+ * providers serve the same model), else any. */
+export function pickModel(models: Model[], want: Pick<TaskModel, "provider" | "id">, chatProvider: string | undefined): Model | undefined {
+  const by = (provider: string | undefined) => (provider === undefined ? undefined : models.find((model) => model.id === want.id && model.provider === provider));
+  return by(want.provider) ?? by(chatProvider) ?? models.find((model) => model.id === want.id);
 }
 
 /** Projects the board can switch to: the sidebar's, then others that have cards; `current` always. */

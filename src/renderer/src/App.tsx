@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { AtpPage } from "./components/Atp";
 import { BrowserPane } from "./components/BrowserPane";
-import { ComputerPage } from "./components/Computer";
 import { GithubPage } from "./components/GitHub";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
+import { SettingsPage } from "./components/Settings";
 import { HeroBackdrop } from "./components/Transcript";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
-import { boot, dismissToast, newChat, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
+import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
   useEffect(() => {
@@ -25,6 +25,8 @@ export function App() {
         newChat();
       } else if (key === "escape" && store.get().lightbox) {
         openLightbox(undefined);
+      } else if (key === "escape" && store.get().page?.kind === "settings" && !event.defaultPrevented && !editing(event.target)) {
+        closeSettings();
       }
     };
     // Files dropped outside a drop zone must not navigate the window to file://.
@@ -69,8 +71,8 @@ export function App() {
       <Sidebar />
       <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
-          {page?.kind === "computer" ? (
-            <ComputerPage />
+          {page?.kind === "settings" ? (
+            <SettingsPage page={page} />
           ) : page?.kind === "laments" ? (
             <LamentsPage key={page.cwd} page={page} />
           ) : page?.kind === "github" ? (
@@ -106,6 +108,10 @@ export function App() {
     </div>
   );
 }
+
+/** Esc in a field you are typing in is the field's (a popover's search, say), not the page's. */
+const editing = (target: EventTarget | null): boolean =>
+  (target instanceof HTMLInputElement && target.value !== "") || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
 
 function Lightbox() {
   const src = useApp((state) => state.lightbox);

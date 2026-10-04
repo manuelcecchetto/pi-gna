@@ -8,6 +8,15 @@ moves those lines under the new version, and they become its GitHub release note
 - Fix a lament (right-click it, or Fix in its details): a new chat looks for the cause and fixes it in a git worktree,
   on a branch of its own (`pigna/<lament>-fix-…`), and the lament links to that chat and branch. The manual action
   is now Mark resolved, for when the fix is in: no chat runs for it.
+- A Settings page (Cmd+, or Settings at the foot of the sidebar), Codex-style: while it is open the sidebar lists
+  its sections, with a search. It gathers the theme, the models of the chats pi-gna starts itself (card triage, ATP),
+  pi's own settings (default model and thinking, queueing, compaction, retries, images, project trust; they apply to
+  new chats) and switches to turn Kanban, Laments, GitHub, ATP and Computer Use off, which also takes their tools
+  away from chats. The Computer Use page is now one of its sections.
+- Settings > Providers signs you in to pi's model providers as pi's `/login` does: subscription and account logins
+  as cards, API keys in a searchable list, each with the provider's logo; sign out or remove a key there too. With
+  pi-claude-bridge installed, your Claude plan signs in through Claude Code's own login instead of pi's.
+- Hold Cmd to see Cmd+1 to Cmd+9 on the chats in the sidebar (on the sections while in Settings); press one to open it.
 - Computer Use (Cmd+Shift+U): pi can see and operate your Mac's native apps in the background through a small helper
   app, with its own cursor, an approval per app and Esc to stop. Off by default; needs Accessibility and Screen
   Recording for the helper. Terminals, pi-gna and system security prompts are never controlled.

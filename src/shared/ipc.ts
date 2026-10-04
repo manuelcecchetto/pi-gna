@@ -1,11 +1,14 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
 import type { AtpClaim, AtpHead, AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp } from "./board";
+import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
+import type { PiPatch, PiSettingsState } from "./pi-settings";
+import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -61,6 +64,18 @@ export const IPC = {
   computerPermissions: "computer:permissions",
   computerRequest: "computer:request",
   computerOpenSettings: "computer:open-settings",
+  settingsGet: "settings:get",
+  settingsApply: "settings:apply",
+  settingsChanged: "settings:changed",
+  piSettingsGet: "settings:pi-get",
+  piSettingsApply: "settings:pi-apply",
+  piSettingsReveal: "settings:pi-reveal",
+  authList: "auth:list",
+  authLogin: "auth:login",
+  authUpdate: "auth:update",
+  authAnswer: "auth:answer",
+  authCancel: "auth:cancel",
+  authLogout: "auth:logout",
   boardSaveImage: "board:save-image",
   githubProject: "github:project",
   githubChoose: "github:choose",
@@ -86,7 +101,6 @@ export const IPC = {
   updateReveal: "update:reveal",
 } as const;
 
-/** Full-window pages shown instead of a chat. */
 /** The Computer Use policy lives in main; every change is pushed back. */
 export interface ComputerApi {
   get(): Promise<ComputerSettings>;
@@ -100,7 +114,38 @@ export interface ComputerApi {
   openSettings(pane: "accessibility" | "screen_recording"): Promise<void>;
 }
 
-export type Page = "kanban" | "laments" | "github" | "atp" | "computer";
+/** Full-window pages shown instead of a chat. */
+export type Page = "kanban" | "laments" | "github" | "atp" | "settings";
+
+/** pi-gna's own settings live in main (userData/settings.json); every change is pushed back. pi's settings are pi's
+ * settings.json, which main reads and writes for the Settings page. */
+export interface SettingsApi {
+  get(): Promise<Settings>;
+  /** Rejects with the reason for an invalid op. */
+  apply(op: SettingsOp): Promise<Settings>;
+  onChange(listener: (settings: Settings) => void): () => void;
+  /** The keys of pi's settings.json the Settings page edits (src/shared/pi-settings.ts). */
+  pi(): Promise<PiSettingsState>;
+  /** Change them for new chats; rejects when the file is not valid JSON or the change is not valid. */
+  setPi(patch: PiPatch): Promise<PiSettingsState>;
+  /** Show pi's settings.json in the Finder. */
+  revealPi(): Promise<void>;
+}
+
+/** pi's provider logins, which main runs with pi's own SDK (src/main/pi-auth.ts). One login at a time. */
+export interface AuthApi {
+  /** pi's providers and how each is signed in; `error` when pi-gna cannot reach pi's logins. */
+  list(): Promise<AuthState>;
+  /** Runs a login to its end; a new one cancels the last. Its prompts and events arrive through onUpdate, and main
+   * opens the sign-in page in the browser, as pi's /login does. */
+  login(provider: string, method: AuthMethod): Promise<LoginResult>;
+  onUpdate(listener: (update: LoginUpdate) => void): () => void;
+  /** The answer to prompt `n` of the running login. */
+  answer(n: number, value: string): void;
+  cancel(): void;
+  /** Removes the credential pi saved in auth.json. */
+  logout(provider: string): Promise<void>;
+}
 
 /** The laments live in main, which agents file them with; every change is pushed back. */
 export interface LamentsApi {
@@ -313,8 +358,9 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
-  /** View > Kanban (⌘⇧K), Laments (⌘⇧L), GitHub (⌘⇧G), ATP (⌘⇧A), Computer Use (⌘⇧U): page toggles from the menu. */
-  onPageToggle(listener: (page: Page) => void): () => void;
+  /** View > Kanban (⌘⇧K), Laments (⌘⇧L), GitHub (⌘⇧G), ATP (⌘⇧A), pi-gna > Settings… (⌘,) and View > Computer Use
+   * (⌘⇧U, Settings at that section): page toggles from the menu. */
+  onPageToggle(listener: (page: Page, section?: SettingsSection) => void): () => void;
   /** Another launch (say `pi --pigna` in a different project) asks for a new chat in `cwd`. */
   onOpenProject(listener: (cwd: string) => void): () => void;
   /** Absolute path of a dropped or pasted File ("" for in-memory data such as a copied screenshot). */
@@ -325,6 +371,8 @@ export interface StudioApi {
   board: BoardApi;
   laments: LamentsApi;
   computer: ComputerApi;
+  settings: SettingsApi;
+  auth: AuthApi;
   github: GithubApi;
   atp: AtpApi;
   update: UpdateApi;

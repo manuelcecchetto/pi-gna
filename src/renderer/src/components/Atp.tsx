@@ -5,6 +5,7 @@
 import { ChevronDown, ChevronUp, FileWarning, MessagesSquare, Network, Pause, Play, Plus, RefreshCw, Search, Square, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, planName, planProgress } from "../../../shared/atp";
+import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { activate, type PageState, prefill, showPage, useApp } from "../state/app";
 import {
@@ -340,6 +341,7 @@ function PlanBar({
   onReveal: (id: string) => void;
 }) {
   const home = window.studio.homeDir;
+  const worker = useApp((state) => taskModel(state.settings, "worker"));
   const progress = planProgress(plan);
   const finished = progress.total > 0 && progress.completed === progress.total;
   const percent = progress.total ? Math.floor((progress.completed / progress.total) * 100) : 0;
@@ -380,7 +382,7 @@ function PlanBar({
             <button
               type="button"
               onClick={() => void startPlan(plan.path, cwd)}
-              title={`Run the plan one node at a time, each in a fresh ${ATP_CONFIG.worker.id} (${ATP_CONFIG.worker.thinking}) worker chat that commits its node`}
+              title={`Run the plan one node at a time, each in a fresh ${worker.id} (${worker.thinking}) worker chat that commits its node`}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1 text-[12.5px] font-medium text-white hover:opacity-90"
             >
               <Play size={11} fill="currentColor" /> {stalled ? "Resume" : plan.status === "DRAFT" ? "Start" : "Run"}
