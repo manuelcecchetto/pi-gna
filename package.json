@@ -29,6 +29,7 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder --mac --publish never",
+    "build:computer-use": "node scripts/build-computer-use.mjs",
     "icon": "electron scripts/make-icon.mjs",
     "release": "node scripts/release.mjs"
   },
