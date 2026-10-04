@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp, type Board, BoardError, type BoardOp, type Column, cardOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
+import { applyOp, type Board, BoardError, type BoardOp, boardConflict, type Column, cardOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
 
 const run = (ops: BoardOp[], board = emptyBoard()) => ops.reduce((current, op, index) => applyOp(current, op, 1000 + index), board);
 const add = (id: string, column: Column = "todo"): Extract<BoardOp, { type: "add" }> => ({
@@ -175,5 +175,26 @@ describe("card worktrees", () => {
     for (const other of ["/Users/me/.pi-gna/worktrees/abc123", "/Users/me/.pi-gna/worktrees/notes/x", "/Users/me/.pi-gna/worktrees//x"]) {
       expect(projectOf(other)).toBe(other);
     }
+  });
+});
+
+describe("boardConflict", () => {
+  const card = (over: object = {}) => ({ id: "aaaaaa", title: "One", notes: "n", tags: ["a"], cwd: "/repo", column: "todo", github: [], chats: [], reports: [], createdAt: 1, updatedAt: 1, ...over }) as Board["cards"][number];
+  const board = (...cards: Board["cards"]): Board => ({ version: 1, cards });
+
+  it("flags a text field replaced after it changed, and only that field", () => {
+    const base = board(card());
+    const now = board(card({ title: "Agent", tags: ["b"] }));
+    expect(boardConflict(base, now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(true);
+    expect(boardConflict(base, now, { type: "edit", id: "aaaaaa", tags: ["c"] })).toBe(true);
+    expect(boardConflict(base, now, { type: "edit", id: "aaaaaa", notes: "Mine" })).toBe(false);
+  });
+
+  it("never flags structural ops, and treats an unknown base as stale for text edits", () => {
+    const now = board(card({ title: "Agent", column: "done" }));
+    expect(boardConflict(board(card()), now, { type: "move", id: "aaaaaa", column: "todo" })).toBe(false);
+    expect(boardConflict(undefined, now, { type: "attach", id: "aaaaaa", chat: { path: "/s", cwd: "/repo" } })).toBe(false);
+    expect(boardConflict(undefined, now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(true);
+    expect(boardConflict(board(), now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(false);
   });
 });

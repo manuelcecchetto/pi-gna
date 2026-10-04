@@ -245,8 +245,8 @@ describe("GitHub settings", () => {
     await store.apply({ type: "choose", project: PROJECT, login: WORK });
     await store.apply({ type: "save", repo: "github.com/a/b", login: PERSONAL });
     await store.flushed();
-    expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ version: 1, chosen: { [PROJECT]: WORK }, saved: { "github.com/a/b": PERSONAL } });
-    expect(await new GithubStore(file).get()).toEqual({ version: 1, chosen: { [PROJECT]: WORK }, saved: { "github.com/a/b": PERSONAL } });
+    expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ rev: 2, version: 1, chosen: { [PROJECT]: WORK }, saved: { "github.com/a/b": PERSONAL } });
+    expect(await new GithubStore(file).get()).toEqual({ rev: 2, version: 1, chosen: { [PROJECT]: WORK }, saved: { "github.com/a/b": PERSONAL } });
     expect(() => applyGithubSettings(emptyGithubSettings(), { type: "choose", project: "relative", login: WORK })).toThrow("invalid project");
     expect(() => applyGithubSettings(emptyGithubSettings(), { type: "save", repo: "github.com/a/b", login: "not a login" })).toThrow("invalid GitHub login");
   });

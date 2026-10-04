@@ -9,6 +9,7 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
+import type { Revved } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type {
   ExtensionUiRequest,
@@ -108,10 +109,10 @@ export const IPC = {
 
 /** The Computer Use policy lives in main; every change is pushed back. */
 export interface ComputerApi {
-  get(): Promise<ComputerSettings>;
+  get(): Promise<Revved<ComputerSettings>>;
   /** Rejects with the reason for an invalid op. */
-  apply(op: ComputerOp): Promise<ComputerSettings>;
-  onChange(listener: (settings: ComputerSettings) => void): () => void;
+  apply(op: ComputerOp, baseRev?: number): Promise<Revved<ComputerSettings>>;
+  onChange(listener: (settings: Revved<ComputerSettings>) => void): () => void;
   /** Live Accessibility and Screen Recording status from the helper (starts it); rejects with the reason it cannot. */
   permissions(): Promise<Permissions>;
   /** Ask macOS for the missing permissions (shows its prompts), then report the status. */
@@ -126,10 +127,10 @@ export type Page = "kanban" | "laments" | "github" | "atp" | "settings";
 /** pi-gna's own settings live in main (userData/settings.json); every change is pushed back. pi's settings are pi's
  * settings.json, which main reads and writes for the Settings page. */
 export interface SettingsApi {
-  get(): Promise<Settings>;
+  get(): Promise<Revved<Settings>>;
   /** Rejects with the reason for an invalid op. */
-  apply(op: SettingsOp): Promise<Settings>;
-  onChange(listener: (settings: Settings) => void): () => void;
+  apply(op: SettingsOp, baseRev?: number): Promise<Revved<Settings>>;
+  onChange(listener: (settings: Revved<Settings>) => void): () => void;
   /** The keys of pi's settings.json the Settings page edits (src/shared/pi-settings.ts). */
   pi(): Promise<PiSettingsState>;
   /** Change them for new chats; rejects when the file is not valid JSON or the change is not valid. */
@@ -155,18 +156,18 @@ export interface AuthApi {
 
 /** The laments live in main, which agents file them with; every change is pushed back. */
 export interface LamentsApi {
-  get(): Promise<Laments>;
+  get(): Promise<Revved<Laments>>;
   /** Rejects with the reason for an invalid op (unknown lament). */
-  apply(op: LamentOp): Promise<Laments>;
-  onChange(listener: (laments: Laments) => void): () => void;
+  apply(op: LamentOp, baseRev?: number): Promise<Revved<Laments>>;
+  onChange(listener: (laments: Revved<Laments>) => void): () => void;
 }
 
 /** The Kanban boards live in main, which agents change too; every change is pushed back. */
 export interface BoardApi {
-  get(): Promise<Board>;
+  get(): Promise<Revved<Board>>;
   /** Rejects with the reason for an invalid op (unknown card, title too long). */
-  apply(op: BoardOp): Promise<Board>;
-  onChange(listener: (board: Board) => void): () => void;
+  apply(op: BoardOp, baseRev?: number): Promise<Revved<Board>>;
+  onChange(listener: (board: Revved<Board>) => void): () => void;
   /** Save an image for a card that was just added (AddCard) and return its path; deleted with the card. */
   saveImage(card: string, image: { mimeType: string; data: string }): Promise<string>;
 }

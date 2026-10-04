@@ -292,13 +292,17 @@ is the prompt path for the UI.
 
 - Every store value (`Board`, `Laments`, `Settings`, `ComputerSettings`, `UiState`, held plans) carries `rev: number`,
   incremented on each applied change; pushed values and `*.get` return it.
-- **Free-text edits** carry `baseRev`: card title/notes/tags/description, settings strings, lament text. If
-  `baseRev !== current rev` and the edit touches a field changed since `baseRev`, it fails `409 conflict` with the current
-  rev in `detail`, and the client reloads. (Phase one: any stale `baseRev` on a text edit conflicts; per-field
-  tracking is T09's choice if cheap.)
+- **Free-text edits** carry `baseRev` (the revision the editor last showed): card title/notes/tags, settings theme,
+  wallpaper and task models. When `baseRev !== current rev`, `JsonStore` looks the base value up in its last 64 revisions
+  and the model's `conflicts` (`boardConflict`, `settingsConflict`) compares just the field the op replaces; if it
+  changed since (or the base is older than 64 revisions) the op fails `409 conflict` with `detail: { rev }` (IPC message
+  starts `Conflict:`) and the client reloads and tells the user. Laments and Computer Use settings have no text-replacing
+  op, so they only carry `rev`. Agents (`kanban_update`, the lament tool) send no `baseRev`.
 - **Structural ops** (move, attach, link, reorder, resolve/reopen) stay last-writer-wins, validated by the existing
   pure `applyOp`/`applyLamentOp`; they ignore `baseRev`.
-- Persisted file format gains `rev`; files without it load as `rev: 0`.
+- `rev` is persisted in each store file (`rev` key beside `version`; files without it load as 0) and counts only changes
+  that alter the value. It is added by `JsonStore`, not by the pure `apply*Op` functions. `GithubStore` shares the class
+  and so also persists a `rev` (unused, never pushed).
 
 ## 10. Errors
 

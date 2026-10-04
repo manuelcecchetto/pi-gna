@@ -62,4 +62,13 @@ describe("POST /lament", () => {
     const id = idOf(await route("h", { title: "No dependencies in the worktree", body: "Installed them.", severity: "annoying" }));
     expect((await store.get()).laments.find((lament) => lament.id === id)?.cwd).toBe("/repo");
   });
+
+  it("counts every applied change as a revision, and ignores a baseRev it has no text edit for", async () => {
+    const { store, route } = await setup();
+    const before = (await store.get()).rev;
+    const id = idOf(await route("h", { title: "No tab recorder", body: "one", severity: "annoying" }));
+    await store.apply({ type: "resolve", id, resolved: true }, 0);
+    await store.apply({ type: "resolve", id, resolved: true }); // already resolved: no revision
+    expect((await store.get()).rev).toBe(before + 2);
+  });
 });

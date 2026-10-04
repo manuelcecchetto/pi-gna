@@ -317,7 +317,7 @@ function registerIpc(shellEnv: Promise<void>): void {
 
   handle(IPC.boardGet, () => board.get());
   handle(IPC.computerGet, () => computerPolicy.get());
-  handle(IPC.computerApply, (op: ComputerOp) => computerPolicy.apply(op));
+  handle(IPC.computerApply, (op: ComputerOp, baseRev?: number) => computerPolicy.apply(op, baseRev));
   handle(IPC.computerPermissions, () => computerHelper.call("permissions", {}));
   handle(IPC.computerRequest, async (pane?: "accessibility" | "screen_recording") => {
     await computerHelper.call("request_permissions", {});
@@ -335,7 +335,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     await computerHelper.call("open_settings", { pane });
   });
   handle(IPC.settingsGet, () => settings.get());
-  handle(IPC.settingsApply, (op: SettingsOp) => settings.apply(op));
+  handle(IPC.settingsApply, (op: SettingsOp, baseRev?: number) => settings.apply(op, baseRev));
   // PI_CODING_AGENT_DIR can come from the login shell.
   handle(IPC.piSettingsGet, async () => (await shellEnv, readPiSettings()));
   handle(IPC.piSettingsApply, async (patch: unknown) => (await shellEnv, writePiSettings(patch)));
@@ -361,9 +361,9 @@ function registerIpc(shellEnv: Promise<void>): void {
     await auth.signOut(String(provider));
   });
   handle(IPC.lamentsGet, () => laments.get());
-  handle(IPC.lamentsApply, (op: LamentOp) => laments.apply(op));
-  handle(IPC.boardApply, async (op: BoardOp) => {
-    const next = await board.apply(op);
+  handle(IPC.lamentsApply, (op: LamentOp, baseRev?: number) => laments.apply(op, baseRev));
+  handle(IPC.boardApply, async (op: BoardOp, baseRev?: number) => {
+    const next = await board.apply(op, baseRev);
     if (op.type === "remove") void cardImages.remove(op.id).catch((error: Error) => log.warn("board", `could not delete the images of card ${op.id}: ${error.message}`));
     return next;
   });

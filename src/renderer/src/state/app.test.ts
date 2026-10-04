@@ -164,7 +164,7 @@ describe("resolving a card and checking it in review", () => {
     vi.stubGlobal("window", {
       studio: { command, cardWorktree, openSession: async () => ({ entries: [] }), listSessions: async () => [], board: { apply } },
     });
-    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], board: { version: 1, cards: [target] } }));
+    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], board: { version: 1, cards: [target], rev: 0 } }));
     cardActions(target).find((action) => action.id === id)?.run(target);
     // Not long enough for the toast to go.
     await vi.advanceTimersByTimeAsync(100);
@@ -187,7 +187,7 @@ describe("resolving a card and checking it in review", () => {
     const session = await resolve();
     expect(cardWorktree).toHaveBeenCalledExactlyOnceWith("aaaaaa");
     expect(session?.cwd).toBe(worktree.cwd);
-    expect(apply).toHaveBeenCalledWith({ type: "attach", id: "aaaaaa", chat: { path: "/s/r.jsonl", cwd: worktree.cwd, label: "Resolve: Fix the flash" } });
+    expect(apply).toHaveBeenCalledWith({ type: "attach", id: "aaaaaa", chat: { path: "/s/r.jsonl", cwd: worktree.cwd, label: "Resolve: Fix the flash" } }, 0);
     expect(prompt()).toMatchObject({ message: expect.stringContaining("on branch pigna/aaaaaa-fix-the-flash") });
     expect(store.get().toasts.at(-1)).toMatchObject({ level: "warning", text: expect.stringContaining("uncommitted changes are not in its worktree") });
   });
@@ -219,7 +219,7 @@ describe("resolving a card and checking it in review", () => {
     const session = await resolve("qa", reviewed);
     expect(cardWorktree).toHaveBeenCalledExactlyOnceWith("aaaaaa");
     expect(session?.cwd).toBe(worktree.cwd);
-    expect(apply).toHaveBeenCalledWith({ type: "attach", id: "aaaaaa", chat: { path: "/s/r.jsonl", cwd: worktree.cwd, label: "QA: Fix the flash" } });
+    expect(apply).toHaveBeenCalledWith({ type: "attach", id: "aaaaaa", chat: { path: "/s/r.jsonl", cwd: worktree.cwd, label: "QA: Fix the flash" } }, 0);
     expect(prompt()).toMatchObject({ message: expect.stringMatching(/^QA this card[^]*The change is on branch pigna\/aaaaaa-fix-the-flash[^]*Do not fix what you find/) });
     expect(store.get().toasts.at(-1)).toMatchObject({ level: "info", text: "Checking “Fix the flash” on branch pigna/aaaaaa-fix-the-flash" });
   });
@@ -241,7 +241,7 @@ describe("chatting about a card", () => {
     vi.stubGlobal("window", {
       studio: { command, openSession: async () => ({ entries: [] }), listSessions: async () => [], closeSession: async () => undefined, board: { apply } },
     });
-    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, composerCards: {}, board: { version: 1, cards: [card] } }));
+    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, composerCards: {}, board: { version: 1, cards: [card], rev: 0 } }));
     cardActions(card).find((action) => action.id === "discuss")?.run(card);
     const handle = store.get().active ?? "";
     handleBatch({ handle, events: [{ kind: "ready", state: { sessionFile: "/s/d.jsonl", messageCount: 0 } as RpcSessionState }] });
@@ -264,7 +264,7 @@ describe("chatting about a card", () => {
     expect(await send(handle, "Why does it flash?", "send")).toBe(true);
     await vi.advanceTimersByTimeAsync(100);
     expect(lastPrompt()).toMatchObject({ message: `${cardBlock(card)}\n\nWhy does it flash?` });
-    expect(apply).toHaveBeenCalledExactlyOnceWith({ type: "attach", id: "bbbbbb", chat: { path: "/s/d.jsonl", cwd: "/repo", label: undefined } });
+    expect(apply).toHaveBeenCalledExactlyOnceWith({ type: "attach", id: "bbbbbb", chat: { path: "/s/d.jsonl", cwd: "/repo", label: undefined } }, 0);
     expect(composerCard(store.get(), handle)).toBeUndefined();
   });
 
@@ -287,7 +287,7 @@ describe("adding a card with screenshots", () => {
     vi.stubGlobal("window", {
       studio: { command, openSession: async () => ({ entries: [] }), listSessions: async () => [], closeSession: async () => undefined, board: { apply, saveImage } },
     });
-    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], board: { version: 1, cards: [] } }));
+    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], board: { version: 1, cards: [], rev: 0 } }));
     return (): string[] => apply.mock.calls.map(([op]) => (op as { type: string }).type);
   }
 
@@ -319,9 +319,9 @@ describe("the Settings page", () => {
   const apply = vi.fn(async () => undefined);
   beforeEach(() => {
     apply.mockClear();
-    vi.stubGlobal("window", { studio: { command, launchCwd: "/repo", homeDir: "/home", settings: { apply, get: async () => emptySettings() } } });
+    vi.stubGlobal("window", { studio: { command, launchCwd: "/repo", homeDir: "/home", settings: { apply, get: async () => ({ ...emptySettings(), rev: 0 }) } } });
     vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => undefined });
-    store.set((s) => ({ ...s, settings: emptySettings(), page: undefined, toasts: [], sessions: {}, active: undefined }));
+    store.set((s) => ({ ...s, settings: { ...emptySettings(), rev: 0 }, page: undefined, toasts: [], sessions: {}, active: undefined }));
   });
 
   it("covers the page it was opened from and goes back to it", () => {
@@ -341,7 +341,7 @@ describe("the Settings page", () => {
     showPage("atp", "/repo");
     openSettings("features");
     expect(await applySettings({ type: "feature", feature: "atp", enabled: false })).toBe(true);
-    expect(apply).toHaveBeenCalledWith({ type: "feature", feature: "atp", enabled: false });
+    expect(apply).toHaveBeenCalledWith({ type: "feature", feature: "atp", enabled: false }, 0);
     expect(store.get().page).toMatchObject({ kind: "settings", back: undefined });
     closeSettings();
     expect(store.get().page).toBeUndefined();

@@ -16,12 +16,13 @@ import {
   projectLaments,
   SEVERITY,
 } from "../shared/laments";
+import type { Revved } from "../shared/host-api";
 import { bridgeError, type Route } from "./bridge";
 import type { Identify } from "./kanban";
 import { JsonStore } from "./store";
 
 export class LamentStore extends JsonStore<Laments, LamentOp> {
-  constructor(file: string, changed: (laments: Laments) => void) {
+  constructor(file: string, changed: (laments: Revved<Laments>) => void) {
     const parse = (raw: unknown) => {
       const { laments, dropped } = parseLaments(raw);
       return { value: laments, dropped };

@@ -47,6 +47,67 @@ describe("BoardStore", () => {
   });
 });
 
+describe("BoardStore revisions", () => {
+  const setup = async () => {
+    const dir = await folder();
+    const pushed: number[] = [];
+    const store = new BoardStore(join(dir, "board.json"), (board) => pushed.push(board.rev));
+    return { dir, pushed, store };
+  };
+
+  it("counts each change, pushes it with its rev and keeps it across restarts", async () => {
+    const { dir, pushed, store } = await setup();
+    expect((await store.get()).rev).toBe(0);
+    await store.apply({ type: "add", id: "aaaaaa", title: "One", cwd: "/repo" });
+    await store.apply({ type: "add", id: "aaaaaa", title: "Dup", cwd: "/repo" }).catch(() => undefined); // refused: no rev
+    expect(await store.apply({ type: "edit", id: "aaaaaa", notes: "x" })).toMatchObject({ rev: 2 });
+    expect(pushed).toEqual([1, 2]);
+    await store.flushed();
+    expect((await new BoardStore(join(dir, "board.json"), () => undefined).get()).rev).toBe(2);
+  });
+
+  it("loads a file from before revisions as rev 0", async () => {
+    const dir = await folder();
+    await writeFile(join(dir, "board.json"), JSON.stringify({ version: 1, cards: [] }));
+    expect((await new BoardStore(join(dir, "board.json"), () => undefined).get()).rev).toBe(0);
+  });
+
+  it("refuses a text edit from a stale revision when that text changed since, and says the current rev", async () => {
+    const { store } = await setup();
+    await store.apply({ type: "add", id: "aaaaaa", title: "One", cwd: "/repo" });
+    const seen = (await store.get()).rev;
+    await store.apply({ type: "edit", id: "aaaaaa", title: "Renamed by an agent" });
+    await expect(store.apply({ type: "edit", id: "aaaaaa", title: "Mine" }, seen)).rejects.toMatchObject({ code: "conflict", status: 409, detail: { rev: 2 } });
+    expect((await store.get()).cards[0]?.title).toBe("Renamed by an agent");
+  });
+
+  it("lets a stale text edit through when another field or card changed", async () => {
+    const { store } = await setup();
+    await store.apply({ type: "add", id: "aaaaaa", title: "One", cwd: "/repo" });
+    const seen = (await store.get()).rev;
+    await store.apply({ type: "edit", id: "aaaaaa", notes: "agent notes" });
+    await store.apply({ type: "add", id: "bbbbbb", title: "Two", cwd: "/repo" });
+    await store.apply({ type: "edit", id: "aaaaaa", title: "Mine" }, seen);
+    expect((await store.get()).cards.find((card) => card.id === "aaaaaa")).toMatchObject({ title: "Mine", notes: "agent notes" });
+  });
+
+  it("keeps structural ops last-writer-wins, whatever baseRev they carry", async () => {
+    const { store } = await setup();
+    await store.apply({ type: "add", id: "aaaaaa", title: "One", cwd: "/repo" });
+    await store.apply({ type: "edit", id: "aaaaaa", title: "Two" });
+    await store.apply({ type: "move", id: "aaaaaa", column: "done" }, 0);
+    expect((await store.get()).cards[0]?.column).toBe("done");
+  });
+
+  it("treats a revision it no longer remembers as a conflict for text edits only", async () => {
+    const { store } = await setup();
+    await store.apply({ type: "add", id: "aaaaaa", title: "One", cwd: "/repo" });
+    for (let i = 0; i < 70; i++) await store.apply({ type: "edit", id: "aaaaaa", notes: String(i) });
+    await expect(store.apply({ type: "edit", id: "aaaaaa", title: "Late" }, 1)).rejects.toMatchObject({ code: "conflict" });
+    await store.apply({ type: "move", id: "aaaaaa", column: "done" }, 1);
+  });
+});
+
 describe("POST /kanban", () => {
   const chat = { path: "/s/chat.jsonl", cwd: "/repo" };
   const setup = async () => {

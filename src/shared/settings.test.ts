@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySettingsOp, emptySettings, parseSettings, SettingsError, type SettingsOp, TASK_DEFAULTS, taskModel } from "./settings";
+import { applySettingsOp, emptySettings, parseSettings, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel } from "./settings";
 
 const start = emptySettings();
 
@@ -84,5 +84,17 @@ describe("parseSettings", () => {
   it("throws for what is no settings file", () => {
     expect(() => parseSettings([])).toThrow(SettingsError);
     expect(() => parseSettings(null)).toThrow(SettingsError);
+  });
+});
+
+describe("settingsConflict", () => {
+  const dark = { ...emptySettings(), theme: "dark" as const };
+  it("flags a theme, wallpaper or task model changed since the base, not switches", () => {
+    expect(settingsConflict(emptySettings(), dark, { type: "theme", theme: "light" })).toBe(true);
+    expect(settingsConflict(emptySettings(), dark, { type: "wallpaper", wallpaper: "ink" })).toBe(false);
+    expect(settingsConflict(emptySettings(), dark, { type: "model", task: "triage", model: null })).toBe(false);
+    expect(settingsConflict(emptySettings(), { ...dark, models: { triage: { id: "m", thinking: "low" } } }, { type: "model", task: "triage", model: null })).toBe(true);
+    expect(settingsConflict(emptySettings(), dark, { type: "visuals", on: true })).toBe(false);
+    expect(settingsConflict(undefined, dark, { type: "theme", theme: "light" })).toBe(true);
   });
 });

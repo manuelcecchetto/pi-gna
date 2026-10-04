@@ -31,4 +31,16 @@ describe("SettingsStore", () => {
     expect(JSON.parse(await readFile(join(dir, "settings.json"), "utf8")).features.kanban).toBe(false);
     expect((await new SettingsStore(join(dir, "settings.json"), vi.fn()).get()).features.kanban).toBe(false);
   });
+
+  it("counts changes, and refuses a stale theme edit but not a stale switch", async () => {
+    const settings = new SettingsStore(join(dir, "settings.json"), vi.fn());
+    await settings.apply({ type: "theme", theme: "dark" });
+    await settings.apply({ type: "theme", theme: "dark" }); // no change: no rev
+    expect((await settings.get()).rev).toBe(1);
+    await expect(settings.apply({ type: "theme", theme: "light" }, 0)).rejects.toMatchObject({ code: "conflict", detail: { rev: 1 } });
+    await settings.apply({ type: "visuals", on: true }, 0);
+    await settings.apply({ type: "theme", theme: "light" }, 2);
+    expect(await settings.get()).toMatchObject({ rev: 3, theme: "light", visuals: true });
+    await settings.flushed();
+  });
 });

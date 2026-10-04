@@ -8,7 +8,7 @@ import type { PickedPath } from "../../../shared/ipc";
 import { chatSummary, chatTitle, splitAttachments } from "../lib/board";
 import { formatStamp, relativeTime } from "../lib/format";
 import { attention } from "../../../shared/session-state";
-import { applyBoard, openSession, remoteError, sessionTitle, setOverlay, useApp, useFeature } from "../state/app";
+import { applyBoard, boardRev, openSession, remoteError, sessionTitle, setOverlay, useApp, useFeature } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { ColumnIcon } from "./ColumnIcon";
 import { RefIcon } from "./GitHub";
@@ -34,9 +34,13 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
 
   // An agent can change the card while it is open: follow it, unless you are editing that field.
   const seen = useRef(card);
+  // The board revision the title and notes on screen come from: text edits are checked against it, so an agent's
+  // rename while you type is not overwritten silently.
+  const editedFrom = useRef(boardRev());
   useEffect(() => {
     const previous = seen.current;
     seen.current = card;
+    if (title === previous.title && notes === previous.notes) editedFrom.current = boardRev();
     setTitle((current) => (current === previous.title ? card.title : current));
     setNotes((current) => (current === previous.notes ? card.notes : current));
   }, [card]);
@@ -49,7 +53,19 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
 
   const save = () => {
     const changed = (title.trim() && title !== card.title) || notes !== card.notes;
-    if (changed) void applyBoard({ type: "edit", id: card.id, title: title.trim() ? title : card.title, notes });
+    if (!changed) return;
+    void applyBoard({ type: "edit", id: card.id, title: title.trim() ? title : card.title, notes }, editedFrom.current).then(async (saved) => {
+      // The revision our own save produced, so the next one is not a conflict with it. Refused (a conflict, usually;
+      // applyBoard toasted): show what is saved instead of the text that was refused.
+      const board = await window.studio.board.get().catch(() => undefined);
+      if (!board) return;
+      editedFrom.current = board.rev;
+      const latest = board.cards.find((other) => other.id === card.id);
+      if (!saved && latest) {
+        setTitle(latest.title);
+        setNotes(latest.notes);
+      }
+    });
   };
   const close = () => {
     save();

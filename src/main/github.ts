@@ -129,7 +129,10 @@ export class GithubStore extends JsonStore<GithubSettings, GithubSettingsOp> {
 }
 
 /** What the account resolver reads and writes, so tests can use a plain object. */
-export type SettingsStore = Pick<GithubStore, "get" | "apply">;
+export interface SettingsStore {
+  get(): Promise<GithubSettings>;
+  apply(op: GithubSettingsOp): Promise<GithubSettings>;
+}
 
 // ── gh ───────────────────────────────────────────────────────────────────────
 

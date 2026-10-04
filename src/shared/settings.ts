@@ -134,6 +134,14 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
   }
 }
 
+/** Whether a change would overwrite a value changed since `base` (the settings its author saw; undefined when too old
+ * to know). Only the choice settings (theme, wallpaper, task models) conflict; switches are last-writer-wins. */
+export function settingsConflict(base: Settings | undefined, current: Settings, op: SettingsOp): boolean {
+  if (op?.type !== "theme" && op?.type !== "wallpaper" && op?.type !== "model") return false;
+  const field = (settings: Settings) => (op.type === "model" ? JSON.stringify(settings.models[op.task]) : settings[op.type]);
+  return base === undefined || field(base) !== field(current);
+}
+
 /** Lenient: what is missing or malformed falls back to its default (counted in `dropped`); throws when it is no
  * settings file at all. */
 export function parseSettings(raw: unknown): { settings: Settings; dropped: number } {

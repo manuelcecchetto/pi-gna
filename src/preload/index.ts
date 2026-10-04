@@ -6,6 +6,7 @@ import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
 import type { Settings, SettingsSection } from "../shared/settings";
+import type { Revved } from "../shared/host-api";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -68,8 +69,8 @@ const api: StudioApi = {
   },
   board: {
     get: () => ipcRenderer.invoke(IPC.boardGet),
-    apply: (op) => ipcRenderer.invoke(IPC.boardApply, op),
-    onChange: (listener) => subscribe<Board>(IPC.boardChanged, listener),
+    apply: (op, baseRev) => ipcRenderer.invoke(IPC.boardApply, op, baseRev),
+    onChange: (listener) => subscribe<Revved<Board>>(IPC.boardChanged, listener),
     saveImage: (card, image) => ipcRenderer.invoke(IPC.boardSaveImage, card, image),
   },
   github: {
@@ -94,21 +95,21 @@ const api: StudioApi = {
   },
   laments: {
     get: () => ipcRenderer.invoke(IPC.lamentsGet),
-    apply: (op) => ipcRenderer.invoke(IPC.lamentsApply, op),
-    onChange: (listener) => subscribe<Laments>(IPC.lamentsChanged, listener),
+    apply: (op, baseRev) => ipcRenderer.invoke(IPC.lamentsApply, op, baseRev),
+    onChange: (listener) => subscribe<Revved<Laments>>(IPC.lamentsChanged, listener),
   },
   computer: {
     get: () => ipcRenderer.invoke(IPC.computerGet),
-    apply: (op) => ipcRenderer.invoke(IPC.computerApply, op),
-    onChange: (listener) => subscribe<ComputerSettings>(IPC.computerChanged, listener),
+    apply: (op, baseRev) => ipcRenderer.invoke(IPC.computerApply, op, baseRev),
+    onChange: (listener) => subscribe<Revved<ComputerSettings>>(IPC.computerChanged, listener),
     permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
     requestPermissions: (pane) => ipcRenderer.invoke(IPC.computerRequest, pane),
     openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),
-    apply: (op) => ipcRenderer.invoke(IPC.settingsApply, op),
-    onChange: (listener) => subscribe<Settings>(IPC.settingsChanged, listener),
+    apply: (op, baseRev) => ipcRenderer.invoke(IPC.settingsApply, op, baseRev),
+    onChange: (listener) => subscribe<Revved<Settings>>(IPC.settingsChanged, listener),
     pi: () => ipcRenderer.invoke(IPC.piSettingsGet),
     setPi: (patch) => ipcRenderer.invoke(IPC.piSettingsApply, patch),
     revealPi: () => ipcRenderer.invoke(IPC.piSettingsReveal),

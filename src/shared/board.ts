@@ -244,6 +244,24 @@ export function applyOp(board: Board, op: BoardOp, now: number): Board {
   }
 }
 
+/**
+ * Whether an edit would overwrite text someone else changed: the op replaces a field whose value in `base` (the board
+ * its author saw; undefined when too old to know) is not the one now. Only free-text edits can conflict; every other
+ * op is last-writer-wins.
+ */
+export function boardConflict(base: Board | undefined, current: Board, op: BoardOp): boolean {
+  if (op?.type !== "edit") return false;
+  const now = current.cards.find((card) => card.id === op.id);
+  if (!now) return false; // applyOp reports the missing card
+  const was = base?.cards.find((card) => card.id === op.id);
+  if (!was) return base === undefined; // too old to tell; a card the editor never saw is not its to conflict on
+  return (
+    (op.title !== undefined && was.title !== now.title) ||
+    (op.notes !== undefined && was.notes !== now.notes) ||
+    (op.tags !== undefined && JSON.stringify(was.tags) !== JSON.stringify(now.tags))
+  );
+}
+
 /** Tags spelled one way on every card: "#UI Bug" and "ui-bug" are the same tag. Throws BoardError. */
 export function normalizeTags(value: unknown): string[] {
   if (!Array.isArray(value)) throw new BoardError("tags must be a list");

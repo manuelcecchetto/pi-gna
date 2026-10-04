@@ -1,15 +1,16 @@
 // pi-gna's own settings on disk (userData/settings.json): features, appearance and task models (src/shared/settings.ts).
-import { applySettingsOp, emptySettings, type Feature, FEATURE_LABELS, parseSettings, type Settings, type SettingsOp } from "../shared/settings";
+import { applySettingsOp, emptySettings, type Feature, FEATURE_LABELS, parseSettings, type Settings, settingsConflict, type SettingsOp } from "../shared/settings";
+import type { Revved } from "../shared/host-api";
 import { bridgeError, type Route } from "./bridge";
 import { JsonStore } from "./store";
 
 export class SettingsStore extends JsonStore<Settings, SettingsOp> {
-  constructor(file: string, changed: (settings: Settings) => void) {
+  constructor(file: string, changed: (settings: Revved<Settings>) => void) {
     const parse = (raw: unknown) => {
       const { settings, dropped } = parseSettings(raw);
       return { value: settings, dropped };
     };
-    super(file, { name: "settings", item: "setting", empty: emptySettings, apply: applySettingsOp, parse }, changed);
+    super(file, { name: "settings", item: "setting", empty: emptySettings, apply: applySettingsOp, parse, conflicts: settingsConflict }, changed);
   }
 
   /** A feature's bridge route, refused while the feature is off: chats opened before you turned it off still have

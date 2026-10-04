@@ -16,6 +16,7 @@ import {
   type TaskModel,
   taskModel,
 } from "../../../shared/settings";
+import type { Revved } from "../../../shared/host-api";
 import type { CardWorktree, HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
@@ -81,11 +82,11 @@ export interface AppState {
   /** Full-size image overlay (data URL). Hides the native browser view while open. */
   lightbox?: string;
   /** Every project's Kanban cards. Main owns them (agents change them too) and pushes each change. */
-  board: Board;
+  board: Revved<Board>;
   /** Every project's laments, which agents file; main owns them and pushes each change. */
-  laments: Laments;
+  laments: Revved<Laments>;
   /** pi-gna's own settings (features, appearance, task models); main owns them and pushes each change. */
-  settings: Settings;
+  settings: Revved<Settings>;
   /** A full-window page shown instead of the active chat. */
   page?: PageState;
   /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
@@ -125,9 +126,9 @@ export const store = createStore<AppState>({
   composerCards: {},
   compaction: {},
   sidebar: loadSidebar(),
-  board: emptyBoard(),
-  laments: emptyLaments(),
-  settings: emptySettings(),
+  board: { ...emptyBoard(), rev: 0 },
+  laments: { ...emptyLaments(), rev: 0 },
+  settings: { ...emptySettings(), rev: 0 },
   overlay: false,
   update: { phase: "idle" },
   updateOpen: false,
@@ -611,17 +612,28 @@ export function setExpanded(key: string, open: boolean): void {
 
 // ── Kanban ───────────────────────────────────────────────────────────────────
 
+/** The revision of the board this window shows. */
+export const boardRev = (): number => store.get().board.rev;
+
+/** Text for a refused change; a conflict (someone else changed the field since this window read it) says to look again. */
+function editError(error: unknown): string {
+  const message = remoteError(error);
+  return message.startsWith("Conflict:") ? "That changed elsewhere meanwhile; the latest version is shown. Make your change again." : message;
+}
+
 /**
  * Change the board. Applied here first, so a drop lands without waiting for main; main checks the op again,
- * saves it and pushes the board back. Returns false (after a toast) when the op is refused.
+ * saves it and pushes the board back. A text edit is checked against `baseRev`, the board revision the editor last
+ * showed (default: this window's current one); main refuses it when that text changed since. Returns false (after a toast) when the op is refused.
  */
-export async function applyBoard(op: BoardOp): Promise<boolean> {
+export async function applyBoard(op: BoardOp, baseRev?: number): Promise<boolean> {
   const local = op.type === "add" && !op.id ? { ...op, id: freshId(store.get().board) } : op;
   const before = store.get().board;
   try {
-    const board = applyOp(before, local, Date.now());
+    // The optimistic board keeps the revision it was edited from: that is the baseRev main checks text edits against.
+    const board = { ...applyOp(before, local, Date.now()), rev: before.rev };
     store.set((s) => ({ ...s, board }));
-    await studio().board.apply(local);
+    await studio().board.apply(local, baseRev ?? before.rev);
     return true;
   } catch (error) {
     // Main refused it (or the card changed meanwhile): its board is the truth. When main cannot answer either (a
@@ -634,7 +646,7 @@ export async function applyBoard(op: BoardOp): Promise<boolean> {
           () => store.set((s) => ({ ...s, board: before })),
         );
     }
-    toast(remoteError(error), "error");
+    toast(editError(error), "error");
     return false;
   }
 }
@@ -715,20 +727,20 @@ export function closeSettings(): void {
 export async function applySettings(op: SettingsOp): Promise<boolean> {
   const before = store.get().settings;
   try {
-    onSettings(applySettingsOp(before, op));
-    await studio().settings.apply(op);
+    onSettings({ ...applySettingsOp(before, op), rev: before.rev });
+    await studio().settings.apply(op, before.rev);
     return true;
   } catch (error) {
     void studio()
       .settings.get()
       .then(onSettings, () => onSettings(before));
-    toast(remoteError(error), "error");
+    toast(editError(error), "error");
     return false;
   }
 }
 
 /** New settings: a page of a feature you turned off closes (Settings forgets it as the page to go back to). */
-function onSettings(settings: Settings): void {
+function onSettings(settings: Revved<Settings>): void {
   store.set((s) => {
     if (s.settings === settings) return s;
     const page = s.page;
