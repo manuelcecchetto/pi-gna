@@ -96,7 +96,8 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `computer.permissions`, `computer.requestPermissions` | remote | request yes | `computerPermissions`, `computerRequest` (status only; prompts show on the Mac). |
 | `computer.openSettings` | desktop | no | `computerOpenSettings`. |
 | `computer.preview` | remote | no | new. Latest-only read-only frame of the app a chat holds (T37). |
-| `ui.get`, `ui.setPins`, `ui.setBookmarks` | remote | set yes | new (T24): pins and bookmarks move from renderer localStorage to a host store. |
+| `ui.get`, `ui.apply` | remote | apply yes | `uiGet`, `uiApply`. Pins and bookmarks live in `<userData>/ui-state.json` (`UiState`, ops `pin`/`unpin`/`reorder`/`bookmark`/`unbookmark` in `src/shared/ui-state.ts`; a bookmark is a session file + message timestamp); changes ride `global` as `ui`. Layout (sidebar width, ATP panel sizes, wallpaper loop) and unread "seen" marks stay per client. |
+| `ui.importLegacy` | desktop | no | `uiImportLegacy`. Merges the window's old localStorage pins and bookmarks once, then the renderer forgets them. |
 
 **atp** (the runner is in main: `src/main/atp-runner.ts`)
 

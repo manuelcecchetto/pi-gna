@@ -1,11 +1,12 @@
 // Sidebar projects: pinned folders first (in the order you pinned them), then the rest by latest activity.
 // Opening or switching chats never reorders anything; only pinning and sending a message do. Pins are
-// app-only state in localStorage, like the sidebar layout.
+// app-only state kept by the host (lib/host-ui.ts).
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { isTriage } from "../../../shared/task-prompts";
 import { isDraft, type SessionState } from "../../../shared/session-state";
-import { createStore, useStore } from "./store";
+import { applyUi, uiStore } from "./host-ui";
+import { useStore } from "./store";
 
 export interface ProjectRow {
   key: string;
@@ -74,29 +75,11 @@ function sentAt(session: SessionState): number | undefined {
 
 // ── Pins ─────────────────────────────────────────────────────────────────────
 
-const KEY = "pigna:pinned-projects";
-
-function load(): string[] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as unknown;
-    return Array.isArray(saved) ? saved.filter((cwd): cwd is string => typeof cwd === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-const pins = createStore<string[]>(load());
-
 export function usePinnedProjects(): string[] {
-  return useStore(pins, (state) => state);
+  return useStore(uiStore, (state) => state.pins);
 }
 
 /** New pins go below the existing ones, so pinned projects keep their places. */
 export function togglePinnedProject(cwd: string): void {
-  pins.set((state) => (state.includes(cwd) ? state.filter((c) => c !== cwd) : [...state, cwd]));
-  try {
-    localStorage.setItem(KEY, JSON.stringify(pins.get()));
-  } catch {
-    // storage unavailable: pins last until the app quits
-  }
+  applyUi({ type: uiStore.get().pins.includes(cwd) ? "unpin" : "pin", cwd });
 }

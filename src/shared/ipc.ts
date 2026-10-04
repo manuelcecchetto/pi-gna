@@ -9,8 +9,9 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
-import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, NewCardAttachment, QueueEdit, Revved, TaskStarted, TaskTarget } from "./host-api";
+import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, NewCardAttachment, QueueEdit, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
+import type { UiOp } from "./ui-state";
 import type {
   ExtensionUiRequest,
   ExtensionUiResponse,
@@ -80,6 +81,10 @@ export const IPC = {
   settingsGet: "settings:get",
   settingsApply: "settings:apply",
   settingsChanged: "settings:changed",
+  uiGet: "ui:get",
+  uiApply: "ui:apply",
+  uiChanged: "ui:changed",
+  uiImportLegacy: "ui:import-legacy",
   piSettingsGet: "settings:pi-get",
   piSettingsApply: "settings:pi-apply",
   piSettingsReveal: "settings:pi-reveal",
@@ -134,6 +139,15 @@ export interface ComputerApi {
 
 /** Full-window pages shown instead of a chat. */
 export type Page = "kanban" | "laments" | "github" | "atp" | "settings";
+
+/** Pinned projects and bookmarked turns live in main, the same for every client; every change is pushed back. */
+export interface UiApi {
+  get(): Promise<Revved<UiState>>;
+  apply(op: UiOp, baseRev?: number): Promise<Revved<UiState>>;
+  onChange(listener: (ui: Revved<UiState>) => void): () => void;
+  /** Hand over the window's old localStorage copies (merged, not replaced). */
+  importLegacy(ui: unknown): Promise<null>;
+}
 
 /** pi-gna's own settings live in main (userData/settings.json); every change is pushed back. pi's settings are pi's
  * settings.json, which main reads and writes for the Settings page. */
@@ -428,6 +442,7 @@ export interface StudioApi {
   laments: LamentsApi;
   computer: ComputerApi;
   settings: SettingsApi;
+  ui: UiApi;
   auth: AuthApi;
   github: GithubApi;
   atp: AtpApi;

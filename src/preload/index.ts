@@ -6,7 +6,7 @@ import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
 import type { Settings, SettingsSection } from "../shared/settings";
-import type { AtpPlanThreads, AtpRunnerState, Revved } from "../shared/host-api";
+import type { AtpPlanThreads, AtpRunnerState, Revved, UiState } from "../shared/host-api";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
@@ -116,6 +116,12 @@ const api: StudioApi = {
     permissions: () => ipcRenderer.invoke(IPC.computerPermissions),
     requestPermissions: (pane) => ipcRenderer.invoke(IPC.computerRequest, pane),
     openSettings: (pane) => ipcRenderer.invoke(IPC.computerOpenSettings, pane),
+  },
+  ui: {
+    get: () => ipcRenderer.invoke(IPC.uiGet),
+    apply: (op, baseRev) => ipcRenderer.invoke(IPC.uiApply, op, baseRev),
+    onChange: (listener) => subscribe<Revved<UiState>>(IPC.uiChanged, listener),
+    importLegacy: (ui) => ipcRenderer.invoke(IPC.uiImportLegacy, ui),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),

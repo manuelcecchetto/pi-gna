@@ -40,6 +40,7 @@ import { PiAuth } from "./pi-auth";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { onDisk } from "./resources";
 import { SettingsStore } from "./settings";
+import { UiStateStore } from "./ui-state";
 import { cardWorktree } from "./worktree";
 import { ChatTasks } from "./chat-tasks";
 import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-core";
@@ -117,6 +118,7 @@ hub.subscribe({
       switch (e.kind) {
         case "attention": send(IPC.attention, { chats: e.chats, removed: e.removed }); break;
         case "settings": send(IPC.settingsChanged, e.settings); break;
+        case "ui": send(IPC.uiChanged, e.ui); break;
         case "board": send(IPC.boardChanged, e.board); break;
         case "laments": send(IPC.lamentsChanged, e.laments); break;
         case "computer": send(IPC.computerChanged, e.settings); break;
@@ -147,6 +149,7 @@ host.onGlobal(publish);
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));
+const uiState = new UiStateStore(join(app.getPath("userData"), "ui-state.json"), (next) => publish({ kind: "ui", ui: next }));
 const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => publish({ kind: "computer", settings: next }));
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => publish({ kind: "laments", laments: next }));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
@@ -304,6 +307,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     board,
     cardImages,
     settings,
+    uiState,
     computerPolicy,
     computerHelper,
     laments,
@@ -484,7 +488,7 @@ function init(): void {
     quitting = true;
     if (keepAwakeId !== undefined) powerSaveBlocker.stop(keepAwakeId);
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => {
     if (!hidesOnClose(current)) app.quit();

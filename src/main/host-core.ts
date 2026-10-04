@@ -9,6 +9,7 @@ import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import type { SettingsOp } from "../shared/settings";
+import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
 import { listFiles } from "./files";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
@@ -29,6 +30,7 @@ import type { LamentStore } from "./laments";
 import type { PiAuth } from "./pi-auth";
 import type { SessionHost } from "./session-host";
 import type { SettingsStore } from "./settings";
+import type { UiStateStore } from "./ui-state";
 import type { Updater } from "./updater";
 
 /** Who is calling, and the side effects that belong to that client alone (never broadcast). */
@@ -58,6 +60,7 @@ export interface HostDeps {
   board: BoardStore;
   cardImages: CardImages;
   settings: SettingsStore;
+  uiState: UiStateStore;
   computerPolicy: ComputerStore;
   computerHelper: ComputerService;
   laments: LamentStore;
@@ -103,7 +106,7 @@ export const project = (cwd: unknown): string => {
 };
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, tasks, board, settings, computerPolicy, computerHelper, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
+  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
   return {
@@ -238,6 +241,9 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "settings.get": any("remote", () => settings.get()),
     "settings.apply": any<{ op: SettingsOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => settings.apply(op, baseRev)),
     // PI_CODING_AGENT_DIR can come from the login shell.
+    "ui.get": any("remote", () => uiState.get()),
+    "ui.apply": any<{ op: UiOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => uiState.apply(op, baseRev)),
+    "ui.importLegacy": any<{ ui: unknown }>("desktop", async (_ctx, { ui }) => (await uiState.importLegacy(ui), null)),
     "settings.pi": any("remote", async () => (await env(), readPiSettings())),
     "settings.setPi": any<{ patch: unknown }>("remote", async (_ctx, { patch }) => (await env(), writePiSettings(patch))),
     "settings.revealPi": any("desktop", async () => {
@@ -377,6 +383,9 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.computerOpenSettings, "computer.openSettings", (pane) => ({ pane })),
   route(IPC.settingsGet, "settings.get"),
   route(IPC.settingsApply, "settings.apply", (op, baseRev) => ({ op, baseRev })),
+  route(IPC.uiGet, "ui.get"),
+  route(IPC.uiApply, "ui.apply", (op, baseRev) => ({ op, baseRev })),
+  route(IPC.uiImportLegacy, "ui.importLegacy", (ui) => ({ ui })),
   route(IPC.piSettingsGet, "settings.pi"),
   route(IPC.piSettingsApply, "settings.setPi", (patch) => ({ patch })),
   route(IPC.piSettingsReveal, "settings.revealPi"),

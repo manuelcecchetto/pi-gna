@@ -40,6 +40,7 @@ import {
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
 import { cardBlock, pickModel } from "../../../shared/task-prompts";
+import { bootUiState } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
 import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
@@ -909,6 +910,7 @@ export function boot(): void {
   });
   studio().settings.onChange(onSettings);
   void studio().settings.get().then(onSettings);
+  bootUiState();
   studio().board.onChange((board) => store.set((s) => ({ ...s, board })));
   studio().laments.onChange((laments) => store.set((s) => ({ ...s, laments })));
   void studio()

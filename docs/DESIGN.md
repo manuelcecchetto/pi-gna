@@ -673,7 +673,7 @@ Verified live (pi 1.0.0, Oct 2026):
   no close button: closing a chat stops its pi process and is rarely wanted mid-work, so it lives in the sidebar
   row's right-click menu ("Close chat").
 - Sidebar order (`projectViews`): pinned projects first, in the order you pinned them (hover pin button; a pinned
-  project keeps its pin visible, app-only state in localStorage), then the rest by latest activity: the index's
+  project keeps its pin visible, app-only state kept by the host in `ui-state.json`, same on every client; the window migrates its old localStorage pins once), then the rest by latest activity: the index's
   file times, raised by messages you send from pi-gna so a chat and its project move up right away instead of
   after the run. Opening or switching chats must never reorder projects or chats (opening leaves the file
   untouched, and an opened chat closes again when you leave it, so "open chats first" made projects jump around).
@@ -727,7 +727,7 @@ Verified live (pi 1.0.0, Oct 2026):
   fixed truncated columns). Click smooth-scrolls the turn to the jump position (`TOP_GAP`) and flashes its
   bubble; dragging scrubs instantly; ⌥↑/⌥↓ jump to the start of the current/previous or the next message
   (`adjacentTurn`; left to the caret while a text field has text). Turns on earlier pages are rendered first
-  (`reveal`). Bookmarks are app-only state in localStorage, per session file, keyed by the message
+  (`reveal`). Bookmarks are app-only state kept by the host (`ui-state.json`, `src/shared/ui-state.ts`), per session file, keyed by the message
   timestamp because item keys change on every load.
 - Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
   strips `<input>`). pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the

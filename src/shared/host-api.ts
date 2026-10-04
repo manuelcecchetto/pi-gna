@@ -12,6 +12,7 @@ import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { Settings, SettingsOp } from "./settings";
+import type { UiOp } from "./ui-state";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { PickedPath, ProjectGroup, UpdateState } from "./ipc";
 
@@ -178,11 +179,12 @@ export interface AtpPlanThreads {
   workers: Record<string, string[]>;
 }
 
-/** Pins, bookmarks and ATP threads, host-side (they were renderer localStorage). */
+/** Pins and bookmarks, host-side (they were renderer localStorage); ops in src/shared/ui-state.ts. */
 export interface UiState {
+  /** Pinned project folders, in order. */
   pins: string[];
-  /** Per chat: bookmarked turn ids. */
-  bookmarks: Record<string, string[]>;
+  /** Per session file: the timestamps of the bookmarked messages. */
+  bookmarks: Record<string, number[]>;
 }
 
 /** Who is calling a host method: the desktop window (trusted) or a paired device. */
@@ -467,8 +469,8 @@ export interface HostMethods {
   "computer.openSettings": { args: { pane: "accessibility" | "screen_recording" }; result: null };
   "computer.preview": { args: { handle: string }; result: { mimeType: string; data: string; app: string } | null };
   "ui.get": { args: Record<string, never>; result: Snapshot<Revved<UiState>> };
-  "ui.setPins": { args: { pins: string[] }; result: Revved<UiState> };
-  "ui.setBookmarks": { args: { handle: string; turns: string[] }; result: Revved<UiState> };
+  "ui.apply": { args: { op: UiOp; baseRev?: number }; result: Revved<UiState> };
+  "ui.importLegacy": { args: { ui: unknown }; result: null };
 
   // atp
   "atp.plans": { args: { cwd: string | null }; result: Snapshot<AtpProjectPlans | null> };
@@ -573,6 +575,7 @@ export const DESKTOP_ONLY_METHODS = [
   "settings.revealPi",
   "computer.openSettings",
   "atp.importThreads",
+  "ui.importLegacy",
   "browser.layout",
   "browser.popOut",
   "browser.returnToPane",
