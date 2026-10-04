@@ -689,8 +689,9 @@ Verified live (pi 1.0.0, Oct 2026):
   the "Working for" header, running tool rows and running chats in the sidebar. Waiting-for-you stays an amber
   dot, exited red, idle green. "waiting for you" or model "retrying" are called out next to the header;
   compaction has its own single inline record.
-- Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up, Esc clears the queue and aborts,
-  `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
+- Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up. Esc while running arms the stop
+  button (it reads "esc", replacing the send button if there is a draft, for 2.5 s); a second Esc clears the queue
+  and aborts (no separate "esc stop" hint: the toolbar has no room for it). `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
 - Composer: always at least 2 lines tall (like beautifului.dev's Chat composer). A soft blurred glow in the pi
   logo colors mixed with grey sits behind it, and its hairline border is grey with faint logo tints. On focus the
   border brightens (beautifului.dev's only focus change, measured: `line` -> `line-strong`) and becomes a slowly
@@ -750,7 +751,7 @@ Background test windows are `document.visibilityState === "hidden"`: smooth scro
 fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
-`PIGNA_PI_BIN`) streams a long answer to every prompt, for streaming UI checks without a model; it names a session file
+`PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it), for streaming UI checks without a model; it names a session file
 (never written), so a card's or lament's chats link as with pi. For board checks, seed
 `$PIGNA_USER_DATA/board.json` (`{ "version": 1, "cards": [...] }`) with cards of a throwaway git project under `/tmp`
 (give cards its real path, `/private/tmp/…`: the launch cwd is resolved, so `/tmp/…` cards sit on another board):

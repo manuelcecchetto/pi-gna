@@ -16,7 +16,7 @@ export function TokenRate({ session }: { session: SessionState }) {
     rate.estimated ? "Estimated from the streamed text until the provider reports the token count." : "",
   ].filter(Boolean).join("\n");
   return (
-    <span title={title} className={`font-mono text-[11.5px] tabular-nums ${rate.live ? "text-muted" : "text-faint"}`}>
+    <span title={title} className={`whitespace-nowrap font-mono text-[11.5px] tabular-nums ${rate.live ? "text-muted" : "text-faint"}`}>
       {about}
       {formatRate(rate.perSecond)} tok/s
     </span>

@@ -130,7 +130,7 @@ environment if an extension wants to know where it runs.
 |---|---|
 | Enter / Shift+Enter | Send (steers while pi is working) / newline |
 | Alt+Enter | Queue a follow-up while pi is working |
-| Esc | Pull queued messages back into the composer and stop the run |
+| Esc, Esc | Stop the run and pull queued messages back into the composer (the first Esc arms the stop button) |
 | Ctrl+O | Expand or collapse every tool call |
 | ⌥↑ / ⌥↓ | Jump to the previous / next message you sent (the rail left of the chat does the same by click or drag) |
 | Cmd+N | New session in the current project |

@@ -4,6 +4,7 @@
 //   PIGNA_PI_BIN=$PWD/scripts/fake-pi.mjs FAKE_LINES=400 FAKE_DELAY=100 node bin/pi-gna.mjs ...
 // FAKE_LINES paragraphs, one every FAKE_DELAY ms (about 13 tokens each, so 150 ms is ~89 tok/s). Like pi, it names a
 // session file (in the temp folder) before writing anything, so cards and laments can link its chats; none is written.
+// `abort` ends the answer early, as Stop and Esc do with pi.
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -14,6 +15,7 @@ const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0
 const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
 let streaming = false;
+let aborted = false;
 const sessionFile = join(tmpdir(), "fake-pi-sessions", `${process.pid}.jsonl`);
 
 createInterface({ input: process.stdin }).on("line", (line) => {
@@ -29,6 +31,9 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "prompt":
       reply(undefined);
       return void run(command.message);
+    case "abort":
+      aborted = streaming;
+      return reply(undefined);
     default:
       return reply(undefined);
   }
@@ -36,6 +41,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 
 async function run(text) {
   streaming = true;
+  aborted = false;
   out({ type: "agent_start" });
   out({ type: "message_start", message: { role: "user", content: text, timestamp: Date.now() } });
   out({ type: "message_end", message: { role: "user", content: text, timestamp: Date.now() } });
@@ -43,7 +49,7 @@ async function run(text) {
   out({ type: "message_start", message: base });
   out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
   let body = "";
-  for (let i = 1; i <= LINES; i++) {
+  for (let i = 1; i <= LINES && !aborted; i++) {
     await new Promise((resolve) => setTimeout(resolve, DELAY));
     const delta = `Line ${i} of the streamed answer, long enough to read.\n\n`;
     body += delta;
@@ -52,7 +58,8 @@ async function run(text) {
   out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_end", contentIndex: 0, content: body } });
   // Like providers, report the output token count only at the end.
   const output = Math.round(body.length / 4);
-  out({ type: "message_end", message: { ...base, content: [{ type: "text", text: body }], usage: { ...usage, output, totalTokens: output } } });
+  const stopReason = aborted ? "aborted" : "stop";
+  out({ type: "message_end", message: { ...base, stopReason, content: [{ type: "text", text: body }], usage: { ...usage, output, totalTokens: output } } });
   streaming = false;
   out({ type: "agent_end", messages: [] });
   out({ type: "agent_settled" });

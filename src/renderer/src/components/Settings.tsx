@@ -315,7 +315,7 @@ const SHORTCUTS: { title: string; keys: [string, string][] }[] = [
       ["↩", "Send"],
       ["⇧↩", "New line"],
       ["⌥↩", "Queue as a follow-up, after pi finishes"],
-      ["esc", "Stop pi (queued messages come back to the composer)"],
+      ["esc esc", "Stop pi (queued messages come back to the composer)"],
       ["⌘U", "Attach files"],
       ["⌥↑ ⌥↓", "Jump to the previous or next turn"],
       ["⌃O", "Expand or collapse every tool call"],
