@@ -212,7 +212,8 @@ export class RemoteServer {
     } catch {
       // malformed origin stays undefined
     }
-    if (originHost !== host) throw new HostError("forbidden", "cross-origin request");
+    // Tailscale serve fronts this with HTTPS only; the Secure cookie would not travel over http anyway.
+    if (originHost !== host || new URL(origin!).protocol !== "https:") throw new HostError("forbidden", "cross-origin request");
     if (header(req, HEADER_CLIENT) !== "1") throw new HostError("forbidden", "missing client header");
   }
 

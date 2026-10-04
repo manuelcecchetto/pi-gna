@@ -582,6 +582,7 @@ export const DESKTOP_ONLY_METHODS = [
   "browser.reveal",
   "fs.pickFolder",
   "fs.pickAttachments",
+  "fs.describePaths",
   "devices.revokeAll",
   "devices.pairStart",
   "devices.pairDecide",

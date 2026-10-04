@@ -130,7 +130,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `fs.browseFolders` | remote | no | new. Directories only, below `homeDir`; names and `isDirectory`; no file contents, never follows symlinks out. |
 | `fs.pickFolder` | desktop | no | `pickFolder` (native). |
 | `fs.pickAttachments` | desktop | no | `pickAttachments` (native). |
-| `fs.describePaths` | remote | no | `describePaths`. Remotely limited to paths under a known project folder or the uploads dir. |
+| `fs.describePaths` | desktop | no | `describePaths`: reads any absolute path (image bytes), so it is desktop-only; the phone sends uploads instead (security test: remote-server.security.test.ts). |
 | `uploads.put` | remote | yes | new. Bytes from the phone stored under `userData/uploads`; returns `{ id, path, name, image? }`. Size/type caps (section 12). |
 | `uploads.discard` | remote | yes | new. |
 

@@ -148,7 +148,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "chat.compactionSettings": any("remote", async () => (await env(), readCompactionSettings())),
     "fs.pickFolder": any("desktop", () => native.pickFolder()),
     "fs.pickAttachments": any<{ kind: "photos" | "files" }>("desktop", (_ctx, { kind }) => native.pickAttachments(kind)),
-    "fs.describePaths": any<{ paths: string[] }>("remote", (_ctx, { paths }) => describePaths(Array.isArray(paths) ? paths : [])),
+    "fs.describePaths": any<{ paths: string[] }>("desktop", (_ctx, { paths }) => describePaths(Array.isArray(paths) ? paths : [])),
     "host.openExternal": any<{ url: string }>("desktop", (ctx, { url }) => ctx.openExternal(url)),
     "host.killVisual": any<{ frameId: string }>("desktop", (_ctx, { frameId }) => native.killVisual(frameId)),
     "host.windowFocused": any("desktop", () => native.windowFocused()),
