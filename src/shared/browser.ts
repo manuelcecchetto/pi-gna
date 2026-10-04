@@ -1,5 +1,7 @@
 // Integrated browser: shared between the main process (tabs, agent bridge) and the renderer (pane UI).
 
+import type { ViewportSpec } from "./viewport";
+
 export interface BrowserTab {
   id: string;
   url: string;
@@ -9,6 +11,10 @@ export interface BrowserTab {
   canGoForward: boolean;
   /** Session handle of the agent that opened or last drove this tab. */
   agent?: string;
+  /** Emulated viewport; absent means Responsive (the view fills the pane). */
+  viewport?: ViewportSpec;
+  /** Where the tab is shown: the browser pane (default) or a standalone window. */
+  surface?: "pane" | "window";
 }
 
 export interface BrowserState {
