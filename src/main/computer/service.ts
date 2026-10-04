@@ -1,4 +1,4 @@
-// Owns the native Computer Use helper's lifecycle (docs/COMPUTER_USE.md, "Process model"): install the bundled
+// Owns the native Computer Use helper's lifecycle (docs/DESIGN.md, "Computer Use"): install the bundled
 // app to ~/.pi-gna/computer-use/ (only when its PigCUHelperVersion is newer, so macOS permission grants survive
 // pi-gna updates), launch it through LaunchServices, connect to its Unix socket, authenticate, and expose a
 // typed JSON-RPC client. Starts lazily, restarts after a crash on the next call, stops on app quit.

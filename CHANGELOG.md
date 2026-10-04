@@ -5,6 +5,9 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Computer Use (Cmd+Shift+U): pi can see and operate your Mac's native apps in the background through a small helper
+  app, with its own cursor, an approval per app and Esc to stop. Off by default; needs Accessibility and Screen
+  Recording for the helper. Terminals, pi-gna and system security prompts are never controlled.
 - A GitHub page per project (Cmd+Shift+G): its issues and pull requests, open or closed, read with the GitHub CLI
   as the gh account that can see the repository (a work and a personal account each get their own projects; your
   active gh account is never switched). Make a Kanban card from an issue or PR, or link one to a card; cards show

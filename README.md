@@ -69,6 +69,10 @@ updates the `--pigna` flag.
 - **A browser you share with pi.** Cmd+B opens a browser pane, and pi gets `browser_*` tools for it: it opens
   your dev server, clicks, types, reads the page and takes screenshots while you watch. Local URLs open without
   asking; other sites ask once per session. Comment on elements to hand pi notes with a crop of each.
+- **Native Mac apps, in the background.** With Computer Use on (Cmd+Shift+U), pi can use your Mac's apps while you
+  keep working: it reads an app's accessibility tree and window, clicks and types with a cursor of its own and
+  never touches your mouse or focus. You approve each app (once, or always); terminals, pi-gna and system security
+  prompts are off limits; Esc stops it.
 - **A Kanban board per project.** Cards are tasks you drag across To do, In progress, In review and Done.
   Add one by describing the task in your own words: a quick Sonnet chat in the background titles it, tags it and
   takes a first look. Right-click a card to have a new chat investigate it, resolve it (in a git worktree, on a
@@ -82,6 +86,17 @@ updates the `--pigna` flag.
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
 - **Context at a glance.** A meter shows context use, auto-compaction and cache hits; compaction shows its
   progress.
+
+## Computer Use setup
+
+1. Open Settings > Computer Use (Cmd+Shift+U) and turn on **Let pi use apps on this Mac**.
+2. Grant **Accessibility** and **Screen Recording** to *pi-gna Computer Use* (the page opens each pane). The helper
+   lives in `~/.pi-gna/computer-use/`; if it is missing from Screen & System Audio Recording, add it with **+**.
+3. Ask pi to use an app and answer the approval card. Revoke "Always allow" apps on the same page.
+
+The helper is ad-hoc signed, so macOS ties the grants to one exact build: after a helper update, grant both again
+(clear stale entries with `tccutil reset Accessibility io.github.manuelcecchetto.pigna.computeruse`, and the same
+with `ScreenCapture`).
 
 ## Your extensions
 
@@ -115,6 +130,8 @@ environment if an extension wants to know where it runs.
 | Cmd+B | Show or hide the browser |
 | Cmd+Shift+K | Show or hide the project's Kanban board |
 | Cmd+Shift+L | Show or hide the project's laments |
+| Cmd+Shift+U | Show or hide Computer Use settings |
+| Esc (while pi is using an app) | Stop pi's computer use |
 | Cmd+Shift+S | Show or hide the sidebar (drag its edge to resize) |
 | `/` and `@` | Commands, skills and prompt templates / project files |
 | Cmd+U, "+", drop, Cmd+V | Attach files and folders (sent by path) or images (sent to the model) |

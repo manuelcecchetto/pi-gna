@@ -28,6 +28,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     files          `rg --files` for @ mentions
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions)
+    computer/      ComputerService (installs, launches and talks to the native helper), ComputerAgent (policy, approvals, per-app locks), ComputerStore (userData/computer-use.json)
     board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
     laments        LamentStore (userData/laments.json) and the lament tool's route; both stores are a JsonStore (store)
     github         Github: a project's repository and gh account, its issues and PRs through gh (userData/github.json: logins only)
@@ -38,10 +39,12 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
 resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
+resources/computer-extension.ts  the same for the computer_* tools, only while Computer Use is enabled
 resources/kanban-extension.ts    the same for the kanban_* tools
 resources/lament-extension.ts    the same for the lament tool
 resources/atp-extension.ts       ATP orchestrator chats only: atp_pause, atp_resume
 resources/atp/                   the ATP roles' system prompts and the vendored ATP skills (architects, librarian CLI)
+native/computer-use/            Swift source of the helper app `pi-gna Computer Use.app` (built by `pnpm build:computer-use`)
 resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
 
@@ -166,6 +169,65 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
 - **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab; a
   long-pending promise resolves with the element, selector, HTML and comment, main crops the element, and the
   renderer shows it as a chip. The next prompt carries a `<browser-comments>` block plus the crops as images.
+
+## Computer Use
+
+pi can see and operate native macOS apps in the background (accessibility tree, window screenshots, clicks and
+typing) with its own cursor, per-app approvals and Esc to stop, without taking the user's mouse or focus.
+Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or binary is used.
+
+- **Process model**: Electron cannot hold these permissions sensibly, so a Swift `LSUIElement` helper,
+  `pi-gna Computer Use.app` (`native/computer-use/`, no third-party deps, ad-hoc signed), does the AX, ScreenCaptureKit,
+  event and overlay work. It ships in the bundle (`Resources/computer-use/`, outside the asar) and main installs it to
+  `~/.pi-gna/computer-use/` so a pi-gna update does not replace the binary macOS granted. Main reinstalls only when the
+  bundled `helperVersion` (`native/computer-use/Sources/Protocol.swift`, also `PigCUHelperVersion` in its Info.plist) is
+  greater, never because pi-gna's version changed. It is launched with `open -g -n -a … --args` (LaunchServices, so
+  Accessibility and Screen Recording are attributed to the helper, not to Electron or the terminal that started
+  pi-gna), lazily on the first call or when Settings asks for permissions, and quits with the last session, with
+  pi-gna, or when its socket closes.
+- **Protocol**: JSON-RPC over a Unix socket (`<userData>/cu-<id>.sock`, 0600, `tmpdir` fallback when the path is
+  too long). The first message must be `hello` with a per-launch random token passed in argv. Methods mirror the
+  tools (`list_apps`, `get_state`, `click`, `drag`, `scroll`, `type_text`, `press_key`, `set_value`, `select_text`,
+  `perform_secondary_action`, `paste`, `screenshot`, `overlay_*`, `permissions`); errors carry helper codes
+  (`permission_denied`, `stale_element`, `background_unsupported`, `cancelled`, …); types and the denylist are in
+  `src/shared/computer.ts`, the client in `src/main/computer/rpc.ts` and `service.ts`. The helper runs one serial
+  queue per app, so chats drive different apps in parallel and one app at a time.
+- **Tools**: `computer_list_apps`, `computer_get_app_state` (indexed AX tree text, a diff against the previous read by
+  default, plus a window screenshot), `computer_click`, `computer_drag`, `computer_scroll`, `computer_type_text`,
+  `computer_press_key` (xdotool syntax), `computer_set_value`, `computer_select_text`,
+  `computer_perform_secondary_action`, `computer_paste`. The extension is a thin call to `POST /computer`; actions wait
+  for the app to settle (about 1 s, up to 5 s while it looks busy) and return the new state as text. Pointer and key
+  events go to the target window through private SkyLight calls, so the user's frontmost app, key window and cursor
+  stay put; what cannot be done in the background fails with `background_unsupported` and the helper never
+  activates an app, warps the cursor or posts to the HID tap. The screenshot uses the AX tree's own window
+  (`window_id`), so picture, indexes and x,y agree.
+- **Policy** lives in main (`ComputerAgent`), not the extension, because `bash` inherits `PIGNA_TOKEN` and could call
+  the bridge. Off by default (`enabled` in `userData/computer-use.json`, switch in Settings). Terminal apps, pi-gna,
+  the helper and macOS security prompts are never operable (403, not listed, not launched), whatever was approved.
+  Any other app asks once per chat with a card in the renderer: **Allow once** (until the run ends), **Always allow**
+  (persisted, listed and revocable on the Computer Use page) or **Deny** (remembered for the chat). A second chat
+  asking for an app another chat is driving gets 409 without an approval card. Run end, chat close, Stop and Esc
+  release the chat's apps and its Allow once grants.
+- **Overlay and Esc**: per driven app the helper shows a click-through cursor and a pill ("pi is using App · Esc to
+  cancel") ordered just above the target window (not a screen-wide overlay, so whatever covers the window covers
+  them). A global Esc monitor counts only when the user is evidently looking at that run (the app or pi-gna is
+  frontmost, or the pointer is over the window); it hides the overlay and notifies main, which stops the run.
+- **Permissions and install**: the helper needs Accessibility and Screen Recording (the Computer Use page, Cmd+Shift+U
+  or the app menu, shows both and opens the panes). It is ad-hoc signed, so macOS ties each grant to one exact
+  build: a new helper version, or any reinstalled build, needs both granted again. Stale entries with the same name
+  can be cleared with `tccutil reset Accessibility|ScreenCapture io.github.manuelcecchetto.pigna.computeruse`. After
+  a reset the helper is not listed under Screen & System Audio Recording until it asks; add it with **+** from
+  `~/.pi-gna/computer-use/`. A release that does not touch `native/computer-use/` keeps `helperVersion`. macOS 26 may
+  also show a one-off "bypass the system private window picker" prompt on the first screenshot; choose Allow.
+- **Known limits**: the focused (main) window of an app only, so a multi-window app always acts on that window and,
+  with every window off screen, a read falls back to another window of the app; minimized or other-Space windows
+  fail with `background_unsupported`. Canvas and game apps that read only HID events cannot be driven. Background
+  input relies on private SkyLight SPI and may break on a macOS update. Screenshots and AX text go to the model
+  provider (secure field values are never read). Action-time confirmation is a prompt rule, not enforced in code.
+  Verified live below the UI (real helper, agent and store with an approval stub: TextEdit and Calculator in
+  parallel, approvals, refusals, no change to frontmost app or cursor); the real-chat path, the Esc key and the
+  cursor look need a manual check (if Esc does nothing, grant Input Monitoring to the helper too). The long spec and
+  its evidence notes are in git history (`docs/COMPUTER_USE.md`).
 
 ## Kanban (M3)
 
