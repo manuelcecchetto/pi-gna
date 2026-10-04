@@ -19,6 +19,11 @@ interface BridgeResult {
 const BRIDGE = process.env.PIGNA_BRIDGE;
 const TOKEN = process.env.PIGNA_TOKEN;
 
+// pi runs one message's tool calls in parallel unless one of them is sequential. The bridge would then run them
+// in the order their requests arrive (browser_open checks the URL policy first, so a screenshot sent with it
+// overtook it and captured the previous page); sequential keeps the order the agent wrote them in.
+const SEQUENTIAL = "sequential" as const;
+
 const ABOUT =
   "The browser is a pane inside pi-gna that the user can see; use it to check local dev servers and web pages. ";
 
@@ -68,6 +73,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_open",
     label: "Open in browser",
     description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi-gna browser and return a snapshot of the page with numbered element refs for browser_click and browser_type.`,
@@ -85,6 +91,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_snapshot",
     label: "Browser snapshot",
     description: `${ABOUT}Return a text outline of the current page: headings, text and interactive elements with [ref] numbers. Refs change after navigation; take a new snapshot when an action reports the page changed.`,
@@ -96,6 +103,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_click",
     label: "Browser click",
     description: `${ABOUT}Click the element with the given ref from the latest browser_snapshot.`,
@@ -107,6 +115,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_type",
     label: "Browser type",
     description: `${ABOUT}Type text into the input, textarea or editable element with the given ref. Replaces existing content unless clear is false.`,
@@ -123,6 +132,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_press",
     label: "Browser key press",
     description: `${ABOUT}Press a key in the page, e.g. Enter, Escape, Tab, ArrowDown, PageDown, or a chord like Meta+A.`,
@@ -134,12 +144,13 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_screenshot",
     label: "Browser screenshot",
     description: `${ABOUT}Capture what the browser pane currently shows (the viewport) as an image.`,
-    parameters: Type.Object({}),
-    async execute(_id, _params, signal) {
-      const result = await call({ action: "screenshot" }, signal);
+    parameters: Type.Object({ tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })) }),
+    async execute(_id, params, signal) {
+      const result = await call({ action: "screenshot", tab: params.tab }, signal);
       return {
         content: [
           { type: "image" as const, data: result.image ?? "", mimeType: "image/jpeg" },
@@ -151,9 +162,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_evaluate",
     label: "Browser evaluate",
-    description: `${ABOUT}Run JavaScript in the current page and return the result (promises are awaited, values JSON-serialized). Useful for reading state, computed styles or DOM details.`,
+    description: `${ABOUT}Run JavaScript in the current page like the DevTools console and return the result (top-level await works, promises are awaited, values JSON-serialized). Useful for reading state, computed styles or DOM details.`,
     parameters: Type.Object({ expression: Type.String({ description: "JavaScript expression or statements; the last value is returned" }), tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
 }),
     async execute(_id, params, signal, _onUpdate, ctx) {
@@ -162,6 +174,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_viewport",
     label: "Browser viewport",
     description: `${ABOUT}Set, read or reset the emulated viewport of your browser tab (responsive testing). Presets: ${DEVICE_PRESETS.map((p) => p.id).join(", ")}. Or give width/height in CSS px; aspect ('9:19.5', '16/9' or a number, width/height) needs exactly one of width or height. dpr is the device pixel ratio (1-4); mobile switches touch, the mobile User-Agent and mobile layout together; orientation swaps the edges. It persists until you call with reset: true or the user changes it. With no arguments it returns the current viewport. Use browser_screenshot afterwards to see the result.`,
@@ -183,6 +196,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_window",
     label: "Browser window",
     description: `${ABOUT}Open, list or close standalone browser windows at an exact device size (responsive testing). op "open" creates a window with width/height in CSS px, or aspect ('9:16', '16/9' or a number) plus one of width or height, dpr (1-4), mobile (touch, mobile User-Agent and layout) and orientation; or use a preset (${DEVICE_PRESETS.map((p) => p.id).join(", ")}). It returns the window's tab id and a snapshot when a url is given, and becomes your current tab; pass that id as tab to browser_snapshot, browser_click, browser_screenshot, etc. Up to 4 windows can be open. op "close" closes the window (tab, default your current window); op "list" lists open windows.`,
@@ -209,6 +223,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_console",
     label: "Browser console",
     description: `${ABOUT}Return recent console messages, page errors and failed loads from the current tab.`,

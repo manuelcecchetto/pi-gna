@@ -49,6 +49,12 @@ function keyDef(name: string): KeyDef {
   throw new Error(`Unknown key "${name}". Use names like Enter, Tab, Escape, ArrowDown, PageDown or a single character.`);
 }
 
+/** CDP Runtime.evaluate reply (RemoteObject and ExceptionDetails, the fields used here). */
+interface Evaluated {
+  result: { type: string; value?: unknown; unserializableValue?: string; description?: string; objectId?: string };
+  exceptionDetails?: { text: string; exception?: { description?: string } };
+}
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state", "viewport", "window"]);
@@ -148,9 +154,31 @@ export class BrowserAgent {
         return { ...this.where(wc), image: image.toJPEG(75).toString("base64") };
       }
       case "evaluate": {
-        const value: unknown = await wc.executeJavaScript(request.expression, true);
-        const text = value === undefined ? "undefined" : typeof value === "string" ? value : JSON.stringify(value, null, 2);
-        return { ...this.where(wc), text: clip(text ?? String(value)) };
+        // REPL mode, like the DevTools console: top-level await works and statements return their last value.
+        // (executeJavaScript runs a classic script, where await is a syntax error reported as "Script failed to execute".)
+        // REPL mode only awaits its own wrapper, so an object result goes through callFunctionOn, which awaits a
+        // returned promise and serializes the value.
+        const group = "pigna-evaluate";
+        let reply = (await cdp(wc, "Runtime.evaluate", { expression: request.expression, replMode: true, awaitPromise: true, userGesture: true, objectGroup: group })) as Evaluated;
+        try {
+          if (!reply.exceptionDetails && reply.result.objectId) {
+            reply = (await cdp(wc, "Runtime.callFunctionOn", {
+              objectId: reply.result.objectId,
+              functionDeclaration: "function () { return this; }",
+              awaitPromise: true,
+              returnByValue: true,
+              userGesture: true,
+            })) as Evaluated;
+          }
+        } finally {
+          await cdp(wc, "Runtime.releaseObjectGroup", { objectGroup: group }).catch(() => undefined);
+        }
+        const { result, exceptionDetails } = reply;
+        if (exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
+        const value = result.value;
+        const text =
+          result.unserializableValue ?? (result.type === "undefined" ? "undefined" : typeof value === "string" ? value : JSON.stringify(value, null, 2));
+        return { ...this.where(wc), text: clip(text ?? result.description ?? String(value)) };
       }
       case "console": {
         const entries = tab.console.slice(-100);

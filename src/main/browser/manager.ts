@@ -407,7 +407,8 @@ export class BrowserManager {
     }
     const wc = tab.view.webContents;
     await this.emulate(tab);
-    if ((before?.userAgent ?? "native") !== (spec?.userAgent ?? "native") && wc.getURL()) wc.reload();
+    // A new User-Agent needs a reload; wait for it, so a screenshot right after does not catch the page half-loaded.
+    if ((before?.userAgent ?? "native") !== (spec?.userAgent ?? "native") && wc.getURL()) await reload(wc);
     this.layoutWindow(tab);
     this.applyLayout();
     this.emitState();
@@ -589,6 +590,20 @@ export class BrowserManager {
   destroy(): void {
     for (const id of [...this.order]) this.closeTab(id);
   }
+}
+
+/** Reload and resolve when loading stopped (or after 15 s). */
+function reload(wc: WebContents): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      wc.off("did-stop-loading", done);
+      resolve();
+    };
+    const timer = setTimeout(done, 15_000);
+    wc.on("did-stop-loading", done);
+    wc.reload();
+  });
 }
 
 function windowTitle(spec: ViewportSpec): string {

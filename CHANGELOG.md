@@ -5,6 +5,10 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Browser tools run in the order the agent calls them: a `browser_screenshot` sent together with `browser_open` or
+  `browser_viewport` no longer captures the previous page. `browser_evaluate` accepts top-level `await`, and
+  `browser_screenshot` takes a `tab` like the other tools.
+
 ## 0.4.3 - 2026-10-04
 
 - No more "pi-gna wants to use pi-gna Safe Storage" keychain prompt: the browser pane's cookies no longer

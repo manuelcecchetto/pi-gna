@@ -172,7 +172,16 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   `browser_screenshot`, `browser_evaluate`, `browser_console`, `browser_viewport`, `browser_window`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
-  and its actions run through a per-session queue because pi executes one message's tool calls in parallel.
+  and its actions run through a per-session queue, because a page is sequential.
+- **Call order**: every browser tool is `executionMode: "sequential"`, so pi runs a message's tool calls in the order
+  the agent wrote them (by default it runs them in parallel). Ordering by arrival at the bridge is not enough:
+  `browser_open` checks the URL policy before its request, so a `browser_screenshot` sent in the same message
+  overtook it and captured the previous page (verified with gpt-5.5 issuing both in one message; a unit test keeps
+  every tool sequential). `browser_viewport` resolves after the reload a new User-Agent causes.
+- **Evaluate** uses CDP `Runtime.evaluate` in REPL mode (like the DevTools console: top-level `await`, `const`
+  redeclared across calls, the last statement's value); an object result goes through `Runtime.callFunctionOn`,
+  which awaits a returned promise and serializes it. `executeJavaScript` ran a classic script, where `await` is a
+  syntax error that Electron reports only as "Script failed to execute".
 - **Input and screenshots go through CDP** (`webContents.debugger`), not `sendInputEvent`/`capturePage`: those
   need composited frames, which Chromium stops producing while the app window is hidden behind other windows
   (verified: the click did nothing and capture failed with "Current display surface not available").
