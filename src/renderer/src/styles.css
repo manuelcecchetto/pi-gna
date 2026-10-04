@@ -358,19 +358,26 @@ code.hl span {
   }
 }
 
-/* Empty-state backdrop: a painted sky whose clouds form the pi logo (dusk in dark mode, day in light),
-   masked to fade into the canvas where the empty state's text and the composer sit. A mask rather than a
-   canvas-colored gradient on top: the overlay let a 1px row of sky show at a fractional bottom edge. */
+/* Empty-state backdrop: the wallpaper picked in Settings (lib/wallpapers.ts sets --wallpaper-dusk and
+   --wallpaper-day; dusk in dark mode, day in light), masked to fade into the canvas where the empty state's text and
+   the composer sit. A mask rather than a canvas-colored gradient on top: the overlay let a 1px row of sky show at a
+   fractional bottom edge. The picker's thumbnails switch the same way. */
 .hero {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: url("./assets/pigna-dusk.webp") center top / cover no-repeat;
+  background: var(--wallpaper-dusk) center top / cover no-repeat;
   mask-image: linear-gradient(to bottom, black 50%, transparent 94%);
+}
+.wallpaper-thumb {
+  background: var(--wallpaper-dusk) center / cover no-repeat;
 }
 @media (prefers-color-scheme: light) {
   .hero {
-    background-image: url("./assets/pigna-day.webp");
+    background-image: var(--wallpaper-day);
+  }
+  .wallpaper-thumb {
+    background-image: var(--wallpaper-day);
   }
 }
 

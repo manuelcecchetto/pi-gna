@@ -7,6 +7,8 @@ describe("applySettingsOp", () => {
   it("has every feature on and follows the system's appearance by default", () => {
     expect(start.features).toEqual({ kanban: true, laments: true, github: true, atp: true });
     expect(start.theme).toBe("system");
+    expect(start.wallpaper).toBe("sky");
+    expect(start.wallpaperLoop).toBe(false);
     expect(taskModel(start, "triage")).toBe(TASK_DEFAULTS.triage);
   });
 
@@ -18,6 +20,11 @@ describe("applySettingsOp", () => {
     expect(applySettingsOp(off, { type: "feature", feature: "atp", enabled: true }).features.atp).toBe(true);
     expect(applySettingsOp(start, { type: "theme", theme: "system" })).toBe(start);
     expect(applySettingsOp(start, { type: "theme", theme: "dark" }).theme).toBe("dark");
+    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "sky" })).toBe(start);
+    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "fresco" }).wallpaper).toBe("fresco");
+    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "none" }).wallpaper).toBe("none");
+    expect(applySettingsOp(start, { type: "wallpaperLoop", loop: false })).toBe(start);
+    expect(applySettingsOp(start, { type: "wallpaperLoop", loop: true }).wallpaperLoop).toBe(true);
   });
 
   it("overrides a task's model and goes back to the default", () => {
@@ -36,6 +43,8 @@ describe("applySettingsOp", () => {
       { type: "feature", feature: "computer", enabled: false },
       { type: "feature", feature: "atp", enabled: "no" },
       { type: "theme", theme: "sepia" },
+      { type: "wallpaper", wallpaper: "pigna-dusk" },
+      { type: "wallpaperLoop", loop: "yes" },
       { type: "model", task: "review", model: null },
       { type: "model", task: "triage", model: { id: "", thinking: "low" } },
       { type: "model", task: "triage", model: { id: "m", thinking: "lots" } },
@@ -52,12 +61,17 @@ describe("parseSettings", () => {
       version: 1,
       features: { kanban: false, github: "off", future: true },
       theme: "sepia",
+      wallpaper: "moon",
+      wallpaperLoop: 1,
       models: { triage: { id: "claude-haiku-4-5", thinking: "off" }, worker: { id: "x" }, other: {} },
     });
     expect(settings.features).toEqual({ kanban: false, laments: true, github: true, atp: true });
     expect(settings.theme).toBe("system");
+    expect(settings.wallpaper).toBe("sky");
+    expect(parseSettings({ wallpaper: "ink" }).settings.wallpaper).toBe("ink");
+    expect(parseSettings({ wallpaperLoop: true }).settings.wallpaperLoop).toBe(true);
     expect(settings.models).toEqual({ triage: { id: "claude-haiku-4-5", thinking: "off" } });
-    expect(dropped).toBe(3);
+    expect(dropped).toBe(5);
     expect(parseSettings({}).settings).toEqual(start);
   });
 

@@ -5,6 +5,15 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Wallpapers: pick the empty state's backdrop in Settings > Appearance, from the sky and six new ones, each a 🤌 in
+  another form (a constellation, a Dolomite spire, a pine forest, a shadow on a wall, an ink wash, a fresco), at dusk
+  in the dark theme and by day in the light one, or none. Loop shows the next one at each new chat and each launch.
+- ATP page: drag to resize the node panel and the orchestrator transcript, and pick the plan from a breadcrumb in
+  the header instead of an always-open plans rail.
+- Tool calls show how long they have been running, and a small pie fills toward the call's timeout (the timeout
+  itself shows on hover until the call nears it).
+- The tokens-per-second readout counts only time spent streaming tokens, so waits inside a response (tool runs,
+  pauses before the first token) no longer drag it down.
 - Responsive browser fixes: pi's clicks on a phone-sized tab no longer hang its browser tools (they tap), and land on
   the element when the page is scaled to fit. Rotating an iPhone or editing a Pixel no longer turns it into an iPad or
   iPhone, popping a tab out keeps its device, the DPR select's Custom opens its field, and a window's title follows

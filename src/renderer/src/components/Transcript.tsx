@@ -21,6 +21,7 @@ import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { railItems } from "../lib/rail";
 import type { SessionState } from "../lib/session";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
+import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
 import { openLightbox, setExpanded, showBoard, useApp } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { CompactionProgress } from "./CompactionProgress";
@@ -219,9 +220,16 @@ function useTurnScroll(
   return { viewport, jumped, restoreFromBottom, below, onScroll, onWheel, jumpToLatest };
 }
 
-/** Empty-state backdrop: a painted sky whose clouds form the pi logo (styles.css `.hero`). */
+/** Empty-state backdrop: the wallpaper picked in Settings (styles.css `.hero`), or nothing for none. While they loop,
+ * each empty state shows the next one and keeps it while it is open. It picks again when the setting changes: at launch
+ * the settings arrive from main after the first render. */
 export function HeroBackdrop() {
-  return <div className="hero" aria-hidden />;
+  const picked = useApp((state) => state.settings.wallpaper);
+  const loop = useApp((state) => state.settings.wallpaperLoop);
+  const [shown, setShown] = useState(() => ({ picked, loop, id: loopWallpaper(picked, loop) }));
+  if (shown.picked !== picked || shown.loop !== loop) setShown({ picked, loop, id: loopWallpaper(picked, loop) });
+  const style = wallpaperStyle(shown.id);
+  return style ? <div className="hero" style={style} aria-hidden /> : null;
 }
 
 function EmptyTranscript({ session }: { session: SessionState }) {
