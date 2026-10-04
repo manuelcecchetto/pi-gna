@@ -102,7 +102,7 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   voided them (System Settings still showed them on). release.yml imports a self-signed certificate from the
   `SIGNING_CERT_P12`/`SIGNING_CERT_PASSWORD` secrets (made once by `scripts/make-signing-cert.mjs`; the key lives in
   `~/.config/pi-gna/signing/`), trusts it for code signing on the runner and passes it to `build:computer-use` as
-  `PIGNA_SIGN_IDENTITY`, which makes the requirement `identifier "…computeruse" and certificate root = H"…"`, the
+  `PIGNA_SIGN_IDENTITY`, which makes the requirement `identifier "…computeruse" and certificate leaf = H"…"`, the
   same for every release. Users' Macs never trust the certificate and need not: `codesign --verify --deep --strict`
   and TCC only check the signature against the requirement. `mac.signIgnore` stops electron-builder re-signing the
   helper ad-hoc (it otherwise signs every binary in the bundle); release.yml fails if the helper is not
