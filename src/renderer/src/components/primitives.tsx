@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { type AnsiStyle, parseAnsi } from "../lib/ansi";
 import { formatClock, formatDuration } from "../lib/format";
+import { clampPanel, type PanelBounds } from "../lib/layout";
 
 export function Ansi({ text }: { text: string }) {
   const spans = useMemo(() => parseAnsi(text), [text]);
@@ -153,4 +154,72 @@ export function useCommandDigits(targets: readonly (() => void)[], enabled = tru
 /** "⌘3" on a row while ⌘ is held (useCommandDigits). */
 export function DigitHint({ digit }: { digit: number }) {
   return <span className="shrink-0 rounded border border-line-strong bg-panel px-1 font-mono text-[10.5px] leading-[16px] text-muted">⌘{digit}</span>;
+}
+
+const HANDLE_EDGE = {
+  left: "inset-y-0 left-0 w-1.5 cursor-col-resize",
+  right: "inset-y-0 right-0 w-1.5 cursor-col-resize",
+  top: "inset-x-0 top-0 h-1.5 cursor-row-resize",
+};
+
+/**
+ * The edge of a panel you drag to resize it: put it inside the panel (positioned), on the side the panel grows from.
+ * `giver` is what gives way as the panel grows; the drag stops before it gets smaller than `keep`. Double-click resets.
+ */
+export function ResizeHandle({
+  edge,
+  bounds,
+  giver,
+  keep,
+  onResize,
+}: {
+  edge: "left" | "right" | "top";
+  bounds: PanelBounds;
+  giver: () => Element | null | undefined;
+  keep: number;
+  /** A new size while dragging; `done` once it is let go (the time to remember it). */
+  onResize: (size: number, done: boolean) => void;
+}) {
+  const drag = useRef<{ from: number; size: number; room?: number; last: number }>(undefined);
+  const [dragging, setDragging] = useState(false);
+  const vertical = edge === "top";
+  const along = (event: { clientX: number; clientY: number }) => (vertical ? event.clientY : event.clientX);
+  const extent = (element: Element | null | undefined) => {
+    const box = element?.getBoundingClientRect();
+    return box && (vertical ? box.height : box.width);
+  };
+
+  const finish = () => {
+    if (!drag.current) return;
+    onResize(drag.current.last, true);
+    drag.current = undefined;
+    setDragging(false);
+  };
+
+  return (
+    <div
+      title="Drag to resize · double-click to reset"
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        // Start from the size on screen, which the page may have squeezed below the remembered one.
+        const size = extent(event.currentTarget.parentElement) ?? bounds.fallback;
+        const room = extent(giver());
+        drag.current = { from: along(event), size, room: room === undefined ? undefined : size + room - keep, last: size };
+        setDragging(true);
+      }}
+      onPointerMove={(event) => {
+        const current = drag.current;
+        if (!current) return;
+        const moved = along(event) - current.from;
+        current.last = clampPanel(current.size + (edge === "right" ? moved : -moved), bounds, current.room);
+        onResize(current.last, false);
+      }}
+      onPointerUp={finish}
+      onLostPointerCapture={finish}
+      onDoubleClick={() => onResize(bounds.fallback, true)}
+      className={`absolute z-10 transition-colors hover:bg-accent/40 ${HANDLE_EDGE[edge]} ${dragging ? "bg-accent/50" : ""}`}
+    />
+  );
 }

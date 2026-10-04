@@ -472,7 +472,11 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
 - **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a rail of the project's plans with
   their progress, the plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last
   note), the graph, a docked node panel (instruction, context, report, its chats) and the orchestrator's transcript
-  and composer. View > ATP (⌘⇧A) and the sidebar's ATP row open it.
+  and composer. View > ATP (⌘⇧A) and the sidebar's ATP row open it. The rail, the node panel and the transcript
+  resize from their inner edge (`ResizeHandle`, double-click resets; bounds `ATP_RAIL`/`ATP_DETAIL`/`ATP_DOCK` in
+  `lib/layout.ts`, persisted as `pigna:atp-panels`). A drag stops before the graph gets under `ATP_GRAPH_MIN`
+  (280×160); on a smaller window the remembered sizes give way the same way (`fitWidth`'s CSS `clamp`, the
+  transcript shrinking before the graph's `minHeight`) without changing what is remembered.
 - **The graph** (`components/AtpGraph.tsx`, `lib/atp-layout.ts`) is native SVG and HTML, no graph library: a
   layered layout (longest-path layers, barycenter ordering, then straightened), cards positioned in one transformed
   layer and edges as SVG paths with `vector-effect: non-scaling-stroke`. SCOPE nodes draw dotted edges to their

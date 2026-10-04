@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, planName, planProgress } from "../../../shared/atp";
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
+import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, ATP_RAIL, type AtpPanels, loadAtpPanels, type PanelBounds, saveAtpPanels } from "../lib/layout";
 import { activate, type PageState, prefill, showPage, useApp } from "../state/app";
 import {
   discardNewPlanChat,
@@ -26,7 +27,7 @@ import {
 import { type GraphHandle, AtpGraph, LOOK_LABEL, lookOf, type NodeLook, StatusIcon } from "./AtpGraph";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
-import { Elapsed, Popover, useNow } from "./primitives";
+import { Elapsed, Popover, ResizeHandle, useNow } from "./primitives";
 import { ProjectSwitch } from "./ProjectSwitch";
 import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
@@ -52,6 +53,14 @@ export function AtpPage({ page }: { page: PageState }) {
   const [node, setNode] = useState<string>();
   const [query, setQuery] = useState("");
   const graph = useRef<GraphHandle>(null);
+  const middle = useRef<HTMLElement>(null);
+  const graphArea = useRef<HTMLDivElement>(null);
+  const [panels, setPanels] = useState(loadAtpPanels);
+  const resize = (key: keyof AtpPanels) => (size: number, done: boolean) => {
+    const next = { ...panels, [key]: size };
+    setPanels(next);
+    if (done) saveAtpPanels(next);
+  };
 
   useEffect(() => {
     void watchProject(page.cwd);
@@ -152,8 +161,17 @@ export function AtpPage({ page }: { page: PageState }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <PlanRail files={files} current={selected === "new" ? "new" : current?.path} runners={runners} held={held} onSelect={select} />
-        <section className="relative flex min-w-0 flex-1 flex-col">
+        <PlanRail
+          files={files}
+          current={selected === "new" ? "new" : current?.path}
+          runners={runners}
+          held={held}
+          onSelect={select}
+          width={fitWidth(panels.rail, ATP_RAIL, selectedNode ? ATP_DETAIL.min : 0)}
+          giver={() => graphArea.current ?? middle.current}
+          onResize={resize("rail")}
+        />
+        <section ref={middle} className="relative flex min-w-0 flex-1 flex-col">
           {selected === "new" ? (
             <NewPlanIntro cwd={page.cwd} />
           ) : current && plan ? (
@@ -167,8 +185,8 @@ export function AtpPage({ page }: { page: PageState }) {
                 note={notes[plan.path]}
                 onReveal={(id) => (graph.current?.reveal(id), setNode(id))}
               />
-              <div className="flex min-h-0 flex-1">
-                <div className="relative min-w-0 flex-1">
+              <div className="flex flex-1" style={{ minHeight: ATP_GRAPH_MIN.height }}>
+                <div ref={graphArea} className="relative min-w-0 flex-1">
                   {plan.nodes.length ? (
                     <AtpGraph ref={graph} plan={plan} selected={node} stalled={stalled} matches={matches} onSelect={setNode} />
                   ) : (
@@ -187,6 +205,9 @@ export function AtpPage({ page }: { page: PageState }) {
                       graph.current?.reveal(id);
                     }}
                     onClose={() => setNode(undefined)}
+                    width={fitWidth(panels.detail, ATP_DETAIL)}
+                    giver={() => graphArea.current}
+                    onResize={resize("detail")}
                   />
                 )}
               </div>
@@ -196,7 +217,9 @@ export function AtpPage({ page }: { page: PageState }) {
           ) : (
             <Empty cwd={page.cwd} onNew={newPlan} />
           )}
-          {(selected === "new" || plan) && <OrchestratorDock cwd={page.cwd} plan={selected === "new" ? undefined : plan?.path} />}
+          {(selected === "new" || plan) && (
+            <OrchestratorDock cwd={page.cwd} plan={selected === "new" ? undefined : plan?.path} height={panels.dock} onResize={resize("dock")} />
+          )}
         </section>
       </div>
     </div>
@@ -237,66 +260,80 @@ function NewPlanButton({ onPick }: { onPick: (skill: string) => void }) {
 
 // ── The plans ────────────────────────────────────────────────────────────────
 
+/** A side panel's remembered width as CSS, narrowed when the window is too small to leave the graph its minimum (and `reserve` more). */
+const fitWidth = (width: number, bounds: PanelBounds, reserve = 0) =>
+  `clamp(${bounds.min}px, ${width}px, calc(100% - ${ATP_GRAPH_MIN.width + reserve}px))`;
+
 function PlanRail({
   files,
   current,
   runners,
   held,
   onSelect,
+  width,
+  giver,
+  onResize,
 }: {
   files: AtpPlanFile[];
   current: string | undefined;
   runners: Record<string, Runner>;
   held: string[];
   onSelect: (path: string) => void;
+  /** CSS, from fitWidth. */
+  width: string;
+  giver: () => Element | null;
+  onResize: (width: number, done: boolean) => void;
 }) {
   const home = window.studio.homeDir;
   if (!files.length && current !== "new") return null;
   return (
-    <aside className="flex w-60 shrink-0 flex-col gap-1 overflow-y-auto border-r border-line px-2 py-3">
-      <div className="px-2 pb-1 text-[11.5px] font-medium text-faint">Plans</div>
-      {current === "new" && (
-        <div className="rounded-lg bg-raised px-2.5 py-2 text-[12.5px] text-fg">
-          New plan
-          <div className="text-[11.5px] text-faint">The architect is writing it</div>
-        </div>
-      )}
-      {files.map((file) => {
-        const progress = file.plan && planProgress(file.plan);
-        const runner = runners[file.path];
-        return (
-          <button
-            key={file.path}
-            type="button"
-            onClick={() => onSelect(file.path)}
-            title={tildify(file.path, home)}
-            className={`flex flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left ${file.path === current ? "bg-raised" : "hover:bg-raised/60"}`}
-          >
-            <span className="flex min-w-0 items-center gap-1.5">
-              {runner ? <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" /> : null}
-              <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{file.plan?.name ?? planName(file.path)}</span>
-              {held.includes(file.path) && <Pause size={11} className="shrink-0 text-warn" />}
-            </span>
-            {progress ? (
-              <>
-                <ProgressBar plan={file.plan as AtpPlan} />
-                <span className="flex items-center gap-1.5 text-[11px] whitespace-nowrap text-faint">
-                  <ProjectStatus status={(file.plan as AtpPlan).status} />
-                  <span className="font-mono">
-                    {progress.completed}/{progress.total}
-                  </span>
-                  {progress.failed > 0 && <span className="font-mono text-bad">{progress.failed} failed</span>}
-                  <span className="ml-auto">{relativeTime(file.modifiedAt)}</span>
-                </span>
-              </>
-            ) : (
-              <span className="flex items-center gap-1 text-[11px] text-bad">
-                <FileWarning size={11} /> Cannot read it
+    <aside className="relative shrink-0 border-r border-line" style={{ width }}>
+      <div className="flex h-full flex-col gap-1 overflow-y-auto px-2 py-3">
+        <div className="px-2 pb-1 text-[11.5px] font-medium text-faint">Plans</div>
+        {current === "new" && (
+          <div className="rounded-lg bg-raised px-2.5 py-2 text-[12.5px] text-fg">
+            New plan
+            <div className="text-[11.5px] text-faint">The architect is writing it</div>
+          </div>
+        )}
+        {files.map((file) => {
+          const progress = file.plan && planProgress(file.plan);
+          const runner = runners[file.path];
+          return (
+            <button
+              key={file.path}
+              type="button"
+              onClick={() => onSelect(file.path)}
+              title={tildify(file.path, home)}
+              className={`flex flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left ${file.path === current ? "bg-raised" : "hover:bg-raised/60"}`}
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                {runner ? <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" /> : null}
+                <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{file.plan?.name ?? planName(file.path)}</span>
+                {held.includes(file.path) && <Pause size={11} className="shrink-0 text-warn" />}
               </span>
-            )}
-          </button>
-        );
-      })}
+              {progress ? (
+                <>
+                  <ProgressBar plan={file.plan as AtpPlan} />
+                  <span className="flex items-center gap-1.5 text-[11px] whitespace-nowrap text-faint">
+                    <ProjectStatus status={(file.plan as AtpPlan).status} />
+                    <span className="font-mono">
+                      {progress.completed}/{progress.total}
+                    </span>
+                    {progress.failed > 0 && <span className="font-mono text-bad">{progress.failed} failed</span>}
+                    <span className="ml-auto">{relativeTime(file.modifiedAt)}</span>
+                  </span>
+                </>
+              ) : (
+                <span className="flex items-center gap-1 text-[11px] text-bad">
+                  <FileWarning size={11} /> Cannot read it
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <ResizeHandle edge="right" bounds={ATP_RAIL} giver={giver} keep={ATP_GRAPH_MIN.width} onResize={onResize} />
     </aside>
   );
 }
@@ -507,6 +544,9 @@ function NodePanel({
   stalled,
   onSelect,
   onClose,
+  width,
+  giver,
+  onResize,
 }: {
   plan: AtpPlan;
   node: AtpNode;
@@ -515,6 +555,10 @@ function NodePanel({
   stalled: boolean;
   onSelect: (id: string) => void;
   onClose: () => void;
+  /** CSS, from fitWidth. */
+  width: string;
+  giver: () => Element | null;
+  onResize: (width: number, done: boolean) => void;
 }) {
   useNow(60_000);
   const threads = useThreads(plan.path);
@@ -556,7 +600,8 @@ function NodePanel({
     );
 
   return (
-    <aside className="flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-line bg-panel">
+    <aside className="relative flex shrink-0 flex-col overflow-hidden border-l border-line bg-panel" style={{ width }}>
+      <ResizeHandle edge="left" bounds={ATP_DETAIL} giver={giver} keep={ATP_GRAPH_MIN.width} onResize={onResize} />
       <div className="dashed-b flex items-center gap-2 px-3.5 py-2.5">
         <StatusIcon node={node} stalled={stalled} />
         <span className="text-[12px] text-muted">{node.closed ? `${LOOK_LABEL.closed} · ${node.closed.toLowerCase()}` : LOOK_LABEL[lookOf(node, stalled)]}</span>
@@ -647,7 +692,8 @@ function NodePanel({
 // ── The orchestrator ─────────────────────────────────────────────────────────
 
 /** The plan's orchestrator chat under the graph: its composer, and the conversation when you open it. */
-function OrchestratorDock({ cwd, plan }: { cwd: string; plan?: string }) {
+function OrchestratorDock({ cwd, plan, height, onResize }: { cwd: string; plan?: string; height: number; onResize: (height: number, done: boolean) => void }) {
+  const dock = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<string>();
   useEffect(() => setHandle(orchestrator(cwd, plan)), [cwd, plan]);
   // A new plan's chat moves to the plan once the architect writes it: keep showing it.
@@ -664,9 +710,11 @@ function OrchestratorDock({ cwd, plan }: { cwd: string; plan?: string }) {
   if (!session) return null;
   const talked = session.items.length > 0 || session.running;
   return (
-    <div className="flex shrink-0 flex-col border-t border-line bg-canvas">
+    <div ref={dock} className="flex min-h-0 flex-col border-t border-line bg-canvas">
       {open && talked && (
-        <div className="flex h-[34vh] min-h-48 flex-col border-b border-line">
+        // Gives way before the graph does when the window gets short.
+        <div className="relative flex min-h-0 flex-col border-b border-line" style={{ height }}>
+          <ResizeHandle edge="top" bounds={ATP_DOCK} giver={() => dock.current?.previousElementSibling} keep={ATP_GRAPH_MIN.height} onResize={onResize} />
           <Transcript session={session} />
         </div>
       )}
