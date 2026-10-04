@@ -3,6 +3,7 @@
 import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import type { Annotation, BrowserState } from "../../../shared/browser";
+import type { GithubItem, GithubRepo } from "../../../shared/github";
 import { emptyLaments, type Lament, type LamentOp, type Laments } from "../../../shared/laments";
 import {
   applySettingsOp,
@@ -38,6 +39,7 @@ import {
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
 import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, triageName, triagePrompt } from "../lib/board";
+import { reviewName, reviewPrompt } from "../lib/github";
 import { fixPrompt } from "../lib/laments";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../lib/queue";
@@ -776,6 +778,15 @@ export async function fixLament(lament: Lament): Promise<void> {
   if (!worktree) toast(`Fixing “${lament.title}” in a new chat, in the project folder: it is not in a git repository`);
   else if (worktree.dirty) toast(`Fixing “${lament.title}” on branch ${worktree.branch}. Your checkout's uncommitted changes are not in its worktree.`, "warning");
   else toast(`Fixing “${lament.title}” on branch ${worktree.branch}`);
+}
+
+/**
+ * Review a pull request (the GitHub page): a new chat in the project, shown, whose first message asks for a review
+ * with pi-gna's pr-review skill (reviewPrompt). `login`: the gh account pi-gna reads the repository as.
+ */
+export function reviewPullRequest(cwd: string, repo: GithubRepo, item: GithubItem, login?: string): void {
+  const handle = start(cwd);
+  setups.set(handle, { name: reviewName(item), prompt: reviewPrompt(repo, item, login) });
 }
 
 export function showUpdate(open: boolean): void {

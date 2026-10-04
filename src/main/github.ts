@@ -18,6 +18,7 @@ import {
   parseItemInput,
   pickRemote,
   type Remote,
+  tokenVariable,
 } from "../shared/github";
 import { log } from "./log";
 import { JsonStore } from "./store";
@@ -65,7 +66,7 @@ const TOKEN_VARIABLES = ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GIT
 export function ghEnv(base: NodeJS.ProcessEnv, host: string, token?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base, GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", NO_COLOR: "1" };
   for (const name of [...TOKEN_VARIABLES, "GH_HOST", "GH_REPO", "GH_DEBUG", "DEBUG"]) delete env[name];
-  if (token) env[host === "github.com" || host.endsWith(".ghe.com") ? "GH_TOKEN" : "GH_ENTERPRISE_TOKEN"] = token;
+  if (token) env[tokenVariable(host)] = token;
   return env;
 }
 

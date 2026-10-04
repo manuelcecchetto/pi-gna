@@ -456,6 +456,12 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   link it; it expands to the body (Markdown, images as links: `imagesAsLinks`, since the CSP blocks remote images)
   with Open on GitHub, New card (a To do card with the body as notes, linked) and Link to card… (the project's
   cards not done). View > GitHub (⌘⇧G), the sidebar's GitHub row and a project's context menu open it.
+- **Review a pull request**: a PR's Review button (and "Review in a new chat" in its menu) opens a new chat in the
+  project whose first message (`reviewPrompt`, `lib/github.ts`) names the PR, its branches and the gh account the
+  page reads it as, and asks for a review with `pr-review`. That skill is bundled (`resources/skills/pr-review`) and
+  every chat opened while GitHub is on gets it (`--skill`, `SessionHost.piArgs`), so you can also ask any chat to
+  review a PR. It reads the PR with gh and its head with `git fetch <remote> pull/<N>/head` (a temporary detached
+  worktree to run checks), never checking out in your folder, and posts nothing to GitHub unless you ask in the chat.
 - **On the board**: a card shows its links as badges (icon and number; a click opens it on GitHub), and the card
   dialog lists them with unlink and takes `#12` or a link to add one (`github:lookup` checks it with gh for its
   kind and title).

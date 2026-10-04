@@ -1,6 +1,7 @@
 // The GitHub page: one project's issues and pull requests, read with gh in main as the account that can see the
 // project's repository (src/main/github.ts). Loaded when the page opens and on Refresh, never polled. Open one to read
-// it; make a card of it, or link it to a card, so the chats on that card know what they are working on.
+// it; make a card of it, or link it to a card, so the chats on that card know what they are working on; review a
+// pull request in a new chat.
 import {
   Check,
   ChevronDown,
@@ -15,6 +16,7 @@ import {
   Link2,
   Plus,
   RefreshCw,
+  ScanSearch,
   SquareKanban,
   UserRound,
 } from "lucide-react";
@@ -35,7 +37,7 @@ import {
 } from "../../../shared/github";
 import { formatStamp, relativeTime } from "../lib/format";
 import { cardFromItem, githubProjects, imagesAsLinks, type ItemLook, itemLook, labelColor, linkableCards, linkedCards } from "../lib/github";
-import { applyBoard, type PageState, remoteError, showBoard, showPage, toast, useApp } from "../state/app";
+import { applyBoard, type PageState, remoteError, reviewPullRequest, showBoard, showPage, toast, useApp } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Markdown } from "./Markdown";
@@ -53,6 +55,7 @@ const KINDS: { kind: GithubKind; label: string }[] = [
   { kind: "pr", label: "Pull requests" },
 ];
 const FILTERS: GithubFilter[] = ["open", "closed"];
+const REVIEW_HINT = "A new chat reviews it with the pr-review skill";
 
 /** Keyed by project (App), so another project starts over on its open issues. */
 export function GithubPage({ page }: { page: PageState }) {
@@ -129,6 +132,7 @@ export function GithubPage({ page }: { page: PageState }) {
     const op = cardFromItem(page.cwd, repo, item);
     if (await applyBoard(op)) toast(`Added “${op.title}” to To do`);
   };
+  const review = (item: GithubItem) => repo && reviewPullRequest(page.cwd, repo, item, project?.account?.login);
   const link = async (card: Card, item: GithubItem) => {
     if (repo && (await applyBoard({ type: "link", id: card.id, github: itemRef(repo, item) }))) toast(`Linked ${refLabel(item)} to “${card.title}”`);
   };
@@ -149,6 +153,7 @@ export function GithubPage({ page }: { page: PageState }) {
       ],
       cards.slice(0, 3).map((card) => ({ label: `Open “${card.title}”`, icon: <SquareKanban size={13} />, onSelect: () => showBoard(card.cwd, card.id) })),
       [
+        ...(item.kind === "pr" ? [{ label: "Review in a new chat", icon: <ScanSearch size={13} />, hint: REVIEW_HINT, onSelect: () => review(item) }] : []),
         { label: "New card from it", icon: <Plus size={13} />, hint: "A To do card linked to it", onSelect: () => void newCard(item) },
         { label: "Link to card…", icon: <Link2 size={13} />, onSelect: () => setMenu({ item, at, link: true }) },
       ],
@@ -272,6 +277,7 @@ export function GithubPage({ page }: { page: PageState }) {
                   onToggle={() => setExpanded(expanded === item.url ? undefined : item.url)}
                   onMenu={(at, linking) => setMenu({ item, at, link: linking })}
                   onNewCard={() => void newCard(item)}
+                  onReview={() => review(item)}
                 />
               ))}
               {listed.more && (
@@ -368,6 +374,7 @@ function ItemView({
   onToggle,
   onMenu,
   onNewCard,
+  onReview,
 }: {
   item: GithubItem;
   cards: Card[];
@@ -375,6 +382,7 @@ function ItemView({
   onToggle: () => void;
   onMenu: (at: At, linking?: boolean) => void;
   onNewCard: () => void;
+  onReview: () => void;
 }) {
   // gh lists the newest first, so the row says when it was opened; when it last changed is in the tooltip.
   const created = Date.parse(item.createdAt);
@@ -443,12 +451,24 @@ function ItemView({
         </div>
         <ChevronRight size={14} className={`mt-1 shrink-0 text-faint transition-transform ${expanded ? "rotate-90" : ""}`} />
       </button>
-      {expanded && <ItemDetail item={item} cards={cards} onMenu={onMenu} onNewCard={onNewCard} />}
+      {expanded && <ItemDetail item={item} cards={cards} onMenu={onMenu} onNewCard={onNewCard} onReview={onReview} />}
     </article>
   );
 }
 
-function ItemDetail({ item, cards, onMenu, onNewCard }: { item: GithubItem; cards: Card[]; onMenu: (at: At, linking?: boolean) => void; onNewCard: () => void }) {
+function ItemDetail({
+  item,
+  cards,
+  onMenu,
+  onNewCard,
+  onReview,
+}: {
+  item: GithubItem;
+  cards: Card[];
+  onMenu: (at: At, linking?: boolean) => void;
+  onNewCard: () => void;
+  onReview: () => void;
+}) {
   const created = Date.parse(item.createdAt);
   const button = "flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised";
   return (
@@ -482,6 +502,11 @@ function ItemDetail({ item, cards, onMenu, onNewCard }: { item: GithubItem; card
           <button type="button" onClick={() => window.studio.openExternal(item.url)} className={button}>
             <ExternalLink size={13} className="text-muted" /> Open on GitHub
           </button>
+          {item.kind === "pr" && (
+            <button type="button" onClick={onReview} title={REVIEW_HINT} className={button}>
+              <ScanSearch size={13} className="text-muted" /> Review
+            </button>
+          )}
           <button type="button" onClick={onNewCard} title="A To do card linked to it" className={button}>
             <Plus size={13} className="text-muted" /> New card
           </button>
