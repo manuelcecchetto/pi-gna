@@ -19,6 +19,7 @@ import type {
   UserMessage,
 } from "../../../shared/protocol";
 import { parsePartialJson } from "./partial-json";
+import { type StreamClock, tickStream } from "./token-rate";
 
 export interface ToolRun {
   status: "running" | "done" | "error";
@@ -61,6 +62,8 @@ export type Item =
       /** Raw argument JSON per content index while a tool call streams. */
       partialArgs?: Record<number, string>;
       times?: Record<number, BlockTime>;
+      /** Time spent streaming, for the tok/s readout. */
+      clock?: StreamClock;
     }
   | { kind: "bash"; key: string; message: BashExecutionMessage }
   | { kind: "custom"; key: string; message: CustomMessage }
@@ -438,7 +441,8 @@ function endAssistant(state: SessionState, message: AssistantMessage, now: numbe
     const time = times[Number(key)];
     if (time && time.end === undefined) times[Number(key)] = { ...time, end: now };
   }
-  return replaceItem(state, index, { ...item, message, streaming: false, partialArgs: undefined, times });
+  const clock = item.clock && tickStream(item.clock, now);
+  return replaceItem(state, index, { ...item, message, streaming: false, partialArgs: undefined, times, clock });
 }
 
 function updateAssistant(state: SessionState, event: AssistantMessageEvent, usage: AssistantMessage["usage"] | undefined, now: number): SessionState {
@@ -494,7 +498,7 @@ function updateAssistant(state: SessionState, event: AssistantMessageEvent, usag
     }
   }
   const message = { ...item.message, content, usage: usage ?? item.message.usage };
-  return replaceItem(state, index, { ...item, message, partialArgs, times });
+  return replaceItem(state, index, { ...item, message, partialArgs, times, clock: tickStream(item.clock, now) });
 }
 
 function basename(path: string): string {
