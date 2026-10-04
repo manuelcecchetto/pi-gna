@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.4.5 - 2026-10-04
+
 - Inline visuals (beta, off by default): turn on Settings > Agent > Beta > Inline visuals, and pi can add a small diagram,
   comparison or timeline to a reply, drawn in a sandboxed offline frame styled like pi-gna. Applies to chats you open afterwards.
 - GitHub page: Review on a pull request opens a new chat that reviews it with pi-gna's bundled pr-review skill,
