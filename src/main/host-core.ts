@@ -1,10 +1,10 @@
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
-import type { BoardOp } from "../shared/board";
+import type { BoardOp, Column } from "../shared/board";
 import type { BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
 import type { GithubFilter, GithubKind } from "../shared/github";
-import { HostError, type MethodScope, type QueueEdit } from "../shared/host-api";
+import { HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
@@ -14,10 +14,10 @@ import { librarianPath } from "./atp";
 import { listFiles } from "./files";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
-import { cardWorktree } from "./worktree";
 import { describePaths } from "./attachments";
 import { log } from "./log";
 import type { Atp } from "./atp";
+import type { ChatTasks } from "./chat-tasks";
 import type { BoardStore } from "./board";
 import type { BrowserManager } from "./browser/manager";
 import type { CardImages } from "./card-images";
@@ -53,6 +53,7 @@ export interface HostNative {
 export interface HostDeps {
   shellEnv: Promise<void>;
   host: SessionHost;
+  tasks: ChatTasks;
   board: BoardStore;
   cardImages: CardImages;
   settings: SettingsStore;
@@ -93,7 +94,7 @@ export const project = (cwd: unknown): string => {
 };
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, board, settings, computerPolicy, computerHelper, laments, github, atp, auth, native } = deps;
+  const { host, tasks, board, settings, computerPolicy, computerHelper, laments, github, atp, auth, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
   return {
@@ -124,6 +125,12 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         if (!(error instanceof HostError)) throw error;
         return { ok: false, code: error.code, message: error.message };
       }
+    }),
+    "chat.startTask": any<{ target: TaskTarget }>("remote", async (ctx, { target }) => tasks.start(presence(ctx), target)),
+    "chat.send": any<{ handle: string; text: string; mode?: "send" | "followUp"; cardId?: string; attachments?: unknown[]; annotations?: unknown[] }>("remote", async (_ctx, args) => {
+      // Attachments and annotations are composed host-side once the host holds uploads and annotations (the phone's).
+      if (args.attachments?.length || args.annotations?.length) throw new HostError("bad_request", "attachments and annotations are not supported by chat.send yet");
+      return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId);
     }),
     "chat.files": any<{ cwd: string }>("remote", async (_ctx, { cwd }) => (await env(), listFiles(cwd))),
     "chat.compactionSettings": any("remote", async () => (await env(), readCompactionSettings())),
@@ -186,20 +193,13 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       if (!(await board.get()).cards.some((other) => other.id === card)) throw new Error(`no card ${String(card)}`);
       return deps.cardImages.save(card, image);
     }),
-    "board.worktree": any<{ id: string }>("desktop", async (_ctx, { id }) => {
-      await env();
-      const card = (await board.get()).cards.find((other) => other.id === id);
-      if (!card) throw new Error(`no card ${String(id)}`);
-      return cardWorktree(card.cwd, card);
-    }),
+    "board.addCard": method<{ cwd: string; column: Column; description: string; attachments?: NewCardAttachment[] }>(
+      "remote",
+      (raw) => ({ cwd: project(raw.cwd), column: raw.column, description: String(raw.description ?? ""), attachments: Array.isArray(raw.attachments) ? raw.attachments : [] }),
+      async (_ctx, { cwd, column, description, attachments }) => tasks.addCard(cwd, column, description, attachments),
+    ),
     "laments.get": any("remote", () => laments.get()),
     "laments.apply": any<{ op: LamentOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => laments.apply(op, baseRev)),
-    "laments.worktree": any<{ id: string }>("desktop", async (_ctx, { id }) => {
-      await env();
-      const lament = (await laments.get()).laments.find((other) => other.id === id);
-      if (!lament) throw new Error(`no lament ${String(id)}`);
-      return cardWorktree(lament.cwd, { id: lament.id, title: `fix ${lament.title}` });
-    }),
 
     "computer.get": any("remote", () => computerPolicy.get()),
     "computer.apply": any<{ op: ComputerOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => computerPolicy.apply(op, baseRev)),
@@ -327,6 +327,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.interrupt, "chat.interrupt", (handle) => ({ handle })),
   route(IPC.editQueue, "chat.editQueue", (handle, op) => ({ handle, op })),
   route(IPC.respondDialog, "chat.respondDialog", (handle, response) => ({ handle, response })),
+  route(IPC.startTask, "chat.startTask", (target) => ({ target })),
   route(IPC.listFiles, "chat.files", (cwd) => ({ cwd })),
   route(IPC.pickFolder, "fs.pickFolder"),
   route(IPC.openExternal, "host.openExternal", (url) => ({ url }), true),
@@ -351,10 +352,9 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.boardGet, "board.get"),
   route(IPC.boardApply, "board.apply", (op, baseRev) => ({ op, baseRev })),
   route(IPC.boardSaveImage, "board.saveImage", (card, image) => ({ card, image })),
-  route(IPC.cardWorktree, "board.worktree", (id) => ({ id })),
+  route(IPC.addCard, "board.addCard", (cwd, column, description, attachments) => ({ cwd, column, description, attachments })),
   route(IPC.lamentsGet, "laments.get"),
   route(IPC.lamentsApply, "laments.apply", (op, baseRev) => ({ op, baseRev })),
-  route(IPC.lamentWorktree, "laments.worktree", (id) => ({ id })),
   route(IPC.computerGet, "computer.get"),
   route(IPC.computerApply, "computer.apply", (op, baseRev) => ({ op, baseRev })),
   route(IPC.computerPermissions, "computer.permissions"),

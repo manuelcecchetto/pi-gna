@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectGroup } from "../../../shared/ipc";
 import { applyLamentOp, emptyLaments, type LamentOp } from "../../../shared/laments";
-import { fixChat, fixPrompt, lamentBlock, lamentProjects, lamentSnippet, reportChat, worstSeverity } from "./laments";
+import { fixChat, lamentProjects, lamentSnippet, reportChat, worstSeverity } from "./laments";
 
 const ops: LamentOp[] = [
   { type: "file", id: "aaaaaa", title: "No tab recorder", text: "Recorded\n the screen", severity: "annoying", cwd: "/repo", chat: { path: "/s/a.jsonl", cwd: "/repo" } },
@@ -45,30 +45,3 @@ describe("laments view", () => {
   });
 });
 
-describe("fixing a lament", () => {
-  const repeats: LamentOp[] = ["second", "third", "fourth", "fifth"].map((text) => ({ type: "repeat", id: "aaaaaa", text: `${text} time`, severity: "costly" }));
-  const lament = repeats.reduce((current, op, index) => applyLamentOp(current, op, 2000 + index), laments).laments.find((other) => other.id === "aaaaaa");
-  if (!lament) throw new Error("no lament");
-
-  it("briefs the chat with how the lament was filed and its latest evidence, whole", () => {
-    const block = lamentBlock(lament);
-    expect(block).toMatch(/^<lament>\nLament aaaaaa: No tab recorder\nSeverity: 😠 Costly/);
-    expect(block).toContain("Hit 5 times");
-    expect(block).toContain("Recorded\n the screen");
-    expect(block).toContain("(2 in between left out)");
-    expect(block).not.toMatch(/second time|third time/);
-    expect(block).toMatch(/fourth time[\s\S]*fifth time\n<\/lament>$/);
-  });
-
-  it("works in the lament's worktree, commits there and leaves resolving to you", () => {
-    const worktree = { cwd: "/home/.pi-gna/worktrees/aaaaaa/repo", branch: "pigna/aaaaaa-fix-no-tab-recorder", created: true, dirty: false };
-    const prompt = fixPrompt(lament, worktree);
-    expect(prompt).toMatch(/^Fix the gap this lament/);
-    expect(prompt).toContain("on branch pigna/aaaaaa-fix-no-tab-recorder: your working directory, /home/.pi-gna/worktrees/aaaaaa/repo,");
-    expect(prompt).toContain("commit it on the branch");
-    expect(prompt).toContain("leave the checkout at /repo as it is");
-    expect(prompt).toContain("I mark the lament resolved");
-    expect(fixPrompt(lament, { ...worktree, created: false })).toContain("earlier chat on this lament");
-    expect(fixPrompt(lament)).not.toContain("worktree");
-  });
-});

@@ -75,6 +75,7 @@ export class SessionHost {
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
   private readonly endListeners = new Set<(handle: string) => void>();
   private readonly exitListeners = new Set<(handle: string) => void>();
+  private readonly settleListeners = new Set<(handle: string, outcome: RunOutcome) => void>();
   private readonly working = new Set<string>();
   private readonly runningListeners = new Set<() => void>();
   /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
@@ -275,6 +276,7 @@ export class SessionHost {
     }
     const now = Date.now();
     let state = chat.state;
+    const settledNow: RunOutcome[] = [];
     for (const event of events) {
       this.trackDialog(handle, chat, event);
       state = reduceHostEvent(state, event, now);
@@ -282,6 +284,7 @@ export class SessionHost {
         const outcome = runOutcome(state.items);
         chat.settled = { outcome, at: now };
         if (![...chat.clients.values()].some((client) => client.viewing)) state = { ...state, unread: outcome };
+        settledNow.push(outcome);
       }
     }
     chat.state = state;
@@ -292,6 +295,7 @@ export class SessionHost {
     }
     chat.seq = this.emit({ handle, events }) || chat.seq;
     this.touch(handle);
+    for (const outcome of settledNow) for (const listener of this.settleListeners) listener(handle, outcome);
   }
 
   /**
@@ -420,6 +424,12 @@ export class SessionHost {
   onRunEnd(listener: (handle: string) => void): () => void {
     this.endListeners.add(listener);
     return () => this.endListeners.delete(listener);
+  }
+
+  /** Called when a run settles (agent_settled), after the state reflects it and `unread` is set. Returns an unsubscribe. */
+  onSettled(listener: (handle: string, outcome: RunOutcome) => void): () => void {
+    this.settleListeners.add(listener);
+    return () => this.settleListeners.delete(listener);
   }
 
   /** Called when a chat's pi process exits (the session closed). Returns an unsubscribe. */

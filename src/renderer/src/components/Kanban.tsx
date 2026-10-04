@@ -5,7 +5,8 @@ import { Ellipsis, MessagesSquare, Paperclip, Pencil, Plus, SquareKanban, Trash2
 import { useCallback, useMemo, useState } from "react";
 import { type Card, COLUMN_LABELS, COLUMNS, type Column, githubKey } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";
-import { boardColumns, boardProjects, cardAttention, cardSnippet, chatSummary, chatTitle, splitAttachments } from "../lib/board";
+import { boardColumns, boardProjects, cardAttention, cardSnippet, chatSummary, chatTitle } from "../lib/board";
+import { splitAttachments } from "../../../shared/task-prompts";
 import { baseName, relativeTime } from "../lib/format";
 import { applyBoard, openCard, openSession, type PageState, sessionTitle, showBoard, useApp, useFeature } from "../state/app";
 import { cardActions } from "../state/card-actions";

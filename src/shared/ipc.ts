@@ -1,6 +1,6 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
 import type { AtpClaim, AtpHead, AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
-import type { Board, BoardOp } from "./board";
+import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
@@ -9,7 +9,7 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
-import type { AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, QueueEdit, Revved } from "./host-api";
+import type { AttentionSummary, ChatSnapshot, HostErrorCode, HostEvent, NewCardAttachment, QueueEdit, Revved, TaskStarted, TaskTarget } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type {
   ExtensionUiRequest,
@@ -106,8 +106,8 @@ export const IPC = {
   atpGetHeld: "atp:get-held",
   atpSetHeld: "atp:set-held",
   atpInfo: "atp:info",
-  cardWorktree: "studio:card-worktree",
-  lamentWorktree: "studio:lament-worktree",
+  startTask: "studio:start-task",
+  addCard: "studio:add-card",
   updateGet: "update:get",
   updateState: "update:state",
   updateDownload: "update:download",
@@ -377,12 +377,16 @@ export interface StudioApi {
   respondDialog(handle: string, response: ExtensionUiResponse): Promise<DialogAnswer>;
   listFiles(cwd: string): Promise<string[]>;
   /**
-   * The git worktree to resolve a card in: made on first use, then reused. Null when the card's project is not in a
-   * git repository; rejects when git fails.
+   * Start the chat for a task (a card's investigation, resolution or QA, a lament's fix, a pull request's review) and
+   * join it: main makes the git worktree, links the chat to the card or lament, sends its prompt and names it. Rejects
+   * when the worktree cannot be made.
    */
-  cardWorktree(card: string): Promise<CardWorktree | null>;
-  /** The same for fixing a lament, on a branch pigna/<lament id>-fix-…. */
-  lamentWorktree(lament: string): Promise<CardWorktree | null>;
+  startTask(target: TaskTarget): Promise<TaskStarted>;
+  /**
+   * Add a card from one description and what you attached; main saves the images, lists them in the notes and starts
+   * the card's triage chat in the background. Rejects (after removing the card) when an attachment cannot be saved.
+   */
+  addCard(cwd: string, column: Column, description: string, attachments?: NewCardAttachment[]): Promise<{ id: string }>;
   pickFolder(): Promise<string | null>;
   /** Native picker: "photos" for images, "files" for files and folders. */
   pickAttachments(kind: "photos" | "files"): Promise<PickedPath[]>;

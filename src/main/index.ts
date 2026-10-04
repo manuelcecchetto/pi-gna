@@ -39,6 +39,7 @@ import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-se
 import { onDisk } from "./resources";
 import { SettingsStore } from "./settings";
 import { cardWorktree } from "./worktree";
+import { ChatTasks } from "./chat-tasks";
 import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-core";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
@@ -281,9 +282,11 @@ const desktopContext: HostContext = {
 };
 
 function registerIpc(shellEnv: Promise<void>): void {
+  const tasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv });
   const core = createHostCore({
     shellEnv,
     host,
+    tasks,
     board,
     cardImages,
     settings,

@@ -16,7 +16,7 @@ import {
   type TaskModel,
   taskModel,
 } from "../../../shared/settings";
-import type { AttentionSummary, Revved } from "../../../shared/host-api";
+import type { AttentionSummary, Revved, TaskTarget } from "../../../shared/host-api";
 import type { CardWorktree, HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
@@ -39,9 +39,7 @@ import {
   stripStudioBlocks,
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
-import { boardTags, cardBlock, cardNotes, draftTitle, pickModel, triageName, triagePrompt } from "../lib/board";
-import { reviewName, reviewPrompt } from "../lib/github";
-import { fixPrompt } from "../lib/laments";
+import { cardBlock, pickModel } from "../../../shared/task-prompts";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
 import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
@@ -255,7 +253,6 @@ function markRead(handle: string | undefined): void {
 /** Show a chat (leaving any page). */
 export function activate(handle: string | undefined): void {
   const previous = store.get().active;
-  if (handle) backgroundChats.delete(handle); // you opened it: it stays open like any chat
   if (store.get().page) store.set((state) => ({ ...state, page: undefined }));
   markRead(handle);
   if (previous === handle) return;
@@ -323,9 +320,7 @@ function removeSession(handle: string): void {
   // Its exit event finds no session any more: whoever waits for its run hears it now.
   if (store.get().sessions[handle]) settled(handle, "exited");
   settleListeners.delete(handle);
-  cardLinks.delete(handle);
   setups.delete(handle);
-  backgroundChats.delete(handle);
   removeComposerCard(handle);
   store.set((state) => {
     const { [handle]: _removed, ...sessions } = state.sessions;
@@ -375,13 +370,10 @@ export function handleBatch(batch: HostEventBatch): void {
     } else if (event.record.type === "agent_settled") {
       const outcome = runOutcome(store.get().sessions[handle]?.items ?? []);
       settled(handle, outcome);
-      // A card's background chat that ended well: what it found is on the card, so it closes instead of waiting to be read.
-      if (backgroundChats.delete(handle) && outcome === "done" && store.get().active !== handle) void closeSession(handle, false);
-      else {
-        // Finished while you were not looking: another chat or a page was open, or the window was in the background.
-        if (!viewing(handle)) patchSession(handle, (s) => ({ ...s, unread: outcome }));
-        void onSettled(handle);
-      }
+      // Finished while you were not looking: another chat or a page was open, or the window was in the background.
+      // (A card's background chat that ended well is closed by the host, so it never gets here.)
+      if (!viewing(handle)) patchSession(handle, (s) => ({ ...s, unread: outcome }));
+      void onSettled(handle);
     }
     // Context grows every turn and shrinks on compaction; get_session_stats is cheap (ms, even at 40 MB).
     else if (event.record.type === "turn_end" || event.record.type === "compaction_end") scheduleStats(handle);
@@ -401,7 +393,6 @@ async function onReady(handle: string, state: RpcSessionState): Promise<void> {
     models: models?.data?.models ?? s.models,
   }));
   if (state.messageCount > 0) void refreshStats(handle);
-  if (cardLinks.has(handle)) void linkCard(handle);
   const setup = setups.get(handle);
   if (setup) {
     setups.delete(handle);
@@ -486,7 +477,7 @@ export async function send(handle: string, text: string, mode: SendMode): Promis
   const response = await command<{ disposition: string }>(handle, cmd);
   if (response.success && card) {
     removeComposerCard(handle);
-    void attachChat(handle, card.id);
+    void joinCard(handle, card.id);
   }
   if (response.success && attachments.length) {
     const sent = new Set(attachments.map((a) => a.id));
@@ -820,33 +811,26 @@ export async function applyLament(op: LamentOp): Promise<boolean> {
  * main, reused by later Fixes), and is recorded on the lament once pi knows its session file. It does not resolve
  * the lament: you mark it resolved once the fix is in.
  */
-export async function fixLament(lament: Lament): Promise<void> {
-  let worktree: CardWorktree | null;
-  try {
-    worktree = await studio().lamentWorktree(lament.id);
-  } catch (error) {
-    toast(`Could not make a git worktree to fix “${lament.title}”: ${remoteError(error)}`, "error");
-    return;
-  }
-  const branch = worktree?.branch;
-  const handle = start(worktree?.cwd ?? lament.cwd, undefined, false);
-  setups.set(handle, {
-    name: `Fix: ${lament.title}`,
-    prompt: fixPrompt(lament, worktree),
-    link: (chat) => applyLament({ type: "fix", id: lament.id, chat, ...(branch ? { branch } : {}) }),
-  });
-  if (!worktree) toast(`Fixing “${lament.title}” in a new chat, in the project folder: it is not in a git repository`);
-  else if (worktree.dirty) toast(`Fixing “${lament.title}” on branch ${worktree.branch}. Your checkout's uncommitted changes are not in its worktree.`, "warning");
-  else toast(`Fixing “${lament.title}” on branch ${worktree.branch}`);
-}
+export const fixLament = (lament: Lament): Promise<void> => startTask({ kind: "fix", lament: lament.id });
 
 /**
  * Review a pull request (the GitHub page): a new chat in the project, shown, whose first message asks for a review
- * with pi-gna's pr-review skill (reviewPrompt). `login`: the gh account pi-gna reads the repository as.
+ * with pi-gna's pr-review skill. `login`: the gh account pi-gna reads the repository as.
  */
-export function reviewPullRequest(cwd: string, repo: GithubRepo, item: GithubItem, login?: string): void {
-  const handle = start(cwd);
-  setups.set(handle, { name: reviewName(item), prompt: reviewPrompt(repo, item, login) });
+export const reviewPullRequest = (cwd: string, repo: GithubRepo, item: GithubItem, login?: string): Promise<void> => startTask({ kind: "review", cwd, repo, item, login }, true);
+
+/**
+ * Start a task's chat on the host (main sets it up: worktree, link to the card or lament, model, prompt, name) and join
+ * it. Shown in the sidebar only for `show`; the host says what it is doing and what it could not set up.
+ */
+async function startTask(target: TaskTarget, show = false): Promise<void> {
+  try {
+    const started = await studio().startTask(target);
+    for (const notice of started.notices) toast(notice.text, notice.level);
+    await adopt(started.handle, show);
+  } catch (error) {
+    toast(remoteError(error), "error");
+  }
 }
 
 export function showUpdate(open: boolean): void {
@@ -869,63 +853,29 @@ export async function addChatToBoard(handle: string): Promise<void> {
 
 /**
  * Add a card from one description and what you attached, at the bottom of `column`: titled with the description's
- * start until a quick chat in the background (the triage model, Settings > Models) names, tags and briefly investigates it.
+ * start until a quick chat in the background (the triage model, Settings > Models) names, tags and briefly investigates
+ * it. Main does it all (saves the images, lists them in the notes, starts the triage); the card shows when the board
+ * changes. False after a toast.
  */
 export async function addCard(cwd: string, column: Column, description: string, attachments: Attachment[] = []): Promise<boolean> {
   const text = description.trim();
   if (!text && !attachments.length) return false;
-  const id = freshId(store.get().board);
-  if (!(await applyBoard({ type: "add", id, title: draftTitle(text) || "See the attachments", notes: text, cwd, column, before: null }))) return false;
-  if (attachments.length && !(await attachToCard(id, text, attachments))) {
-    void applyBoard({ type: "remove", id }); // main deletes the images saved for it
-    return false;
-  }
-  const card = store.get().board.cards.find((other) => other.id === id);
-  if (card) {
-    const prompt = triagePrompt(card, boardTags(store.get().board, cwd));
-    startCardChat(cwd, { card: id, name: triageName(card), prompt, model: taskModel(store.get().settings, "triage"), closeWhenDone: true });
-  }
-  return true;
-}
-
-/**
- * Save a new card's images (board.saveImage: main checks the card exists, so the card is added first) and list
- * them in its notes with the paths of attached files (cardNotes). False after a toast.
- */
-async function attachToCard(id: string, text: string, attachments: Attachment[]): Promise<boolean> {
   try {
-    const paths: string[] = [];
-    // One at a time: when one fails, none is still being written as the card is removed.
-    for (const a of attachments) paths.push(a.kind === "image" ? await studio().board.saveImage(id, { mimeType: a.mimeType, data: a.data }) : a.path);
-    return await applyBoard({ type: "edit", id, notes: cardNotes(text, paths) });
+    await studio().addCard(
+      cwd,
+      column,
+      text,
+      attachments.map((a) => (a.kind === "image" ? { kind: "image", mimeType: a.mimeType, data: a.data } : { kind: "file", path: a.path })),
+    );
+    return true;
   } catch (error) {
-    toast(`Could not attach that to the card: ${remoteError(error)}`, "error");
+    toast(remoteError(error), "error");
     return false;
   }
 }
 
-/** A chat a card starts in the background, attached to it once pi knows its session file. */
-interface CardLink {
-  card: string;
-  /** Session name, and the chat's label on the card. */
-  name?: string;
-  /** Sent once the chat is attached. */
-  prompt: string;
-  /** Run the prompt on this model instead of your default. */
-  model?: TaskModel;
-  /** Close the chat once its prompt's run ends well, unless you opened it; a failed run stays marked. */
-  closeWhenDone?: boolean;
-}
-const cardLinks = new Map<string, CardLink>();
-/** Background chats to close when their run ends well (CardLink.closeWhenDone) until you open them. */
-const backgroundChats = new Set<string>();
-
-/** Start a chat for a card in its project, in the background: attached to the card and sent its prompt when pi is ready. */
-export function startCardChat(cwd: string, link: CardLink): string {
-  const handle = start(cwd, undefined, false);
-  cardLinks.set(handle, link);
-  return handle;
-}
+/** Start a card's Investigate, Resolve or QA chat (card-actions.ts): see ChatTasks in main. */
+export const startCardTask = (card: Card, kind: "investigate" | "resolve" | "qa"): Promise<void> => startTask({ kind, card: card.id });
 
 /**
  * "Chat about it": a new chat with the card in its composer, shown as a chip rather than as text you write under.
@@ -951,33 +901,17 @@ export function removeComposerCard(handle: string): void {
   });
 }
 
-async function linkCard(handle: string): Promise<void> {
-  const link = cardLinks.get(handle);
-  if (!link || !store.get().sessions[handle]) return;
-  cardLinks.delete(handle);
-  await attachChat(handle, link.card, link.name);
-  if (link.closeWhenDone && store.get().active !== handle) backgroundChats.add(handle);
-  await setUp(handle, link);
-}
-
-/** What pi-gna does with a chat it starts itself, once pi is ready: switch its model, then send it a first prompt. */
+/** What pi-gna does with an ATP chat it starts itself, once pi is ready: switch its model, then send it a first prompt. */
 export interface ChatSetup {
   /** Session name, set with the prompt. */
   name?: string;
   /** For this chat only: pi keeps your default model and thinking level. */
   model?: TaskModel;
   prompt?: string;
-  /** Record the chat (say, on a lament) by its session file, before its prompt is sent. */
-  link?: (chat: { path: string; cwd: string }) => Promise<unknown>;
 }
 const setups = new Map<string, ChatSetup>();
 
 async function setUp(handle: string, setup: ChatSetup): Promise<void> {
-  if (setup.link) {
-    const chat = await sessionFile(handle);
-    if (chat) await setup.link(chat);
-    else toast("This chat has no session file, so pi-gna cannot link to it", "warning");
-  }
   if (setup.model) await useModel(handle, setup.model);
   if (setup.prompt === undefined || !store.get().sessions[handle]) return;
   // Written by pi-gna, not the composer: no attachments or browser comments ride along. Named right away, before
@@ -999,21 +933,13 @@ export function startAtpChat(cwd: string, atp: AtpSession, options: { resume?: {
   return handle;
 }
 
-/** Put a chat on a card, by its session file. */
-async function attachChat(handle: string, card: string, label?: string): Promise<void> {
-  if (!store.get().sessions[handle]) return;
-  const chat = await sessionFile(handle);
-  if (chat) await applyBoard({ type: "attach", id: card, chat: { ...chat, label } });
-  else toast("This chat has no session file, so it cannot be put on the card", "warning");
-}
-
-/** A chat's session file and cwd, which a card or lament keeps to open it. */
-async function sessionFile(handle: string): Promise<{ path: string; cwd: string } | undefined> {
+/** Put a chat on a card, by its session file (the first message of a "Chat about it" chat). */
+async function joinCard(handle: string, card: string): Promise<void> {
   const session = store.get().sessions[handle];
-  if (!session) return undefined;
-  // Set by the ready event; a new chat's file is named before anything is written to it.
+  if (!session) return;
   const path = session.sessionPath ?? (await command<RpcSessionState>(handle, { type: "get_state" }, true)).data?.sessionFile;
-  return path ? { path, cwd: session.cwd } : undefined;
+  if (path) await applyBoard({ type: "attach", id: card, chat: { path, cwd: session.cwd } });
+  else toast("This chat has no session file, so it cannot be put on the card", "warning");
 }
 
 /** Switch a new chat to a card task's model. For this chat only: pi keeps your default model and thinking level. */

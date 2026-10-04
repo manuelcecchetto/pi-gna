@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyOp, type BoardOp, emptyBoard, type GithubRef, LIMITS } from "../../../shared/board";
 import type { GithubItem } from "../../../shared/github";
 import type { ProjectGroup } from "../../../shared/ipc";
-import { cardFromItem, githubProjects, imagesAsLinks, itemLook, labelColor, LINKABLE, linkableCards, linkedCards, reviewName, reviewPrompt } from "./github";
+import { cardFromItem, githubProjects, imagesAsLinks, itemLook, labelColor, LINKABLE, linkableCards, linkedCards } from "./github";
 
 const repo = { host: "github.com", repo: "acme/app" };
 const ref = (number: number, kind: GithubRef["kind"] = "issue"): GithubRef => ({
@@ -108,20 +108,6 @@ describe("GitHub view", () => {
     expect(itemLook({ ...item, state: "merged" })).toBe("merged");
     expect(itemLook({ ...item, state: "closed" })).toBe("closed");
     expect(itemLook({ kind: "issue", state: "open", draft: true })).toBe("open");
-  });
-
-  it("asks a review chat to review the pull request with pr-review, as the page's account", () => {
-    const pr = { ...item, head: "fix-login", base: "main" };
-    expect(reviewName(pr)).toBe("Review PR #7: Fix the login");
-    const prompt = reviewPrompt(repo, pr, "work-me");
-    expect(prompt).toContain("with the pr-review skill");
-    expect(prompt).toContain("PR #7 of acme/app: Fix the login (https://github.com/acme/app/pull/7)\nBranch fix-login into main, by octocat, a draft.");
-    expect(prompt).toContain('GH_TOKEN="$(gh auth token --hostname github.com --user work-me)" gh');
-    expect(prompt).toContain("do not comment, approve or request changes on GitHub unless I ask");
-    // A merged one says so; Enterprise Server takes its own variable; no account, no hint.
-    expect(reviewPrompt(repo, { ...pr, state: "merged" }, "me")).toContain("by octocat, merged.");
-    expect(reviewPrompt({ host: "git.acme.dev", repo: "acme/app" }, pr, "me")).toContain('GH_ENTERPRISE_TOKEN="$(gh auth token --hostname git.acme.dev --user me)"');
-    expect(reviewPrompt(repo, pr)).not.toContain("gh auth token");
   });
 
   it("uses a label's color only when it is a hex color", () => {

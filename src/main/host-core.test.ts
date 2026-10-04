@@ -11,6 +11,7 @@ const record = (name: string) => (...args: unknown[]) => (calls.push([name, ...a
 const deps = {
   shellEnv: Promise.resolve(),
   host: {},
+  tasks: { start: record("tasks.start"), addCard: record("tasks.addCard"), send: record("tasks.send") },
   board: {},
   cardImages: {},
   settings: { get: record("settings.get") },
@@ -49,7 +50,7 @@ describe("host methods table", () => {
     for (const name of DESKTOP_ONLY_METHODS) if (core[name]) expect(core[name].scope, name).toBe("desktop");
     // Desktop-scoped here but not in the shared list: renderer-side orchestration that moves to main in later nodes.
     const extra = Object.keys(core).filter((name) => core[name]?.scope === "desktop" && methodScope(name as HostMethod) !== "desktop");
-    expect(extra.sort()).toEqual(["atp.getHeld", "atp.setHeld", "atp.watch", "board.worktree", "laments.worktree"]);
+    expect(extra.sort()).toEqual(["atp.getHeld", "atp.setHeld", "atp.watch"]);
   });
 
   it("refuses desktop-only methods from a remote client, before validating or running", async () => {
@@ -101,5 +102,25 @@ describe("host methods table", () => {
   it("maps positional IPC arguments onto the argument object", () => {
     const route = IPC_ROUTES.find((r) => r.channel === IPC.boardApply);
     expect(route?.args({ type: "remove", id: "a" }, 4)).toEqual({ op: { type: "remove", id: "a" }, baseRev: 4 });
+  });
+});
+
+describe("starting a chat for a task", () => {
+  it("lets a phone start a task, leasing the chat to that phone", async () => {
+    calls.length = 0;
+    await dispatch(core, phone(), "chat.startTask", { target: { kind: "investigate", card: "aaaaaa" } });
+    expect(calls).toEqual([["tasks.start", { clientId: "c1", actor: "d1" }, { kind: "investigate", card: "aaaaaa" }]]);
+  });
+
+  it("adds a card from the desktop's channel, in a project", async () => {
+    calls.length = 0;
+    const route = IPC_ROUTES.find((r) => r.channel === IPC.addCard);
+    await dispatch(core, desktop(), "board.addCard", route?.args("/repo", "todo", "fix it", undefined));
+    expect(calls).toEqual([["tasks.addCard", "/repo", "todo", "fix it", []]]);
+    expect(() => dispatch(core, desktop(), "board.addCard", { cwd: "repo", column: "todo", description: "x" })).toThrow("absolute path");
+  });
+
+  it("refuses attachments on chat.send until the host composes them", async () => {
+    await expect(dispatch(core, phone(), "chat.send", { handle: "h", text: "hi", attachments: [{ path: "/x" }] })).rejects.toThrow("not supported");
   });
 });

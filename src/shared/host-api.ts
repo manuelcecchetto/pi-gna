@@ -2,12 +2,12 @@
 // envelopes, errors and the allowlists that IPC and the remote server share. Types plus a few pure helpers; the
 // behavior lives in main (EventHub, HostCore, RemoteServer) and the mobile HostClient.
 import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
-import type { Board, BoardOp } from "./board";
+import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { Annotation, BrowserCommand, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
-import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
+import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, GithubProject, GithubRepo } from "./github";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
@@ -335,7 +335,24 @@ export type TaskKind = "triage" | "investigate" | "resolve" | "qa" | "discuss" |
 export type TaskTarget =
   | { kind: "triage" | "investigate" | "resolve" | "qa" | "discuss"; card: string }
   | { kind: "fix"; lament: string }
-  | { kind: "review"; cwd: string; repo: string; number: number; login?: string };
+  /** `repo` and `item` as the GitHub page lists them (github.project, github.list); `login`: the gh account pi-gna reads the repository as. */
+  | { kind: "review"; cwd: string; repo: GithubRepo; item: GithubItem; login?: string };
+
+/** What the client tells its user (the desktop toasts it): a warning about a task's setup, or what the chat is doing. */
+export interface TaskNotice {
+  level: "info" | "warning";
+  text: string;
+}
+
+/** The chat a task started, once its prompt is sent: the caller attaches to it (the snapshot's seq says which events it still has to apply). */
+export interface TaskStarted {
+  handle: string;
+  snapshot: (ChatSnapshot & { seq: number }) | null;
+  notices: TaskNotice[];
+}
+
+/** A new card's attachment as a client sends it: a pasted image's bytes, or a file already on the host. */
+export type NewCardAttachment = { kind: "image"; mimeType: string; data: string } | { kind: "file"; path: string };
 
 export type QueueKind = "steering" | "followUp";
 export type QueueEdit = { type: "remove" | "move"; kind: QueueKind; text: string };
@@ -397,7 +414,7 @@ export interface HostMethods {
   "chat.interrupt": { args: { handle: string }; result: { restored: string[] } };
   "chat.editQueue": { args: { handle: string; op: QueueEdit }; result: { ok: boolean } };
   "chat.respondDialog": { args: { handle: string; response: ExtensionUiResponse }; result: null };
-  "chat.startTask": { args: { target: TaskTarget }; result: { handle: string; snapshot: Snapshot<ChatSnapshot> } };
+  "chat.startTask": { args: { target: TaskTarget }; result: TaskStarted };
   "chat.files": { args: { cwd: string }; result: string[] };
   "chat.compactionSettings": { args: Record<string, never>; result: CompactionSettings };
   "chat.rawCommand": { args: { handle: string; command: RpcCommand }; result: RpcResponse };
@@ -405,6 +422,10 @@ export interface HostMethods {
   // stores
   "board.get": { args: Record<string, never>; result: Snapshot<Revved<Board>> };
   "board.apply": { args: { op: BoardOp; baseRev?: number }; result: Revved<Board> };
+  "board.addCard": {
+    args: { cwd: string; column: Column; description: string; attachments?: NewCardAttachment[] };
+    result: { id: string };
+  };
   "board.saveImage": { args: { card: string; image: { mimeType: string; data: string } }; result: string };
   "laments.get": { args: Record<string, never>; result: Snapshot<Revved<Laments>> };
   "laments.apply": { args: { op: LamentOp; baseRev?: number }; result: Revved<Laments> };

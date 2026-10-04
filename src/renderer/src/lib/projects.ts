@@ -3,7 +3,7 @@
 // app-only state in localStorage, like the sidebar layout.
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
-import { isTriage } from "./board";
+import { isTriage } from "../../../shared/task-prompts";
 import { isDraft, type SessionState } from "../../../shared/session-state";
 import { createStore, useStore } from "./store";
 

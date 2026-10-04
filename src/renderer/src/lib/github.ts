@@ -42,31 +42,6 @@ export function cardFromItem(cwd: string, repo: GithubRepo, item: GithubItem): E
   };
 }
 
-/** A review chat's name: "Review PR #12: Fix the login". */
-export const reviewName = (item: GithubItem): string => `Review ${refLabel(item)}: ${item.title.trim()}`.slice(0, LIMITS.title);
-
-/**
- * The first message of a chat that reviews a pull request with pi-gna's pr-review skill (resources/skills/pr-review),
- * as `login`, the gh account pi-gna reads the repository as, which may not be gh's active one.
- */
-export function reviewPrompt(repo: GithubRepo, item: GithubItem, login?: string): string {
-  const facts = [
-    item.head && `Branch ${item.head} into ${item.base ?? "the default branch"}`,
-    `by ${item.author}`,
-    item.draft && item.state === "open" ? "a draft" : item.state !== "open" && item.state,
-  ].filter(Boolean);
-  return [
-    "Review this pull request with the pr-review skill: read it and the code it changes, check it, and tell me what you find.",
-    `${refLine(itemRef(repo, { ...item, title: item.title.trim() }))}\n${facts.join(", ")}.`,
-    ...(login
-      ? [
-          `pi-gna reads ${repo.repo} as the gh account ${login}. If gh cannot see the repository as its active account, run gh as ${login} without switching accounts: ${tokenVariable(repo.host)}="$(gh auth token --hostname ${repo.host} --user ${login})" gh …`,
-        ]
-      : []),
-    "Leave my checkout as it is, and keep the review in this chat: do not comment, approve or request changes on GitHub unless I ask.",
-  ].join("\n\n");
-}
-
 const CODE = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/;
 const imageLabel = (alt: string | undefined) => (alt?.trim() && alt.trim().toLowerCase() !== "image" ? `Image: ${alt.trim().replace(/[[\]<>]/g, "")}` : "Image");
 

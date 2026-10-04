@@ -326,19 +326,33 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `get_state` (`/new` and forks switch files; pi answers RPC commands while one of its tools awaits the bridge,
   verified live), and its project is `projectOf` the cwd SessionHost started it in (a card's worktree counts as its
   project).
+- **Chat tasks run on the host** (`src/main/chat-tasks.ts`, `ChatTasks`; methods `chat.startTask`, `board.addCard`,
+  `chat.send`): the chat a card's triage, Investigate, Resolve or QA, a lament's Fix or a pull request's Review starts
+  is set up in main, so it works from any client and with no window. `start` opens the chat under a host lease
+  (`SessionHost.open`'s `hold`, so it survives a closing window), waits for pi (`get_state`), puts it on the card or
+  lament by its session file (`board` `attach`, lament `fix` with the branch), switches the model (`pickModel`,
+  `set_model` + `set_thinking_level`), sends the prompt and names the chat; it returns `{ handle, snapshot, notices }`
+  (the notices are the toasts: what it works on, the worktree's dirty warning, a model that is not available). The
+  lease ends when the chat's first run settles (`SessionHost.onSettled`): a triage (`closeWhenDone`) that ends well
+  and that no client is viewing closes; any other, or a failed one, stays open, marked unread. The desktop calls
+  `studio.startTask` / `studio.addCard` and joins the chat (`adopt`); the prompts and names are pure functions in
+  `src/shared/task-prompts.ts`. `addCard` adds the card, saves its images, lists them in the notes and starts the
+  triage without waiting for it. "Chat about it" stays client-side (the composer chip); `chat.send` composes the
+  card's block host-side from a `cardId` (attachments and annotations follow with the phone's uploads); the desktop
+  still composes its own send. ATP chats still set themselves up in the renderer (`ChatSetup`) until the runner moves.
 - **Card actions** (`state/card-actions.ts`, `registerCardAction`) fill the right-click menu, the card's "…" button
   and its dialog. Investigate, Resolve and QA start a chat in the background (you stay on the board), attach it when
   pi is ready (a new chat's session file is named before anything is written) and only then send the prompt, so
   the agent's first `kanban_update` finds its card; `set_session_name` names it "Investigate: …". QA (cards in
   In review, `qaPrompt`) reviews, tests and tries the change without fixing it, leaves a passing card in review and
   moves a failing one back to In progress. It runs where the change is: the card's worktree when a chat on the card
-  worked in one (`hasWorktree`; `cardWorktree` reuses it or brings back the card's branch), else the project folder,
+  worked in one (`hasWorktree`; `cardWorktree` in main reuses it or brings back the card's branch), else the project folder,
   since a new worktree from HEAD would not have the change. "Chat about it"
   (`discussCard`) opens a new chat with the card as a chip in its composer (`AppState.composerCards`), not as text
   you write under: `send` puts the card's block before your first message (a slash command does not take it) and only
   then attaches the chat. The chip's × drops both the details and the attach; a draft you leave is disposed with it. GitHub
   links are not card actions: they are made on the GitHub page and in the card dialog (see GitHub).
-- **Resolve works in a git worktree** (`src/main/worktree.ts`, `studio:card-worktree`), on branch
+- **Resolve works in a git worktree** (`src/main/worktree.ts`, made by `ChatTasks`), on branch
   `pigna/<card id>-<title words>` from the checkout's HEAD, so its change stays off your checkout until you merge it;
   Investigate, Chat about it and triage stay in the checkout. The worktree is
   `~/.pi-gna/worktrees/<card id><repository path>` (`worktreeCwd`), and the chat runs in the project's folder in it
@@ -358,13 +372,13 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   card" opens To do's), because a title has to be short. `addCard` puts it in the notes, titles the card with its
   start (`draftTitle`, 80 characters at a word) and starts a triage chat in the background like Investigate: a
   quick read-only look, then one `kanban_update` with a real title, one to three tags (reusing the board's,
-  `boardTags`) and a short report. It runs on `TRIAGE_MODEL` (Sonnet 5.5, low thinking): `linkCard` sends
+  `boardTags`) and a short report. It runs on `TRIAGE_MODEL` (Sonnet 5.5, low thinking): `ChatTasks` sends
   `set_model` and `set_thinking_level` before the prompt, which pi applies to that session only (RPC never saves
   them as your defaults; checked in pi's `rpc-mode.js`). `pickModel` prefers the provider the chat started on, and
   a missing model leaves your default with a warning toast. Tags are edited in the card dialog. Triage chats are
-  not listed in the sidebar: `projectViews` leaves out chats named `triageName` (live or indexed; `linkCard` names
-  the live chat before pi confirms it), and projects with only triage chats; they are reached from their card.
-  A triage that ends well closes (`CardLink.closeWhenDone`; its result is the card's report), so the card is not
+  not listed in the sidebar: `projectViews` leaves out chats named `triageName` (live or indexed; `ChatTasks` names
+  the live chat as soon as its prompt is sent), and projects with only triage chats; they are reached from their card.
+  A triage that ends well closes (`Setup.closeWhenDone`; its result is the card's report), so the card is not
   left marked unread. A failed run stays open, marked on the card; a triage you opened is not closed under you.
 - **Screenshots on a new card** (`AddCard.tsx`): paste (⌘V), drop or pick ("Add screenshots") them into the add-card
   box, read like the composer's attachments (`readFiles`, `pickFiles`). `addCard` adds the card, saves each image
@@ -417,11 +431,11 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   Laments (⌘⇧L), the sidebar's Laments row (the worst open lament's emoji and the count, for the project it
   opens) and a project's context menu open it; switching between the two pages keeps the project (`showPage`).
 - **Fix** (`fixLament`, `state/app.ts`) is a card's Resolve for a lament: main makes the lament's git worktree
-  (`lamentWorktree` IPC, `cardWorktree` keyed by the lament's id, branch `pigna/<lament>-fix-<title>`; reused by later
-  Fixes), and a background chat there gets `fixPrompt` (`lib/laments.ts`): the lament (`lamentBlock`: the first
+  (`cardWorktree` keyed by the lament's id, branch `pigna/<lament>-fix-<title>`; reused by later
+  Fixes), and a background chat there gets `fixPrompt` (`src/shared/task-prompts.ts`): the lament (`lamentBlock`: the first
   report and the latest two, whole), find and fix the cause, verify by doing what the lament wanted, leave fixes that
   belong outside the project (`~/.pi/agent`, another repository, an app) to you, commit on the branch. Once pi knows
-  the chat's session file (`ChatSetup.link`), the `fix` op records it and the branch on the lament (`fixes`, the
+  the chat's session file (`ChatTasks`), the `fix` op records it and the branch on the lament (`fixes`, the
   latest ten): the row shows a wrench while it is open, and its details link to each Fix chat. The chat does not
   resolve the lament; you mark it resolved once you merged the fix.
 
