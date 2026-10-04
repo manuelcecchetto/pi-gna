@@ -677,11 +677,7 @@ code.hl span {
   }
 }
 
-/* ATP page graph (AtpGraph): a dot grid that pans with the plan, cards per node, edges that march into running nodes. */
-.atp-viewport {
-  background-image: radial-gradient(circle, var(--line-strong) 1px, transparent 1.3px);
-  background-size: 24px 24px;
-}
+/* ATP page graph (AtpGraph): cards per node, edges that march into running nodes. */
 /* A card's status color (--s) drives its rail, its state text and, zoomed out, its whole block (--far). The layer
    sets --k to the zoom, so outlines and the glow keep their size on screen at any zoom. */
 .atp-node {
