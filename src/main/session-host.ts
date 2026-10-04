@@ -1,7 +1,8 @@
 // Maps renderer handles to pi processes and forwards their records to the window.
+import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
-import { app } from "electron";
+import { isAbsolute } from "node:path";
+import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
 import type { HostEventBatch, OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
@@ -9,17 +10,21 @@ import type { AgentBridge } from "./bridge";
 import { log } from "./log";
 import { PiProcess } from "./pi-process";
 import { projectTrust } from "./pi-settings";
+import { onDisk } from "./resources";
 import { readActiveBranch } from "./session-file";
 
+/** How long an approval card waits for the user before it counts as a refusal. */
+const APPROVAL_TIMEOUT_MS = 10 * 60_000;
 const HANDLE = /^[a-z0-9]{6,32}$/;
-/** Files pi reads from disk. Packaged builds keep them beside app.asar, in app.asar.unpacked (electron-builder asarUnpack). */
-const onDisk = (...parts: string[]) => join(app.getAppPath().replace(/app\.asar$/, "app.asar.unpacked"), ...parts);
 /** Tools that would compete with the integrated browser (Stagehand's). Override with PIGNA_EXCLUDE_TOOLS. */
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
 export class SessionHost {
   private readonly sessions = new Map<string, PiProcess>();
   private readonly cwds = new Map<string, string>();
+  /** Choices main asked of the user (requestChoice). Answered from the window only; pi never sees them. */
+  private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
+  private readonly endListeners = new Set<(handle: string) => void>();
   /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
   private readonly extensions = ["browser-extension.ts", "kanban-extension.ts", "lament-extension.ts"].map((name) => onDisk("resources", name));
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
@@ -57,10 +62,15 @@ export class SessionHost {
     const trust = project === cwd ? undefined : await projectTrust(project);
 
     const pi = new PiProcess(
-      { cwd, sessionPath, tag, ...this.piArgs(handle, trust) },
+      { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp) },
       {
-        onRecords: (records) => this.emit({ handle, events: records.map((record) => ({ kind: "rpc", record })) }),
+        onRecords: (records) => {
+          this.emit({ handle, events: records.map((record) => ({ kind: "rpc", record })) });
+          if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
+        },
         onExit: (exit) => {
+          this.settleChoices(handle);
+          this.ended(handle);
           this.sessions.delete(handle);
           this.cwds.delete(handle);
           this.bridge.unregister(handle);
@@ -100,7 +110,56 @@ export class SessionHost {
     return { path, cwd };
   }
 
+  /** Called when a chat's run finishes (agent_end without a retry) or its pi process exits. Returns an unsubscribe. */
+  onRunEnd(listener: (handle: string) => void): () => void {
+    this.endListeners.add(listener);
+    return () => this.endListeners.delete(listener);
+  }
+
+  private ended(handle: string): void {
+    for (const listener of this.endListeners) {
+      try {
+        listener(handle);
+      } catch (error) {
+        log.warn("pi", `run-end listener failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+
+  /** The chat's name as the user sees it, for labels in other apps. */
+  async chatName(handle: string): Promise<string | undefined> {
+    const state = await this.command(handle, { type: "get_state" });
+    return (state.data as RpcSessionState | undefined)?.sessionName || undefined;
+  }
+
+  /** Ask the user to pick one option on this chat's approval card. The id is main's own, so the answer is read here
+   * from the window and never forwarded to pi, and nothing holding the bridge token can answer it. Undefined when
+   * the user dismisses it, the wait runs out or the chat ends. */
+  requestChoice(handle: string, title: string, options: string[]): Promise<string | undefined> {
+    if (!this.sessions.has(handle)) return Promise.resolve(undefined);
+    const id = `pigna-choice-${randomUUID()}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => settle(undefined), APPROVAL_TIMEOUT_MS);
+      const settle = (value: string | undefined) => {
+        clearTimeout(timer);
+        this.choices.delete(id);
+        resolve(value);
+      };
+      this.choices.set(id, { handle, resolve: settle });
+      this.emit({ handle, events: [{ kind: "rpc", record: { type: "extension_ui_request", id, method: "select", title, options, timeout: APPROVAL_TIMEOUT_MS } }] });
+    });
+  }
+
+  private settleChoices(handle: string): void {
+    for (const choice of [...this.choices.values()]) if (choice.handle === handle) choice.resolve(undefined);
+  }
+
   respondUi(handle: string, response: ExtensionUiResponse): void {
+    const choice = this.choices.get(response.id);
+    if (choice) {
+      if (choice.handle === handle) choice.resolve("value" in response ? response.value : undefined);
+      return;
+    }
     this.sessions.get(handle)?.respondUi(response);
   }
 

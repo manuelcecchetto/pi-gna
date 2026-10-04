@@ -21,10 +21,11 @@ import { AgentBridge } from "./bridge";
 import { listFiles } from "./files";
 import { Github, GithubStore } from "./github";
 import { kanbanRoute } from "./kanban";
-import { LamentStore, lamentRoute } from "./laments";
-import { readCompactionSettings } from "./pi-settings";
+import { ComputerAgent, computerRoute } from "./computer/agent";
 import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
+import { LamentStore, lamentRoute } from "./laments";
+import { readCompactionSettings } from "./pi-settings";
 import { cardWorktree } from "./worktree";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
@@ -86,6 +87,18 @@ const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer
 const computerHelper = new ComputerService(
   defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
 );
+const computerAgent = new ComputerAgent(
+  computerHelper,
+  computerPolicy,
+  {
+    choose: (handle, title, options) => host.requestChoice(handle, title, options),
+    chatName: (handle) => host.chatName(handle),
+    abort: (handle) => host.command(handle, { type: "abort" }),
+  },
+  { ownNames: [app.getName(), app.getName().replace(/\.dev$/i, "")] },
+);
+bridge.route("/computer", computerRoute(() => computerAgent));
+host.onRunEnd((handle) => void computerAgent.release(handle));
 bridge.route("/lament", lamentRoute(laments, (handle) => host.identify(handle)));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
@@ -347,7 +360,7 @@ function init(): void {
     event.preventDefault();
     quitting = true;
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), githubSettings.flushed(), computerHelper.stop()]).finally(() => app.quit());
+    void Promise.allSettled([host.closeAll(), board.flushed(), laments.flushed(), computerPolicy.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => app.quit());
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => app.quit());

@@ -62,6 +62,17 @@ export interface AppStateResult {
   note?: string;
 }
 
+export type AppRef = string | AppTarget;
+export interface ActionParams {
+  app: AppRef;
+  window_id?: number;
+}
+export interface ActionResult {
+  method?: string;
+  settled?: boolean;
+  [key: string]: unknown;
+}
+
 /** Method name -> [params, result]. Methods the helper has not implemented yet answer -32601. */
 export interface ComputerMethods {
   hello: [{ token: string; protocol: number }, HelloResult];
@@ -72,22 +83,27 @@ export interface ComputerMethods {
   list_apps: [Record<string, never>, { apps: AppInfo[] }];
   resolve_app: [{ app: string; launch?: boolean }, { bundleId: string; displayName: string; pid: number }];
   get_app_state: [{ app: string | AppTarget; window_id?: number; disable_diff?: boolean }, AppStateResult];
-  screenshot: [{ app: string | AppTarget }, { jpeg: string; width: number; height: number; scale: number }];
-  begin_session: [{ session: string; target: AppTarget; label: string }, Record<string, never>];
-  end_session: [{ session: string }, Record<string, never>];
-  cancel: [{ session: string }, Record<string, never>];
-  click: [{ target: AppTarget; session: string; elementIndex?: number; x?: number; y?: number; button?: "left" | "right" | "middle"; clickCount?: number }, { method: "ax" | "cgevent" | "hid"; settled: boolean }];
-  type_text: [{ target: AppTarget; session: string; text: string }, Record<string, never>];
-  press_key: [{ target: AppTarget; session: string; key: string }, Record<string, never>];
+  screenshot: [{ app: AppRef }, { jpeg: string; width: number; height: number; scale: number }];
+  overlay_show: [{ app: AppRef; session_label: string; session: string; window_id?: number }, Record<string, unknown>];
+  overlay_hide: [{ app?: AppRef }, Record<string, never>];
+  click: [ActionParams & { element_index?: number; x?: number; y?: number; mouse_button?: "left" | "right" | "middle"; click_count?: number }, ActionResult];
+  drag: [ActionParams & { from_x: number; from_y: number; to_x: number; to_y: number }, ActionResult];
+  scroll: [ActionParams & { element_index?: number; x?: number; y?: number; direction: "up" | "down" | "left" | "right"; pages?: number }, ActionResult];
+  type_text: [ActionParams & { text: string }, ActionResult];
+  press_key: [ActionParams & { key: string }, ActionResult];
+  set_value: [ActionParams & { element_index: number; value: string }, ActionResult];
+  select_text: [ActionParams & { element_index: number; text: string; prefix?: string; suffix?: string; selection_type?: "text" | "cursor_before" | "cursor_after" }, ActionResult];
+  perform_secondary_action: [ActionParams & { element_index: number; action: string }, ActionResult];
+  paste: [ActionParams & { text: string; format?: "text" | "md" | "html" }, ActionResult];
   shutdown: [Record<string, never>, Record<string, never>];
 }
 
 export type ComputerMethod = keyof ComputerMethods;
 
 export interface ComputerNotifications {
-  cancelled: { session: string; reason: "esc" };
+  cancelled: { app?: string; name?: string; session?: string; reason: "esc" };
   permissions_changed: Permissions;
-  app_gone: { session: string; bundleId: string };
+  app_gone: { app?: string; session?: string };
 }
 
 export type ComputerNotification = { [K in keyof ComputerNotifications]: { method: K; params: ComputerNotifications[K] } }[keyof ComputerNotifications];
