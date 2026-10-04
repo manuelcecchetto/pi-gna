@@ -49,6 +49,18 @@ function shippedExtensionDependencies() {
   return [...seen].sort();
 }
 
+describe("mobile bundle", () => {
+  it("ships out/mobile (covered by out/**) and the build produces the PWA shell", () => {
+    expect(list("files")).toContain("out/**");
+    const out = join(root, "out", "mobile");
+    if (!existsSync(out)) return; // present after `pnpm build`
+    for (const file of ["index.html", "sw.js", "manifest.webmanifest", "icons/apple-touch-icon.png", "icons/icon-192.png", "icons/icon-512.png"]) {
+      expect(existsSync(join(out, file)), file).toBe(true);
+    }
+    expect(readFileSync(join(out, "index.html"), "utf8")).not.toMatch(/<script(?![^>]*\bsrc=)/);
+  });
+});
+
 describe("electron-builder.yml", () => {
   it("ships and unpacks every source file the bundled pi extensions import", () => {
     const dependencies = shippedExtensionDependencies();

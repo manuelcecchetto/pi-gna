@@ -4,7 +4,7 @@ import { defineConfig } from "electron-vite";
 
 // One id per build, stamped into main and the preload. A running pi-gna loads main once, but a reload reads the
 // preload and renderer from out/ again: after a `pnpm build` the window can be newer than main (StudioApi.stale).
-const BUILD = { __PIGNA_BUILD__: JSON.stringify(Date.now().toString(36)) };
+const BUILD = { __PIGNA_BUILD__: JSON.stringify(process.env.PIGNA_BUILD ?? Date.now().toString(36)) };
 
 export default defineConfig({
   main: { define: BUILD },
