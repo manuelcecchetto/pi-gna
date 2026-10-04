@@ -17,6 +17,9 @@ moves those lines under the new version, and they become its GitHub release note
 - ATP: the orchestrator floats over the plan's graph instead of a strip under it. Its conversation shows as chat
   bubbles of the last turns (with what it is doing while it works) that fade away once it is quiet, or whole in a
   floating panel, or not at all; the graph fits the plan above the composer.
+- Stopping takes two Escs: the first arms the stop button (it reads "esc" for a moment), the second stops the run
+  and pulls queued messages back, so a stray Esc no longer aborts. The running composer's toolbar stays on one line.
+- The ATP graph canvas no longer has a dot grid.
 - Responsive browser fixes: pi's clicks on a phone-sized tab no longer hang its browser tools (they tap), and land on
   the element when the page is scaled to fit. Rotating an iPhone or editing a Pixel no longer turns it into an iPad or
   iPhone, popping a tab out keeps its device, the DPR select's Custom opens its field, and a window's title follows
