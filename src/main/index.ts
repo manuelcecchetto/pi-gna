@@ -129,11 +129,14 @@ const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"
   publish({ kind: "settings", settings: next });
   applySettings(next);
 });
-const host = new SessionHost((batch: HostEventBatch) => void hub.publishBatch(`chat:${batch.handle}`, batch.events), bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
+/** The window's lease on the chats it opens (it keeps them until it closes them). */
+const DESKTOP = { clientId: "desktop", actor: "desktop" } as const;
+const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`, batch.events).at(-1)?.seq, bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
   ...(await settings.get()).features,
   computer: (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
 }));
+host.onGlobal(publish);
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 bridge.route("/browser", browserRoute(() => agent));
@@ -270,7 +273,7 @@ function on<A extends unknown[]>(channel: string, listener: (...args: A) => void
 function registerIpc(shellEnv: Promise<void>): void {
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   handle(IPC.listSessions, async () => (await shellEnv, listSessions()));
-  handle(IPC.openSession, async (request: OpenSessionRequest) => (await shellEnv, host.open(request)));
+  handle(IPC.openSession, async (request: OpenSessionRequest) => (await shellEnv, host.open(request, { client: DESKTOP })));
   handle(IPC.closeSession, (handle: string) => host.close(handle));
   handle(IPC.command, (handle: string, command: RpcCommand) => host.command(handle, command));
   on(IPC.respondUi, (handle: string, response: ExtensionUiResponse) => host.respondUi(handle, response));

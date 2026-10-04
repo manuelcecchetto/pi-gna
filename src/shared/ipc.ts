@@ -306,8 +306,8 @@ export interface PickedPath {
 }
 
 export interface OpenSessionRequest {
-  /** Renderer-chosen handle, so events can never arrive for an unknown session. */
-  handle: string;
+  /** Desktop-chosen handle, honored while the renderer still picks its own; omit to get one issued by the host. */
+  handle?: string;
   cwd: string;
   /** Existing session file; omit to start a new session in `cwd`. */
   sessionPath?: string;
@@ -316,6 +316,10 @@ export interface OpenSessionRequest {
 }
 
 export interface OpenSessionResult {
+  /** The chat's handle: the one asked for, the host's own, or the live chat's when the file was already open. */
+  handle: string;
+  /** The file was already live: this joined its chat instead of spawning pi. */
+  reused?: boolean;
   /** Active branch of the session file (root -> leaf), empty for new sessions. */
   entries: SessionEntry[];
 }

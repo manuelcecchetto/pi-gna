@@ -83,7 +83,7 @@ describe("opening a chat from the sidebar", () => {
     expect(opened?.loading).toEqual({ title: "Fix the flash" });
     expect(opened && sessionTitle(opened)).toBe("Fix the flash");
 
-    read({ entries: [entry] });
+    read({ handle, entries: [entry] });
     await vi.runAllTimersAsync();
     const loaded = store.get().sessions[handle];
     expect(loaded?.loading).toBeUndefined();

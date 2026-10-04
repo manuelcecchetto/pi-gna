@@ -88,6 +88,8 @@ export interface ClientPresence {
   clientId: string;
   /** `desktop`, or the paired device's id. */
   actor: "desktop" | string;
+  /** The chat is that client's foreground chat. */
+  viewing?: boolean;
 }
 
 /** The attention marks of a chat, kept live for chats a client does not subscribe to. */
@@ -98,6 +100,8 @@ export interface AttentionSummary {
   attention: "waiting" | "running" | "failed" | "unread" | "idle";
   running: boolean;
   dialogs: number;
+  /** How the last run ended and when (host clock), absent before the first one. */
+  settled?: { outcome: "done" | "error"; at: number };
 }
 
 /** What the host pushes on `chat:<handle>`. The first three are today's `HostEvent` (src/shared/ipc.ts). */

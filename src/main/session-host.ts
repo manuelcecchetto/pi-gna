@@ -1,12 +1,14 @@
 // Maps renderer handles to pi processes and forwards their records to the window.
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { basename, isAbsolute } from "node:path";
 import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
-import type { HostEventBatch, OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
+import type { Actor, AttentionSummary, ChatSnapshot, ClientPresence, DialogOutcome, GlobalEvent, HostEvent } from "../shared/host-api";
+import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
 import type { Feature } from "../shared/settings";
+import { attention, createSession, hydrate, isDisposable, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
 import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
 import { log } from "./log";
@@ -25,9 +27,38 @@ const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screensh
 export type SessionFeatures = Record<Feature | "computer" | "visuals", boolean>;
 const NONE: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false };
 
+/** Events for one chat, as they go to the event hub (which stamps them with a `seq`). */
+export interface ChatBatch {
+  handle: string;
+  events: HostEvent[];
+}
+
+/** A chat the host keeps alive: its pi process, authoritative state, and who is attached. */
+interface Live {
+  pi: PiProcess;
+  cwd: string;
+  state: SessionState;
+  /** `seq` of the last event `state` reflects. */
+  seq: number;
+  /** Leases of clients (a window, a phone); `viewing` is the foreground chat of that client. */
+  clients: Map<string, { actor: ClientPresence["actor"]; viewing: boolean }>;
+  /** Leases of host-side owners (an ATP runner, a background task): the chat has no viewer but must not be disposed. */
+  holds: Set<string>;
+  settled?: { outcome: RunOutcome; at: number };
+}
+
+export interface ChatPage {
+  /** Turns (user prompts) wanted, counting back from `beforeTurn` (default: the end). */
+  turns: number;
+  beforeTurn?: number;
+}
+
 export class SessionHost {
-  private readonly sessions = new Map<string, PiProcess>();
-  private readonly cwds = new Map<string, string>();
+  private readonly live = new Map<string, Live>();
+  /** Session file -> the one handle whose pi has it open (two pis on one file are unsafe). */
+  private readonly byFile = new Map<string, string>();
+  private readonly summaries = new Map<string, string>();
+  private publishGlobal: (event: GlobalEvent) => void = () => {};
   /** Choices main asked of the user (requestChoice). Answered from the window only; pi never sees them. */
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
   private readonly endListeners = new Set<(handle: string) => void>();
@@ -42,7 +73,8 @@ export class SessionHost {
   private readonly skills = { prReview: onDisk("resources", "skills", "pr-review") };
 
   constructor(
-    private readonly emit: (batch: HostEventBatch) => void,
+    /** Delivers a batch to the hub; returns the `seq` of its last event (0 if the sink does not number them). */
+    private readonly emit: (batch: ChatBatch) => number | void,
     private readonly bridge: AgentBridge,
     /** Where ATP chats keep their session files, apart from pi's, so they stay out of the sidebar. */
     private readonly atpSessions: string,
@@ -76,12 +108,36 @@ export class SessionHost {
   }
 
   get size(): number {
-    return this.sessions.size;
+    return this.live.size;
   }
 
-  async open(request: OpenSessionRequest): Promise<OpenSessionResult> {
-    const { handle, cwd, sessionPath, atp } = request;
-    if (!HANDLE.test(handle) || this.sessions.has(handle)) throw new Error("invalid session handle");
+  /** Where `chat.opened`, `chat.closed` and attention summaries go (the global topic). */
+  onGlobal(publish: (event: GlobalEvent) => void): void {
+    this.publishGlobal = publish;
+  }
+
+  /** The handles are the host's: 12 base-36 characters (the HANDLE format). */
+  private newHandle(): string {
+    let handle: string;
+    do handle = randomUUID().replaceAll("-", "").slice(0, 12);
+    while (this.live.has(handle));
+    return handle;
+  }
+
+  /**
+   * Open a chat, or join the live one when `sessionPath` is already open (the existing handle comes back).
+   * `request.handle` is honored only while the desktop still picks its own; the host issues one otherwise.
+   * The caller gets a lease: `client` (attach/detach) or `hold` (released by `release`).
+   */
+  async open(request: OpenSessionRequest, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
+    const { cwd, sessionPath, atp } = request;
+    const existing = sessionPath ? this.byFile.get(sessionPath) : undefined;
+    if (existing && this.live.has(existing)) {
+      this.lease(existing, lease);
+      return { handle: existing, reused: true, entries: await readActiveBranch(sessionPath!) };
+    }
+    if (request.handle !== undefined && (!HANDLE.test(request.handle) || this.live.has(request.handle))) throw new Error("invalid session handle");
+    const handle = request.handle ?? this.newHandle();
     if (atp && ((atp.role !== "worker" && atp.role !== "orchestrator") || (atp.plan !== undefined && !isPlanPath(atp.plan)))) throw new Error("invalid ATP session");
     if (!isAbsolute(cwd) || !(await stat(cwd).catch(() => undefined))?.isDirectory()) throw new Error(`not a directory: ${cwd}`);
     if (sessionPath !== undefined && (!isAbsolute(sessionPath) || !sessionPath.endsWith(".jsonl"))) throw new Error("invalid session path");
@@ -96,40 +152,198 @@ export class SessionHost {
 
     const features = await this.features().catch(() => NONE);
     if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
+    // A second open of the same file may have finished its reads while this one was reading.
+    const raced = sessionPath ? this.byFile.get(sessionPath) : undefined;
+    if (raced && this.live.has(raced)) {
+      this.lease(raced, lease);
+      return { handle: raced, reused: true, entries };
+    }
     const pi = new PiProcess(
       { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) },
       {
         onRecords: (records) => {
-          this.emit({ handle, events: records.map((record) => ({ kind: "rpc", record })) });
+          this.push(handle, records.map((record) => ({ kind: "rpc", record })));
           if (records.some((record) => record.type === "agent_start")) this.started(handle);
           if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
         },
         onExit: (exit) => {
           this.settleChoices(handle);
           this.ended(handle);
-          this.sessions.delete(handle);
-          this.cwds.delete(handle);
           this.bridge.unregister(handle);
           for (const listener of this.exitListeners) listener(handle);
-          this.emit({ handle, events: [{ kind: "exit", ...exit }] });
+          this.push(handle, [{ kind: "exit", ...exit }]);
+          const gone = this.live.get(handle);
+          if (gone?.state.sessionPath && this.byFile.get(gone.state.sessionPath) === handle) this.byFile.delete(gone.state.sessionPath);
+          this.live.delete(handle);
+          this.summaries.delete(handle);
+          this.publishGlobal({ kind: "chat.closed", handle });
+          this.publishGlobal({ kind: "attention", chats: [], removed: [handle] });
         },
       },
     );
-    this.sessions.set(handle, pi);
-    this.cwds.set(handle, cwd);
+    this.live.set(handle, {
+      pi,
+      cwd,
+      state: hydrate(createSession(handle, cwd, sessionPath, atp), entries),
+      seq: 0,
+      clients: new Map(),
+      holds: new Set(),
+    });
+    if (sessionPath) this.byFile.set(sessionPath, handle);
+    this.lease(handle, lease);
+    this.publishGlobal({ kind: "chat.opened", handle, cwd, sessionPath });
+    this.touch(handle);
 
     void pi.send<RpcSessionState>({ type: "get_state" }).then((response) => {
       if (!response.success || !response.data) return;
       log.info(tag, `ready in ${Date.now() - started} ms  (${response.data.model?.provider}/${response.data.model?.id}, ${response.data.thinkingLevel})`);
-      this.emit({ handle, events: [{ kind: "ready", state: response.data }] });
+      this.push(handle, [{ kind: "ready", state: response.data }]);
     });
-    return { entries };
+    return { handle, entries };
   }
 
   command(handle: string, command: RpcCommand): Promise<RpcResponse> {
-    const pi = this.sessions.get(handle);
-    if (!pi) return Promise.resolve({ type: "response", command: command.type, success: false, error: "session is not running" });
-    return pi.send(command);
+    const chat = this.live.get(handle);
+    if (!chat) return Promise.resolve({ type: "response", command: command.type, success: false, error: "session is not running" });
+    // A chat you prompted from pi-gna stays alive when everyone navigates away.
+    if (command.type === "prompt" || command.type === "steer" || command.type === "follow_up") chat.state = { ...chat.state, prompted: true };
+    return chat.pi.send(command);
+  }
+
+  // ── State, snapshots, attention ──────────────────────────────────────────────
+
+  /** Reduce events into the chat's authoritative state (host clock), then publish them and its attention. */
+  private push(handle: string, events: HostEvent[]): void {
+    const chat = this.live.get(handle);
+    if (!chat) {
+      this.emit({ handle, events });
+      return;
+    }
+    const now = Date.now();
+    let state = chat.state;
+    for (const event of events) {
+      state = reduceHostEvent(state, event, now);
+      if (event.kind === "rpc" && event.record.type === "agent_settled") {
+        const outcome = runOutcome(state.items);
+        chat.settled = { outcome, at: now };
+        if (![...chat.clients.values()].some((client) => client.viewing)) state = { ...state, unread: outcome };
+      }
+    }
+    chat.state = state;
+    // Sessions that pi switches to another file (/new, /resume, forks) move their dedupe entry.
+    if (state.sessionPath && this.byFile.get(state.sessionPath) !== handle) {
+      for (const [file, owner] of this.byFile) if (owner === handle) this.byFile.delete(file);
+      this.byFile.set(state.sessionPath, handle);
+    }
+    chat.seq = this.emit({ handle, events }) || chat.seq;
+    this.touch(handle);
+  }
+
+  /**
+   * The chat's state paged by user turns: the last `turns` before `beforeTurn` (default the end). `seq` is the
+   * last event the state reflects; a client applies only events after it. Earlier pages carry just their items.
+   */
+  snapshot(handle: string, page: ChatPage): (ChatSnapshot & { seq: number }) | undefined {
+    const chat = this.live.get(handle);
+    if (!chat) return undefined;
+    const { items } = chat.state;
+    const starts = items.flatMap((item, index) => (item.kind === "user" && !item.steer ? [index] : []));
+    const total = starts.length;
+    const end = Math.min(page.beforeTurn ?? total, total);
+    const from = Math.max(0, end - Math.max(1, page.turns));
+    const slice = items.slice(from === 0 ? 0 : starts[from], end >= total ? items.length : starts[end]);
+    const called = new Set(slice.flatMap((item) => (item.kind === "assistant" ? item.message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])) : [])));
+    const tools = Object.fromEntries(Object.entries(chat.state.tools).filter(([id]) => called.has(id)));
+    return { seq: chat.seq, state: { ...chat.state, items: slice, tools }, turns: { total, from } };
+  }
+
+  /** The authoritative state, whole (tests, host-side decisions). */
+  stateOf(handle: string): SessionState | undefined {
+    return this.live.get(handle)?.state;
+  }
+
+  private summary(handle: string, chat: Live): AttentionSummary {
+    const { state } = chat;
+    return {
+      handle,
+      cwd: chat.cwd,
+      title: state.name ?? state.title ?? basename(chat.cwd),
+      attention: attention(state),
+      running: state.running,
+      dialogs: state.dialogs.length,
+      settled: chat.settled,
+    };
+  }
+
+  /** Publish the attention summary of a chat when it changed. */
+  private touch(handle: string): void {
+    const chat = this.live.get(handle);
+    if (!chat) return;
+    const summary = this.summary(handle, chat);
+    const json = JSON.stringify(summary);
+    if (this.summaries.get(handle) === json) return;
+    this.summaries.set(handle, json);
+    this.publishGlobal({ kind: "attention", chats: [summary], removed: [] });
+  }
+
+  /** Attention of every live chat (a client's first paint of the sidebar marks). */
+  attentionAll(): AttentionSummary[] {
+    return [...this.live].map(([handle, chat]) => this.summary(handle, chat));
+  }
+
+  // ── Leases and presence ──────────────────────────────────────────────────────
+
+  private lease(handle: string, lease?: { client?: ClientPresence; hold?: string }): void {
+    if (lease?.hold) this.live.get(handle)?.holds.add(lease.hold);
+    if (lease?.client) this.attach(handle, lease.client);
+  }
+
+  /** A client opens the chat (a window, a phone): its pi keeps running while anyone is attached. */
+  attach(handle: string, client: ClientPresence): void {
+    const chat = this.live.get(handle);
+    if (!chat) throw new Error("session is not running");
+    if (!chat.clients.has(client.clientId)) chat.clients.set(client.clientId, { actor: client.actor, viewing: false });
+    this.presenceChanged(handle);
+  }
+
+  /** The client leaves; the pi stops if that was the last lease and the chat is disposable. */
+  detach(handle: string, clientId: string): void {
+    const chat = this.live.get(handle);
+    if (!chat?.clients.delete(clientId)) return;
+    this.presenceChanged(handle);
+    this.disposeIfIdle(handle);
+  }
+
+  /** A client's foreground chat changed (`viewing`): being looked at clears the unread mark. */
+  viewing(handle: string, clientId: string, viewing: boolean): void {
+    const chat = this.live.get(handle);
+    const client = chat?.clients.get(clientId);
+    if (!chat || !client || client.viewing === viewing) return;
+    client.viewing = viewing;
+    if (viewing && chat.state.unread) {
+      chat.state = { ...chat.state, unread: undefined };
+      this.touch(handle);
+    }
+    this.presenceChanged(handle);
+  }
+
+  /** Who is attached to the chat, and which of them have it in the foreground. */
+  presence(handle: string): ClientPresence[] {
+    return [...(this.live.get(handle)?.clients ?? [])].map(([clientId, client]) => ({ clientId, actor: client.actor, viewing: client.viewing }));
+  }
+
+  /** Release a host-side lease (see `open`'s `hold`); the chat stops if nothing else keeps it. */
+  release(handle: string, hold: string): void {
+    if (this.live.get(handle)?.holds.delete(hold)) this.disposeIfIdle(handle);
+  }
+
+  private presenceChanged(handle: string): void {
+    this.push(handle, [{ kind: "lease", clients: this.presence(handle) }]);
+  }
+
+  private disposeIfIdle(handle: string): void {
+    const chat = this.live.get(handle);
+    if (chat && !chat.clients.size && !chat.holds.size && chat.state.phase !== "exited" && isDisposable(chat.state)) void this.close(handle, "host");
   }
 
   /**
@@ -137,7 +351,7 @@ export class SessionHost {
    * and forks switch files). pi answers commands while one of its tools waits on the bridge.
    */
   async identify(handle: string): Promise<{ path: string; cwd: string }> {
-    const cwd = this.cwds.get(handle);
+    const cwd = this.live.get(handle)?.cwd;
     if (!cwd) throw new Error("session is not running");
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error("pi did not report its session file")), 5000)));
@@ -198,17 +412,20 @@ export class SessionHost {
    * from the window and never forwarded to pi, and nothing holding the bridge token can answer it. Undefined when
    * the user dismisses it, the wait runs out or the chat ends. */
   requestChoice(handle: string, title: string, options: string[]): Promise<string | undefined> {
-    if (!this.sessions.has(handle)) return Promise.resolve(undefined);
+    if (!this.live.has(handle)) return Promise.resolve(undefined);
     const id = `pigna-choice-${randomUUID()}`;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => settle(undefined), APPROVAL_TIMEOUT_MS);
+      const timer = setTimeout(() => {
+        settle(undefined);
+        this.push(handle, [{ kind: "dialog_resolved", id, by: "desktop", outcome: "timeout" }]);
+      }, APPROVAL_TIMEOUT_MS);
       const settle = (value: string | undefined) => {
         clearTimeout(timer);
         this.choices.delete(id);
         resolve(value);
       };
       this.choices.set(id, { handle, resolve: settle });
-      this.emit({ handle, events: [{ kind: "rpc", record: { type: "extension_ui_request", id, method: "select", title, options, timeout: APPROVAL_TIMEOUT_MS } }] });
+      this.push(handle, [{ kind: "rpc", record: { type: "extension_ui_request", id, method: "select", title, options, timeout: APPROVAL_TIMEOUT_MS } }]);
     });
   }
 
@@ -216,20 +433,31 @@ export class SessionHost {
     for (const choice of [...this.choices.values()]) if (choice.handle === handle) choice.resolve(undefined);
   }
 
-  respondUi(handle: string, response: ExtensionUiResponse): void {
+  /** Answer a dialog; every client is told, so the others drop their card. */
+  respondUi(handle: string, response: ExtensionUiResponse, by: Actor = "desktop"): void {
+    const chat = this.live.get(handle);
+    if (!chat) return;
+    const answered = chat.state.dialogs.some((dialog) => dialog.id === response.id);
     const choice = this.choices.get(response.id);
     if (choice) {
-      if (choice.handle === handle) choice.resolve("value" in response ? response.value : undefined);
-      return;
+      if (choice.handle !== handle) return;
+      choice.resolve("value" in response ? response.value : undefined);
+    } else chat.pi.respondUi(response);
+    if (answered) {
+      const outcome: DialogOutcome = "cancelled" in response && response.cancelled ? "cancelled" : "answered";
+      this.push(handle, [{ kind: "dialog_resolved", id: response.id, by, outcome }]);
     }
-    this.sessions.get(handle)?.respondUi(response);
   }
 
-  async close(handle: string): Promise<void> {
-    await this.sessions.get(handle)?.close();
+  /** Explicit close: clients are told first (they leave the chat), then pi stops. */
+  async close(handle: string, by: Actor | "host" = "desktop"): Promise<void> {
+    const chat = this.live.get(handle);
+    if (!chat) return;
+    this.push(handle, [{ kind: "closed", by }]);
+    await chat.pi.close();
   }
 
   async closeAll(): Promise<void> {
-    await Promise.all([...this.sessions.values()].map((pi) => pi.close()));
+    await Promise.all([...this.live.values()].map((chat) => chat.pi.close()));
   }
 }
