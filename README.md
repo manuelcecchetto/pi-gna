@@ -68,7 +68,8 @@ updates the `--pigna` flag.
   projects; a chat's mark tells you when pi is working, waiting for you, failed, or finished while you were away.
 - **A browser you share with pi.** Cmd+B opens a browser pane, and pi gets `browser_*` tools for it: it opens
   your dev server, clicks, types, reads the page and takes screenshots while you watch. Local URLs open without
-  asking; other sites ask once per session. Comment on elements to hand pi notes with a crop of each.
+  asking; other sites ask once per session. Comment on elements to hand pi notes with a crop of each. Test responsive layouts with the Dimensions bar
+  (phone and laptop presets that change the User-Agent too); pi can set a viewport or open device-sized windows itself.
 - **Native Mac apps, in the background.** With Computer Use on (Cmd+Shift+U), pi can use your Mac's apps while you
   keep working: it reads an app's accessibility tree and window, clicks and types with a cursor of its own and
   never touches your mouse or focus. You approve each app (once, or always); terminals, pi-gna and system security

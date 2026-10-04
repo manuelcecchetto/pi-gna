@@ -155,7 +155,7 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
   image lightbox, the Kanban card dialog and menus). History lives in `userData/browser-history.json`.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
-  `browser_screenshot`, `browser_evaluate`, `browser_console`. The extension calls `POST /browser` on a
+  `browser_screenshot`, `browser_evaluate`, `browser_console`, `browser_viewport`, `browser_window`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
   and its actions run through a per-session queue because pi executes one message's tool calls in parallel.
@@ -172,6 +172,35 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
 - **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab; a
   long-pending promise resolves with the element, selector, HTML and comment, main crops the element, and the
   renderer shows it as a chip. The next prompt carries a `<browser-comments>` block plus the crops as images.
+- **Responsive viewport and device windows**: a tab can emulate a device (measurements and rejected options in
+  `docs/RESPONSIVE_BROWSER.md`).
+  - *Mechanism*: CDP on the tab's debugger sets metrics (size, DPR, `mobile`, screen), touch emulation and the
+    User-Agent together; Electron sends no `Sec-CH-UA*` headers, so a session `onBeforeSendHeaders` hook adds them
+    for emulated tabs. Only mobile presets change the UA; Laptop and Desktop keep the native one. Emulation survives
+    navigation, reload and renderer crashes, so it is applied once and re-applied only on debugger detach.
+  - *Shared math*: `src/shared/viewport.ts` (presets, `resolveViewport`, clamping to 200-3840 px and DPR 1-4,
+    `fitViewport`, `toInputCoords`, UA profiles) is used by main, renderer and the extension. A viewport larger
+    than the pane is shown with CDP `scale` (fit), never clipped: the view is `size*scale`, centred in the pane;
+    CDP mouse input takes scaled coordinates, so `cdp()` multiplies agent click coordinates by the scale.
+    Screenshots (`Page.captureScreenshot`) stay emulated size x DPR.
+  - *Persistence*: the spec lives per tab in `BrowserManager`, not in the agent session. Releasing control or
+    ending a run does not clear it; only the user's Reset / Responsive or closing the tab does. When pi set it the
+    Dimensions bar stays visible with a "Set by pi" badge (a user change removes it). Neither side needs approval:
+    it is not a navigation.
+  - *Who*: the user through the Dimensions toolbar (presets, width x height, DPR, rotate, mobile, pop-out);
+    the agent through `browser_viewport` (set, read, reset; preset, width/height, aspect with one edge, dpr,
+    mobile, orientation) on its own or an adopted tab.
+  - *Windows*: `browser_window` (open, list, close) or the user's pop-out put a tab in a `BrowserWindow`
+    (`showInactive`, content size, `setAspectRatio` when an aspect was asked) with the same emulation. At most
+    4 are open at once (`WINDOW_LIMIT`; the next is refused). A window cannot exceed the display work area, so a
+    larger request is emulated at full size inside a smaller window. Closing a window closes its tab; "Return to
+    pane" is the way back. A session's windows close when it ends. Never minimize them: captures hang.
+  - *Codex lessons*: Codex's iPhone preset left the HTTP UA alone, so SSR served the desktop page
+    (openai/codex#35576): we switch viewport, DPR, touch and UA together. Its agent-set viewport was lost when the
+    agent released control (#35756, #34335): ours persists with a badge.
+  - *Electron gotcha*: `Emulation.setDeviceMetricsOverride` on a view that never navigated crashes the main
+    process (Electron 44.5.1, macOS), so `BrowserManager.emulate` loads `about:blank` first.
+  - Verified end to end by `pnpm verify:responsive` (real built app, local fixture server).
 
 ## Computer Use
 
