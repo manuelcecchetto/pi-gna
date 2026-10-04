@@ -12,15 +12,17 @@ files:
   - src/shared/browser.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+  - src/shared/viewport.ts
   - "!resources/icon.png"
   - "!resources/pigna-flag.ts"
-# pi reads these from disk (`pi -e`, `--append-system-prompt`); the browser, kanban and lament extensions import
-# src/shared/browser.ts, src/shared/board.ts and src/shared/laments.ts.
+# pi reads these from disk (`pi -e`, `--append-system-prompt`), so every src/shared file the extensions import
+# must be listed here and under files: (scripts/packaging.test.mjs checks both).
 asarUnpack:
   - resources/**
   - src/shared/browser.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+  - src/shared/viewport.ts
 # The Computer Use helper app (built by `pnpm build:computer-use`, which `pnpm dist` runs first) rides outside the
 # asar in Contents/Resources/computer-use/; main installs it to ~/.pi-gna and launches it from there.
 extraResources:

@@ -5,6 +5,9 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Fix chats exiting at start ("Cannot find module '../src/shared/viewport'"): 0.3.1 left a file the browser
+  extension needs out of the app. A test now checks that the app ships everything its pi extensions import.
+
 ## 0.3.1 - 2026-10-04
 
 - Responsive browser: a Dimensions bar in the browser pane (presets, width x height, DPR, rotate, mobile) emulates a
