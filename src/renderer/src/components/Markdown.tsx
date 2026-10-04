@@ -1,11 +1,11 @@
 import { memo, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { useApp } from "../state/app";
+import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
 
-function onProseClick(event: MouseEvent<HTMLElement>): void {
+function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void): void {
   const target = event.target as HTMLElement;
   const copy = target.closest<HTMLButtonElement>("[data-copy]");
   if (copy) {
@@ -20,7 +20,7 @@ function onProseClick(event: MouseEvent<HTMLElement>): void {
   const link = target.closest<HTMLAnchorElement>("a[href]");
   if (link) {
     event.preventDefault();
-    window.studio.openExternal(link.href);
+    openExternal(link.href);
   }
 }
 
@@ -35,7 +35,8 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean;
   visuals?: boolean;
 }) {
-  const enabled = useApp((s) => s.settings.visuals) && visuals;
+  const { openExternal } = useChatActions();
+  const enabled = useChatUi((s) => s.settings.visuals) && visuals;
   const html = useMemo(() => {
     // An unfinished visual fence streams as a placeholder instead of raw source.
     const src = enabled && streaming ? text.replace(OPEN_VISUAL, "$1*Drawing visual…*\n") : text;
@@ -76,7 +77,7 @@ export const Markdown = memo(function Markdown({
     };
   }, [html, streaming, enabled]);
   return (
-    <div ref={ref} className="prose selectable" onClick={onProseClick} dangerouslySetInnerHTML={{ __html: html }} />
+    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal)} dangerouslySetInnerHTML={{ __html: html }} />
   );
 });
 

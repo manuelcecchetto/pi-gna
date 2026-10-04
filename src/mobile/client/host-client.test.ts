@@ -47,7 +47,7 @@ function setup(handler: (call: Call, n: number) => Response | Promise<Response>)
   let ids = 0;
   const env: Env = {
     fetch: (async (input: string, init?: RequestInit) => {
-      const call: Call = { path: String(input).replace("/api/", ""), headers: (init?.headers ?? {}) as Record<string, string>, body: init?.body ? JSON.parse(String(init.body)) : undefined };
+      const call: Call = { path: String(input).replace(/^\/api\/(call\/)?/, ""), headers: (init?.headers ?? {}) as Record<string, string>, body: init?.body ? JSON.parse(String(init.body)) : undefined };
       calls.push(call);
       return handler(call, calls.length);
     }) as typeof fetch,
@@ -81,6 +81,7 @@ function setup(handler: (call: Call, n: number) => Response | Promise<Response>)
 function reads() {
   return (call: Call): Response => {
     if (call.path === "chat.list") return ok([]);
+    if (call.path === "chat.live") return ok([{ handle: "live1", cwd: "/p", title: "Live", attention: "running", running: true, dialogs: 0 }]);
     if (call.path === "settings.get") return ok({ seq: 5, value: settings });
     if (call.path.endsWith(".get") || call.path === "atp.state" || call.path === "browser.state") return ok({ seq: 5, value: { rev: 1 } });
     if (call.path === "chat.snapshot") return ok({ seq: 10, value: { state: createSession(call.body.handle, "/p"), turns: { total: 0, from: 0 } } });
@@ -181,6 +182,59 @@ describe("stream", () => {
     t.src().host(11, "chat:abc123", ready);
     expect(t.client.store.get().chats.abc123!.session!.sessionId).toBe("s1");
     expect(t.client.store.get().chats.abc123!.seq).toBe(11);
+  });
+
+  it("reads the live chats' attention on resync and keeps applying deltas", async () => {
+    const t = setup(reads());
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    expect(Object.keys(t.client.store.get().global.attention)).toEqual(["live1"]);
+    t.src().host(1, "global", { kind: "attention", chats: [{ handle: "live1", title: "Live", attention: "waiting" }], removed: [] });
+    expect(t.client.store.get().global.attention.live1!.attention).toBe("waiting");
+  });
+
+  it("prepends the page before the snapshot's first turn and ignores a stale page", async () => {
+    const item = (text: string) => ({ kind: "user", message: { role: "user", content: text, timestamp: 1 } });
+    const page = (items: unknown[], from: number) => ({ seq: 10, value: { state: { ...createSession("abc123", "/p"), items, tools: {} }, turns: { total: 4, from } } });
+    let served = 0;
+    const t = setup((call) => {
+      if (call.path !== "chat.snapshot") return reads()(call);
+      served++;
+      return ok(call.body.before === undefined ? page([item("c"), item("d")], 2) : page([item("a"), item("b")], 0));
+    });
+    t.client.start();
+    t.src().hello();
+    await flush();
+    await t.client.setChats(["abc123"]);
+    await flush();
+    expect(t.client.store.get().chats.abc123!.turns).toEqual({ total: 4, from: 2 });
+    await t.client.loadEarlier("abc123");
+    await flush();
+    const entry = t.client.store.get().chats.abc123!;
+    expect(entry.session!.items.map((i) => (i as any).message.content)).toEqual(["a", "b", "c", "d"]);
+    expect(entry.turns).toEqual({ total: 4, from: 0 });
+    expect(t.calls.filter((c) => c.path === "chat.snapshot").at(-1)!.body).toEqual({ handle: "abc123", before: 2 });
+    await t.client.loadEarlier("abc123"); // nothing before turn 0: no call
+    expect(served).toBe(2);
+  });
+
+  it("subscribes again and rereads the chats when the browser's own retry brings the stream back", async () => {
+    const t = setup(reads());
+    t.client.start();
+    t.src().hello();
+    await flush();
+    await t.client.setChats(["abc123"]);
+    await flush();
+    const before = t.calls.filter((c) => c.path === "subscribe").length;
+    // The same EventSource reconnected by itself: same URL (without the chat), same boot, a new hello.
+    t.src().hello();
+    await flush();
+    expect(t.calls.filter((c) => c.path === "subscribe")).toHaveLength(before + 1);
+    expect(t.calls.filter((c) => c.path === "chat.snapshot")).toHaveLength(2);
+    expect(t.calls.filter((c) => c.path === "subscribe").at(-1)!.body.chats).toEqual(["abc123"]);
   });
 
   it("carries the chats on screen in the URL when it reconnects", async () => {

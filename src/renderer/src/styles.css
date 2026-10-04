@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Fingers: bigger targets and 16px fields (iOS zooms into smaller ones) where the primary pointer is coarse. */
+@custom-variant touch (@media (pointer: coarse));
+
 /* Visual language: dark neutral surfaces, hairline borders, dashed dividers, system sans with
    small mono labels, muted grays, one blue accent. Light theme follows the system. */
 :root {

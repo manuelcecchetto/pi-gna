@@ -9,6 +9,11 @@ import { Transcript } from "./Transcript";
 
 const app = vi.hoisted(() => ({ expanded: {} as Record<string, boolean>, expandAll: false, commands: {}, annotations: [], attachments: {}, models: [], levels: {}, compaction: {} }));
 vi.mock("../state/app", () => ({ useApp: (selector: (state: typeof app) => unknown) => selector(app), composerCard: () => undefined }));
+// The transcript reads its state and actions through the ChatUi context (lib/chat-ui.tsx); here from the same fake app state.
+vi.mock("../lib/chat-ui", () => ({
+  useChatUi: (selector: (state: unknown) => unknown) => selector({ ...app, board: { cards: [] }, settings: { visuals: false, wallpaper: "none", wallpaperLoop: false } }),
+  useChatActions: () => ({ homeDir: "/home", setExpanded: () => undefined, openLightbox: () => undefined, openExternal: () => undefined, respondDialog: async () => undefined, editQueue: async () => false }),
+}));
 vi.mock("./Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", {}, text) }));
 vi.mock("./ContextMeter", () => ({ ContextMeter: () => null }));
 vi.mock("./Dialogs", () => ({ Dialogs: () => null }));

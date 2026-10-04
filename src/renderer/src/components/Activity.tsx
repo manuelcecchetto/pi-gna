@@ -21,7 +21,7 @@ import { formatClock, formatDuration } from "../lib/format";
 import { userText } from "../../../shared/session-state";
 import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
-import { openLightbox, setExpanded, useApp } from "../state/app";
+import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
 import { Elapsed, useNow } from "./primitives";
@@ -42,8 +42,8 @@ const ICONS: Record<ToolCategory, LucideIcon> = {
 };
 
 function useExpanded(key: string, fallback: boolean): boolean {
-  const override = useApp((state) => state.expanded[key]);
-  const all = useApp((state) => state.expandAll);
+  const override = useChatUi((state) => state.expanded[key]);
+  const all = useChatUi((state) => state.expandAll);
   return override ?? (all || fallback);
 }
 
@@ -70,6 +70,7 @@ export const WorkAccordion = memo(function WorkAccordion({
   status?: string;
   renderBlock: (block: Block) => ReactNode;
 }) {
+  const { setExpanded } = useChatActions();
   const open = useExpanded(`work:${run.key}:${layout.settled ? "done" : "working"}`, !layout.settled);
   const steps = layout.work.flatMap((block) => (block.kind === "activity" ? block.steps : []));
   const tools = steps.filter((step): step is ToolStep => step.kind === "tool");
@@ -177,6 +178,7 @@ function ThinkingStep({ step }: { step: Extract<Step, { kind: "thinking" }> }) {
 
 /** A message you steered into the running turn: part of the work, not a new turn. */
 function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
+  const { setExpanded, openLightbox } = useChatActions();
   const open = useExpanded(step.key, false);
   const [withoutFiles, mentions] = splitFileMentions(userText(step.message));
   const shown = stripStudioBlocks(withoutFiles);
@@ -214,6 +216,7 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
 }
 
 function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool" }>; cwd: string; home: string; live: boolean }) {
+  const { setExpanded } = useChatActions();
   const open = useExpanded(step.key, false);
   const { call, run } = step;
   const presentation = presentTool(call.name, call.arguments, cwd, run?.result?.details, home);
@@ -305,6 +308,7 @@ function TimeoutPie({ fraction }: { fraction: number }) {
 
 /** Tool-result images render inline, like pi's terminal does; click for full size. */
 function InlineImages({ images }: { images: ReturnType<typeof resultImages> }) {
+  const { openLightbox } = useChatActions();
   if (!images.length) return null;
   return (
     <div className="mt-1 mb-1.5 flex flex-wrap gap-2 pl-7">

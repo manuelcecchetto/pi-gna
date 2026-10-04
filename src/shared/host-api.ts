@@ -15,7 +15,7 @@ import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
 import type { UiOp } from "./ui-state";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
-import type { PickedPath, ProjectGroup, UpdateState } from "./ipc";
+import type { DialogAnswer, OpenSessionRequest, OpenSessionResult, PickedPath, ProjectGroup, UpdateState } from "./ipc";
 
 // ── Envelopes ────────────────────────────────────────────────────────────────
 
@@ -98,6 +98,8 @@ export interface ClientPresence {
 export interface AttentionSummary {
   handle: string;
   cwd: string;
+  /** The session file, once it has one: matches the chat to its row in `chat.list`. */
+  sessionPath?: string;
   title: string;
   attention: "waiting" | "running" | "failed" | "unread" | "idle";
   running: boolean;
@@ -435,11 +437,14 @@ export type MethodScope = "remote" | "desktop";
 export interface HostMethods {
   // chat
   "chat.list": { args: Record<string, never>; result: ProjectGroup[] };
-  "chat.open": {
-    args: { cwd: string; sessionPath?: string; atp?: AtpSession };
-    result: { handle: string; reused: boolean; snapshot: Snapshot<ChatSnapshot> };
-  };
-  "chat.attach": { args: { handle: string }; result: Snapshot<ChatSnapshot> };
+  /** A remote caller gets `entries: []`: its snapshot comes from `chat.snapshot`, not from the session file. */
+  "chat.open": { args: { request: OpenSessionRequest }; result: OpenSessionResult };
+  /** Null when the chat ended meanwhile. */
+  "chat.attach": { args: { handle: string }; result: (ChatSnapshot & { seq: number }) | null };
+  /** This client shows (or stops showing) the chat in the foreground; that marks a finished run as seen. */
+  "chat.viewing": { args: { handle: string; viewing: boolean }; result: null };
+  /** Attention summaries of every live chat. */
+  "chat.live": { args: Record<string, never>; result: AttentionSummary[] };
   "chat.detach": { args: { handle: string }; result: null };
   "chat.close": { args: { handle: string }; result: null };
   "chat.snapshot": { args: { handle: string; before?: number }; result: Snapshot<ChatSnapshot> };
@@ -448,9 +453,9 @@ export interface HostMethods {
     result: { accepted: boolean; error?: string };
   };
   "chat.command": { args: { handle: string; command: RpcCommand }; result: RpcResponse };
-  "chat.interrupt": { args: { handle: string }; result: { restored: string[] } };
-  "chat.editQueue": { args: { handle: string; op: QueueEdit }; result: { ok: boolean } };
-  "chat.respondDialog": { args: { handle: string; response: ExtensionUiResponse }; result: null };
+  "chat.interrupt": { args: { handle: string }; result: string[] };
+  "chat.editQueue": { args: { handle: string; op: QueueEdit }; result: boolean };
+  "chat.respondDialog": { args: { handle: string; response: ExtensionUiResponse }; result: DialogAnswer };
   "chat.startTask": { args: { target: TaskTarget }; result: TaskStarted };
   "chat.files": { args: { cwd: string }; result: string[] };
   "chat.compactionSettings": { args: Record<string, never>; result: CompactionSettings };
@@ -619,6 +624,7 @@ export function methodScope(method: HostMethod): MethodScope {
 /** Methods that change nothing; every other method mutates, so remote calls to it need an `Idempotency-Key`. */
 export const READ_ONLY_METHODS = [
   "chat.list",
+  "chat.live",
   "chat.attach",
   "chat.snapshot",
   "chat.files",

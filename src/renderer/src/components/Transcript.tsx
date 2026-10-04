@@ -22,7 +22,7 @@ import { railItems } from "../lib/rail";
 import type { SessionState } from "../../../shared/session-state";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
-import { openLightbox, setExpanded, showBoard, useApp } from "../state/app";
+import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { ColumnIcon } from "./ColumnIcon";
 import { CompactionProgress } from "./CompactionProgress";
 import { WorkAccordion } from "./Activity";
@@ -32,17 +32,24 @@ import { TurnRail } from "./TurnRail";
 
 const PAGE = 30;
 
-export function Transcript({ session }: { session: SessionState }) {
+/** Turns the host holds beyond the ones in `session` (a remote client pages them in); `load` fetches the next page. */
+export interface EarlierTurns {
+  count: number;
+  load: () => Promise<void>;
+}
+
+export function Transcript({ session, earlier }: { session: SessionState; earlier?: EarlierTurns }) {
   const derive = useMemo(() => createRunDeriver(), []);
   const runs = derive(session);
   const [limit, setLimit] = useState(PAGE);
   const hidden = Math.max(0, runs.length - limit);
   const visible = hidden ? runs.slice(hidden) : runs;
-  const home = window.studio.homeDir;
+  const { homeDir: home } = useChatActions();
 
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const { viewport, jumped, restoreFromBottom, below, onScroll, onWheel, jumpToLatest } = useTurnScroll(scroller, content, runs);
+  const { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, jumpToLatest } = useTurnScroll(scroller, content, runs);
+  const [paging, setPaging] = useState(false);
 
   if (session.loading) return <div className="flex-1" />; // not the empty state: this chat has a history
   if (!runs.length && !session.running) return <EmptyTranscript session={session} />;
@@ -51,6 +58,21 @@ export function Transcript({ session }: { session: SessionState }) {
   const reveal = (key: string) => {
     const index = runs.findIndex((run) => run.key === key);
     if (index >= 0 && index < hidden) setLimit(runs.length - index);
+  };
+
+  /** The host's earlier turns: the view keeps its place once they are in the transcript (the store notifies a frame later). */
+  const loadEarlier = async () => {
+    const element = scroller.current;
+    if (!earlier || !element || paging) return;
+    setPaging(true);
+    pageAnchor.current = { fromBottom: element.scrollHeight - element.scrollTop, first: runs[0]?.key };
+    try {
+      await earlier.load();
+    } catch {
+      pageAnchor.current = null;
+    } finally {
+      setPaging(false);
+    }
   };
 
   const last = visible.at(-1);
@@ -62,7 +84,17 @@ export function Transcript({ session }: { session: SessionState }) {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div ref={scroller} onScroll={onScroll} onWheel={onWheel} className="relative min-h-0 flex-1 overflow-y-auto">
-        <div ref={content} className="mx-auto flex max-w-[800px] flex-col gap-10 px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
+        <div ref={content} className="mx-auto flex max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
+          {hidden === 0 && earlier && earlier.count > 0 && (
+            <button
+              type="button"
+              disabled={paging}
+              onClick={() => void loadEarlier()}
+              className="self-center rounded-full border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg disabled:opacity-60"
+            >
+              {paging ? "Loading…" : `Show earlier turns (${earlier.count} more)`}
+            </button>
+          )}
           {hidden > 0 && (
             <button
               type="button"
@@ -128,6 +160,8 @@ function useTurnScroll(
   const seen = useRef<string | undefined>(undefined);
   const jumped = useRef<string | undefined>(undefined);
   const restoreFromBottom = useRef<number | null>(null);
+  /** Where the view was when the host was asked for earlier turns; applied once the first turn is another one. */
+  const pageAnchor = useRef<{ fromBottom: number; first?: string } | null>(null);
   /** You are at the end, so new output keeps you there. */
   const pinned = useRef(true);
   /** The newest run is live, so its growth is streaming output. */
@@ -196,6 +230,11 @@ function useTurnScroll(
       element.scrollTop = element.scrollHeight - restoreFromBottom.current; // keep your place when earlier turns load
       restoreFromBottom.current = null;
     }
+    const anchor = pageAnchor.current;
+    if (anchor && runs[0]?.key !== anchor.first) {
+      element.scrollTop = element.scrollHeight - anchor.fromBottom;
+      pageAnchor.current = null;
+    }
     if (last && last.key !== seen.current) {
       const first = seen.current === undefined;
       seen.current = last.key;
@@ -217,15 +256,15 @@ function useTurnScroll(
     following.current = live;
   });
 
-  return { viewport, jumped, restoreFromBottom, below, onScroll, onWheel, jumpToLatest };
+  return { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, jumpToLatest };
 }
 
 /** Empty-state backdrop: the wallpaper picked in Settings (styles.css `.hero`), or nothing for none. While they loop,
  * each empty state shows the next one and keeps it while it is open. It picks again when the setting changes: at launch
  * the settings arrive from main after the first render. */
 export function HeroBackdrop() {
-  const picked = useApp((state) => state.settings.wallpaper);
-  const loop = useApp((state) => state.settings.wallpaperLoop);
+  const picked = useChatUi((state) => state.settings.wallpaper);
+  const loop = useChatUi((state) => state.settings.wallpaperLoop);
   const [shown, setShown] = useState(() => ({ picked, loop, id: loopWallpaper(picked, loop) }));
   if (shown.picked !== picked || shown.loop !== loop) setShown({ picked, loop, id: loopWallpaper(picked, loop) });
   const style = wallpaperStyle(shown.id);
@@ -233,12 +272,13 @@ export function HeroBackdrop() {
 }
 
 function EmptyTranscript({ session }: { session: SessionState }) {
+  const { homeDir } = useChatActions();
   return (
     <div className="relative flex min-h-0 flex-1 flex-col items-center justify-end overflow-hidden px-8 pb-8">
       <HeroBackdrop />
       <div className="relative flex flex-col items-center">
         <h1 className="text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
-        <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, window.studio.homeDir)}</div>
+        <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, homeDir)}</div>
       </div>
     </div>
   );
@@ -302,6 +342,7 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
  * divider marks the first message and messages after a long break.
  */
 function UserMessageView({ message, divider }: { message: UserMessage; divider: boolean }) {
+  const { openLightbox, homeDir } = useChatActions();
   const parts = userParts(message);
   const [withoutFiles, mentions] = splitFileMentions(parts.text);
   const [withoutCard, card] = splitCardBlock(withoutFiles);
@@ -339,7 +380,7 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {text && (
         <div className="flex w-full items-center justify-end gap-3">
           {stamp}
-          <div data-user-bubble className="max-w-[78%] rounded-[22px] bg-raised px-5 py-3 text-[14.5px] leading-relaxed text-fg">
+          <div data-user-bubble className="max-w-[78%] touch:max-w-[88%] rounded-[22px] bg-raised px-5 touch:px-4 py-3 text-[14.5px] leading-relaxed text-fg">
             <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
             {long && (
               <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
@@ -360,7 +401,7 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
                 className="flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 font-mono text-[11.5px] text-muted"
               >
                 <Icon size={12} className="shrink-0 text-faint" />
-                <span className="truncate">{tildify(mention.path, window.studio.homeDir)}</span>
+                <span className="truncate">{tildify(mention.path, homeDir)}</span>
               </span>
             );
           })}
@@ -379,13 +420,14 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
 
 /** The card a message was about (its <kanban-card> block): opens it on the board while it is there. */
 function SentCard({ mention }: { mention: CardMention }) {
-  const card = useApp((state) => state.board.cards.find((other) => other.id === mention.id));
+  const card = useChatUi((state) => state.board.cards.find((other) => other.id === mention.id));
+  const { showBoard } = useChatActions();
   const chip = "flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 text-[12px] text-muted";
-  if (!card) {
+  if (!card || !showBoard) {
     return (
-      <span title="No longer on the board" className={chip}>
+      <span title={card ? undefined : "No longer on the board"} className={chip}>
         <SquareKanban size={12} className="shrink-0 text-faint" />
-        <span className="truncate">{mention.title}</span>
+        <span className="truncate">{card?.title ?? mention.title}</span>
       </span>
     );
   }
@@ -420,7 +462,8 @@ function AnswerFooter({ blocks }: { blocks: Block[] }) {
 
 /** Time stamps are noise most of the time: shown while hovering their message, full date in the tooltip. */
 function HoverStamp({ at, group }: { at: number; group: "user" | "answer" }) {
-  const reveal = group === "user" ? "group-hover/user:opacity-100" : "group-hover/answer:opacity-100";
+  // No hover on a touch screen: a message's stamp would only take room from its bubble.
+  const reveal = group === "user" ? "group-hover/user:opacity-100 touch:hidden" : "group-hover/answer:opacity-100";
   return (
     <span title={new Date(at).toLocaleString()} className={`shrink-0 text-[12px] text-faint opacity-0 transition-opacity ${reveal}`}>
       {formatStamp(at)}
@@ -531,8 +574,9 @@ function Disclosure({
   divider?: boolean;
   children: React.ReactNode;
 }) {
-  const override = useApp((state) => state.expanded[id]);
-  const all = useApp((state) => state.expandAll);
+  const override = useChatUi((state) => state.expanded[id]);
+  const all = useChatUi((state) => state.expandAll);
+  const { setExpanded } = useChatActions();
   const open = override ?? all;
   return (
     <div>

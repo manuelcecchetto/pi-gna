@@ -24,7 +24,9 @@ let streaming = false;
 let aborted = false;
 // Queued messages (steer / follow_up while streaming) so clear_queue and queue edits behave like pi's.
 let queues = { steering: [], followUp: [] };
-const sessionFile = join(tmpdir(), "fake-pi-sessions", `${process.pid}.jsonl`);
+// `--session <file>` (an existing session opened from the list) is reported back as is, like pi does.
+const resumed = process.argv.indexOf("--session");
+const sessionFile = resumed > 0 ? process.argv[resumed + 1] : join(tmpdir(), "fake-pi-sessions", `${process.pid}.jsonl`);
 
 createInterface({ input: process.stdin }).on("line", (line) => {
   const command = JSON.parse(line);

@@ -327,6 +327,7 @@ export class SessionHost {
     return {
       handle,
       cwd: chat.cwd,
+      sessionPath: state.sessionPath,
       title: state.name ?? state.title ?? basename(chat.cwd),
       attention: attention(state),
       running: state.running,

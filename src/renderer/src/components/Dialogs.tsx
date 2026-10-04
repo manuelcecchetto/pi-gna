@@ -2,7 +2,7 @@
 import { ShieldQuestion } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ExtensionUiDialog } from "../../../shared/protocol";
-import { respondDialog } from "../state/app";
+import { useChatActions } from "../lib/chat-ui";
 import { Ansi, Kbd, useNow } from "./primitives";
 
 export function Dialogs({ handle, dialogs }: { handle: string; dialogs: ExtensionUiDialog[] }) {
@@ -27,6 +27,7 @@ function DialogCard({ handle, dialog }: { handle: string; dialog: ExtensionUiDia
   const [value, setValue] = useState(dialog.method === "editor" ? (dialog.prefill ?? "") : "");
   const [selected, setSelected] = useState(0);
   const card = useRef<HTMLDivElement>(null);
+  const { respondDialog } = useChatActions();
   const cancel = () => respondDialog(handle, { type: "extension_ui_response", id: dialog.id, cancelled: true });
   const submitValue = (text: string) => respondDialog(handle, { type: "extension_ui_response", id: dialog.id, value: text });
   const confirm = (confirmed: boolean) => respondDialog(handle, { type: "extension_ui_response", id: dialog.id, confirmed });
@@ -70,7 +71,7 @@ function DialogCard({ handle, dialog }: { handle: string; dialog: ExtensionUiDia
         {dialog.timeout ? <Countdown timeout={dialog.timeout} /> : null}
       </div>
 
-      <div className="mt-3 pl-[26px]">
+      <div className="mt-3 pl-[26px] touch:pl-0">
         {dialog.method === "select" && (
           <div className="flex flex-col gap-1 outline-none" data-autofocus tabIndex={-1}>
             {dialog.options.map((option, index) => (
@@ -79,7 +80,7 @@ function DialogCard({ handle, dialog }: { handle: string; dialog: ExtensionUiDia
                 type="button"
                 onMouseEnter={() => setSelected(index)}
                 onClick={() => submitValue(option)}
-                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${index === selected ? "bg-raised text-fg" : "text-muted"}`}
+                className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 touch:py-3 text-left text-[13px] touch:text-[15px] ${index === selected ? "bg-raised text-fg" : "text-muted"}`}
               >
                 <span className="font-mono text-[11px] text-faint">{index + 1}</span>
                 <Ansi text={option} />
@@ -89,10 +90,10 @@ function DialogCard({ handle, dialog }: { handle: string; dialog: ExtensionUiDia
         )}
         {dialog.method === "confirm" && (
           <div className="flex gap-2">
-            <button type="button" data-autofocus onClick={() => confirm(true)} className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white">
+            <button type="button" data-autofocus onClick={() => confirm(true)} className="rounded-lg bg-accent px-3 py-1.5 touch:px-5 touch:py-2.5 text-[13px] touch:text-[15px] font-medium text-white">
               Allow
             </button>
-            <button type="button" onClick={() => confirm(false)} className="rounded-lg border border-line px-3 py-1.5 text-[13px] text-muted hover:text-fg">
+            <button type="button" onClick={() => confirm(false)} className="rounded-lg border border-line px-3 py-1.5 touch:px-5 touch:py-2.5 text-[13px] touch:text-[15px] text-muted hover:text-fg">
               Deny
             </button>
           </div>
@@ -111,7 +112,7 @@ function DialogCard({ handle, dialog }: { handle: string; dialog: ExtensionUiDia
                 value={value}
                 placeholder={dialog.placeholder}
                 onChange={(event) => setValue(event.target.value)}
-                className="rounded-lg border border-line bg-sunken px-2.5 py-1.5 text-[13px] outline-none focus:border-accent/60"
+                className="rounded-lg border border-line bg-sunken px-2.5 py-1.5 touch:py-2.5 text-[13px] touch:text-[16px] outline-none focus:border-accent/60"
               />
             ) : (
               <textarea
@@ -122,14 +123,14 @@ function DialogCard({ handle, dialog }: { handle: string; dialog: ExtensionUiDia
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) submitValue(value);
                 }}
-                className="rounded-lg border border-line bg-sunken px-2.5 py-1.5 font-mono text-[12.5px] outline-none focus:border-accent/60"
+                className="rounded-lg border border-line bg-sunken px-2.5 py-1.5 font-mono text-[12.5px] touch:text-[16px] outline-none focus:border-accent/60"
               />
             )}
             <div className="flex items-center gap-2">
-              <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-white">
+              <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 touch:px-5 touch:py-2.5 text-[13px] touch:text-[15px] font-medium text-white">
                 Submit
               </button>
-              <button type="button" onClick={cancel} className="rounded-lg border border-line px-3 py-1.5 text-[13px] text-muted hover:text-fg">
+              <button type="button" onClick={cancel} className="rounded-lg border border-line px-3 py-1.5 touch:px-5 touch:py-2.5 text-[13px] touch:text-[15px] text-muted hover:text-fg">
                 Cancel
               </button>
               {dialog.method === "editor" && (

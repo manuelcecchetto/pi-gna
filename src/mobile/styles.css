@@ -1,5 +1,8 @@
 @import "../renderer/src/styles.css";
 @source "./";
+/* The shared components (transcript, dialogs) carry their utilities in their own files. */
+@source "../renderer/src/components";
+@source "../renderer/src/lib";
 
 /* Fills the screen under the notch and home indicator (viewport-fit=cover). */
 html,

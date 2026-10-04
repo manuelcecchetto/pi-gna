@@ -370,6 +370,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     auth,
     browser: () => browser,
     updater: () => updater,
+    app: { homeDir: homedir(), launchCwd, version: app.getVersion(), buildId: __PIGNA_BUILD__ },
     native: {
       pickFolder: async () => {
         const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });

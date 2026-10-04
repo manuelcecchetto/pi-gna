@@ -54,7 +54,7 @@ One table in Electron main, `name → { scope, mutates, validate(args), run(ctx,
   window-bound browser layout, opening a URL on the Mac.
 - **`mutates`**: requires `Idempotency-Key` remotely (section 6).
 - IPC registers every method (same `trusted()` check). IPC keeps its existing channel names as aliases until a
-  later node replaces them; the table is the contract. The remote server exposes `POST /api/<name>` for
+  later node replaces them; the table is the contract. The remote server exposes `POST /api/call/<name>` for
   `scope: "remote"` methods only.
 
 ### 1.1 Method list
@@ -67,16 +67,18 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | Method | Scope | Mutates | Replaces / notes |
 |---|---|---|---|
 | `chat.list` | remote | no | `listSessions`. Projects with sessions (`ProjectGroup[]`). |
-| `chat.open` | remote | yes | `openSession`. **Host issues the handle.** Opening a session file already live attaches to its handle (`reused: true`); otherwise spawns pi. Takes a lease. Returns `{ handle, reused, snapshot }`. ATP sessions via `atp`. |
-| `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). |
+| `chat.open` | remote | yes | `openSession`. Args `{ request: OpenSessionRequest }`. **Host issues the handle.** Opening a session file already live attaches to its handle (`reused: true`); otherwise spawns pi. Takes a lease. Returns `{ handle, reused, entries }`; a remote caller gets `entries: []` and reads the chat with `chat.snapshot` (the whole branch would only cost bandwidth). ATP sessions via `request.atp`. |
+| `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). Returns the flat `ChatSnapshot & { seq }`, or null when the chat ended. |
+| `chat.viewing` | remote | yes | new. This client shows (or stops showing) the chat in the foreground; showing it clears the chat's unread mark. |
+| `chat.live` | remote | no | new. `AttentionSummary[]` of every live chat (first paint of the marks; `global` `attention` events carry the deltas). A summary carries the chat's `sessionPath`, which matches it to its row in `chat.list`. |
 | `chat.detach` | remote | yes | new. Releases the lease; the host may then dispose (section 5). |
 | `chat.close` | remote | yes | `closeSession`. Explicit stop of pi; broadcast to all clients. Mobile asks for confirmation. |
-| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, paged by turns with `before`. |
+| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last 40 turns; `before` (a turn index, the previous page's `turns.from`) pages earlier ones, whose `state` carries just their items and tools. |
 | `chat.send` | remote | yes | the `send` action in `state/app.ts` plus `command(prompt)`. Args: text, mode (`send`/`followUp`), `attachments` (upload ids or host paths), `annotationIds`, `cardId`. Host composes the message (card block, annotations, file mentions, images), picks `streamingBehavior`, marks the chat prompted. |
 | `chat.command` | remote | yes | `command`, restricted to the RPC allowlist (section 7). Result `RpcResponse`. |
-| `chat.interrupt` | remote | yes | `interrupt` (`app.ts:560`): clear_queue then abort under the chat mutex; returns the restored queued texts. |
-| `chat.editQueue` | remote | yes | `editQueue` (`app.ts:549`): clear, `applyQueueOp`, re-queue under the mutex; `{ ok }`. |
-| `chat.respondDialog` | remote | yes | `respondUi`. First response wins; later ones get `409 already_answered` (section 8). |
+| `chat.interrupt` | remote | yes | `interrupt` (`app.ts:560`): clear_queue then abort under the chat mutex; returns the restored queued texts (`string[]`). |
+| `chat.editQueue` | remote | yes | `editQueue` (`app.ts:549`): clear, `applyQueueOp`, re-queue under the mutex; true when the queue held the text. |
+| `chat.respondDialog` | remote | yes | `respondUi`. First response wins; a later one is answered `{ ok: false, code: "already_answered" }` (a `DialogAnswer`, not an HTTP error; section 8). |
 | `chat.startTask` | remote | yes | new; absorbs `startCardChat`, `discussCard`, `fixLament`, `reviewPullRequest`, `cardWorktree`, `lamentWorktree`, triage. Kinds: `triage`, `investigate`, `resolve`, `qa`, `discuss`, `fix`, `review` (review takes `cwd`, `repo` and `item` as GitHub lists them, and `login`). Host-side (`src/main/chat-tasks.ts`): worktree, link to the card/lament, model, prompt, name, under a host lease that ends when the first run settles; a triage that ends well and that nobody views closes. Returns `{ handle, snapshot, notices }` (`notices` are what the client toasts). `board.addCard` (cwd, column, description, attachments of image bytes or host paths) adds a card, saves its images and starts its triage. `chat.send` composes `cardId` host-side; attachments and annotations follow with the phone's uploads. Landed in T22. |
 | `chat.files` | remote | no | `listFiles` (`@` mentions). |
 | `chat.compactionSettings` | remote | no | `compactionSettings`. |
@@ -420,3 +422,12 @@ Additional decisions made while writing the contract:
 - A call names its client with `X-Pigna-Stream: <stream id>` (falls back to the device id). `/api/hello` returns `buildId` (and `build`).
 - Pairing is rate limited at 10/minute globally and per Tailscale login; `GET /api/pair/<id>/wait` long-polls 25 s.
 - `dispatch` turns any non-`HostError` thrown by `validate` into `bad_request`; unexpected `run` errors answer `500 internal` with a generic message.
+
+### Mobile chat slice (T19, `src/mobile`)
+
+- **Stack:** Projects (`chat.list`, ordered like the sidebar by `projectViews` with the host's pins) -> Chats (rows carry the live chat's attention mark, matched by `sessionPath`) -> Chat, on `history` so the back swipe works. A reload inside a chat lands on Projects.
+- **Joining a chat:** `chat.open { request: { cwd, sessionPath } }` (or `chat.attach` for a handle the list already knows), then `HostClient.setChats([handle])` subscribes the stream and reads `chat.snapshot`; `chat.viewing` marks it seen. Leaving sends `chat.viewing false` + `chat.detach` and drops the subscription; the host keeps a running chat going. When the stream is live again after a drop the screen attaches once more (the lease may have lapsed).
+- **Transcript:** the desktop's `Transcript`, `Activity`, `ToolDetails`, `Markdown`, `Dialogs` and `QueueCard`, unchanged but for `src/renderer/src/lib/chat-ui.tsx`: they read expansion state, board cards, wallpaper/visuals and actions (lightbox, open link, answer dialog, edit queue) from a `ChatUi` context. The desktop provides it from its store in `renderer/src/main.tsx`; the phone from `src/mobile/chat-ui.ts` (no visual frames or wallpaper, links open in the phone's browser). "Show earlier turns" pages `chat.snapshot { before }` through `HostClient.loadEarlier`, keeping the scroll position. Touch sizing uses the `touch:` Tailwind variant (`pointer: coarse`).
+- **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. Attachments, `@` mentions and slash-command pickers are later nodes.
+- **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". After a browser-side EventSource retry (same URL, so without the chats on screen) the client re-subscribes and rereads the chats on `hello`, so a reconnect cannot leave a transcript stale.
+- **App info:** `app.info` (`homeDir`, `launchCwd`, `version`, `buildId`) is in the table; the phone uses `homeDir` to shorten paths.

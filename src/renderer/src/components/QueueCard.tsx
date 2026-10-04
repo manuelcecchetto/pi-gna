@@ -5,11 +5,12 @@ import { useCallback, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import type { QueueKind } from "../../../shared/queue";
 import type { SessionState } from "../../../shared/session-state";
-import { editQueue } from "../state/app";
+import { useChatActions } from "../lib/chat-ui";
 import { Popover } from "./primitives";
 
 export function QueueCard({ session, onEdit }: { session: SessionState; onEdit: (text: string) => void }) {
   const [busy, setBusy] = useState(false);
+  const { editQueue } = useChatActions();
   const items = [
     ...session.queue.steering.map((text) => ({ kind: "steering" as QueueKind, text })),
     ...session.queue.followUp.map((text) => ({ kind: "followUp" as QueueKind, text })),

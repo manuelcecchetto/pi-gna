@@ -4,7 +4,7 @@ import type { BoardOp, Column } from "../shared/board";
 import type { BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
 import type { GithubFilter, GithubKind } from "../shared/github";
-import { HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
+import { type AppInfo, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
@@ -76,6 +76,8 @@ export interface HostDeps {
   devices: DeviceStore;
   remote: RemoteHost;
   native: HostNative;
+  /** What a client needs to show paths and versions (the desktop reads it from its preload arguments). */
+  app: AppInfo;
 }
 
 /** One host method: `validate` turns untrusted arguments into typed ones (throwing on bad input), `run` does the work. */
@@ -88,6 +90,9 @@ export interface HostMethodDef {
 const method = <A>(scope: MethodScope, validate: (raw: any) => A, run: (ctx: HostContext, args: A) => unknown): HostMethodDef => ({ scope, validate, run });
 /** Arguments are used as sent, as the IPC handlers did before the table. */
 const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown) => method<A>(scope, (raw) => raw as A, run);
+
+/** Turns a snapshot holds; earlier ones come page by page (`before`). */
+const SNAPSHOT_TURNS = 40;
 
 const tabId = (raw: { id: unknown }) => {
   if (typeof raw.id !== "string") throw new Error("Invalid browser tab");
@@ -114,8 +119,28 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
   return {
+    "app.info": any("remote", () => deps.app),
     "chat.list": any("remote", async () => (await env(), listSessions())),
-    "chat.open": any<{ request: OpenSessionRequest }>("remote", async (ctx, { request }) => (await env(), host.open(request, { client: presence(ctx) }))),
+    "chat.open": any<{ request: OpenSessionRequest }>("remote", async (ctx, { request }) => {
+      await env();
+      const opened = await host.open(request, { client: presence(ctx) });
+      // A phone reads the chat through chat.snapshot (paged); the session file's whole branch would only cost bandwidth.
+      return ctx.client === "desktop" ? opened : { ...opened, entries: [] };
+    }),
+    "chat.snapshot": method<{ handle: string; before?: number }>(
+      "remote",
+      (raw) => {
+        if (typeof raw.handle !== "string") throw new Error("Invalid chat");
+        if (raw.before !== undefined && !(Number.isInteger(raw.before) && raw.before >= 0)) throw new Error("Invalid turn cursor");
+        return { handle: raw.handle, before: raw.before as number | undefined };
+      },
+      (_ctx, { handle, before }) => {
+        const snapshot = host.snapshot(handle, { turns: SNAPSHOT_TURNS, beforeTurn: before });
+        if (!snapshot) throw new HostError("not_found", "session is not running");
+        const { seq, ...value } = snapshot;
+        return { seq, value };
+      },
+    ),
     "chat.close": any<{ handle: string }>("remote", (_ctx, { handle }) => host.close(handle)),
     "chat.command": any<{ handle: string; command: RpcCommand }>("remote", (_ctx, { handle, command }) => host.command(handle, command)),
     "chat.detach": any<{ handle: string }>("remote", (ctx, { handle }) => host.detach(handle, ctx.clientId)),

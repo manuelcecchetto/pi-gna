@@ -102,10 +102,14 @@ export interface ClientState {
   chats: Record<string, ChatEntry>;
 }
 
-type GlobalKey = Exclude<keyof GlobalState, "attention">;
+type GlobalKey = keyof GlobalState;
 
 /** How each global value is read and how its event replaces it. `seq` is absent for reads that carry none. */
 const GLOBAL_READS: { key: GlobalKey; read: (c: HostClient) => Promise<{ seq?: number; value: unknown }> }[] = [
+  {
+    key: "attention",
+    read: async (c) => ({ value: Object.fromEntries((await c.call("chat.live", {})).map((chat) => [chat.handle, chat])) }),
+  },
   { key: "projects", read: async (c) => ({ value: await c.call("chat.list", {}) }) },
   { key: "board", read: (c) => c.call("board.get", {}) },
   { key: "laments", read: (c) => c.call("laments.get", {}) },
@@ -219,7 +223,7 @@ export class HostClient {
     if (key) headers[HEADER_IDEMPOTENCY] = key;
     let response: Response;
     try {
-      response = await this.env.fetch(`/api/${method}`, { method: "POST", headers, body, signal });
+      response = await this.env.fetch(method === "subscribe" ? "/api/subscribe" : `/api/call/${method}`, { method: "POST", headers, body, signal });
     } catch (e) {
       if (signal?.aborted) throw e;
       throw new HostError("unavailable", "host unreachable");
@@ -324,6 +328,11 @@ export class HostClient {
     }, WATCHDOG_MS);
   }
 
+  /** "Retry now" on the connection banner: skip the backoff. */
+  reconnectNow(): void {
+    this.wake();
+  }
+
   /** visibilitychange to visible, pageshow, online: the socket may be dead without telling us. */
   private wake(): void {
     if (this.stopped) return;
@@ -381,6 +390,24 @@ export class HostClient {
     // A new boot without a `resync` frame (cannot happen with a correct host) still invalidates every seq we hold.
     if (known !== undefined && known !== hello.bootId) await this.resync(hello.bootId);
     else if (known === undefined) this.store.set((s) => ({ ...s, bootId: hello.bootId }));
+    else await this.resubscribe();
+  }
+
+  /**
+   * The browser retries a dropped EventSource on its own, with the URL it first connected with: a stream opened before
+   * a chat was on screen comes back without it (and the replay only covers the topics a stream holds). Subscribe again
+   * and read the chats afresh, so a reconnect never leaves a transcript silently stale.
+   */
+  private async resubscribe(): Promise<void> {
+    if (!this.chatsOnScreen.length || this.resyncing) return;
+    const handles = [...this.chatsOnScreen];
+    for (const handle of handles) this.pending.set(`chat:${handle}`, []);
+    try {
+      await this.send("subscribe", JSON.stringify({ stream: this.streamId, chats: handles }), undefined);
+    } catch {
+      // The stream is down again: the next hello does this once more.
+    }
+    await Promise.all(handles.map((handle) => this.loadChat(handle)));
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -463,6 +490,24 @@ export class HostClient {
       if (patch && envelope.seq <= (seqs[patch.key] ?? 0)) continue;
       this.apply(envelope);
     }
+  }
+
+  /**
+   * Prepends the turns before the ones the chat shows (`turns.from`, the snapshot cursor). Events keep applying to the
+   * end of the transcript meanwhile; a resync that replaces the chat drops the older turns again.
+   */
+  async loadEarlier(handle: string): Promise<void> {
+    const entry = this.store.get().chats[handle];
+    if (!entry?.session || !entry.turns || entry.turns.from === 0) return;
+    const page = await this.call("chat.snapshot", { handle, before: entry.turns.from });
+    const older = page.value.state as unknown as SessionState;
+    this.store.set((s) => {
+      const current = s.chats[handle];
+      // A resync or another page landed meanwhile: this one no longer joins the transcript's start.
+      if (!current?.session || current.turns?.from !== entry.turns!.from) return s;
+      const session = { ...current.session, items: [...older.items, ...current.session.items], tools: { ...older.tools, ...current.session.tools } };
+      return { ...s, chats: { ...s.chats, [handle]: { ...current, session, turns: { total: current.turns.total, from: page.value.turns.from } } } };
+    });
   }
 
   private async loadChat(handle: string, replace = false): Promise<void> {
