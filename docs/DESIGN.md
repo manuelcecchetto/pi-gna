@@ -773,6 +773,119 @@ repo, docs); the 🤌i mark is visual only (sidebar header, icon). `resources/ic
 tile with blurred coral, blue and yellow glows in the corners; `pnpm icon` rasterizes it to `resources/icon.png`
 (dev Dock icon) and `build/icon.icns`. `assets/pigna-hand.svg` is the same hand cropped for the UI.
 
+## Visuals
+
+Optional inline HTML visuals in assistant replies (Settings toggle, off by default). Every number below was measured by
+`scripts/visual-isolation-spike.mjs` (`node_modules/.bin/electron scripts/visual-isolation-spike.mjs` prints a JSON report;
+Electron 44.5.1, macOS). It mirrors the real setup: an `app://pigna` page with the renderer CSP and frames from a custom scheme.
+
+### Fence contract
+
+- The agent writes a fenced block tagged `visual` holding an HTML **fragment** (no `<html>`/`<head>`/`<body>`, no `<script src>`,
+  no external URLs). Inline `<script>` and `<style>` are allowed; the frame CSP is what confines them, not sanitising.
+- The prose around the fence must answer the question alone; the visual only supplements it.
+- Cap: **64 KB** of fragment source (UTF-8 bytes). Larger blocks are not rendered as a frame; they stay an ordinary code block.
+- Setting off: the fence renders as a plain code block (language `visual`), the prompt addendum is not appended to
+  `--append-system-prompt`, and no frame, scheme handler or message listener is created. History keeps the source, so turning
+  the setting on later renders old visuals (the fence lives in the session JSONL).
+- Markdown/DOMPurify never sees the fragment as HTML: the fence is pulled out before sanitising and replaced by a placeholder
+  element carrying the source, exactly like other hydrated blocks in `Markdown.tsx`.
+
+### Scheme and frame document
+
+- Scheme `pigna-visual`, registered with `{ standard: true, secure: true }` before ready (next to `app`). Measured: a scheme
+  with no flags, or `secure` only, also loads and runs, but **relative URLs do not resolve and `script-src 'self'` does not match**
+  (kit script and css from `/kit.js`, `/kit.css` loaded only with `standard`). No `supportFetchAPI`, `corsEnabled`,
+  `bypassCSP` or `codeCache` needed: the frame cannot fetch anyway.
+- **One host per frame**: `pigna-visual://<frameId>/doc`, with `<frameId>` a fresh random id. The handler serves `/doc`
+  (the shell page below), `/kit.css` and `/kit.js` (bundled, same bytes for every host) and 404s everything else. The fragment
+  is *not* in the URL; it arrives through `render` (below), which keeps the 64 KB out of URLs and the handler stateless.
+  Reason for per-frame hosts: see Freeze mitigation.
+- Response header on `/doc` (measured to let kit script/css load via `'self'` and the shell and fragment scripts run):
+  ```
+  default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:;
+  font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors app://pigna
+  ```
+  (`unsafe-inline` is acceptable here because the document has an opaque origin and no network, navigation or parent access.)
+- The renderer CSP (`app-protocol.ts` header and `index.html` dev meta tag) changes only `frame-src 'none'` to
+  `frame-src pigna-visual:`. Measured: with `frame-src 'none'` the frame fails with `ERR_BLOCKED_BY_CSP`.
+- The iframe is `<iframe sandbox="allow-scripts" src="pigna-visual://<id>/doc">`: **no** `allow-same-origin`, `allow-popups`,
+  `allow-forms`, `allow-top-navigation`, `allow-modals`.
+
+### Measured isolation (sandbox="allow-scripts", frame CSP above)
+
+| Claim | Result |
+| --- | --- |
+| a. srcdoc / data: / blob: frames in `app://pigna` | Inline scripts **do not run** in all four variants (srcdoc with and without sandbox, data:, blob:), though the frames load. Control: the same srcdoc runs when the parent CSP has `'unsafe-inline'`. So those frames inherit/obey `script-src 'self'`, which is why a dedicated scheme with its own CSP is needed. |
+| b. scheme + own CSP | Frame loads with only `frame-src pigna-visual:` on the parent; its inline probe script, kit script and kit css run. |
+| c. opaque origin | `origin` is `"null"`. `fetch` (self and remote), XHR, WebSocket, remote `<img>`, remote `<link>`/`@import`, `localStorage`: blocked. `top.location=`, `top.document`, `parent.studio`: `SecurityError`. `alert()` returns `undefined` (no dialog). `window.open()` returns `null`. `form.submit()` does not throw but the navigation is blocked (`ERR_BLOCKED_BY_CSP`). An `<a target=_blank>` click leaves the frame alive and opens nothing. |
+| c'. self-navigation | An `<a href="https://...">` click navigates the **frame itself**; the parent CSP blocks it (`ERR_BLOCKED_BY_CSP`) but the frame document is replaced by the error page and its scripts are gone. The shell therefore intercepts clicks on `a[href]` in the capture phase, calls `preventDefault()` and sends `open-link`. |
+| d. postMessage | Parent to frame and frame to parent both work. In the parent, `event.origin` is `"null"` (useless), `event.source === iframe.contentWindow` is true for the frame and false for a message the parent posts to itself: **that is the check**. In the frame, `event.source === parent` is true. |
+| e. infinite loop | `for(;;){}` in the frame does **not** freeze the parent: the frame has its own renderer process (`frame.osProcessId` differs from the app window's); parent timers kept 50/50 ticks, worst timer gap 21 ms, while the frame sent 0 heartbeats. Removing the iframe from the DOM does **not** stop the loop (the process keeps spinning) and, with the same host, the next frame in that site did not load. A frame on a different host ran normally. `process.kill(frame.osProcessId, "SIGKILL")` from main stops it and the same host works again. |
+| f. theme | `prefers-color-scheme` in the frame follows `nativeTheme.themeSource`: a live flip dark to light fires the frame's `matchMedia` change event; a frame loaded under `light` reports light. Caveat: in the hidden window of the spike a frame loaded just after switching back to dark sometimes still reported light; verify the real app with `CDP_SCHEME` and a visible window. |
+| g. height | A `ResizeObserver` in the frame delivered `scrollHeight` (334 for a 300 px block plus margins). The parent cannot read it any other way. |
+
+### postMessage protocol
+
+All messages are plain structured-clone objects `{ type, ... }`; both sides ignore unknown types and malformed payloads.
+The parent accepts a message only if `event.source === iframe.contentWindow` for a frame it created (never trust `origin`,
+it is `"null"`). The frame accepts only `event.source === parent`. The parent always posts with target origin `"*"` (opaque
+origin); nothing secret ever goes through it.
+
+Parent to frame:
+- `render { html, theme? }`: sent after the frame's `ready`. The shell replaces the container's contents with `html`
+  (fragment), then re-creates `<script>` elements so inline scripts run. Sending `render` again (streaming update) re-renders.
+- `tokens { vars }`: optional overrides of the kit's CSS variables (the kit defaults to pi-gna's tokens; dark/light comes
+  from `prefers-color-scheme`, which follows `nativeTheme`, so no message is needed for theme).
+- `ping`: answered with `heartbeat`, for the watchdog.
+
+Frame to parent:
+- `ready`: the shell loaded and listens.
+- `height { px }`: from a `ResizeObserver` on the container, coalesced to animation frames.
+- `open-link { href }`: user clicked an anchor. The parent allows only `http:`/`https:` and routes it through the existing
+  external-link path (the same handler as Markdown links); anything else is dropped.
+- `error { message }`: from `window.onerror`/`unhandledrejection` in the fragment; shown as a muted notice under the frame.
+- `heartbeat`: every 1 s from a timer in the shell.
+
+### Hydration lifecycle
+
+1. While the reply streams, an unclosed `visual` fence is shown as a plain "Drawing visual..." placeholder (no frame): partial
+   HTML would flash and run half scripts. This is the same rule as other fences that are not closed yet.
+2. When the fence closes (or the message is already complete, e.g. history/resume), `Markdown.tsx` creates the frame once with a
+   fresh `<id>`, waits for `ready`, then posts `render`. The frame element is keyed by fence index and kept across later
+   re-renders of the surrounding text, so streaming prose does not reload it; it is re-rendered only when its source changes.
+3. Height starts at a small placeholder (120 px) and follows `height` messages, clamped (below). The frame fades in on first
+   `height`, so there is no empty-box flash.
+4. If `ready` does not arrive within 5 s, the frame is removed and replaced by the plain code block (fallback = the source).
+5. Unmount (message removed, setting turned off, session switch) removes the iframe and asks main to kill its process (see below).
+
+### Size and height limits
+
+- Fragment: 64 KB. The shell DOM is cut to **max-height 480 px**; the parent clamps the iframe to the same value and the
+  frame scrolls inside (`overflow:auto`) beyond it; minimum 40 px. Width is 100% of the message column; no horizontal growth
+  of the transcript.
+- At most **8 live frames** per session view; further visuals show as code blocks until one unmounts.
+- The kit is bundled (css and js, no network); the fragment cannot load anything else (`img-src data:` only).
+
+### Freeze mitigation
+
+A hostile or buggy fragment (`for(;;){}`) cannot freeze the transcript (measured, e), but it burns a core forever and
+survives removal of the iframe. Mitigation, all in pi-gna code:
+- One host per frame (`pigna-visual://<id>/`) so each frame is its own site and process; a dead frame never blocks a later one
+  (measured: other host ran, same host did not).
+- **Watchdog**: the parent tracks the last `heartbeat` per frame (shell sends one per second). No heartbeat for **5 s** after
+  `ready` means the frame is unresponsive. The renderer removes the iframe, shows the source as a code block with a short
+  notice, and calls `window.studio` visual-kill IPC with the frame id.
+- Main finds the frame with `webContents.mainFrame.framesInSubtree` where `url` starts with `pigna-visual://<id>/`, rejects any
+  frame whose `osProcessId` equals the app window's, and `process.kill(osProcessId, "SIGKILL")` (measured to stop the loop).
+  The same kill runs when a frame is unmounted, which also covers loops that still send heartbeats.
+- A frame killed this way is not retried automatically.
+
+### Not decided here (later nodes)
+
+Kit contents (tokens and component vocabulary), the prompt addendum text, the settings key, and how `open-link` reuses the
+Markdown link handler.
+
 ## Verifying the UI
 
 `scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys; it finds the `app://pigna` page); start it with
