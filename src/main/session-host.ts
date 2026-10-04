@@ -47,8 +47,10 @@ export class SessionHost {
   ) {}
 
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
-  private piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, features: SessionFeatures): { args: string[]; env: Record<string, string> } {
+  /** @internal exposed for tests */
+  piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, features: SessionFeatures): { args: string[]; env: Record<string, string> } {
     const args = ["-e", this.extensions.browser, "--append-system-prompt", this.prompt];
+    if (features.visuals) args.push("--append-system-prompt", onDisk("resources", "pigna-visual-prompt.md"));
     if (features.kanban) args.push("-e", this.extensions.kanban);
     if (features.laments) args.push("-e", this.extensions.laments);
     if (features.computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
