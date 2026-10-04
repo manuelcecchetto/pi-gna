@@ -2,7 +2,8 @@
 // screenshots go through CDP (webContents.debugger): OS-level input and capturePage need composited
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
 import { nativeImage, type WebContents } from "electron";
-import { type AgentAction, type AgentResult, normalizeAddress } from "../../shared/browser";
+import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize } from "../../shared/browser";
+import { resolveViewport } from "../../shared/viewport";
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import { cdp } from "./cdp";
@@ -10,6 +11,7 @@ import type { BrowserManager, Tab } from "./manager";
 import { focusForTyping, ISOLATED_WORLD, locate, SNAPSHOT } from "./page-scripts";
 
 const TEXT_LIMIT = 20_000;
+const SCREENSHOT_LONG_EDGE = 1600;
 interface KeyDef {
   key: string;
   code: string;
@@ -49,7 +51,7 @@ function keyDef(name: string): KeyDef {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state"]);
+const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state", "viewport"]);
 
 /** POST /browser on the agent bridge: the browser_* tools. */
 export function browserRoute(agent: () => BrowserAgent | undefined): Route {
@@ -78,7 +80,15 @@ export class BrowserAgent {
     return next;
   }
 
+  /** Every result carries the tab's viewport, so a size the user changed is visible to the agent. */
   private async perform(handle: string, request: AgentAction): Promise<AgentResult> {
+    const result = await this.dispatch(handle, request);
+    if (result.viewport) return result;
+    const viewport = this.agentTab(handle)?.viewport;
+    return viewport ? { ...result, viewport } : result;
+  }
+
+  private async dispatch(handle: string, request: AgentAction): Promise<AgentResult> {
     if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false);
     const tab = this.tabFor(handle);
     const wc = tab.view.webContents;
@@ -123,7 +133,9 @@ export class BrowserAgent {
         const { data } = (await cdp(wc, "Page.captureScreenshot", { format: "png" })) as { data: string };
         let image = nativeImage.createFromBuffer(Buffer.from(data, "base64"));
         if (image.isEmpty()) throw new Error("The page could not be captured.");
-        if (image.getSize().width > 1280) image = image.resize({ width: 1280 });
+        const size = image.getSize();
+        const fit = screenshotSize(size.width, size.height, SCREENSHOT_LONG_EDGE);
+        if (fit) image = image.resize(fit);
         return { ...this.where(wc), image: image.toJPEG(75).toString("base64") };
       }
       case "evaluate": {
@@ -141,6 +153,13 @@ export class BrowserAgent {
       }
       case "state":
         return this.where(wc);
+      case "viewport": {
+        await this.browser.ensureVisible(tab);
+        const set = request.reset ? undefined : request.set;
+        if (!request.reset && !set) return { ...this.where(wc), viewport: tab.viewport };
+        const viewport = await this.browser.setViewport(tab.id, set && resolveViewport({ ...set, source: "agent" }));
+        return { ...this.where(wc), viewport };
+      }
     }
   }
 

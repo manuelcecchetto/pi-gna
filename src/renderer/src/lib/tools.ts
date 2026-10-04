@@ -152,6 +152,12 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       return { category: "browser", verb: "Took a screenshot", activeVerb: "Taking a screenshot", target: "" };
     case "browser_evaluate":
       return { category: "browser", verb: "Evaluated", activeVerb: "Evaluating", target: firstLine(str(args.expression), 80) };
+    case "browser_viewport": {
+      if (args.reset) return { category: "browser", verb: "Reset viewport", activeVerb: "Resetting viewport", target: "" };
+      const size = args.width || args.height ? `${String(args.width ?? "auto")}x${String(args.height ?? "auto")}` : "";
+      const target = [str(args.preset) || size || str(args.aspect), args.dpr ? `@${String(args.dpr)}x` : ""].filter(Boolean).join(" ");
+      return { category: "browser", verb: "Set viewport", activeVerb: "Setting viewport", target };
+    }
     case "browser_console":
       return { category: "browser", verb: "Read the console", activeVerb: "Reading the console", target: "" };
     case "kanban_list":

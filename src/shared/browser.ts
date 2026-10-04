@@ -1,6 +1,6 @@
 // Integrated browser: shared between the main process (tabs, agent bridge) and the renderer (pane UI).
 
-import type { ViewportSpec } from "./viewport";
+import type { ViewportRequest, ViewportSpec } from "./viewport";
 
 export interface BrowserTab {
   id: string;
@@ -62,7 +62,8 @@ export type AgentAction =
   | { action: "evaluate"; expression: string }
   | { action: "console"; clear?: boolean }
   | { action: "back" }
-  | { action: "state" };
+  | { action: "state" }
+  | { action: "viewport"; set?: ViewportRequest; reset?: boolean };
 
 export interface AgentResult {
   url: string;
@@ -70,6 +71,32 @@ export interface AgentResult {
   text?: string;
   /** base64 JPEG for screenshots */
   image?: string;
+  /** Emulated viewport of the tab; absent when none is active. */
+  viewport?: ViewportSpec;
+}
+
+/** 'Viewport: 393x852 @3x, mobile, iPhone 15 (set by you)'. */
+export function viewportLine(spec: ViewportSpec): string {
+  const parts = [`${spec.width}x${spec.height} @${spec.dpr}x`];
+  if (spec.mobile) parts.push("mobile");
+  parts.push(spec.label);
+  return `Viewport: ${parts.join(", ")} (set by ${spec.source === "agent" ? "you" : "the user"})`;
+}
+
+/** browser_viewport tool arguments -> bridge action; reset wins over set. */
+export function viewportAction(params: { reset?: boolean } & ViewportRequest): AgentAction {
+  if (params.reset) return { action: "viewport", reset: true };
+  const { reset: _reset, source: _source, ...set } = params;
+  const defined = Object.fromEntries(Object.entries(set).filter(([, value]) => value !== undefined));
+  return Object.keys(defined).length ? { action: "viewport", set: defined } : { action: "viewport" };
+}
+
+/** Size to scale a screenshot to so its long edge fits `max`; undefined when it already fits. */
+export function screenshotSize(width: number, height: number, max: number): { width: number; height: number } | undefined {
+  const long = Math.max(width, height);
+  if (long <= max) return undefined;
+  const scale = max / long;
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[a-z0-9-]+\.localhost)(:\d+)?(\/.*)?$/i;

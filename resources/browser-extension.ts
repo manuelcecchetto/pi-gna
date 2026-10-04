@@ -3,13 +3,16 @@
 // Policy: loopback/dev-server URLs are always allowed; any other origin asks the user once per session.
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { isLocalUrl, normalizeAddress } from "../src/shared/browser";
+import { isLocalUrl, normalizeAddress, viewportAction, viewportLine } from "../src/shared/browser";
+import { DEVICE_PRESETS } from "../src/shared/viewport";
+import type { ViewportSpec } from "../src/shared/viewport";
 
 interface BridgeResult {
   url: string;
   title: string;
   text?: string;
   image?: string;
+  viewport?: ViewportSpec;
 }
 
 const BRIDGE = process.env.PIGNA_BRIDGE;
@@ -59,7 +62,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   const reply = (result: BridgeResult) => ({
-    content: [{ type: "text" as const, text: [result.title, result.url, result.text ? `\n${result.text}` : ""].filter(Boolean).join("\n") }],
+    content: [{ type: "text" as const, text: [result.title, result.url, result.viewport ? viewportLine(result.viewport) : "", result.text ? `\n${result.text}` : ""].filter(Boolean).join("\n") }],
     details: { url: result.url, title: result.title },
   });
 
@@ -134,7 +137,7 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [
           { type: "image" as const, data: result.image ?? "", mimeType: "image/jpeg" },
-          { type: "text" as const, text: `Screenshot of ${result.url}` },
+          { type: "text" as const, text: [`Screenshot of ${result.url}`, result.viewport ? viewportLine(result.viewport) : ""].filter(Boolean).join("\n") },
         ],
         details: { url: result.url, title: result.title },
       };
@@ -148,6 +151,27 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({ expression: Type.String({ description: "JavaScript expression or statements; the last value is returned" }) }),
     async execute(_id, params, signal, _onUpdate, ctx) {
       return reply(await guard(await call({ action: "evaluate", expression: params.expression }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    name: "browser_viewport",
+    label: "Browser viewport",
+    description: `${ABOUT}Set, read or reset the emulated viewport of your browser tab (responsive testing). Presets: ${DEVICE_PRESETS.map((p) => p.id).join(", ")}. Or give width/height in CSS px; aspect ('9:19.5', '16/9' or a number, width/height) needs exactly one of width or height. dpr is the device pixel ratio (1-4); mobile switches touch, the mobile User-Agent and mobile layout together; orientation swaps the edges. It persists until you call with reset: true or the user changes it. With no arguments it returns the current viewport. Use browser_screenshot afterwards to see the result.`,
+    parameters: Type.Object({
+      preset: Type.Optional(Type.String({ description: `One of: ${DEVICE_PRESETS.map((p) => p.id).join(", ")}` })),
+      width: Type.Optional(Type.Number({ description: "CSS px" })),
+      height: Type.Optional(Type.Number({ description: "CSS px" })),
+      aspect: Type.Optional(Type.String({ description: "width:height such as '9:19.5' or '16/9'; combine with width or height" })),
+      dpr: Type.Optional(Type.Number({ description: "Device pixel ratio, 1-4" })),
+      mobile: Type.Optional(Type.Boolean({ description: "Mobile emulation: touch, mobile User-Agent and layout" })),
+      orientation: Type.Optional(Type.Union([Type.Literal("portrait"), Type.Literal("landscape")])),
+      reset: Type.Optional(Type.Boolean({ description: "Remove emulation and fill the pane again" })),
+    }),
+    async execute(_id, params, signal) {
+      const result = await call({ ...viewportAction(params) }, signal);
+      const text = result.viewport ? viewportLine(result.viewport) : "No viewport emulation is active (the page fills the pane).";
+      return { content: [{ type: "text" as const, text }], details: { url: result.url, title: result.title } };
     },
   });
 
