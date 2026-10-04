@@ -17,6 +17,9 @@ const ABOUT = "Computer Use drives native macOS apps in the background (accessib
 const WHEN = "Use it only when no CLI, API, MCP server or browser_* tool can do the job (browser_* covers localhost web apps). ";
 const AFTER = "Returns the app's refreshed state (a diff against the previous read), so you rarely need computer_get_app_state again right away. ";
 
+const KEY_FOCUS =
+  "Keys go to the app's keyboard focus, which a click does not always move: unless focus is confirmed on the text element you last clicked, selected in or set, the call fails and sends nothing (common for web views embedded in apps, e.g. Office add-in task panes); use computer_set_value there. The result names the element the keys went to.";
+
 const CONFIRMATIONS = [
   "Computer Use confirmation policy: ask the user before deleting data, sending messages, emails or forms to third parties, purchases or payments, account or permission changes, installing software, and transmitting sensitive data.",
   "Hand off password changes, credentials entry and macOS security prompts to the user instead of doing them.",
@@ -144,19 +147,19 @@ export default function (pi: ExtensionAPI) {
       screenshot,
     }),
   );
-  action("type_text", "Type text", "type_text", "Type literal text into the focused element, like the keyboard.", Type.Object({ app, text: Type.String(), screenshot }));
+  action("type_text", "Type text", "type_text", `Type literal text into the focused element, like the keyboard. ${KEY_FOCUS}`, Type.Object({ app, text: Type.String(), screenshot }));
   action(
     "press_key",
     "Press key",
     "press_key",
-    "Press a key or chord in xdotool syntax, e.g. Return, Tab, Up, super+c, ctrl+shift+Tab.",
+    `Press a key or chord in xdotool syntax, e.g. Return, Tab, Up, super+c, ctrl+shift+Tab. ${KEY_FOCUS}`,
     Type.Object({ app, key: Type.String(), screenshot }),
   );
   action(
     "set_value",
     "Set value",
     "set_value",
-    "Set the value of a settable element (text field, slider) directly.",
+    "Set the value of a settable element (text field, slider) directly. The reliable way to enter text into a web view embedded in an app (Office add-in task panes, Electron panes), which does not take key focus in the background. A web text input that already has text may insert the value at its caret instead of replacing: select its text with computer_select_text first.",
     Type.Object({ app, element_index: index, value: Type.String(), screenshot }),
   );
   action(
@@ -185,7 +188,7 @@ export default function (pi: ExtensionAPI) {
     "paste",
     "Paste",
     "paste",
-    "Paste text into the focused element through the clipboard (restored afterwards). Use for long or formatted text.",
+    `Paste text into the focused element through the clipboard (restored afterwards). Use for long or formatted text. ${KEY_FOCUS}`,
     Type.Object({
       app,
       text: Type.String(),

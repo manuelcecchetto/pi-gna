@@ -5,6 +5,12 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Computer Use no longer types into the wrong element: when you last clicked, selected in or set a text element,
+  `computer_type_text`, `computer_press_key` and `computer_paste` send keys only if the app's keyboard focus is
+  confirmed on it, and otherwise fail with nothing sent. Before, text meant for a Word add-in's chat landed in the
+  document. Key actions now name the element their keys went to. The helper is version 3, so macOS asks for
+  Accessibility and Screen Recording again.
+
 ## 0.3.0 - 2026-10-04
 
 - Fix a lament (right-click it, or Fix in its details): a new chat looks for the cause and fixes it in a git worktree,

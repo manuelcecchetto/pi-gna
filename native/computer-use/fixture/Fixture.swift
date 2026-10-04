@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 // Throwaway AppKit fixture for the computer-use smoke run (scripts/computer-use-smoke.mjs --fixture); never shipped.
 let logPath = ProcessInfo.processInfo.environment["FIXTURE_LOG"] ?? "/tmp/pigna-fixture/events.log"
 func log(_ s: String) {
@@ -28,8 +29,10 @@ final class TV: NSTextView {
   override func paste(_ s: Any?) { log("TVPASTE pb=\(NSPasteboard.general.string(forType: .string) ?? "nil")"); super.paste(s) }
   override func validateUserInterfaceItem(_ i: NSValidatedUserInterfaceItem) -> Bool { let r = super.validateUserInterfaceItem(i); if i.action == #selector(NSText.paste(_:)) { log("TVVALIDATE paste=\(r) editable=\(isEditable) types=\(NSPasteboard.general.types?.map { $0.rawValue } ?? []) fr=\(window?.firstResponder === self)") }; return r }
 }
-final class Del: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTextViewDelegate, NSWindowDelegate {
+final class Del: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTextViewDelegate, NSWindowDelegate, WKScriptMessageHandler {
   var win: NSWindow!
+  var web: WKWebView!
+  func userContentController(_ c: WKUserContentController, didReceive m: WKScriptMessage) { log("WEB \(m.body)") }
   @objc func btn(_ s: Any?) { log("ACTION button") }
   @objc func chk(_ s: NSButton) { log("ACTION checkbox state=\(s.state.rawValue)") }
   @objc func menuItem(_ s: NSMenuItem) { log("ACTION menu \(s.title)") }
@@ -42,7 +45,7 @@ final class Del: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTextVie
     em.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
     let c = NSMenuItem(title: "Custom1", action: #selector(menuItem(_:)), keyEquivalent: "1"); c.target = self; em.addItem(c)
     NSApp.mainMenu = m
-    win = W(contentRect: NSRect(x: ProcessInfo.processInfo.environment["FIXTURE_X"].flatMap { Double($0) } ?? 200, y: 200, width: 640, height: 480), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+    win = W(contentRect: NSRect(x: ProcessInfo.processInfo.environment["FIXTURE_X"].flatMap { Double($0) } ?? 200, y: 200, width: 900, height: 480), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
     win.title = "PiFixture"; win.delegate = self; win.isReleasedWhenClosed = false
     let v = win.contentView!
     let tf = NSTextField(frame: NSRect(x: 20, y: 430, width: 300, height: 24)); tf.placeholderString = "field"; tf.delegate = self; v.addSubview(tf)
@@ -54,6 +57,11 @@ final class Del: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSTextVie
     tv.string = (1...200).map { "line \($0)" }.joined(separator: "\n")
     let cm = NSMenu(); cm.addItem(withTitle: "CtxItem", action: #selector(menuItem(_:)), keyEquivalent: "").target = self; tv.menu = cm
     sv.documentView = tv; v.addSubview(sv)
+    // An embedded web pane, like an Office add-in task pane: its textarea logs what it receives.
+    let cfg = WKWebViewConfiguration(); cfg.userContentController.add(self, name: "log")
+    web = WKWebView(frame: NSRect(x: 640, y: 20, width: 240, height: 440), configuration: cfg)
+    web.loadHTMLString("<html><body><textarea id=chat aria-label=chat rows=4 oninput=\"webkit.messageHandlers.log.postMessage('chat='+this.value)\"></textarea></body></html>", baseURL: nil)
+    v.addSubview(web)
     win.orderFront(nil)   // no activation
     if let b = ProcessInfo.processInfo.environment["FIXTURE_BELOW"], let n = Int(b) { win.order(.below, relativeTo: n) }
     log("LAUNCH win=\(win.windowNumber) active=\(NSApp.isActive)")

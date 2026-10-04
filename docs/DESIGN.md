@@ -204,6 +204,15 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   stay put; what cannot be done in the background fails with `background_unsupported` and the helper never
   activates an app, warps the cursor or posts to the HID tap. The screenshot uses the AX tree's own window
   (`window_id`), so picture, indexes and x,y agree.
+- **Key focus**: keys and Paste go to the app's keyboard focus, which a click does not always move: a web view
+  embedded in a background window (an Office add-in task pane) takes the click and claims `AXFocused`, while Word
+  keeps routing keys to its document and reports no focused element. So the helper remembers the text element the
+  agent last clicked (element or x,y hit-test), selected in or set, and `type_text`, `press_key` and `paste` send
+  nothing and fail with `background_unsupported` (cause `key_focus_elsewhere`) unless the app's focused element is
+  that element, inside it, or a text element at the same spot (after trying `AXFocused`). Focus that the agent's own
+  keys move (Tab) becomes the new target; with no text target, keys go as before. Results name the element the keys
+  went to (`target`). Text for such panes goes in with `set_value`. The fixture's web pane covers this in
+  `scripts/computer-use-smoke.mjs --fixture`.
 - **Policy** lives in main (`ComputerAgent`), not the extension, because `bash` inherits `PIGNA_TOKEN` and could call
   the bridge. Off by default (`enabled` in `userData/computer-use.json`, switch in Settings). Terminal apps, pi-gna,
   the helper and macOS security prompts are never operable (403, not listed, not launched), whatever was approved.
