@@ -1,6 +1,6 @@
 // Owns the native Computer Use helper's lifecycle (docs/DESIGN.md, "Computer Use"): install the bundled
 // app to ~/.pi-gna/computer-use/ (only when its PigCUHelperVersion is newer, so macOS permission grants survive
-// pi-gna updates), launch it through LaunchServices, connect to its Unix socket, authenticate, and expose a
+// pi-gna updates; when its signature identity changes too, clear the grants it cannot match), launch it through LaunchServices, connect to its Unix socket, authenticate, and expose a
 // typed JSON-RPC client. Starts lazily, restarts after a crash on the next call, stops on app quit.
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -10,7 +10,7 @@ import { createConnection, type Socket } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { COMPUTER_PROTOCOL, ComputerError, ComputerErrorCode, type ComputerMethod, type ComputerMethods, type ComputerNotification, type HelloResult } from "../../shared/computer";
+import { COMPUTER_PROTOCOL, ComputerError, ComputerErrorCode, HELPER_BUNDLE_ID, type ComputerMethod, type ComputerMethods, type ComputerNotification, type HelloResult } from "../../shared/computer";
 import { log } from "../log";
 import { CALL_TIMEOUT_MS, RpcClient } from "./rpc";
 
@@ -33,6 +33,10 @@ export interface ComputerServiceDeps {
   readVersion(appPath: string): Promise<number | undefined>;
   /** Replace `to` with a copy of `from`. */
   install(from: string, to: string): Promise<void>;
+  /** The app's code-signing designated requirement, undefined when missing or unsigned. */
+  readRequirement(appPath: string): Promise<string | undefined>;
+  /** Forget the helper's Accessibility and Screen Recording grants. */
+  resetGrants(): Promise<void>;
   connectTimeoutMs: number;
   callTimeoutMs: number;
 }
@@ -52,6 +56,15 @@ export const defaultDeps = (bundledApp: string, socketDir: string): ComputerServ
     await rm(to, { recursive: true, force: true });
     await mkdir(join(to, ".."), { recursive: true });
     await run("ditto", [from, to]);
+  },
+  readRequirement: async (appPath) => {
+    const out = await run("codesign", ["-d", "-r", "-", appPath]).catch(() => undefined);
+    return out && /^(?:# )?designated => (.+)$/m.exec(`${out.stdout}\n${out.stderr}`)?.[1];
+  },
+  resetGrants: async () => {
+    for (const service of ["Accessibility", "ScreenCapture"]) {
+      await run("tccutil", ["reset", service, HELPER_BUNDLE_ID]).catch((error) => log.warn("computer", `tccutil reset ${service}: ${error instanceof Error ? error.message : error}`));
+    }
   },
   connectTimeoutMs: 5000,
   callTimeoutMs: CALL_TIMEOUT_MS,
@@ -122,7 +135,14 @@ export class ComputerService {
     if (bundled === undefined) throw new ComputerError(ComputerErrorCode.appNotFound, `Computer Use helper is missing from this build (${deps.bundledApp})`);
     if (current === undefined || bundled > current) {
       log.info("computer", `installing helper v${bundled} to ${installed}${current === undefined ? "" : ` (was v${current})`}`);
+      const [before, after] = await Promise.all([deps.readRequirement(installed), deps.readRequirement(deps.bundledApp)]);
       await deps.install(deps.bundledApp, installed);
+      // macOS checks a grant against the requirement recorded when it was given; a new one (an ad-hoc rebuild, a new
+      // certificate) fails it while System Settings still shows the switch on. Clear them so macOS asks again.
+      if (before !== after) {
+        log.info("computer", "helper signature changed; resetting its Accessibility and Screen Recording grants");
+        await deps.resetGrants();
+      }
     }
 
     const launchId = randomBytes(4).toString("hex");

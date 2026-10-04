@@ -5,6 +5,9 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Computer Use keeps its Accessibility and Screen Recording permissions across updates: the helper is now signed
+  with a stable certificate instead of a per-build signature. Updating to this release asks for both one last time.
+
 ## 0.4.0 - 2026-10-04
 
 - Wallpapers: pick the empty state's backdrop in Settings > Appearance, from the sky and six new ones, each a 🤌 in

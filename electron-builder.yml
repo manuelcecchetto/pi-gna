@@ -49,6 +49,10 @@ mac:
   # No Developer ID certificate: ad-hoc signature, no notarization. The README explains the Gatekeeper prompt.
   identity: "-"
   hardenedRuntime: false
+  # The Computer Use helper keeps the signature build-computer-use gave it (release.yml: the stable certificate that
+  # macOS permission grants are tied to); re-signing it ad-hoc here would reset users' grants on every update.
+  signIgnore:
+    - /Contents/Resources/computer-use/
 dmg:
   # Version-free names keep releases/latest/download/pi-gna-<arch>.dmg stable (the README's agent install), and
   # are the asset names the updater looks for (src/main/updater.ts).

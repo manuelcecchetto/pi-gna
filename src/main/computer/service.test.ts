@@ -68,6 +68,8 @@ async function setup(opts: Parameters<typeof fakeLauncher>[0] = {}, deps: Partia
   servers.push(fake.helpers);
   const versions = new Map<string, number>([["/bundle/app", 1]]);
   const installs: string[] = [];
+  const requirements = new Map<string, string>([["/bundle/app", "cert A"]]);
+  const resets: number[] = [];
   const service = new ComputerService({
     bundledApp: "/bundle/app",
     installDir: join(dir, "install"),
@@ -78,12 +80,15 @@ async function setup(opts: Parameters<typeof fakeLauncher>[0] = {}, deps: Partia
     install: async (from, to) => {
       installs.push(`${from} -> ${to}`);
       versions.set("installed", versions.get(from) ?? 0);
+      requirements.set("installed", requirements.get(from) ?? "");
     },
+    readRequirement: async (p) => requirements.get(p.startsWith("/bundle") ? p : "installed"),
+    resetGrants: async () => void resets.push(installs.length),
     connectTimeoutMs: 1000,
     callTimeoutMs: 1000,
     ...deps,
   });
-  return { service, fake, versions, installs };
+  return { service, fake, versions, installs, requirements, resets };
 }
 
 describe("ComputerService", () => {
@@ -108,6 +113,22 @@ describe("ComputerService", () => {
     versions.set("/bundle/app", 2);
     await service.info();
     expect(installs).toHaveLength(2);
+    await service.stop();
+  });
+
+  it("resets permission grants only when an install changes the helper's signature", async () => {
+    const { service, versions, requirements, resets } = await setup();
+    await service.info();
+    expect(resets).toEqual([1]);
+    await service.stop();
+    versions.set("/bundle/app", 2);
+    await service.info();
+    expect(resets).toEqual([1]);
+    await service.stop();
+    versions.set("/bundle/app", 3);
+    requirements.set("/bundle/app", "cert B");
+    await service.info();
+    expect(resets).toEqual([1, 3]);
     await service.stop();
   });
 

@@ -1,6 +1,7 @@
 # `pnpm release <patch|minor|major>` commits the bump and tags it; pushing the tag publishes a release with arm64
-# and x64 dmgs and the version's CHANGELOG.md entries as its notes. Builds are ad-hoc signed and not notarized
-# (see docs/DESIGN.md, Packaging and release).
+# and x64 dmgs and the version's CHANGELOG.md entries as its notes. Builds are ad-hoc signed and not notarized,
+# except the Computer Use helper, which carries the self-signed certificate from the SIGNING_CERT_* secrets
+# (scripts/make-signing-cert.mjs; see docs/DESIGN.md, Packaging and release).
 name: Release
 
 on:
@@ -29,11 +30,42 @@ jobs:
         run: node scripts/release.mjs notes "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
       - run: pnpm typecheck
       - run: pnpm test
+      # macOS ties the helper's Accessibility and Screen Recording grants to its designated requirement. Ad-hoc,
+      # that is one build's cdhash, so every release reset users' grants; this certificate keeps it stable.
+      - name: Import the signing certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.SIGNING_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12_BASE64" ] || [ -z "$CERT_PASSWORD" ]; then
+            echo "::error::SIGNING_CERT_P12 / SIGNING_CERT_PASSWORD are not set (scripts/make-signing-cert.mjs)"
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/id.p12"
+          security import "$RUNNER_TEMP/id.p12" -k "$keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          # codesign refuses a certificate that is not trusted for code signing ("no identity found").
+          openssl pkcs12 -in "$RUNNER_TEMP/id.p12" -clcerts -nokeys -passin "pass:$CERT_PASSWORD" -out "$RUNNER_TEMP/cert.pem" -legacy 2>/dev/null \
+            || openssl pkcs12 -in "$RUNNER_TEMP/id.p12" -clcerts -nokeys -passin "pass:$CERT_PASSWORD" -out "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+          rm -f "$RUNNER_TEMP/id.p12"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          sha1="$(openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)"
+          security find-identity -v -p codesigning "$keychain" | grep -q "$sha1"
+          echo "PIGNA_SIGN_IDENTITY=$sha1" >> "$GITHUB_ENV"
+          echo "PIGNA_SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
       - name: Build the Computer Use helper
         run: |
+          helper="build/computer-use/pi-gna Computer Use.app"
           pnpm build:computer-use
-          codesign --verify --deep --strict "build/computer-use/pi-gna Computer Use.app"
-          lipo -archs "build/computer-use/pi-gna Computer Use.app/Contents/MacOS/"* | grep -q arm64
+          codesign --verify --deep --strict "$helper"
+          lipo -archs "$helper/Contents/MacOS/"* | grep -q arm64
+          codesign -d -r - "$helper" 2>&1 | grep '^designated => ' | tee "$RUNNER_TEMP/helper.req" | grep -q 'certificate'
       - run: pnpm dist
       - name: Helper is packaged and signed
         run: |
@@ -42,6 +74,8 @@ jobs:
             helper="$app/Contents/Resources/computer-use/pi-gna Computer Use.app"
             test -d "$helper" || { echo "helper missing from $app"; exit 1; }
             codesign --verify --deep --strict "$helper"
+            # electron-builder must not have re-signed it (mac.signIgnore).
+            codesign -d -r - "$helper" 2>&1 | grep '^designated => ' | diff - "$RUNNER_TEMP/helper.req"
           done
           test -d dist/mac-arm64
       - name: Fuses

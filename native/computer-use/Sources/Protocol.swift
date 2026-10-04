@@ -2,8 +2,9 @@ import Foundation
 
 /// Helper protocol version spoken on the socket and bumped only when the wire format changes.
 let protocolVersion = 1
-/// Bumped only when the helper's own behavior changes (see docs/DESIGN.md, "Computer Use").
-let helperVersion = 3
+/// Bumped only when the helper's own behavior or signature changes (see docs/DESIGN.md, "Computer Use"): main
+/// reinstalls the helper only for a newer version.
+let helperVersion = 4
 
 typealias JSON = [String: Any]
 

@@ -101,9 +101,10 @@ updates the `--pigna` flag.
    lives in `~/.pi-gna/computer-use/`; if it is missing from Screen & System Audio Recording, add it with **+**.
 3. Ask pi to use an app and answer the approval card. Revoke "Always allow" apps on the same page.
 
-The helper is ad-hoc signed, so macOS ties the grants to one exact build: after a helper update, grant both again
-(clear stale entries with `tccutil reset Accessibility io.github.manuelcecchetto.pigna.computeruse`, and the same
-with `ScreenCapture`).
+Release builds sign the helper with a stable certificate, so the grants survive updates. If the switches in System
+Settings are on but pi-gna says a permission is missing (an older build, or a helper built from a checkout), clear
+the stale entries with `tccutil reset Accessibility io.github.manuelcecchetto.pigna.computeruse` and the same with
+`ScreenCapture`, then grant both again.
 
 ## Your extensions
 

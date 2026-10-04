@@ -90,13 +90,24 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   also unpacked to `app.asar.unpacked/` (session-host points pi there; `onDisk` in `src/main/resources.ts`). The
   ATP files (`resources/atp/`, `resources/atp-extension.ts`) ride along under `resources/**`; the librarian is a
   Python script (`python3`, standard library only) that main runs from the unpacked copy.
-- **Computer Use helper.** `pnpm dist` runs `build:computer-use` first (Swift, universal, ad-hoc signed; plain
+- **Computer Use helper.** `pnpm dist` runs `build:computer-use` first (Swift, universal; plain
   `pnpm build` and `pnpm dev` never need Swift). electron-builder copies `build/computer-use/pi-gna Computer Use.app`
   to `Contents/Resources/computer-use/` via `extraResources` (outside the asar); a checkout reads
   `build/computer-use/`. release.yml builds it, verifies it with `codesign --verify --deep --strict` and fails
   the release if the packaged app lacks it. A missing helper surfaces as `app_not_found` on the Computer Use page.
 - **Signing.** There is no Developer ID certificate, so builds are ad-hoc signed (`identity: "-"`, no hardened
-  runtime, no notarization) and macOS asks once before opening a downloaded build (README). Squirrel.Mac
+  runtime, no notarization) and macOS asks once before opening a downloaded build (README). The one exception is the
+  Computer Use helper: macOS checks its Accessibility and Screen Recording grants against the designated requirement
+  recorded when they were given, and an ad-hoc requirement is one build's cdhash, so every helper update silently
+  voided them (System Settings still showed them on). release.yml imports a self-signed certificate from the
+  `SIGNING_CERT_P12`/`SIGNING_CERT_PASSWORD` secrets (made once by `scripts/make-signing-cert.mjs`; the key lives in
+  `~/.config/pi-gna/signing/`), trusts it for code signing on the runner and passes it to `build:computer-use` as
+  `PIGNA_SIGN_IDENTITY`, which makes the requirement `identifier "…computeruse" and certificate root = H"…"`, the
+  same for every release. Users' Macs never trust the certificate and need not: `codesign --verify --deep --strict`
+  and TCC only check the signature against the requirement. `mac.signIgnore` stops electron-builder re-signing the
+  helper ad-hoc (it otherwise signs every binary in the bundle); release.yml fails if the helper is not
+  certificate-signed or its requirement changed in packaging. Replacing the certificate resets every user's grants
+  once. Checkouts without `PIGNA_SIGN_IDENTITY` build an ad-hoc helper. Squirrel.Mac
   (Electron's `autoUpdater`, electron-updater) cannot update such builds, so pi-gna has its own updater.
 - **Updates** (`src/main/updater.ts`). Squirrel checks an update against the running app's designated
   requirement, which for an ad-hoc signature is that one build's cdhash, so every update would fail validation.
@@ -260,9 +271,11 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   them). A global Esc monitor counts only when the user is evidently looking at that run (the app or pi-gna is
   frontmost, or the pointer is over the window); it hides the overlay and notifies main, which stops the run.
 - **Permissions and install**: the helper needs Accessibility and Screen Recording (Settings > Computer use, Cmd+Shift+U
-  or View > Computer Use, shows both and opens the panes). It is ad-hoc signed, so macOS ties each grant to one exact
-  build: a new helper version, or any reinstalled build, needs both granted again. Stale entries with the same name
-  can be cleared with `tccutil reset Accessibility|ScreenCapture io.github.manuelcecchetto.pigna.computeruse`. After
+  or View > Computer Use, shows both and opens the panes). Grants are tied to the helper's designated requirement
+  (Packaging and release, "Signing"): stable across releases, new on every ad-hoc checkout build. When main installs
+  a newer helper whose requirement differs from the installed one, it runs `tccutil reset Accessibility|ScreenCapture
+  io.github.manuelcecchetto.pigna.computeruse`, so macOS asks again instead of showing a switch that is on but no
+  longer applies; the same command clears stale entries by hand. After
   a reset the helper is not listed under Screen & System Audio Recording until it asks; add it with **+** from
   `~/.pi-gna/computer-use/`. A release that does not touch `native/computer-use/` keeps `helperVersion`. macOS 26 may
   also show a one-off "bypass the system private window picker" prompt on the first screenshot; choose Allow.

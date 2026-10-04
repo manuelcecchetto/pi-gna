@@ -53,6 +53,8 @@ beforeEach(async () => {
     parentPid: process.pid,
     readVersion: async () => 1,
     install: async () => undefined,
+    readRequirement: async () => undefined,
+    resetGrants: async () => undefined,
     launch: async (_app, args) => {
       const child = spawn(process.execPath, [FAKE, ...args, "--log", join(dir, "calls.jsonl")], { stdio: "ignore" });
       children.push(child);

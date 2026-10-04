@@ -1,4 +1,6 @@
-// Builds "pi-gna Computer Use.app" (universal, ad-hoc signed) from native/computer-use/ into build/computer-use/.
+// Builds "pi-gna Computer Use.app" (universal) from native/computer-use/ into build/computer-use/. It is signed with
+// PIGNA_SIGN_IDENTITY (a certificate name or SHA-1, optionally in PIGNA_SIGN_KEYCHAIN) when set, as release.yml does,
+// so macOS permission grants survive updates; otherwise ad-hoc (docs/DESIGN.md, "Signing").
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -58,5 +60,8 @@ writeFileSync(
 `
 )
 
-execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' })
+const identity = process.env.PIGNA_SIGN_IDENTITY || '-'
+const keychain = process.env.PIGNA_SIGN_KEYCHAIN ? ['--keychain', process.env.PIGNA_SIGN_KEYCHAIN] : []
+execFileSync('codesign', ['--force', '--sign', identity, ...keychain, app], { stdio: 'inherit' })
+if (identity === '-') console.log('ad-hoc signed: macOS permission grants will not survive a rebuild')
 console.log(app)
