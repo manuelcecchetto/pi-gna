@@ -59,11 +59,11 @@ const TRIAGE = "Triage: ";
 export const triageName = (card: Pick<Card, "title">): string => `${TRIAGE}${card.title}`;
 export const isTriage = (name: string | undefined): boolean => name?.startsWith(TRIAGE) ?? false;
 
-/** A task's model: from its own provider when it names one, else the chat's own provider when that has it (several
- * providers serve the same model), else any. */
+/** An explicit provider is mandatory. For an id-only selection, prefer the chat's provider, else any
+ * provider serving that exact model id. */
 export function pickModel(models: Model[], want: Pick<TaskModel, "provider" | "id">, chatProvider: string | undefined): Model | undefined {
   const by = (provider: string | undefined) => (provider === undefined ? undefined : models.find((model) => model.id === want.id && model.provider === provider));
-  return by(want.provider) ?? by(chatProvider) ?? models.find((model) => model.id === want.id);
+  return want.provider !== undefined ? by(want.provider) : by(chatProvider) ?? models.find((model) => model.id === want.id);
 }
 
 

@@ -406,7 +406,8 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `boardTags`) and a short report. It runs on `TRIAGE_MODEL` (Sonnet 5.5, low thinking): `ChatTasks` sends
   `set_model` and `set_thinking_level` before the prompt, which pi applies to that session only (RPC never saves
   them as your defaults; checked in pi's `rpc-mode.js`). `pickModel` prefers the provider the chat started on, and
-  a missing model leaves your default with a warning toast. Tags are edited in the card dialog. Triage chats are
+  an explicitly selected provider must match exactly. A missing model, rejected switch or mismatched switch response
+  stops setup before the task prompt is sent; it never silently uses your default. Tags are edited in the card dialog. Triage chats are
   not listed in the sidebar: `projectViews` leaves out chats named `triageName` (live or indexed; `ChatTasks` names
   the live chat as soon as its prompt is sent), and projects with only triage chats; they are reached from their card.
   A triage that ends well closes (`Setup.closeWhenDone`; its result is the card's report), so the card is not
@@ -547,9 +548,12 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   finished worker chat closes unless a client has it in the foreground (`presence`), and then once none does
   (`SessionHost.onPresence`). The ATP page is a view of this state (`state/atp.ts`); `scripts/fake-pi.mjs` with
   `FAKE_ATP=1` completes the nodes it is assigned, to run a throwaway plan end to end.
-- **Fixed config** (`ATP_CONFIG`): orchestrator `openai-codex/gpt-5.6-sol` at high thinking, workers
-  `claude-sonnet-5-5` at medium (picked by id like the triage model, preferring the chat's provider; a node's `reasoning_effort` is ignored), one worker per plan, a commit
-  per node. A settings page for these is later work.
+- **Models** (Settings > Models): each fresh worker reads the configured worker model and thinking level at node
+  startup. Explicit provider selections are exact; id-only defaults prefer the chat's provider, then any provider
+  serving that id. Missing models and failed or unconfirmed switches stop setup before a prompt is sent; the runner
+  releases the claim and shows the setup failure. New orchestrators follow the configured orchestrator model and
+  are published to clients only after selection succeeds; resumed orchestrators retain their session's model.
+  A node's `reasoning_effort` is ignored. `ATP_CONFIG` keeps one worker per plan and a commit per node.
 - **ATP chats are hidden** threads: `--session-dir <userData>/atp-sessions` keeps them out of `~/.pi/agent/sessions`
   and the sidebar (`projectViews` skips them too). SessionHost (`atpArgs`) gives each role its skills (`--skill`),
   its prompt (`resources/atp/worker.md` or `orchestrator.md`, `--append-system-prompt`) and its plan's path. The page
@@ -693,7 +697,8 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
 - **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
   `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
   and the models of the chats pi-gna starts itself (card triage, ATP orchestrator and worker; `pickModel` tries the
-  task's provider, then the chat's, then any provider with that model id). Computer Use keeps its `enabled` in
+  task's provider exactly when one is specified; id-only selections prefer the chat's provider, then any provider
+  with that model id). Computer Use keeps its `enabled` in
   `computer-use.json`, next to its policy.
 - **Features** (Kanban, Laments, GitHub, ATP, Computer use): off hides the page, its sidebar row and its menu items, and
   new chats start without its extension (`SessionFeatures`). Chats already open keep their tools, so the bridge route

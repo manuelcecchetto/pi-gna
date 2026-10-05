@@ -346,17 +346,20 @@ export class AtpRuns {
     await this.deps.shellEnv;
     const sessionPath = plan ? (await threads.get(plan)).orchestrator : undefined;
     const { handle } = await host.open({ cwd, ...(sessionPath ? { sessionPath } : {}), atp: { role: "orchestrator", ...(plan ? { plan } : {}) } }, { client });
-    this.orchestrators.set(key, handle);
-    this.emit();
     if (!sessionPath) {
       // A new chat runs on the orchestrator model (Settings > Models); a resumed one keeps its own.
       try {
-        await host.command(handle, { type: "get_state" });
+        const ready = await host.command(handle, { type: "get_state" });
+        if (!ready.success) throw new Error(ready.error ?? "pi did not start");
         await tasks.useModel(handle, taskModel(await settings.get(), "orchestrator"));
       } catch (error) {
-        log.warn("atp", `cannot switch the orchestrator's model: ${(error as Error).message}`);
+        await host.close(handle, "host");
+        throw error;
       }
     }
+    // Publish only after selection succeeds; another client must not prompt the default model during setup.
+    this.orchestrators.set(key, handle);
+    this.emit();
     return { handle };
   }
 

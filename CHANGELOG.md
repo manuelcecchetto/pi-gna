@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- ATP workers and other model-configured tasks no longer silently run on your default model when selection fails. Explicit provider selections are exact, rejected or unconfirmed model switches prevent the task prompt, and new orchestrators are not exposed until model setup succeeds.
+
 - File preview in the browser pane: click a file link in pi's answer or a path in a tool call, type a path in the address bar, use Open file... or drop a file on the pane, and it opens as a browser tab. PDF, images, Word `.docx`, Markdown, HTML, code, JSON, CSV, audio and video preview in place (Rendered/Raw where it applies, reloads when the file changes); other files get an info card. pi can open files too with `browser_open` and a path. File contents are served on a private `pigna-file://` scheme that web pages in other tabs cannot read.
 
 ## 0.5.1 - 2026-10-05

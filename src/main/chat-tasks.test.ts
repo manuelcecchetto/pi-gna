@@ -15,7 +15,7 @@ const MODELS = [
 ];
 
 /** A SessionHost that records what it is asked, and lets a test settle a chat's run. */
-function fakeHost(options: { models?: unknown[]; failPrompt?: boolean; noFile?: boolean } = {}) {
+function fakeHost(options: { models?: unknown[]; failPrompt?: boolean; noFile?: boolean; failCommand?: RpcCommand["type"]; switchedModel?: unknown } = {}) {
   const log: { handle: string; command: RpcCommand }[] = [];
   const opened: { cwd: string; lease: unknown }[] = [];
   const holds = new Set<string>();
@@ -34,6 +34,8 @@ function fakeHost(options: { models?: unknown[]; failPrompt?: boolean; noFile?: 
     }),
     command: vi.fn(async (handle: string, command: RpcCommand) => {
       log.push({ handle, command });
+      if (command.type === options.failCommand) return { type: "response", command: command.type, success: false, error: "selection rejected" };
+      if (command.type === "set_model") return { type: "response", command: command.type, success: true, data: options.switchedModel ?? { provider: command.provider, id: command.modelId } };
       if (command.type === "get_available_models") return { type: "response", command: command.type, success: true, data: { models: options.models ?? MODELS } };
       if (command.type === "prompt" && options.failPrompt) return { type: "response", command: command.type, success: false, error: "no api key" };
       return { type: "response", command: command.type, success: true, data: {} };
@@ -230,18 +232,64 @@ describe("a card's triage", () => {
     expect(s.holds.size).toBe(0);
   });
 
-  it("runs on the default model, and says so, when the triage model is not available", async () => {
+  it("does not send the triage prompt when its model is unavailable", async () => {
     const s = setup({ models: [] });
     const started = await s.tasks.start(client, { kind: "triage", card: "aaaaaa" });
-    expect(started.notices).toContainEqual({ level: "warning", text: expect.stringContaining("is not available, so this chat runs on your default model") });
+    expect(started.notices).toContainEqual({ level: "warning", text: expect.stringContaining("claude-sonnet-5-5 is not available") });
     expect(types(s.log)).not.toContain("set_model");
-    expect(prompt(s.log)).toBeDefined();
+    expect(prompt(s.log)).toBeUndefined();
+    expect(s.holds.size).toBe(0);
   });
 
   it("is not started for a card with nothing to say", async () => {
     const s = setup();
     await expect(s.tasks.addCard("/repo", "todo", "  ")).rejects.toThrow("needs a description");
     expect(s.opened).toEqual([]);
+  });
+});
+
+describe("ATP worker model selection", () => {
+  const model = { provider: "openai-codex", id: "gpt-6-luna", thinking: "high" as const };
+  const worker = { cwd: "/repo", atp: { role: "worker" as const, plan: "/repo/plan.atp.json", node: "T13" }, name: "ATP T13", prompt: "Work T13", model };
+
+  it("selects the exact provider/model and thinking before sending the worker prompt", async () => {
+    const s = setup({ models: [model] });
+    expect(await s.tasks.launch(worker)).toEqual({ handle: "chat1", failed: undefined });
+    expect(s.log.map((entry) => entry.command)).toEqual([
+      { type: "get_state" }, { type: "get_available_models" },
+      { type: "set_model", provider: "openai-codex", modelId: "gpt-6-luna" },
+      { type: "set_thinking_level", level: "high" },
+      { type: "prompt", message: "Work T13" }, { type: "set_session_name", name: "ATP T13" },
+    ]);
+  });
+
+  it("does not substitute another provider serving the same model id", async () => {
+    const s = setup({ models: [{ ...model, provider: "other" }] });
+    const started = await s.tasks.launch(worker);
+    expect(started.failed).toContain("openai-codex/gpt-6-luna is not available");
+    expect(prompt(s.log)).toBeUndefined();
+    expect(s.holds.size).toBe(0);
+  });
+
+  it.each(["get_available_models", "set_model", "set_thinking_level"] as const)("stops before the prompt if %s fails", async (failCommand) => {
+    const s = setup({ models: [model], failCommand });
+    const started = await s.tasks.launch(worker);
+    expect(started.failed).toContain("selection rejected");
+    expect(started.failed).toContain(failCommand);
+    expect(prompt(s.log)).toBeUndefined();
+    expect(s.holds.size).toBe(0);
+  });
+
+  it.each([
+    { provider: "openai-codex", id: "gpt-6-astra" },
+    { provider: "other", id: "gpt-6-luna" },
+    {},
+  ])("rejects an unconfirmed or mismatched model switch: %j", async (switchedModel) => {
+    const s = setup({ models: [model], switchedModel });
+    const started = await s.tasks.launch(worker);
+    expect(started.failed).toContain("did not confirm openai-codex/gpt-6-luna");
+    expect(prompt(s.log)).toBeUndefined();
+    expect(s.holds.size).toBe(0);
   });
 });
 
