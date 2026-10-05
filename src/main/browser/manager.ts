@@ -127,7 +127,7 @@ export class BrowserManager {
   // ── State ──────────────────────────────────────────────────────────────────
 
   snapshot(): BrowserState {
-    const previewed = [...this.tabs.values()].flatMap((tab) => (tab.preview ? [tab.preview.info.path] : []));
+    const previewedBy = (owner?: string) => [...this.tabs.values()].flatMap((tab) => (tab.preview && tab.agent === owner ? [tab.preview.info.path] : []));
     return {
       activeId: this.activeId,
       annotating: this.annotating,
@@ -139,7 +139,7 @@ export class BrowserManager {
           {
             id,
             url: wc.getURL(),
-            title: tab.preview ? previewLabel(tab.preview.info.path, previewed) : wc.getTitle(),
+            title: tab.preview ? previewLabel(tab.preview.info.path, previewedBy(tab.agent)) : wc.getTitle(),
             loading: wc.isLoading(),
             canGoBack: wc.navigationHistory.canGoBack(),
             canGoForward: wc.navigationHistory.canGoForward(),
@@ -329,8 +329,10 @@ export class BrowserManager {
     if (!(await stat(file)).isFile()) throw new Error(`${path} is not a file`);
     const project = options.root ? await realpath(options.root).catch(() => undefined) : undefined;
     const root = previewRoot(file, project);
-    const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
-    const tab = (reuse ? this.tabs.get(reuse) : undefined) ?? this.makeTab(options.agent);
+    // A chat reuses only its own previews: another chat's tab of the same file stays that chat's.
+    const owner = options.agent ?? this.chat;
+    const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].filter((tab) => tab.agent === owner).map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
+    const tab = (reuse ? this.tabs.get(reuse) : undefined) ?? this.makeTab(owner);
     const defaults = previewFor(file);
     const mode = options.mode && defaults.modes.includes(options.mode) ? options.mode : defaults.mode;
     this.startPreview(tab, file, root, mode, options.line);
