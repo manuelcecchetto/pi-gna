@@ -127,6 +127,32 @@ export async function resolveFileLinks(root: HTMLElement | null): Promise<void> 
   }
 }
 
+/**
+ * Swaps the embedded images of a rendered answer (`![alt](path)`, after resolveFileLinks kept the ones that exist) for
+ * the image itself. One that cannot be read (too large, not an image) stays a file link.
+ */
+export async function loadChatImages(root: HTMLElement | null): Promise<void> {
+  const api = window.studio?.browser;
+  const cwd = activeCwd();
+  if (!root || !cwd || !api?.readPreviewImage) return;
+  const pending = [...root.querySelectorAll<HTMLElement>("[data-image][data-resolved]:not([data-loaded])")];
+  await Promise.all(
+    pending.map(async (el) => {
+      el.dataset.loaded = "1";
+      const image = await api.readPreviewImage(cwd, el.dataset.image ?? "").catch(() => null);
+      if (!image || !el.isConnected) return;
+      const img = document.createElement("img");
+      img.alt = el.textContent ?? "";
+      img.decoding = "async";
+      img.src = `data:${image.mimeType};base64,${image.data}`;
+      // Now an image, not a file link: a click opens the lightbox (Markdown.tsx).
+      el.classList.remove("file-link");
+      for (const name of ["role", "tabindex", "data-file", "title"]) el.removeAttribute(name);
+      el.replaceChildren(img);
+    }),
+  );
+}
+
 /** Click or Enter on a `[data-file]` element of a rendered answer: preview it (cmd/ctrl: new tab). */
 export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey: boolean }): void {
   if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;

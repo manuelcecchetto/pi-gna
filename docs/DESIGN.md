@@ -847,8 +847,8 @@ Verified live (pi 1.0.0, Oct 2026):
   clearly streaming (message stopped, or over 300 characters, so short "Let me check…" commentary before the
   next tool does not collapse it) or the run ends. Your toggle is keyed per phase (working/done), so the answer
   still collapses it; closed while working, it shows only the active step. Each tool row expands to its details
-  (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline, and stay
-  visible under a collapsed "Worked for" header. Ctrl+O expands everything (same key as the pi TUI). A running
+  (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline under their
+  tool row (the collapsed "Worked for" header hides them; the answer shows the images it embeds, docs/FILE_PREVIEW.md, Chat links). Ctrl+O expands everything (same key as the pi TUI). A running
   tool row ticks a faint 10px run time ("14s"); with a timeout, a tiny pie next to it fills toward it (amber past
   80%, exact numbers in its tooltip). A finished row shows its duration and timeout on hover. The timeout comes only from the call's arguments (`toolTimeoutMs`: bash `timeout` in seconds,
   `timeoutSeconds`, `timeoutMs`): pi exposes no per-tool defaults, and bash runs unbounded without one.

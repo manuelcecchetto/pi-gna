@@ -1,7 +1,9 @@
 // pi extension loaded into every pi-gna session (`pi -e`). Registers browser_* tools that drive
 // the pane the user is watching, through pi-gna's token-gated localhost bridge.
 // Policy: loopback/dev-server URLs are always allowed; any other origin asks the user once per session.
+import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { isLocalUrl, normalizeAddress, viewportAction, viewportLine } from "../src/shared/browser";
@@ -153,14 +155,18 @@ export default function (pi: ExtensionAPI) {
     executionMode: SEQUENTIAL,
     name: "browser_screenshot",
     label: "Browser screenshot",
-    description: `${ABOUT}Capture what the browser pane currently shows (the viewport) as an image.`,
-    parameters: Type.Object({ tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })) }),
-    async execute(_id, params, signal) {
+    description: `${ABOUT}Capture what the browser pane currently shows (the viewport) as an image. Pass save to also write it as a JPEG file, for example to show it to the user in your reply with ![caption](path).`,
+    parameters: Type.Object({
+      tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
+      save: Type.Optional(Type.String({ description: "Also save the screenshot to this path (absolute, ~/ or relative to the working directory); .jpg is added unless it ends in .jpg or .jpeg" })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
       const result = await call({ action: "screenshot", tab: params.tab }, signal);
+      const saved = params.save && result.image ? await saveScreenshot(params.save, result.image, ctx.cwd) : undefined;
       return {
         content: [
           { type: "image" as const, data: result.image ?? "", mimeType: "image/jpeg" },
-          { type: "text" as const, text: [`Screenshot of ${result.url}`, result.viewport ? viewportLine(result.viewport) : ""].filter(Boolean).join("\n") },
+          { type: "text" as const, text: [`Screenshot of ${result.url}`, result.viewport ? viewportLine(result.viewport) : "", saved ? `Saved to ${saved}` : ""].filter(Boolean).join("\n") },
         ],
         details: { url: result.url, title: result.title },
       };
@@ -239,4 +245,13 @@ export default function (pi: ExtensionAPI) {
       return reply(await call({ action: "console", clear: params.clear, tab: params.tab }, signal));
     },
   });
+}
+
+/** Write a screenshot's JPEG bytes to `path` (resolved like a shell path against `cwd`) and return where it went. */
+async function saveScreenshot(path: string, base64: string, cwd: string): Promise<string> {
+  const expanded = path.startsWith("~/") ? homedir() + path.slice(1) : path;
+  const file = resolve(cwd, /\.jpe?g$/i.test(expanded) ? expanded : `${expanded}.jpg`);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, Buffer.from(base64, "base64"));
+  return file;
 }

@@ -133,6 +133,19 @@ describe("markdown file links", () => {
     expect(html).not.toMatch(/ onmouseover=/);
   });
 
+  it("renders local images as placeholders the component loads, and leaves web images alone", () => {
+    const html = markdownToHtml('![login page](shots/a%20b.png) ![](/abs/chart.svg) ![notes](docs/x.md) ![web](https://x.com/a.png) ![x](<a"onerror="alert(1).png>)', { localImages: true });
+    expect(html).toContain('data-image="shots/a%20b.png" data-file="shots/a%20b.png" data-kind="image">login page</span>');
+    expect(html).toContain('data-image="/abs/chart.svg"');
+    expect(html).toContain(">chart.svg</span>");
+    expect(html).toContain('data-file="docs/x.md" data-kind="markdown">notes</span>');
+    expect(html).not.toContain('data-image="docs/x.md"');
+    expect(html).toContain('<img src="https://x.com/a.png" alt="web">');
+    expect(html).not.toMatch(/ onerror=/);
+    // The file viewer renders Markdown files with the same code and resolves relative images itself.
+    expect(markdownToHtml("![pic](pic.png)")).toBe('<p><img src="pic.png" alt="pic"></p>\n');
+  });
+
   it("marks path-like inline code as candidates only", () => {
     const html = markdownToHtml("`src/a.ts:3` `1.2.3` `and/or` `a.b` `https://x.com/a.ts` `foo()`");
     expect(html).toContain('<code data-path="src/a.ts:3">');

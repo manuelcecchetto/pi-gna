@@ -145,15 +145,15 @@ export const WorkAccordion = memo(function WorkAccordion({
           {layout.work.filter((block) => block.kind === "compaction").map((block) => (
             <div key={block.key} className="mt-3">{renderBlock(block)}</div>
           ))}
-          {run.live ? (
-            // Only show a tool if activity is actually the last block. A pending compaction or
-            // other newer record must not leave a stale tool row looking active.
-            layout.work.at(-1)?.kind === "activity" && run.blocks.at(-1)?.kind === "activity" && lastStep && (
+          {/* Only show a tool if activity is actually the last block. A pending compaction or other newer record
+              must not leave a stale tool row looking active. Settled, the work's images stay on their tool rows:
+              the answer shows the ones it embeds (docs/FILE_PREVIEW.md, Chat links). */}
+          {run.live &&
+            layout.work.at(-1)?.kind === "activity" &&
+            run.blocks.at(-1)?.kind === "activity" &&
+            lastStep && (
               <div className="mt-1"><StepView step={lastStep} cwd={cwd} home={home} live /></div>
-            )
-          ) : (
-            <InlineImages images={tools.flatMap((step) => resultImages(step.run?.result ?? step.run?.partial))} />
-          )}
+            )}
         </>
       )}
     </div>

@@ -6,7 +6,8 @@
 // non-blank screenshot and kind-specific DOM facts (Office kinds: what the canvas painted and the hidden text layer);
 // reopening an open file (shown, not reloaded) and a Markdown link into a docx; then confinement (a web tab and guessed
 // tokens cannot reach local files, traversal and symlinks 404, a closed tab's token dies), live reload and chat file
-// links. Prints a pass/fail table; exit code 1 on any failure. Not covered: mp4 (no encoder here; video shares the audio
+// links. Prints a pass/fail table; exit code 1 on any failure. The chat answer also embeds an image (`![alt](path)`),
+// which must load and open the lightbox. Not covered: mp4 (no encoder here; video shares the audio
 // path) and the eyeball pass (themes, split/full pane, pop-out window) in docs/FILE_PREVIEW.md.
 import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -176,7 +177,8 @@ writeFileSync(join(files, "linked.md"), "# Linked from chat\n");
 writeFileSync(join(files, ".env"), "SECRET=1\n");
 writeFileSync(join(outside, "secret.txt"), "top secret\n");
 symlinkSync(join(outside, "secret.txt"), join(files, "escape.txt"));
-writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}), [data](${join(files, "data.json")}:2) and [the document](${join(files, "doc.docx")}).\n`);
+// The chat runs in the repo root, not `files`: chat targets are absolute (a relative one would rightly be "not found").
+writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}), [data](${join(files, "data.json")}:2) and [the document](${join(files, "doc.docx")}).\n\n![a picture](${join(files, "pic.png")}) ![gone](missing.png)\n`);
 
 // A web page to attack the previews from.
 const server = http.createServer((_req, res) => {
@@ -406,6 +408,16 @@ try {
       return t && JSON.parse(await evaluate(t.id, OFFICE_DOM)).pages > 0 ? t : undefined;
     }, 15_000).catch(() => undefined);
     check("chat: a docx link opens a painted canvas preview", !!docx, docx ? docx.preview.name : "no docx");
+  }
+  const picture = await until("the embedded image", () => appWindow(`(() => { const i = document.querySelector(".chat-image img"); return i && i.complete && i.naturalWidth ? i.naturalWidth + "x" + i.naturalHeight + "|" + i.alt : ""; })()`), 8000).catch(() => "");
+  check("chat: an embedded image renders inline", picture === "40x30|a picture", picture);
+  const missing = await appWindow(`(() => { const el = [...document.querySelectorAll(".chat-image")].find((e) => e.textContent === "gone"); return el ? el.className + "|" + el.title : ""; })()`);
+  check("chat: a missing embedded image is muted text", /file-missing/.test(missing) && /missing\.png/.test(missing), missing);
+  if (picture) {
+    const before = (await state()).tabs.length;
+    await appWindow(`document.querySelector(".chat-image img").click()`);
+    const zoomed = await until("the lightbox", () => appWindow(`(() => { const i = document.querySelector("button.fixed img"); return i?.src.startsWith("data:image/png") ? "open" : ""; })()`), 4000).catch(() => "");
+    check("chat: clicking the image opens the lightbox, not a preview", zoomed === "open" && (await state()).tabs.length === before, `${zoomed} tabs ${before}->${(await state()).tabs.length}`);
   }
 } catch (error) {
   check("run", false, error instanceof Error ? error.message : String(error));

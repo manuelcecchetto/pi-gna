@@ -16,7 +16,7 @@ import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
-import { resolvePreviewTargets } from "./browser/resolve-targets";
+import { readPreviewImage, resolvePreviewTargets } from "./browser/resolve-targets";
 import { listFiles } from "./files";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
@@ -376,6 +376,15 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
       (_ctx, { cwd, targets }) => resolvePreviewTargets(cwd, targets),
     ),
+    "browser.readImage": method<{ cwd: string; target: string }>(
+      "desktop",
+      (raw) => {
+        if (typeof raw.cwd !== "string" || !isAbsolute(raw.cwd) || raw.cwd.includes("\0")) throw new Error("Invalid directory");
+        if (typeof raw.target !== "string" || raw.target.length > 4096 || raw.target.includes("\0")) throw new Error("Invalid target");
+        return { cwd: raw.cwd, target: raw.target };
+      },
+      (_ctx, { cwd, target }) => readPreviewImage(cwd, target),
+    ),
     "browser.history": any("remote", () => deps.browser()?.getHistory() ?? []),
     "browser.state": any("remote", () => deps.browser()?.snapshot()),
 
@@ -646,6 +655,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserPreviewMode, "browser.previewMode", (id, mode) => ({ id, mode })),
   route(IPC.browserPreviewReveal, "browser.previewReveal", (id) => ({ id })),
   route(IPC.browserResolveTargets, "browser.resolveTargets", (cwd, targets) => ({ cwd, targets })),
+  route(IPC.browserReadImage, "browser.readImage", (cwd, target) => ({ cwd, target })),
   route(IPC.browserPreviewOpen, "browser.previewOpen", (id) => ({ id })),
   route(IPC.browserHistory, "browser.history"),
   route(IPC.browserGetState, "browser.state"),

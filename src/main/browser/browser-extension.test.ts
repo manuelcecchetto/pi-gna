@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 // pi provides typebox to extensions at load time; the schemas themselves do not matter here.
@@ -43,5 +46,18 @@ describe("browser extension", () => {
     await tools.find((tool) => tool.name === "browser_open")?.execute?.("1", { url: "./README.md" }, undefined, undefined, ctx);
     vi.unstubAllGlobals();
     expect(bodies).toEqual([{ action: "open", url: "./README.md", cwd: "/p" }]);
+  });
+
+  // Saved so the agent can embed it in its reply with ![caption](path).
+  it("saves a screenshot to a path relative to the cwd when asked", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pigna-shot-"));
+    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({ url: "http://localhost:5173/", title: "App", image: "/9j/AA==" }) }));
+    const result = (await tools.find((tool) => tool.name === "browser_screenshot")?.execute?.("1", { save: "shots/home" }, undefined, undefined, { cwd })) as {
+      content: { type: string; text?: string }[];
+    };
+    vi.unstubAllGlobals();
+    const file = join(cwd, "shots", "home.jpg");
+    expect(readFileSync(file)).toEqual(Buffer.from("/9j/AA==", "base64"));
+    expect(result.content.find((block) => block.type === "text")?.text).toContain(`Saved to ${file}`);
   });
 });
