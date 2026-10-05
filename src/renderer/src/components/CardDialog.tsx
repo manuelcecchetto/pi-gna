@@ -1,6 +1,6 @@
 // A card's details in a native <dialog>: its title, tags and notes, its column, the chats it can start and the
 // chats on it, and what they reported. New cards are added on the board (AddCard), with their screenshots.
-import { Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
+import { Check, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS, COLUMNS, githubKey, LIMITS } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";
@@ -20,6 +20,7 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
   const sessions = useApp((state) => state.sessions);
   const projects = useApp((state) => state.projects);
   const github = useFeature("github");
+  const tasks = useApp((state) => state.cardTasks[card.id]);
   const live = useMemo(() => Object.values(sessions), [sessions]);
   const [title, setTitle] = useState(card.title);
   const [notes, setNotes] = useState(card.notes);
@@ -133,18 +134,30 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
           <Screenshots notes={card.notes} onZoom={setZoom} />
 
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {cardActions(card).map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                title={action.hint}
-                onClick={() => action.run(card)}
-                className="flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised"
-              >
-                <action.icon size={13} className="text-muted" />
-                {action.label}
-              </button>
-            ))}
+            {cardActions(card).map((action) => {
+              // A task the host is starting cannot be started again (a double click would start two chats).
+              const phase = action.task && tasks?.[action.task];
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  title={action.hint}
+                  disabled={phase === "starting"}
+                  aria-busy={phase === "starting" || undefined}
+                  onClick={() => action.run(card)}
+                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] ${phase === "started" ? "border-ok/40 text-ok hover:bg-raised" : phase === "starting" ? "cursor-default border-line-strong text-muted" : "border-line-strong text-fg hover:bg-raised"}`}
+                >
+                  {phase === "starting" ? (
+                    <LoaderCircle size={13} className="animate-spin text-muted" />
+                  ) : phase === "started" ? (
+                    <Check size={13} />
+                  ) : (
+                    <action.icon size={13} className="text-muted" />
+                  )}
+                  {phase === "starting" ? `Starting ${action.label}…` : phase === "started" ? `${action.label} started` : action.label}
+                </button>
+              );
+            })}
           </div>
 
           {github && <GithubLinks card={card} />}

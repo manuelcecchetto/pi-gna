@@ -1,4 +1,5 @@
 // A menu at a point (right click, or under a "…" button). Sections are separated by a hairline.
+import { LoaderCircle } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setOverlay } from "../state/app";
 
@@ -8,6 +9,8 @@ export interface MenuItem {
   /** Shown as a tooltip. */
   hint?: string;
   danger?: boolean;
+  /** What it started is still under way: a spinner, and it cannot be chosen again. */
+  busy?: boolean;
   onSelect: () => void;
 }
 
@@ -87,13 +90,17 @@ export function ContextMenu({ at, sections, onClose }: { at: { x: number; y: num
               type="button"
               role="menuitem"
               title={item.hint}
+              disabled={item.busy}
+              aria-busy={item.busy || undefined}
               onClick={() => {
                 onClose();
                 item.onSelect();
               }}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] outline-none hover:bg-raised focus-visible:bg-raised ${item.danger ? "text-bad" : "text-fg"}`}
+              className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] outline-none hover:bg-raised focus-visible:bg-raised disabled:opacity-60 disabled:hover:bg-transparent ${item.danger ? "text-bad" : "text-fg"}`}
             >
-              {item.icon && <span className={`grid w-3.5 shrink-0 place-items-center ${item.danger ? "" : "text-muted"}`}>{item.icon}</span>}
+              {(item.icon || item.busy) && (
+                <span className={`grid w-3.5 shrink-0 place-items-center ${item.danger ? "" : "text-muted"}`}>{item.busy ? <LoaderCircle size={13} className="animate-spin" /> : item.icon}</span>
+              )}
               <span className="flex-1 truncate">{item.label}</span>
             </button>
           ))}

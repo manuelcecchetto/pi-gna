@@ -2,7 +2,7 @@
 // check it in review (main starts them: ChatTasks) or talk about it. Other features add theirs with registerCardAction (say, opening a card's GitHub issue).
 import { ClipboardCheck, type LucideIcon, MessageSquarePlus, Search, Wrench } from "lucide-react";
 import type { Card } from "../../../shared/board";
-import { discussCard, startCardTask } from "./app";
+import { type CardTaskKind, discussCard, startCardTask } from "./app";
 
 export interface CardAction {
   id: string;
@@ -13,6 +13,8 @@ export interface CardAction {
   /** Offered only for the cards this accepts. */
   when?: (card: Card) => boolean;
   run: (card: Card) => void;
+  /** The card task it starts: its button and the card show it starting, then started (AppState.cardTasks). */
+  task?: CardTaskKind;
 }
 
 const actions: CardAction[] = [];
@@ -28,12 +30,14 @@ export function cardActions(card: Card): CardAction[] {
   return actions.filter((action) => !action.when || action.when(card));
 }
 
+const cardTask = (task: CardTaskKind): Pick<CardAction, "run" | "task"> => ({ task, run: (card) => void startCardTask(card, task) });
+
 registerCardAction({
   id: "investigate",
   label: "Investigate",
   icon: Search,
   hint: "A new chat looks into it without changing files, and reports on the card",
-  run: (card) => void startCardTask(card, "investigate"),
+  ...cardTask("investigate"),
 });
 
 registerCardAction({
@@ -42,7 +46,7 @@ registerCardAction({
   icon: Wrench,
   hint: "A new chat makes the change in a git worktree, on a branch of its own, verifies it and moves the card to review",
   when: (card) => card.column !== "done",
-  run: (card) => void startCardTask(card, "resolve"),
+  ...cardTask("resolve"),
 });
 
 registerCardAction({
@@ -51,7 +55,7 @@ registerCardAction({
   icon: ClipboardCheck,
   hint: "A new chat reviews the change, runs the checks and tries it, without fixing anything; it reports on the card, and moves it back to in progress if it fails",
   when: (card) => card.column === "in_review",
-  run: (card) => void startCardTask(card, "qa"),
+  ...cardTask("qa"),
 });
 
 registerCardAction({

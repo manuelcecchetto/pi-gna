@@ -82,6 +82,8 @@ export interface AppState {
   attachments: Record<string, Attachment[]>;
   /** The card in a chat's composer, per session handle ("Chat about it"): it goes with the chat's first message. */
   composerCards: Record<string, string>;
+  /** Card tasks (Investigate, Resolve, QA) the host is starting or just started, per card id (startCardTask). */
+  cardTasks: Record<string, CardTasks>;
   sidebar: SidebarLayout;
   /** pi's compaction settings, for the context meter's auto-compaction point. */
   compaction: CompactionSettings;
@@ -132,6 +134,7 @@ export const store = createStore<AppState>({
   annotations: {},
   attachments: {},
   composerCards: {},
+  cardTasks: {},
   compaction: {},
   sidebar: loadSidebar(),
   board: { ...emptyBoard(), rev: 0 },
@@ -823,25 +826,28 @@ export async function applyLament(op: LamentOp): Promise<boolean> {
  * main, reused by later Fixes), and is recorded on the lament once pi knows its session file. It does not resolve
  * the lament: you mark it resolved once the fix is in.
  */
-export const fixLament = (lament: Lament): Promise<void> => startTask({ kind: "fix", lament: lament.id });
+export const fixLament = (lament: Lament): Promise<boolean> => startTask({ kind: "fix", lament: lament.id });
 
 /**
  * Review a pull request (the GitHub page): a new chat in the project, shown, whose first message asks for a review
  * with pi-gna's pr-review skill. `login`: the gh account pi-gna reads the repository as.
  */
-export const reviewPullRequest = (cwd: string, repo: GithubRepo, item: GithubItem, login?: string): Promise<void> => startTask({ kind: "review", cwd, repo, item, login }, true);
+export const reviewPullRequest = (cwd: string, repo: GithubRepo, item: GithubItem, login?: string): Promise<boolean> => startTask({ kind: "review", cwd, repo, item, login }, true);
 
 /**
  * Start a task's chat on the host (main sets it up: worktree, link to the card or lament, model, prompt, name) and join
- * it. Shown in the sidebar only for `show`; the host says what it is doing and what it could not set up.
+ * it. Shown in the sidebar only for `show`; the host says what it is doing and what it could not set up. False after a
+ * toast.
  */
-async function startTask(target: TaskTarget, show = false): Promise<void> {
+async function startTask(target: TaskTarget, show = false): Promise<boolean> {
   try {
     const started = await studio().startTask(target);
     for (const notice of started.notices) toast(notice.text, notice.level);
     await adopt(started.handle, show);
+    return true;
   } catch (error) {
     toast(remoteError(error), "error");
+    return false;
   }
 }
 
@@ -886,8 +892,44 @@ export async function addCard(cwd: string, column: Column, description: string, 
   }
 }
 
-/** Start a card's Investigate, Resolve or QA chat (card-actions.ts): see ChatTasks in main. */
-export const startCardTask = (card: Card, kind: "investigate" | "resolve" | "qa"): Promise<void> => startTask({ kind, card: card.id });
+export type CardTaskKind = "investigate" | "resolve" | "qa";
+/** Where a card task is: the host is setting its chat up (a worktree can take seconds), or it just did. */
+export type CardTaskPhase = "starting" | "started";
+export type CardTasks = Partial<Record<CardTaskKind, CardTaskPhase>>;
+/** How long a card shows that its task's chat started. */
+export const CARD_TASK_STARTED_MS = 2500;
+const cardTaskTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function setCardTask(id: string, kind: CardTaskKind, phase: CardTaskPhase | undefined): void {
+  store.set((s) => {
+    const { [kind]: _previous, ...rest } = s.cardTasks[id] ?? {};
+    const tasks = phase ? { ...rest, [kind]: phase } : rest;
+    const { [id]: _card, ...others } = s.cardTasks;
+    return { ...s, cardTasks: Object.keys(tasks).length ? { ...others, [id]: tasks } : others };
+  });
+}
+
+/**
+ * Start a card's Investigate, Resolve or QA chat (card-actions.ts): see ChatTasks in main. The card shows it starting,
+ * then started for a moment; asking again while it starts (a double click) does nothing, so it starts one chat.
+ */
+export async function startCardTask(card: Card, kind: CardTaskKind): Promise<void> {
+  if (store.get().cardTasks[card.id]?.[kind] === "starting") return;
+  const key = `${card.id} ${kind}`;
+  clearTimeout(cardTaskTimers.get(key));
+  cardTaskTimers.delete(key);
+  setCardTask(card.id, kind, "starting");
+  const started = await startTask({ kind, card: card.id });
+  if (!started) return setCardTask(card.id, kind, undefined); // startTask toasted why
+  setCardTask(card.id, kind, "started");
+  cardTaskTimers.set(
+    key,
+    setTimeout(() => {
+      cardTaskTimers.delete(key);
+      setCardTask(card.id, kind, undefined);
+    }, CARD_TASK_STARTED_MS),
+  );
+}
 
 /**
  * "Chat about it": a new chat with the card in its composer, shown as a chip rather than as text you write under.
