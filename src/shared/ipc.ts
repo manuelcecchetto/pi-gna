@@ -413,6 +413,8 @@ export interface StudioApi {
    * reloaded. Calls into main can fail (say "No handler registered") until pi-gna restarts.
    */
   stale: boolean;
+  /** The page zoom factor (Cmd +/-, 1 at Actual Size). */
+  zoomFactor: () => number;
   /** The running pi-gna's version (package.json, `app.getVersion()`), as in the About panel. */
   version: string;
   /** Quit and start pi-gna again from the build on disk, or as the staged update; running chats stop. */

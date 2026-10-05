@@ -761,6 +761,11 @@ Verified live (pi 1.0.0, Oct 2026):
   Chromium blocks while a button inside still has focus). While collapsed, show-sidebar and
   new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
   header gets `COLLAPSED_INSET` left padding.
+- Title bar and zoom: the traffic lights are native and keep their size and place at every page zoom (⌘+/⌘−), so
+  whatever lines up with them is sized in screen px through `--unzoom` (1 / `webFrame.getZoomFactor()`, set in
+  `main.tsx` and refreshed on `resize`, which every zoom change fires): the `titlebar` band (52 screen px, growing only
+  when zoomed-in content needs more), the sidebar header's 86px lights reserve, the collapsed controls' x=88 and the
+  lights part of `COLLAPSED_INSET`. The content in the band still zooms. A new pane header uses `titlebar`, not `h-[52px]`.
 - Chat header (`SessionPane`): title, then the card chip, the browser toggle (⌘B) and expand-all (Ctrl+O). It has
   no close button: closing a chat stops its pi process and is rarely wanted mid-work, so it lives in the sidebar
   row's right-click menu ("Close chat").

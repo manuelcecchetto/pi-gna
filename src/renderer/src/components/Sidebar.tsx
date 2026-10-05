@@ -111,7 +111,7 @@ export function Sidebar() {
     >
       {/* Fixed inner width, so collapsing slides the sidebar away instead of reflowing it. */}
       <div className="flex h-full flex-col" style={{ width }}>
-        <div className="drag flex h-[52px] shrink-0 items-center pr-2.5 pl-[86px]">
+        <div className="drag titlebar flex shrink-0 items-center pr-2.5 pl-[calc(86px*var(--unzoom))]">
           <span className="flex flex-1 items-baseline gap-1.5">
             <PignaMark className="text-[13px] font-semibold tracking-tight text-muted" />
             <span className="font-mono text-[10.5px] text-faint">{window.studio.version}</span>
@@ -255,8 +255,9 @@ export function CollapsedSidebarControls() {
   const collapsed = useApp((state) => state.sidebar.collapsed);
   if (!collapsed) return null;
   return (
-    // Traffic lights sit at x=18..77 (y center 25); start one light-gap later so the spacing reads as one row.
-    <div className="no-drag fixed top-0 left-[88px] z-40 flex h-[50px] items-center gap-1">
+    // Traffic lights sit at x=18..77 (y center 25) in screen px at every zoom; start one light-gap later so the spacing
+    // reads as one row.
+    <div className="no-drag fixed top-0 left-[calc(88px*var(--unzoom))] z-40 flex min-h-[calc(50px*var(--unzoom))] items-center gap-1">
       <IconButton title="Show sidebar (⌘⇧S)" onClick={toggleSidebar}>
         <PanelLeftOpen size={15} />
       </IconButton>
@@ -267,8 +268,11 @@ export function CollapsedSidebarControls() {
   );
 }
 
-/** Left padding for the leftmost header while the sidebar is hidden: the controls end at 137px. */
-export const COLLAPSED_INSET = 160;
+/**
+ * Left padding for the leftmost header while the sidebar is hidden: the controls start at 88 screen px and are 49px
+ * wide (they zoom), so they end at 137px at Actual Size.
+ */
+export const COLLAPSED_INSET = "calc(88px * var(--unzoom) + 72px)";
 
 function ProjectSection({
   group,

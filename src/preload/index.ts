@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { Board } from "../shared/board";
 import type { AtpProjectPlans } from "../shared/atp";
 import type { LoginUpdate } from "../shared/auth";
@@ -22,6 +22,7 @@ const api: StudioApi = {
   launchCwd: arg("studio-launch-cwd"),
   stale: arg("pigna-build") !== __PIGNA_BUILD__,
   version: arg("pigna-version"),
+  zoomFactor: () => webFrame.getZoomFactor(),
   relaunch: () => ipcRenderer.invoke(IPC.relaunch),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
   openSession: (request) => ipcRenderer.invoke(IPC.openSession, request),

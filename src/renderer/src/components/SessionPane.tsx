@@ -52,7 +52,7 @@ export function SessionPane({ session }: { session: SessionState }) {
           </div>
         </div>
       )}
-      <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-3 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
+      <header className="drag dashed-b titlebar flex shrink-0 items-center gap-3 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13.5px] font-medium text-fg">{sessionTitle(session)}</div>
         </div>
