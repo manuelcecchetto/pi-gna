@@ -80,10 +80,13 @@ export class Atp {
    * Plans are replaced (the librarian writes a temp file and renames it), so their folders are watched, not the files.
    * So is NEW_PLAN_DIR, which the architect may create: each existing folder on the way to it rescans when the next
    * one appears, and the rescan watches that one.
+   * A new watcher misses what happens while it starts (macOS starts FSEvents asynchronously, up to tens of ms; the
+   * architect may create the folder and the plan in one go), so adding one rescans once more, after the debounce.
    */
   private watchDirs(project: NonNullable<Atp["project"]>, plans: AtpProjectPlans): void {
     const chain = newPlanDirs(project.cwd);
     const next = new Map(chain.slice(0, -1).map((dir, i) => [dir, basename(chain[i + 1] as string)]));
+    const watched = project.watchers.size;
     for (const dir of [...chain, ...plans.plans.map((plan) => dirname(plan.path))]) {
       if (project.watchers.has(dir) || !existsSync(dir)) continue;
       try {
@@ -100,6 +103,7 @@ export class Atp {
         log.warn("atp", `cannot watch ${dir}: ${(error as Error).message}`);
       }
     }
+    if (project.watchers.size > watched) this.changed(project);
   }
 
   private unwatch(): void {
