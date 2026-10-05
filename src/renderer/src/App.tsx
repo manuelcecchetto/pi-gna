@@ -50,7 +50,9 @@ export function App() {
 
   const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
   const page = useApp((state) => state.page);
-  const pane = useApp((state) => state.pane);
+  const paneState = useApp((state) => state.pane);
+  // The browser belongs to the chat: a page (Kanban, Settings, ...) covers the window and hides it.
+  const pane = { ...paneState, open: paneState.open && !page };
   const collapsed = useApp((state) => state.sidebar.collapsed);
   const main = useRef<HTMLElement>(null);
 
