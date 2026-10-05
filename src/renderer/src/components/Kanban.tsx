@@ -95,7 +95,7 @@ export function KanbanPage({ page }: { page: PageState }) {
 
   return (
     <div className="page-enter flex h-full min-w-0 flex-col">
-      <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-2 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
+      <header className="drag dashed-b titlebar flex shrink-0 items-center gap-2 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
         <SquareKanban size={15} className="text-muted" />
         <span className="text-[13.5px] font-medium text-fg">Kanban</span>
         <ProjectSwitch cwd={page.cwd} options={switchable} openTitle="Cards not done" onPick={(cwd) => showBoard(cwd)} />

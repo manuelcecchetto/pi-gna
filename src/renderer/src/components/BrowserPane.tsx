@@ -73,7 +73,7 @@ export function BrowserPane() {
   return (
     <div className="flex h-full min-w-0 flex-col bg-canvas">
       <div
-        className="drag dashed-b flex h-[52px] shrink-0 items-center gap-1 overflow-hidden px-2"
+        className="drag dashed-b titlebar flex shrink-0 items-center gap-1 overflow-hidden px-2"
         style={sidebar.collapsed && pane.full ? { paddingLeft: COLLAPSED_INSET } : undefined}
       >
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">

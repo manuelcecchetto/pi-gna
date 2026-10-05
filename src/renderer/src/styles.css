@@ -90,6 +90,16 @@ body,
 .drag {
   -webkit-app-region: drag;
 }
+
+/* The top band of every pane, level with the macOS traffic lights. The lights are native and keep their size at every
+   zoom, so the band keeps 52 screen px (--unzoom is 1 / the zoom factor, main.tsx); it only grows when zoomed-in
+   content needs more. */
+:root {
+  --unzoom: 1;
+}
+@utility titlebar {
+  min-height: calc(52px * var(--unzoom));
+}
 .drag button,
 .drag input,
 .no-drag {

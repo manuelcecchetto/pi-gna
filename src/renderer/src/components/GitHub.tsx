@@ -179,7 +179,7 @@ export function GithubPage({ page }: { page: PageState }) {
 
   return (
     <div className="page-enter flex h-full min-w-0 flex-col">
-      <header className="drag dashed-b flex h-[52px] shrink-0 items-center gap-2 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
+      <header className="drag dashed-b titlebar flex shrink-0 items-center gap-2 px-5" style={inset ? { paddingLeft: COLLAPSED_INSET } : undefined}>
         <GitPullRequest size={15} className="text-muted" />
         <span className="text-[13.5px] font-medium text-fg">GitHub</span>
         <ProjectSwitch cwd={page.cwd} options={switchable} openTitle="" onPick={(cwd) => showPage("github", cwd)} />

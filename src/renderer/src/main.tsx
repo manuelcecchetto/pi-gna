@@ -10,6 +10,12 @@ const ui: ChatUi = {
   actions: { homeDir: window.studio.homeDir, setExpanded, openLightbox, showBoard, openExternal: (url) => window.studio.openExternal(url), respondDialog, editQueue },
 };
 
+// Cmd +/- zooms the page but not the native traffic lights, so the title bar sizes what lines up with them in screen
+// pixels through --unzoom (styles.css). A zoom change resizes the viewport in CSS px, which fires "resize".
+const unzoom = () => document.documentElement.style.setProperty("--unzoom", String(1 / window.studio.zoomFactor()));
+unzoom();
+window.addEventListener("resize", unzoom);
+
 createRoot(document.getElementById("root") as HTMLElement).render(
   <ChatUiProvider ui={ui}>
     <App />
