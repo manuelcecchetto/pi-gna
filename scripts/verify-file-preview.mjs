@@ -137,6 +137,7 @@ writeFileSync(join(files, "linked.md"), "# Linked from chat\n");
 writeFileSync(join(files, ".env"), "SECRET=1\n");
 writeFileSync(join(outside, "secret.txt"), "top secret\n");
 symlinkSync(join(outside, "secret.txt"), join(files, "escape.txt"));
+// The chat runs in the repo root, not `files`: chat targets are absolute (a relative one would rightly be "not found").
 writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}) and [data](${join(files, "data.json")}:2).\n\n![a picture](${join(files, "pic.png")}) ![gone](missing.png)\n`);
 
 // A web page to attack the previews from.
