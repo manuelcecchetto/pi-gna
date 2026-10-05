@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Kanban: Investigate, Resolve and QA show on the card, its menu and its details while their chat is starting, then that it started. Clicking again while it starts (a double click) no longer starts a second chat, on the Mac and on the phone.
 - File preview in the browser pane: click a file link in pi's answer or a path in a tool call, type a path in the address bar, use Open file... or drop a file on the pane, and it opens as a browser tab. PDF, images, Word `.docx`, Markdown, HTML, code, JSON, CSV, audio and video preview in place (Rendered/Raw where it applies, reloads when the file changes); other files get an info card. pi can open files too with `browser_open` and a path. File contents are served on a private `pigna-file://` scheme that web pages in other tabs cannot read.
 
 ## 0.5.1 - 2026-10-05

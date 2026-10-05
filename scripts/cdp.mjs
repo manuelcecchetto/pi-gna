@@ -82,10 +82,16 @@ const KEYS = {
   ArrowUp: { key: "ArrowUp", code: "ArrowUp", windowsVirtualKeyCode: 38 },
 };
 
-/** Evaluate in the target; in main, with the console's `require`. */
+/**
+ * Evaluate in the target; in main, with the console's `require`. As the DevTools console (replMode): every run shares the
+ * page's global scope, and a `const` or `let` a previous run declared can be declared again. A throw exits 1.
+ */
 async function evaluate(expression) {
-  const { result, exceptionDetails } = await send("Runtime.evaluate", { expression, includeCommandLineAPI: inMain, awaitPromise: true, returnByValue: true });
-  console.log(exceptionDetails ? exceptionDetails.exception?.description : JSON.stringify(result.value, null, 2));
+  const { result, exceptionDetails } = await send("Runtime.evaluate", { expression, includeCommandLineAPI: inMain, awaitPromise: true, returnByValue: true, replMode: true });
+  if (exceptionDetails) {
+    console.error(exceptionDetails.exception?.description ?? exceptionDetails.text);
+    process.exitCode = 1;
+  } else console.log(JSON.stringify(result.value, null, 2));
 }
 
 // Native menus pop up on screen and CDP cannot reach them: Menu.popup records them instead, from the first `menus`.

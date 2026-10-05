@@ -9,6 +9,7 @@ import { emptySettings } from "../../../shared/settings";
 import {
   activate,
   addCard,
+  CARD_TASK_STARTED_MS,
   fixLament,
   applySettings,
   closeSettings,
@@ -135,7 +136,7 @@ describe("chats the host starts for a task", () => {
     startTask.mockReset();
     addCardCall.mockReset();
     vi.stubGlobal("window", { studio: { command, startTask, attachSession, addCard: addCardCall, detachSession: async () => undefined } });
-    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [] }));
+    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], cardTasks: {} }));
   });
 
   const run = async (id: string, target = card) => {
@@ -162,10 +163,38 @@ describe("chats the host starts for a task", () => {
     ]);
   });
 
+  it("starts one chat however often you click while it starts, and shows it starting, then started for a moment", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    startTask.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const resolve = cardActions(card).find((action) => action.id === "resolve");
+    resolve?.run(card);
+    resolve?.run(card); // a double click
+    expect(store.get().cardTasks).toEqual({ aaaaaa: { resolve: "starting" } });
+    // Another task on the card is a chat of its own.
+    startTask.mockResolvedValueOnce({ handle: "i1", snapshot: null, notices: [] });
+    await run("investigate");
+    expect(startTask).toHaveBeenCalledTimes(2);
+    expect(store.get().cardTasks).toEqual({ aaaaaa: { resolve: "starting", investigate: "started" } });
+    answer({ handle: "r1", snapshot: null, notices: [] });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(startTask.mock.calls.map(([target]) => target)).toEqual([
+      { kind: "resolve", card: "aaaaaa" },
+      { kind: "investigate", card: "aaaaaa" },
+    ]);
+    expect(store.get().cardTasks).toEqual({ aaaaaa: { resolve: "started", investigate: "started" } });
+    await vi.advanceTimersByTimeAsync(CARD_TASK_STARTED_MS);
+    expect(store.get().cardTasks).toEqual({});
+    // Started, it can be started again: a second chat on purpose.
+    startTask.mockResolvedValueOnce({ handle: "r2", snapshot: null, notices: [] });
+    await run("resolve");
+    expect(startTask).toHaveBeenCalledTimes(3);
+  });
+
   it("shows the host's failure, such as git not making a worktree, and joins no chat", async () => {
     startTask.mockRejectedValue(new Error("Error invoking remote method 'studio:start-task': Error: Could not make a git worktree for “Fix the flash”: git worktree failed"));
     await run("resolve");
     expect(store.get().sessions).toEqual({});
+    expect(store.get().cardTasks).toEqual({}); // and you can try again
     expect(store.get().toasts.at(-1)).toEqual(expect.objectContaining({ level: "error", text: "Could not make a git worktree for “Fix the flash”: git worktree failed" }));
   });
 

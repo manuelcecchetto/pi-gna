@@ -372,7 +372,10 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   card's block host-side from a `cardId` (attachments and annotations follow with the phone's uploads); the desktop
   still composes its own send. ATP workers start through the same setup (`ChatTasks.launch`).
 - **Card actions** (`state/card-actions.ts`, `registerCardAction`) fill the right-click menu, the card's "…" button
-  and its dialog. Investigate, Resolve and QA start a chat in the background (you stay on the board), attach it when
+  and its dialog. Investigate, Resolve and QA start a chat in the background (you stay on the board; `startCardTask`
+  keeps `AppState.cardTasks`: the card, its menu item and its dialog button show "Starting …" while main sets the chat
+  up, which a worktree makes take seconds, then "… started" for a moment; asking again while it starts does nothing,
+  so a double click starts one chat; the phone's card page disables its button the same way), attach it when
   pi is ready (a new chat's session file is named before anything is written) and only then send the prompt, so
   the agent's first `kanban_update` finds its card; `set_session_name` names it "Investigate: …". QA (cards in
   In review, `qaPrompt`) reviews, tests and tries the change without fixing it, leaves a passing card in review and

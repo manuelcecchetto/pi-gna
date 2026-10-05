@@ -37,6 +37,9 @@ export function BoardScreen({ client, cwd: initial, cardId, push, back }: { clie
   const [menu, setMenu] = useState<string>();
   const [switcher, setSwitcher] = useState(false);
   const [adding, setAdding] = useState(false);
+  /** Card tasks the Mac is starting, as `card task`: a second tap does nothing until it answers. */
+  const [starting, setStarting] = useState<ReadonlySet<string>>(new Set());
+  const startingNow = useRef(new Set<string>());
   const columns = useMemo(() => (board ? boardColumns(board, cwd) : undefined), [board, cwd]);
   const current = open !== undefined ? board?.cards.find((card) => card.id === open) : undefined;
   const menuCard = menu !== undefined ? board?.cards.find((card) => card.id === menu) : undefined;
@@ -52,13 +55,24 @@ export function BoardScreen({ client, cwd: initial, cardId, push, back }: { clie
     );
   const startTask = (card: Card, task: CardTask) => {
     if (task === "discuss") return push({ screen: "chat", cwd: card.cwd, cardId: card.id, title: card.title });
-    client.call("chat.startTask", { target: { kind: task, card: card.id } }).then(
-      (started) => {
-        for (const notice of started.notices) toast(notice.text, notice.level);
-        push({ screen: "chat", cwd: card.cwd, handle: started.handle, title: `${task === "qa" ? "QA" : task === "resolve" ? "Resolve" : "Investigate"}: ${card.title}` });
-      },
-      (e) => toast(message(e), "error"),
-    );
+    const key = `${card.id} ${task}`;
+    if (startingNow.current.has(key)) return;
+    const track = (on: boolean) => {
+      if (on) startingNow.current.add(key);
+      else startingNow.current.delete(key);
+      setStarting(new Set(startingNow.current));
+    };
+    track(true);
+    client
+      .call("chat.startTask", { target: { kind: task, card: card.id } })
+      .then(
+        (started) => {
+          for (const notice of started.notices) toast(notice.text, notice.level);
+          push({ screen: "chat", cwd: card.cwd, handle: started.handle, title: `${task === "qa" ? "QA" : task === "resolve" ? "Resolve" : "Investigate"}: ${card.title}` });
+        },
+        (e) => toast(message(e), "error"),
+      )
+      .finally(() => track(false));
   };
 
   const shown = columns?.[column] ?? [];
@@ -155,7 +169,7 @@ export function BoardScreen({ client, cwd: initial, cardId, push, back }: { clie
         </Sheet>
       )}
       {adding && <AddCard client={client} cwd={cwd} onClose={() => setAdding(false)} />}
-      {current && board && <CardPage key={current.id} client={client} board={board} card={current} apply={apply} startTask={startTask} push={push} onClose={() => setOpen(undefined)} />}
+      {current && board && <CardPage key={current.id} client={client} board={board} card={current} apply={apply} startTask={startTask} starting={starting} push={push} onClose={() => setOpen(undefined)} />}
     </div>
   );
 }
@@ -268,7 +282,7 @@ function CardRow({ card, lifted, mark, onOpen, onMenu, onLift }: { card: Card; l
 }
 
 /** A card's details over the board: edits are checked against the revision they started from. */
-function CardPage({ client, board, card, apply, startTask, push, onClose }: { client: HostClient; board: Board & { rev: number }; card: Card; apply: Apply; startTask: (card: Card, task: CardTask) => void; push: (route: Route) => void; onClose: () => void }) {
+function CardPage({ client, board, card, apply, startTask, starting, push, onClose }: { client: HostClient; board: Board & { rev: number }; card: Card; apply: Apply; startTask: (card: Card, task: CardTask) => void; starting: ReadonlySet<string>; push: (route: Route) => void; onClose: () => void }) {
   const projects = useStore(client.store, (s) => s.global.projects) ?? [];
   const [title, setTitle] = useState(card.title);
   const [notes, setNotes] = useState(card.notes);
@@ -375,11 +389,24 @@ function CardPage({ client, board, card, apply, startTask, push, onClose }: { cl
         <Screenshots client={client} notes={card.notes} />
 
         <div className="mt-4 flex flex-wrap gap-2">
-          {cardTasks(card).map((task) => (
-            <button key={task.id} type="button" title={task.hint} onClick={() => { void save(); startTask(card, task.id); }} className="min-h-10 rounded-xl border border-line-strong px-3.5 text-[14px] text-fg active:bg-raised" data-testid={`card-task-${task.id}`}>
-              {task.label}
-            </button>
-          ))}
+          {cardTasks(card).map((task) => {
+            const busy = starting.has(`${card.id} ${task.id}`);
+            return (
+              <button
+                key={task.id}
+                type="button"
+                title={task.hint}
+                disabled={busy}
+                aria-busy={busy || undefined}
+                onClick={() => { void save(); startTask(card, task.id); }}
+                className={`flex min-h-10 items-center gap-1.5 rounded-xl border border-line-strong px-3.5 text-[14px] active:bg-raised ${busy ? "text-muted" : "text-fg"}`}
+                data-testid={`card-task-${task.id}`}
+              >
+                {busy && <LoaderCircle size={15} className="animate-spin" />}
+                {busy ? `Starting ${task.label}…` : task.label}
+              </button>
+            );
+          })}
         </div>
 
         <GithubLinks client={client} card={card} apply={apply} />

@@ -1,14 +1,14 @@
 // The Kanban page: one project's board. Cards are tasks; chats attach to them, and agents move their card and
 // report on it (kanban_* tools). Add a card by describing it; drag cards between columns; right-click one to
 // start a chat on it.
-import { Ellipsis, MessagesSquare, Paperclip, Pencil, Plus, SquareKanban, Trash2 } from "lucide-react";
+import { Check, Ellipsis, LoaderCircle, MessagesSquare, Paperclip, Pencil, Plus, SquareKanban, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { type Card, COLUMN_LABELS, COLUMNS, type Column, githubKey } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";
 import { boardColumns, boardProjects, cardAttention, cardSnippet, chatSummary, chatTitle } from "../lib/board";
 import { splitAttachments } from "../../../shared/task-prompts";
 import { baseName, relativeTime } from "../lib/format";
-import { applyBoard, openCard, openSession, type PageState, sessionTitle, showBoard, useApp, useFeature } from "../state/app";
+import { applyBoard, type CardTasks, openCard, openSession, type PageState, sessionTitle, showBoard, useApp, useFeature } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { CardDialog } from "./CardDialog";
 import { ColumnIcon } from "./ColumnIcon";
@@ -26,6 +26,7 @@ export function KanbanPage({ page }: { page: PageState }) {
   const board = useApp((state) => state.board);
   const sessions = useApp((state) => state.sessions);
   const projects = useApp((state) => state.projects);
+  const tasks = useApp((state) => state.cardTasks);
   const inset = useApp((state) => state.sidebar.collapsed);
   useNow(60_000); // relative times
   const columns = useMemo(() => boardColumns(board, page.cwd), [board, page.cwd]);
@@ -79,7 +80,13 @@ export function KanbanPage({ page }: { page: PageState }) {
         icon: <MessagesSquare size={13} />,
         onSelect: () => openSession(chatSummary(projects, ref)),
       }));
-    const start: MenuItem[] = cardActions(card).map((action) => ({ label: action.label, icon: <action.icon size={13} />, hint: action.hint, onSelect: () => action.run(card) }));
+    const start: MenuItem[] = cardActions(card).map((action) => ({
+      label: action.label,
+      icon: <action.icon size={13} />,
+      hint: action.hint,
+      busy: action.task && tasks[card.id]?.[action.task] === "starting",
+      onSelect: () => action.run(card),
+    }));
     const moves: MenuItem[] = COLUMNS.filter((column) => column !== card.column).map((column) => ({
       label: `Move to ${COLUMN_LABELS[column]}`,
       icon: <ColumnIcon column={column} />,
@@ -165,6 +172,29 @@ export function KanbanPage({ page }: { page: PageState }) {
 /** A card's GitHub links shown as badges; the rest are counted. */
 const GITHUB_BADGES = 3;
 
+/** The card's tasks the host is starting (a spinner) or just started (a check): startCardTask. */
+function CardTaskStatus({ card, tasks }: { card: Card; tasks: CardTasks }) {
+  const shown = cardActions(card).filter((action) => action.task && tasks[action.task]);
+  if (!shown.length) return null;
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1" aria-live="polite">
+      {shown.map((action) =>
+        action.task && tasks[action.task] === "starting" ? (
+          <span key={action.id} className="flex items-center gap-1 rounded-full bg-raised px-1.5 text-[11px] leading-[18px] text-muted">
+            <LoaderCircle size={11} className="animate-spin" />
+            Starting {action.label}…
+          </span>
+        ) : (
+          <span key={action.id} className="flex items-center gap-1 rounded-full bg-ok/10 px-1.5 text-[11px] leading-[18px] text-ok">
+            <Check size={11} />
+            {action.label} started
+          </span>
+        ),
+      )}
+    </div>
+  );
+}
+
 function DropLine() {
   return <div className="mx-1 mb-1.5 h-0.5 rounded-full bg-accent" />;
 }
@@ -185,6 +215,7 @@ function CardView({
   const snippet = cardSnippet(card);
   const attached = splitAttachments(card.notes).paths.length;
   const github = useFeature("github") ? card.github : [];
+  const tasks = useApp((state) => state.cardTasks[card.id]);
   return (
     <div
       data-card={card.id}
@@ -216,6 +247,7 @@ function CardView({
     >
       <div className="line-clamp-2 pr-5 text-[13px] leading-snug text-fg">{card.title}</div>
       {snippet && <div className="mt-1 truncate text-[12px] text-faint">{snippet}</div>}
+      {tasks && <CardTaskStatus card={card} tasks={tasks} />}
       {card.tags.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {card.tags.map((tag) => (
