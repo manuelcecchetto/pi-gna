@@ -233,7 +233,18 @@ export class SessionHost {
     if (!chat) return Promise.resolve({ type: "response", command: command.type, success: false, error: "session is not running" });
     // A chat you prompted from pi-gna stays alive when everyone navigates away.
     if (command.type === "prompt" || command.type === "steer" || command.type === "follow_up") chat.state = { ...chat.state, prompted: true };
-    return chat.pi.send(command);
+    const sent = chat.pi.send(command);
+    // The host's snapshot is what a client joining later (phone, another window) shows: keep its model and thinking level current.
+    if (command.type === "set_model" || command.type === "set_thinking_level") void sent.then((response) => response.success && this.refreshState(handle));
+    return sent;
+  }
+
+  private refreshState(handle: string): void {
+    const chat = this.live.get(handle);
+    if (!chat) return;
+    void chat.pi.send<RpcSessionState>({ type: "get_state" }).then((response) => {
+      if (response.success && response.data && this.live.get(handle) === chat) this.push(handle, [{ kind: "ready", state: response.data }]);
+    });
   }
 
   /** Esc: take the queued messages back (returned to the caller), then abort the run or manual compaction. Atomic per chat. */
