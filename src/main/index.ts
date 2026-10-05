@@ -2,7 +2,7 @@ import { EventHub } from "./event-hub";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, powerSaveBlocker, session, shell } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, powerSaveBlocker, screen, session, shell } from "electron";
 import { bugs, description } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
@@ -58,6 +58,7 @@ import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
 import { loadShellEnv } from "./shell-env";
 import { Updater } from "./updater";
+import { initialWindowState, readWindowState, trackWindowState } from "./window-state";
 
 // The app's name (menus, About, profile and log folders) is package.json's productName.
 // Test instances (scripts/cdp.mjs) get their own profile and logs so they never share a browser profile or history
@@ -240,9 +241,14 @@ const plugins = new PiPlugins({
 });
 
 function createWindow(): void {
+  const stateFile = join(app.getPath("userData"), "window-state.json");
+  const initial = initialWindowState(
+    readWindowState(stateFile),
+    screen.getAllDisplays().map((display) => display.workArea),
+    screen.getPrimaryDisplay().workArea,
+  );
   window = new BrowserWindow({
-    width: 1320,
-    height: 880,
+    ...initial.bounds,
     minWidth: 760,
     minHeight: 520,
     show: false,
@@ -262,6 +268,8 @@ function createWindow(): void {
   // pi-gna you are working in never land in a test window.
   window.once("ready-to-show", () => {
     log.info("pigna", `window ready ${Math.round(process.uptime() * 1000)} ms after launch`);
+    // maximize() also shows the window, but without focus, so it comes before the show below.
+    if (initial.maximized) window?.maximize();
     if (process.env.PIGNA_BACKGROUND === "1") window?.showInactive();
     else window?.show();
   });
@@ -277,6 +285,7 @@ function createWindow(): void {
     event.preventDefault();
     window?.hide();
   });
+  trackWindowState(window, stateFile);
   window.on("focus", () => send(IPC.windowFocus, true));
   window.on("blur", () => send(IPC.windowFocus, false));
   window.webContents.on("render-process-gone", (_event, details) => log.error("renderer", `gone: ${details.reason}`));

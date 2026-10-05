@@ -40,6 +40,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
     remote         RemoteHost (server lifecycle, keep-awake, Tailscale), RemoteServer (paired-device HTTP/SSE), HostCore (one method table for IPC and remote), EventHub, PushService (see Remote access)
     updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
+    window-state   the main window's bounds and zoom (userData/window-state.json), restored only if they fit a connected display's work area, else the primary work area
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
   src/mobile       the phone's web app (PWA), served by RemoteServer from out/mobile
