@@ -34,6 +34,9 @@ const slices = archs.map((arch) => {
   return bin
 })
 execFileSync('lipo', ['-create', ...slices, '-output', join(app, 'Contents/MacOS', appName)])
+// The overlay's pointer is the pigna hand of the app's mark (Overlay.swift loads it from Resources).
+mkdirSync(join(app, 'Contents/Resources'))
+cpSync(join(root, 'src/renderer/src/assets/pigna-hand.svg'), join(app, 'Contents/Resources/pigna-hand.svg'))
 rmSync(join(out, 'obj'), { recursive: true, force: true })
 
 writeFileSync(

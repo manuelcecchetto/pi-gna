@@ -313,10 +313,17 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   release the chat's apps and its Allow once grants. Phones answer the same cards (first answer wins) and get a
   read-only `computer.preview` (one JPEG of an app the chat holds, 1/s per client; `ComputerAgent.preview`); operating
   Mac apps from the phone is a non-goal (docs/REMOTE.md section 8).
-- **Overlay and Esc**: per driven app the helper shows a click-through cursor and a pill ("pi is using App · Esc to
-  cancel") ordered just above the target window (not a screen-wide overlay, so whatever covers the window covers
-  them). A global Esc monitor counts only when the user is evidently looking at that run (the app or pi-gna is
-  frontmost, or the pointer is over the window); it hides the overlay and notifies main, which stops the run.
+- **Overlay and Esc**: per driven app the helper shows a yellow-glowing pigna hand cursor, coral/yellow/blue
+  click ripples, an outward-glowing window frame and a glowing pill ("pi is using App · Esc to cancel"). Three
+  click-through, nonactivating, capture-excluded windows stack target → frame → cursor → pill; whatever covers
+  the target also covers them. Reduce Motion keeps static glows and fading click feedback, without cursor travel,
+  ring expansion or breathing/flow animations. Cursor travel uses `animator().setFrame(_:display:)`: the origin-only
+  animator setter does not move the window. The fixture smoke checks successive click positions and overlay stacking.
+  For a visual check, `node scripts/computer-use-overlay-preview.mjs [parentDir]` builds a standalone preview and
+  saves idle/ripple/moved PNGs in a new unique subdirectory (requires Screen Recording). Only the preview makes
+  overlays capturable; it does not install or replace the helper. A global Esc monitor counts only when the user
+  is evidently looking at that run (the app or pi-gna is frontmost, or the pointer is over the window); it hides the
+  overlay and notifies main, which stops the run.
 - **Permissions and install**: the helper needs Accessibility and Screen Recording (Settings > Computer use, Cmd+Shift+U
   or View > Computer Use, shows both and opens the panes). Grants are tied to the helper's designated requirement
   (Packaging and release, "Signing"): stable across releases, new on every ad-hoc checkout build. When main installs
@@ -333,8 +340,8 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   input relies on private SkyLight SPI and may break on a macOS update. Screenshots and AX text go to the model
   provider (secure field values are never read). Action-time confirmation is a prompt rule, not enforced in code.
   Verified live below the UI (real helper, agent and store with an approval stub: TextEdit and Calculator in
-  parallel, approvals, refusals, no change to frontmost app or cursor); the real-chat path, the Esc key and the
-  cursor look need a manual check (if Esc does nothing, grant Input Monitoring to the helper too). The long spec and
+  parallel, approvals, refusals, no change to frontmost app or cursor); the real-chat path and the Esc key still
+  need a manual check (if Esc does nothing, grant Input Monitoring to the helper too). The long spec and
   its evidence notes are in git history (`docs/COMPUTER_USE.md`).
 
 ## Kanban (M3)
