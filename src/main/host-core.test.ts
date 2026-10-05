@@ -74,6 +74,8 @@ describe("host methods table", () => {
     expect(() => dispatch(core, desktop(), "github.project", { cwd: "repo" })).toThrow("a project is an absolute path");
     expect(() => dispatch(core, desktop(), "atp.start", { plan: "/p.atp.json", cwd: "repo" })).toThrow("a project is an absolute path");
     expect(() => dispatch(core, desktop(), "atp.stop", { plan: "relative.atp.json" })).toThrow("not an ATP plan path");
+    // A phone could otherwise point atp.read at any readable JSON file.
+    expect(() => dispatch(core, desktop(), "atp.read", { plan: "/etc/passwd" })).toThrow("not an ATP plan path");
     expect(() => dispatch(core, desktop(), "github.list", { cwd: "/r", kind: "issue", filter: "merged" })).toThrow("cannot list merged issues");
     expect(() => dispatch(core, desktop(), "providers.login", { provider: "x", method: "magic" })).toThrow("Unknown login");
     expect(() => dispatch(core, desktop(), "browser.viewport", { id: 3 })).toThrow("Invalid browser tab");

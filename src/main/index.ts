@@ -150,9 +150,15 @@ let remoteServer: RemoteServer | undefined;
 let remoteHost: RemoteHost | undefined;
 // Web Push (REMOTE.md 13a); made once the session host exists, and a device that vanishes takes its subscription along.
 let push: PushService | undefined;
+let knownDevices = new Set<string>();
 const devices = new DeviceStore(
   join(app.getPath("userData"), "remote-devices.json"),
   (list) => {
+    // Audit trail (REMOTE.md s.11): who was added or removed, ids only.
+    const now = new Set(list.map((device) => device.id));
+    for (const id of now) if (!knownDevices.has(id)) log.info("remote", `device paired ${id}`);
+    for (const id of knownDevices) if (!now.has(id)) log.info("remote", `device revoked ${id}`);
+    knownDevices = now;
     remoteServer?.devicesChanged(list);
     push?.keepDevices(list.map((device) => device.id));
     publish({ kind: "devices", devices: list });
@@ -161,6 +167,7 @@ const devices = new DeviceStore(
   (status) => {
     // The pairing code and the approval prompt are for this window only: they never go through the hub.
     send(IPC.pairingChanged, status);
+    log.info("remote", `pairing ${status.state}`);
     if (status.state === "pending_approval" && window && !window.isDestroyed()) process.env.PIGNA_BACKGROUND === "1" ? window.showInactive() : window.show();
   },
 );

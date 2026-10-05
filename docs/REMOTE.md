@@ -369,7 +369,7 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
   the server and closes all streams.
 - **Credentials stay on the host:** no API returns provider keys, gh tokens, browser-profile cookies or pi's
   `auth.json` content. The phone can send an API key (`providers.login`) but never read one back.
-- **Audit:** `main.log` records `remote <deviceId> <method>` (names and status, never args).
+- **Audit:** `main.log` records `remote <deviceId> <method>` (names and status, never args), plus `device paired|revoked <id>` and `pairing <state>` lines. Threat model: `docs/REMOTE_THREAT_MODEL.md`.
 
 ## 12. Static app, CSP, limits
 
