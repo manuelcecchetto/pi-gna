@@ -10,6 +10,7 @@ import type { CompactionSettings } from "./compaction";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, GithubProject, GithubRepo } from "./github";
 import type { LamentOp, Laments } from "./laments";
+import type { PreviewMode, PreviewOpenOptions } from "./preview";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { KeepAwake, Settings, SettingsOp } from "./settings";
@@ -526,6 +527,10 @@ export interface HostMethods {
   "browser.layout": { args: { layout: unknown }; result: null };
   "browser.popOut": { args: { id: string }; result: null };
   "browser.returnToPane": { args: { id: string }; result: null };
+  "browser.preview": { args: { path: string; options?: PreviewOpenOptions }; result: string };
+  "browser.previewMode": { args: { id: string; mode: PreviewMode }; result: null };
+  "browser.previewReveal": { args: { id: string }; result: null };
+  "browser.previewOpen": { args: { id: string }; result: null };
   "browser.reveal": { args: Record<string, never>; result: null };
 
   // fs, uploads
@@ -622,6 +627,10 @@ export const DESKTOP_ONLY_METHODS = [
   "browser.layout",
   "browser.popOut",
   "browser.returnToPane",
+  "browser.preview",
+  "browser.previewMode",
+  "browser.previewReveal",
+  "browser.previewOpen",
   "browser.reveal",
   "fs.pickFolder",
   "fs.pickAttachments",

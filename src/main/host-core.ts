@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import type { BoardOp, Column } from "../shared/board";
@@ -8,6 +9,7 @@ import type { GithubFilter, GithubKind } from "../shared/github";
 import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest, type PickedPath } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
+import type { PreviewMode, PreviewOpenOptions } from "../shared/preview";
 import { type PackageToggle, type PluginToggle, RESOURCE_TYPES } from "../shared/plugins";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import type { KeepAwake, SettingsOp } from "../shared/settings";
@@ -329,6 +331,41 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       if (!browser) throw new Error("Invalid browser tab");
       await browser.returnToPane(id);
     }),
+    "browser.preview": method<{ path: string; options?: PreviewOpenOptions }>(
+      "desktop",
+      (raw) => {
+        if (typeof raw.path !== "string" || !isAbsolute(raw.path) || raw.path.length > 4096 || raw.path.includes("\0")) throw new Error("Invalid file path");
+        const o = raw.options && typeof raw.options === "object" ? raw.options : {};
+        const options: PreviewOpenOptions = {
+          newTab: o.newTab === true,
+          line: Number.isInteger(o.line) && o.line > 0 ? o.line : undefined,
+          mode: o.mode === "rendered" || o.mode === "raw" ? o.mode : undefined,
+          root: typeof o.root === "string" && isAbsolute(o.root) ? o.root : undefined,
+        };
+        return { path: raw.path, options };
+      },
+      async (_ctx, { path, options }) => {
+        const browser = deps.browser();
+        if (!browser) throw new Error("The browser is not ready");
+        return (await browser.openPreview(path, options)).id;
+      },
+    ),
+    "browser.previewMode": method<{ id: string; mode: PreviewMode }>(
+      "desktop",
+      (raw) => {
+        if (raw.mode !== "rendered" && raw.mode !== "raw") throw new Error("Invalid preview mode");
+        return { ...tabId(raw), mode: raw.mode as PreviewMode };
+      },
+      (_ctx, { id, mode }) => {
+        deps.browser()?.setPreviewMode(id, mode);
+      },
+    ),
+    "browser.previewReveal": method<{ id: string }>("desktop", tabId, (_ctx, { id }) => {
+      deps.browser()?.revealPreview(id);
+    }),
+    "browser.previewOpen": method<{ id: string }>("desktop", tabId, async (_ctx, { id }) => {
+      await deps.browser()?.openPreviewExternally(id);
+    }),
     "browser.history": any("remote", () => deps.browser()?.getHistory() ?? []),
     "browser.state": any("remote", () => deps.browser()?.snapshot()),
 
@@ -595,6 +632,10 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserViewport, "browser.viewport", (id, request) => ({ id, request })),
   route(IPC.browserPopOut, "browser.popOut", (id) => ({ id })),
   route(IPC.browserReturn, "browser.returnToPane", (id) => ({ id })),
+  route(IPC.browserPreview, "browser.preview", (path, options) => ({ path, options })),
+  route(IPC.browserPreviewMode, "browser.previewMode", (id, mode) => ({ id, mode })),
+  route(IPC.browserPreviewReveal, "browser.previewReveal", (id) => ({ id })),
+  route(IPC.browserPreviewOpen, "browser.previewOpen", (id) => ({ id })),
   route(IPC.browserHistory, "browser.history"),
   route(IPC.browserGetState, "browser.state"),
   route(IPC.boardGet, "board.get"),

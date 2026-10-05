@@ -3,6 +3,7 @@ import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { CatalogState, McpLoginResult, McpLoginUpdate, McpStatusState, PackageToggle, PluginsState, PluginToggle } from "./plugins";
+import type { PreviewMode, PreviewOpenOptions } from "./preview";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { CompactionSettings } from "./compaction";
@@ -63,6 +64,10 @@ export const IPC = {
   browserReveal: "browser:reveal",
   browserAnnotation: "browser:annotation",
   browserToggle: "browser:toggle",
+  browserPreview: "browser:preview",
+  browserPreviewMode: "browser:preview-mode",
+  browserPreviewReveal: "browser:preview-reveal",
+  browserPreviewOpen: "browser:preview-open",
   sidebarToggle: "studio:sidebar-toggle",
   pageToggle: "studio:page-toggle",
   openProject: "studio:open-project",
@@ -377,6 +382,14 @@ export interface BrowserApi {
   popOut(id: string): Promise<void>;
   /** Move a window tab back into the pane. */
   returnToPane(id: string): Promise<void>;
+  /** Open a local file in a preview tab (reusing one for the same file). Resolves with the tab id; rejects for missing paths and directories. */
+  preview(path: string, options?: PreviewOpenOptions): Promise<string>;
+  /** Switch a preview tab between its rendered and raw view. */
+  previewMode(id: string, mode: PreviewMode): Promise<void>;
+  /** Show a preview tab's file in Finder. */
+  previewReveal(id: string): Promise<void>;
+  /** Open a preview tab's file with its default app. */
+  previewOpen(id: string): Promise<void>;
   history(): Promise<HistoryEntry[]>;
   state(): Promise<BrowserState>;
   onState(listener: (state: BrowserState) => void): () => void;

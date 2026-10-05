@@ -1,9 +1,9 @@
 // Browser tabs: one WebContentsView per tab in a persistent profile separate from the app.
 // The renderer owns layout (where the pane is); main owns pages, history and annotations.
 import { randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { app, BrowserWindow, session, WebContentsView, type WebContents } from "electron";
+import { readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+import { app, BrowserWindow, session, shell, WebContentsView, type WebContents } from "electron";
 import {
   type Annotation,
   type BrowserCommand,
@@ -12,12 +12,14 @@ import {
   type HistoryEntry,
   normalizeAddress,
 } from "../../shared/browser";
-import { PREVIEW_SCHEME } from "../../shared/preview";
+import { parsePreviewUrl, PREVIEW_SCHEME, previewFor, previewLabel, previewUrl, type PreviewMode, type PreviewOpenOptions, type TabPreview } from "../../shared/preview";
 import { fitViewport, resolveViewport, userAgentFor, type ViewportRequest, type ViewportSpec } from "../../shared/viewport";
 import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
 import { cdp } from "./cdp";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
+import { previews } from "./preview-protocol";
+import { isRunnable, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
 
 export const PARTITION = "persist:pigna-browser";
 const CONSOLE_LIMIT = 300;
@@ -30,6 +32,16 @@ export interface ConsoleEntry {
   message: string;
   source: string;
   at: number;
+}
+
+/** What a preview tab serves: the file behind its pigna-file URL, kept live by a watcher. */
+interface PreviewState {
+  info: TabPreview;
+  token: string;
+  root: string;
+  /** Path of the file below `root`. */
+  relative: string;
+  stop: () => void;
 }
 
 export interface Tab {
@@ -49,6 +61,8 @@ export interface Tab {
   holds: number;
   /** When the agent last drove the tab; shown to clients as "agent is using this". */
   agentAt?: number;
+  /** Set while the tab shows a local file; web tabs have none. */
+  preview?: PreviewState;
 }
 
 /** Size a viewer-held tab without a viewport is laid out at while parked. */
@@ -109,6 +123,7 @@ export class BrowserManager {
   // ── State ──────────────────────────────────────────────────────────────────
 
   snapshot(): BrowserState {
+    const previewed = [...this.tabs.values()].flatMap((tab) => (tab.preview ? [tab.preview.info.path] : []));
     return {
       activeId: this.activeId,
       annotating: this.annotating,
@@ -120,7 +135,7 @@ export class BrowserManager {
           {
             id,
             url: wc.getURL(),
-            title: wc.getTitle(),
+            title: tab.preview ? previewLabel(tab.preview.info.path, previewed) : wc.getTitle(),
             loading: wc.isLoading(),
             canGoBack: wc.navigationHistory.canGoBack(),
             canGoForward: wc.navigationHistory.canGoForward(),
@@ -128,6 +143,7 @@ export class BrowserManager {
             viewport: tab.viewport,
             surface: tab.win ? ("window" as const) : ("pane" as const),
             agentAt: tab.agentAt,
+            preview: tab.preview?.info,
           },
         ];
       }),
@@ -173,6 +189,7 @@ export class BrowserManager {
     wc.on("did-navigate-in-page", changed);
     wc.on("did-navigate", (_event, url) => {
       changed();
+      this.syncPreview(tab, url);
       this.remember(url, wc);
       if (this.annotating && tab.id === this.activeId) void this.annotateLoop();
     });
@@ -223,6 +240,8 @@ export class BrowserManager {
     this.order.splice(index, 1);
     this.tabs.delete(id);
     this.hintHeaders.delete(tab.view.webContents.id);
+    if (tab.preview) this.dropPreview(tab.preview);
+    tab.preview = undefined;
     if (this.attached === tab.view) this.detach();
     this.unpark(tab);
     // The tab is already gone, so the window's "closed" handler finds nothing to do.
@@ -268,6 +287,113 @@ export class BrowserManager {
       const message = (error as Error).message;
       if (!message.includes("ERR_ABORTED")) throw error;
     }
+  }
+
+  // ── Previews ────────────────────────────────────────────────────────────────
+
+  /**
+   * Show a local file in a tab next to the web tabs. An open preview of the same file is reused unless `newTab`.
+   * `options.root` is the project directory: files inside it share one origin. Rejects for missing paths and directories.
+   */
+  async openPreview(path: string, options: PreviewOpenOptions = {}): Promise<Tab> {
+    if (typeof path !== "string" || !isAbsolute(path)) throw new Error("A preview needs an absolute path");
+    const file = await realpath(path).catch(() => {
+      throw new Error(`No such file: ${path}`);
+    });
+    if (!(await stat(file)).isFile()) throw new Error(`${path} is not a file`);
+    const project = options.root ? await realpath(options.root).catch(() => undefined) : undefined;
+    const root = previewRoot(file, project);
+    const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
+    const tab = (reuse ? this.tabs.get(reuse) : undefined) ?? this.makeTab(options.agent);
+    const defaults = previewFor(file);
+    const mode = options.mode && defaults.modes.includes(options.mode) ? options.mode : defaults.mode;
+    this.startPreview(tab, file, root, mode, options.line);
+    this.activate(tab.id);
+    if (!tab.win) this.events.reveal();
+    return tab;
+  }
+
+  /** Switch a preview tab between its rendered and raw (source) view. */
+  setPreviewMode(id: string, mode: PreviewMode): void {
+    const tab = this.tabs.get(id);
+    const state = tab?.preview;
+    if (!tab || !state) throw new Error(`Browser tab ${id} is not a file preview`);
+    if (!state.info.modes.includes(mode)) throw new Error(`${state.info.name} has no ${mode} view`);
+    state.info.mode = mode;
+    void this.load(tab, previewUrl(state.token, state.relative, mode === "raw" ? "raw" : undefined));
+    this.emitState();
+  }
+
+  /** Show the previewed file in Finder. */
+  revealPreview(id: string): void {
+    const path = this.tabs.get(id)?.preview?.info.path;
+    if (!path) throw new Error(`Browser tab ${id} is not a file preview`);
+    shell.showItemInFolder(path);
+  }
+
+  /** Open the previewed file with its default app; programs are refused. */
+  async openPreviewExternally(id: string): Promise<void> {
+    const path = this.tabs.get(id)?.preview?.info.path;
+    if (!path) throw new Error(`Browser tab ${id} is not a file preview`);
+    if (isRunnable(path, (await stat(path)).mode)) throw new Error("Programs are not opened from a preview");
+    const failure = await shell.openPath(path);
+    if (failure) throw new Error(failure);
+  }
+
+  private startPreview(tab: Tab, file: string, root: string, mode: PreviewMode, line?: number): void {
+    const old = tab.preview;
+    const relative = relativeTo(root, file);
+    const token = previews.mint(root, relative);
+    const wc = tab.view.webContents;
+    tab.preview = {
+      info: { ...previewFor(file), mode },
+      token,
+      root,
+      relative,
+      stop: watchFile(file, () => {
+        if (!wc.isDestroyed()) void stat(file).then(() => wc.reload(), () => undefined);
+      }),
+    };
+    if (old) this.dropPreview(old);
+    const hash = line && Number.isInteger(line) && line > 0 ? `#L${line}` : "";
+    void this.load(tab, previewUrl(token, relative, mode === "raw" ? "raw" : undefined) + hash);
+    this.emitState();
+  }
+
+  /** Stop watching, and revoke the token once no other tab uses it. */
+  private dropPreview(state: PreviewState): void {
+    state.stop();
+    if (![...this.tabs.values()].some((tab) => tab.preview?.token === state.token)) previews.revoke(state.token);
+  }
+
+  /** Keep preview state true to where the tab is: another file of the same root follows the link, anything else ends the preview. */
+  private syncPreview(tab: Tab, url: string): void {
+    const state = tab.preview;
+    if (!state) return;
+    const parsed = parsePreviewUrl(url);
+    if (!parsed || parsed.token !== state.token) {
+      tab.preview = undefined;
+      this.dropPreview(state);
+      return;
+    }
+    const file = join(state.root, parsed.relative);
+    const next = previewFor(file);
+    const wanted: PreviewMode = parsed.view === "raw" || parsed.view === "source" ? "raw" : "rendered";
+    const mode = next.modes.includes(wanted) ? wanted : next.mode;
+    if (parsed.relative === state.relative) {
+      state.info.mode = mode;
+      return;
+    }
+    state.stop();
+    const wc = tab.view.webContents;
+    tab.preview = {
+      ...state,
+      relative: parsed.relative,
+      info: { ...next, mode },
+      stop: watchFile(file, () => {
+        if (!wc.isDestroyed()) void stat(file).then(() => wc.reload(), () => undefined);
+      }),
+    };
   }
 
   command(id: string, command: BrowserCommand): void {

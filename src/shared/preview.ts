@@ -17,6 +17,18 @@ export interface TabPreview {
   modes: PreviewMode[];
 }
 
+/** Options of opening a file in a preview tab. */
+export interface PreviewOpenOptions {
+  /** Open another tab even if the file is already previewed. */
+  newTab?: boolean;
+  agent?: string;
+  /** 1-based line to scroll to, for kinds that have lines. */
+  line?: number;
+  mode?: PreviewMode;
+  /** Project directory; a file inside it is served from it so relative links between project files work. */
+  root?: string;
+}
+
 /** Scheme served by main for previews; see docs/FILE_PREVIEW.md. */
 export const PREVIEW_SCHEME = "pigna-file";
 
