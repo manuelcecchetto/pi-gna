@@ -10,6 +10,7 @@ import { SettingsPage } from "./components/Settings";
 import { HeroBackdrop } from "./components/Transcript";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
+import { openFileDialog } from "./lib/preview";
 import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
@@ -20,6 +21,10 @@ export function App() {
       if (event.ctrlKey && !event.metaKey && key === "o") {
         event.preventDefault();
         toggleExpandAll();
+      } else if (event.metaKey && !event.shiftKey && key === "o") {
+        event.preventDefault();
+        setPane({ open: true });
+        void openFileDialog();
       } else if (event.metaKey && key === "n") {
         event.preventDefault();
         newChat();

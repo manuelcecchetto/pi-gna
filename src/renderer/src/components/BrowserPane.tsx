@@ -6,6 +6,7 @@ import {
   Bot,
   Code2,
   Copy,
+  FolderOpen,
   Globe,
   Maximize2,
   MessageSquarePlus,
@@ -13,6 +14,7 @@ import {
   MonitorSmartphone,
   PanelTop,
   Plus,
+  ExternalLink,
   AppWindow,
   RotateCw,
   RotateCcw,
@@ -22,13 +24,17 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
+import { parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { fuzzyFilter } from "../lib/fuzzy";
-import { setPane, useApp } from "../state/app";
+import { iconForKind, openFileDialog, openPreviewPath, shortenHome } from "../lib/preview";
+import { setPane, store, toast, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { COLLAPSED_INSET } from "./Sidebar";
 
 const browser = () => window.studio.browser;
+
+const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("Files");
 
 export function BrowserPane() {
   const state = useApp((s) => s.browser);
@@ -71,7 +77,23 @@ export function BrowserPane() {
   useEffect(() => () => browser().layout({ visible: false, bounds: { x: 0, y: 0, width: 0, height: 0 } }), []);
 
   return (
-    <div className="flex h-full min-w-0 flex-col bg-canvas">
+    <div
+      className="flex h-full min-w-0 flex-col bg-canvas"
+      // The native page covers the viewport while visible, so drops only land on the strip, toolbar and start page.
+      onDragOver={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDrop={(event) => {
+        if (!hasFiles(event)) return;
+        event.preventDefault();
+        for (const file of event.dataTransfer.files) {
+          const path = window.studio.pathForFile(file);
+          if (path) void openPreviewPath(path, { newTab: true });
+        }
+      }}
+    >
       <div
         className="drag dashed-b titlebar flex shrink-0 items-center gap-1 overflow-hidden px-2"
         style={sidebar.collapsed && pane.full ? { paddingLeft: COLLAPSED_INSET } : undefined}
@@ -86,7 +108,11 @@ export function BrowserPane() {
               onContextMenu={(event) => openMenu(event, tabMenu(tab, state.tabs))}
             />
           ))}
-          <IconButton title="New tab" onClick={() => browser().newTab()}>
+          <IconButton
+            title="New tab (right-click: Open file…)"
+            onClick={() => browser().newTab()}
+            onContextMenu={(event) => openMenu(event, [[{ label: "New tab", onSelect: () => browser().newTab() }, { label: "Open file…", icon: <FolderOpen size={13} />, onSelect: () => void openFileDialog() }]])}
+          >
             <Plus size={14} />
           </IconButton>
         </div>
@@ -98,7 +124,8 @@ export function BrowserPane() {
         </IconButton>
       </div>
 
-      {active && (
+      {active?.preview && <PreviewToolbar tab={active} inWindow={inWindow} />}
+      {active && !active.preview && (
         <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line px-2">
           <IconButton title="Back" disabled={!active.canGoBack} onClick={() => browser().command(active.id, "back")}>
             <ArrowLeft size={15} />
@@ -142,7 +169,7 @@ export function BrowserPane() {
         </div>
       )}
 
-      {active && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
+      {active && !active.preview && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
 
       <div ref={viewport} className="relative min-h-0 flex-1 bg-sunken">
         {!active && <StartPage />}
@@ -156,6 +183,55 @@ export function BrowserPane() {
         </div>
       )}
       {menu}
+    </div>
+  );
+}
+
+function PreviewToolbar({ tab, inWindow }: { tab: BrowserTab; inWindow: boolean }) {
+  const preview = tab.preview as TabPreview;
+  const shown = shortenHome(preview.path, window.studio.homeDir);
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line px-2">
+      <div className="selectable mx-1 flex h-7 min-w-0 flex-1 items-center rounded-lg bg-sunken px-3 font-mono text-[12px] text-fg" title="Click to copy the full path">
+        <button type="button" onClick={() => void navigator.clipboard.writeText(preview.path)} className="min-w-0 truncate text-left">
+          {shown}
+        </button>
+      </div>
+      {preview.modes.length > 1 && (
+        <div className="mr-1 flex shrink-0 rounded-md bg-sunken p-0.5 text-[11.5px]">
+          {preview.modes.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => void browser().previewMode(tab.id, mode)}
+              className={`rounded px-2 py-0.5 capitalize ${preview.mode === mode ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      )}
+      <IconButton title="Reload" onClick={() => browser().command(tab.id, "reload")}>
+        <RotateCw size={14} />
+      </IconButton>
+      <IconButton title="Reveal in Finder" onClick={() => void browser().previewReveal(tab.id).catch(() => {})}>
+        <FolderOpen size={15} />
+      </IconButton>
+      <IconButton title="Open with default app" onClick={() => void browser().previewOpen(tab.id).catch((e) => toast(String(e.message ?? e), "error"))}>
+        <ExternalLink size={14} />
+      </IconButton>
+      {inWindow ? (
+        <IconButton title="Return to pane" onClick={() => void browser().returnToPane(tab.id).catch(() => {})}>
+          <PanelTop size={15} />
+        </IconButton>
+      ) : (
+        <IconButton title="Pop out into window" onClick={() => void browser().popOut(tab.id).catch(() => {})}>
+          <AppWindow size={15} />
+        </IconButton>
+      )}
+      <IconButton title="Inspect" onClick={() => browser().inspect(tab.id)}>
+        <Code2 size={15} />
+      </IconButton>
     </div>
   );
 }
@@ -182,7 +258,15 @@ function WindowPlaceholder({ tab }: { tab: BrowserTab }) {
 }
 
 function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
+  const preview = tab.preview;
   return [
+    preview
+      ? [
+          { label: "Copy path", icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(preview.path) },
+          { label: "Reveal in Finder", icon: <FolderOpen size={13} />, onSelect: () => void browser().previewReveal(tab.id).catch(() => {}) },
+          { label: "Open with default app", icon: <ExternalLink size={13} />, onSelect: () => void browser().previewOpen(tab.id).catch((e) => toast(String(e.message ?? e), "error")) },
+        ]
+      :
     [
       { label: "Reload", icon: <RotateCw size={13} />, onSelect: () => browser().command(tab.id, "reload") },
       ...(tab.url && tab.url !== "about:blank"
@@ -218,17 +302,20 @@ function TabPill({
   agentRunning: boolean;
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
-  const label = tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab";
+  const label = tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab");
+  const FileIcon = tab.preview ? iconForKind(tab.preview.kind) : undefined;
   return (
     <div
       onContextMenu={onContextMenu}
       className={`group flex h-8 max-w-48 min-w-24 shrink-0 items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[12px] ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/50"}`}
     >
-      <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.url}>
+      <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.preview?.path ?? tab.url}>
         {tab.surface === "window" ? (
           <AppWindow size={12} className="shrink-0 text-accent" />
         ) : tab.agent ? (
           <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
+        ) : FileIcon ? (
+          <FileIcon size={12} className="shrink-0 text-faint" />
         ) : (
           <Globe size={12} className={`shrink-0 text-faint ${tab.loading ? "pulse-dot" : ""}`} />
         )}
@@ -259,7 +346,9 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   useEffect(() => onSuggesting(open), [open, onSuggesting]);
 
   const go = (input: string) => {
-    browser().navigate(tab.id, input);
+    const target = parseLocalTarget(input, store.get().sessions[store.get().active ?? ""]?.cwd, window.studio.homeDir);
+    if (target) void openPreviewPath(target.path, { line: target.line });
+    else browser().navigate(tab.id, input);
     (document.activeElement as HTMLElement | null)?.blur();
   };
 
@@ -334,6 +423,9 @@ function StartPage() {
       <button type="button" onClick={() => browser().newTab()} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised">
         New tab
       </button>
+      <button type="button" onClick={() => void openFileDialog()} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised">
+        Open file…
+      </button>
       {local.length > 0 && (
         <div className="flex flex-col gap-1">
           {local.map((entry) => (
@@ -352,10 +444,12 @@ function IconButton({
   onClick,
   disabled,
   active,
+  onContextMenu,
   children,
 }: {
   title: string;
   onClick: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
   disabled?: boolean;
   active?: boolean;
   children: React.ReactNode;
@@ -366,6 +460,7 @@ function IconButton({
       title={title}
       disabled={disabled}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={`shrink-0 rounded-md p-1.5 disabled:opacity-30 ${active ? "bg-accent-soft text-accent" : "text-muted enabled:hover:bg-raised enabled:hover:text-fg"}`}
     >
       {children}
