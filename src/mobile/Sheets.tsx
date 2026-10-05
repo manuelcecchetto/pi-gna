@@ -10,13 +10,17 @@ export function Sheet({ title, onClose, children, testId }: { title: string; onC
       <div
         role="dialog"
         aria-label={title}
-        className="concentric-sheet flex max-h-[80%] flex-col rounded-t-2xl border-t border-line-strong bg-panel pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
+        className="concentric-sheet flex max-h-[80%] flex-col overflow-hidden rounded-t-[28px] border-t border-line-strong bg-panel px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between px-4 pt-3 pb-2">
-          <span className="text-[15px] font-medium text-fg">{title}</span>
-          <button type="button" aria-label="Close" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full text-muted">
-            <X size={18} />
+        <div aria-hidden className="mx-auto mt-2 h-[5px] w-9 shrink-0 rounded-full bg-line-strong" />
+        <div className="grid shrink-0 grid-cols-[2.75rem_1fr_2.75rem] items-center px-2 pt-1.5 pb-2">
+          <span />
+          <span className="truncate text-center text-[17px] font-semibold text-fg">{title}</span>
+          <button type="button" aria-label="Close" onClick={onClose} className="grid h-11 w-11 place-items-center">
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-raised text-muted">
+              <X size={16} strokeWidth={2.5} />
+            </span>
           </button>
         </div>
         {children}
@@ -25,7 +29,7 @@ export function Sheet({ title, onClose, children, testId }: { title: string; onC
   );
 }
 
-const row = (active: boolean) => `flex min-h-12 w-full items-center justify-between gap-3 rounded-xl px-3 text-left ${active ? "text-accent" : "text-fg"}`;
+const row = (active: boolean) => `flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl px-4 text-left active:bg-raised ${active ? "text-accent" : "text-fg"}`;
 
 export function ModelSheet({ models, current, onPick, onClose }: { models: Model[]; current?: Model; onPick: (model: Model) => void; onClose: () => void }) {
   const [query, setQuery] = useState("");
@@ -39,7 +43,7 @@ export function ModelSheet({ models, current, onPick, onClose }: { models: Model
           placeholder="Search models"
           autoCapitalize="none"
           autoCorrect="off"
-          className="w-full rounded-xl bg-sunken px-3 py-2.5 text-[16px] text-fg outline-none placeholder:text-faint"
+          className="w-full rounded-full bg-sunken px-4 py-2.5 text-[16px] text-fg outline-none placeholder:text-faint"
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
@@ -66,7 +70,7 @@ export function ThinkingSheet({ levels, current, onPick, onClose }: { levels: Th
     <Sheet title="Thinking" onClose={onClose} testId="thinking-sheet">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {levels.map((level) => (
-          <button key={level} type="button" onClick={() => onPick(level)} className={`${row(level === current)} font-mono text-[14px]`} data-testid="thinking-option">
+          <button key={level} type="button" onClick={() => onPick(level)} className={`${row(level === current)} text-[16px]`} data-testid="thinking-option">
             {level}
             {level === current && <Check size={15} className="text-accent" />}
           </button>

@@ -35,7 +35,7 @@ export function AttachSheet({ onClose, onFiles, onHost }: { onClose: () => void;
     onClose();
     if (list.length) onFiles(list);
   };
-  const row = "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] text-fg";
+  const row = "flex min-h-12 w-full items-center gap-3 rounded-2xl px-4 text-left text-[16px] text-fg active:bg-raised";
   return (
     <Sheet title="Attach" onClose={onClose} testId="attach-sheet">
       <div className="px-2 pb-2">
@@ -71,7 +71,7 @@ export function HostFilesSheet({ client, onClose, onPick }: { client: HostClient
       alive = false;
     };
   }, [client, path]);
-  const row = "flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] text-fg";
+  const row = "flex min-h-12 w-full items-center gap-3 rounded-2xl px-4 text-left text-[16px] text-fg active:bg-raised";
   const here = listing && { name: listing.path.split("/").pop() || listing.path, path: listing.path, isDir: true };
   return (
     <Sheet title="On the Mac" onClose={onClose} testId="host-files-sheet">

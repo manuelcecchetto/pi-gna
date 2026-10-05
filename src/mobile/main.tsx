@@ -54,10 +54,10 @@ registerServiceWorker();
 installViewport();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    {/* The fixed element WebKit samples for the top edge (it hit-tests 4 px down and skips boxes 10 px or thinner):
-        with a solid one there iOS fills the status bar with its color instead of blurring the page. Sampling runs only
-        when the load commits or a fixed element comes or goes, so it lives for the whole page. REMOTE_IOS.md row 15. */}
-    <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[max(12px,env(safe-area-inset-top))] bg-canvas" />
+    {/* WebKit fills the status bar with the color of the fixed or sticky element at the top edge instead of blurring
+        the page (it hit-tests 4 px down and skips boxes 10 px or thinner). In the app that is the sticky Header, which
+        paints over this band; the band serves the screens without one (pairing, connecting). REMOTE_IOS.md row 15. */}
+    <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-0 h-3 bg-canvas" />
     <Shell />
   </StrictMode>,
 );

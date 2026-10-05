@@ -27,7 +27,8 @@ describe("board ops", () => {
     const board = applyOp(emptyBoard(), { type: "add", title: "x", cwd: "/repo" }, 1);
     expect(board.cards[0]?.id).toMatch(/^[a-z0-9]{6}$/);
     let calls = 0;
-    expect(freshId(board, () => (calls++ === 0 ? parseInt(board.cards[0]?.id ?? "", 36) / 36 ** 6 : 0))).toBe("000000");
+    // The middle of the taken id's slot: its start can round down to the id before it.
+    expect(freshId(board, () => (calls++ === 0 ? (parseInt(board.cards[0]?.id ?? "", 36) + 0.5) / 36 ** 6 : 0))).toBe("000000");
   });
 
   it("rejects bad input from the renderer or an agent", () => {

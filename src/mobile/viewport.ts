@@ -24,9 +24,9 @@ export function isIos(userAgent: string, platform: string, touchPoints: number):
   return /iPhone|iPad|iPod/.test(userAgent) || (platform === "MacIntel" && touchPoints > 1);
 }
 
-/** The software keyboard is up: the visible area is well short of the layout viewport. */
-export function keyboardOpen(layoutHeight: number, visibleHeight: number): boolean {
-  return layoutHeight - visibleHeight > 120;
+/** The software keyboard is up: the visible area is well short of the full height (the tallest seen at this width). */
+export function keyboardOpen(fullHeight: number, visibleHeight: number): boolean {
+  return fullHeight - visibleHeight > 120;
 }
 
 export function installViewport(): void {
@@ -43,9 +43,15 @@ export function installViewport(): void {
   const pin = () => {
     if (window.scrollY !== 0 || viewport.offsetTop !== 0) window.scrollTo(0, 0);
   };
+  // iOS shrinks window.innerHeight with the keyboard as well, so the full height is the tallest seen per width
+  // (a rotation changes the width and starts over).
+  const full = new Map<number, number>();
   const sync = () => {
+    const width = Math.round(viewport.width);
+    const tallest = Math.max(full.get(width) ?? 0, viewport.height);
+    full.set(width, tallest);
     root.style.setProperty("--app-height", `${Math.round(viewport.height)}px`);
-    root.classList.toggle("keyboard", keyboardOpen(window.innerHeight, viewport.height));
+    root.classList.toggle("keyboard", keyboardOpen(tallest, viewport.height));
     pin();
   };
   viewport.addEventListener("resize", sync);

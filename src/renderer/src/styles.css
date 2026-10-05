@@ -307,6 +307,9 @@ body,
   border: 1px solid var(--line);
   padding: 0.35em 0.7em;
   text-align: left;
+  /* Not prose's `anywhere`, which lets a column shrink to one letter per line; the table scrolls instead. */
+  overflow-wrap: break-word;
+  min-width: 5em;
 }
 .prose th {
   background: var(--panel);

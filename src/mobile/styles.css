@@ -35,5 +35,5 @@ html.screen-corners .concentric-sheet {
   margin: 0 0.5rem 0.5rem;
   border: 1px solid var(--line-strong);
   border-radius: max(1rem, calc(var(--device-radius) - 0.5rem));
-  padding-bottom: max(0.5rem, calc(env(safe-area-inset-bottom) - 0.5rem));
+  padding-bottom: max(1rem, calc(env(safe-area-inset-bottom) - 0.25rem));
 }
