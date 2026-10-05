@@ -100,6 +100,16 @@ export class BrowserAgent {
     if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false, request.tab, request.cwd);
     if (request.action === "window") return this.window(handle, request);
     const tab = this.tabFor(handle, request.tab);
+    // A tab of a chat that is not on screen is in no window; holding it keeps the page rendering for the action.
+    this.browser.hold(tab.id);
+    try {
+      return await this.act(handle, request, tab);
+    } finally {
+      this.browser.release(tab.id);
+    }
+  }
+
+  private async act(handle: string, request: Exclude<AgentAction, { action: "open" | "window" }>, tab: Tab): Promise<AgentResult> {
     const wc = tab.view.webContents;
     this.browser.markAgent(tab);
     log.info("browser", `${handle.slice(0, 4)} ${request.action}${"ref" in request ? ` [${request.ref}]` : ""}`);
@@ -266,7 +276,7 @@ export class BrowserAgent {
     return this.snapshot(tab.view.webContents);
   }
 
-  /** The session's own tab, else adopt the tab the user is looking at. */
+  /** The chat's own tab: the one it addressed last, else its newest. */
   private tabFor(handle: string, id?: string): Tab {
     if (id) {
       const named = this.browser.tabs.get(id);
@@ -276,11 +286,8 @@ export class BrowserAgent {
       return named;
     }
     const own = this.agentTab(handle);
-    if (own) return own;
-    const active = this.browser.active();
-    if (!active) throw new Error("No browser tab is open. Use browser_open first.");
-    active.agent = handle;
-    return active;
+    if (!own) throw new Error("No browser tab is open. Use browser_open first.");
+    return own;
   }
 
   private agentTab(handle: string): Tab | undefined {

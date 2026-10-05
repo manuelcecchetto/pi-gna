@@ -10,7 +10,7 @@ export interface BrowserTab {
   loading: boolean;
   canGoBack: boolean;
   canGoForward: boolean;
-  /** Session handle of the agent that opened or last drove this tab. */
+  /** Session handle of the chat that owns this tab: the one that opened it (the agent, or the user in that chat). Each chat shows only its own tabs. */
   agent?: string;
   /** Emulated viewport; absent means Responsive (the view fills the pane). */
   viewport?: ViewportSpec;
@@ -55,6 +55,8 @@ export interface Annotation {
   comment: string;
   /** JPEG crop of the element, base64. */
   image?: string;
+  /** The chat whose tab it was picked in; the comment waits in that chat's composer. */
+  chat?: string;
 }
 
 export type BrowserCommand = "back" | "forward" | "reload" | "stop";

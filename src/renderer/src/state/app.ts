@@ -68,10 +68,16 @@ export interface AppState {
   models: Model[];
   commands: Record<string, SlashCommand[]>;
   levels: Record<string, ThinkingLevel[]>;
+  /** The browser of the chat on screen: the tabs it owns (main keeps every chat's tabs, see `browserAll`). */
   browser: BrowserState;
+  /** Every chat's browser tabs as main reports them. */
+  browserAll: BrowserState;
+  /** The pane of the chat on screen; each chat has its own (`panes`), the split is shared. */
   pane: { open: boolean; full: boolean; /** Browser share of the main area, 0..1. */ split: number };
-  /** Browser comments waiting to ride along with the next prompt. */
-  annotations: Annotation[];
+  /** The pane of the chats that are not on screen (open, full), restored when they come back. */
+  panes: Record<string, { open: boolean; full: boolean }>;
+  /** Browser comments per session handle, waiting to ride along with that chat's next prompt. */
+  annotations: Record<string, Annotation[]>;
   /** Composer attachments per session handle (picker, drag and drop, paste). */
   attachments: Record<string, Attachment[]>;
   /** The card in a chat's composer, per session handle ("Chat about it"): it goes with the chat's first message. */
@@ -120,8 +126,10 @@ export const store = createStore<AppState>({
   commands: {},
   levels: {},
   browser: { tabs: [], annotating: false },
+  browserAll: { tabs: [], annotating: false },
   pane: { open: false, full: false, split: 0.5 },
-  annotations: [],
+  panes: {},
+  annotations: {},
   attachments: {},
   composerCards: {},
   compaction: {},
@@ -434,7 +442,7 @@ export async function send(handle: string, text: string, mode: SendMode): Promis
   const session = store.get().sessions[handle];
   if (!session || session.phase === "exited") return false;
   const isCommand = text.startsWith("/");
-  const annotations = isCommand ? [] : store.get().annotations;
+  const annotations = isCommand ? [] : (store.get().annotations[handle] ?? []);
   const attachments = store.get().attachments[handle] ?? [];
   // A command is not a message about the card: the card waits for the next one.
   const card = isCommand ? undefined : composerCard(store.get(), handle);
@@ -457,8 +465,8 @@ export async function send(handle: string, text: string, mode: SendMode): Promis
   }
   if (response.success && annotations.length) {
     const sent = new Set(annotations.map((a) => a.id));
-    store.set((s) => ({ ...s, annotations: s.annotations.filter((a) => !sent.has(a.id)) }));
-    if (store.get().browser.annotating) window.studio.browser.annotate(false);
+    store.set((s) => ({ ...s, annotations: { ...s.annotations, [handle]: (s.annotations[handle] ?? []).filter((a) => !sent.has(a.id)) } }));
+    if (store.get().browser.annotating && store.get().active === handle) window.studio.browser.annotate(false);
   }
   return response.success;
 }
@@ -513,20 +521,67 @@ function readImage(file: File): Promise<Attachment> {
   });
 }
 
-export function removeAnnotation(id: string): void {
-  store.set((s) => ({ ...s, annotations: s.annotations.filter((a) => a.id !== id) }));
+export function removeAnnotation(handle: string, id: string): void {
+  store.set((s) => ({ ...s, annotations: { ...s.annotations, [handle]: (s.annotations[handle] ?? []).filter((a) => a.id !== id) } }));
 }
 
 // ── Browser pane ─────────────────────────────────────────────────────────────
 
+/** Change the pane of the chat on screen (`split` is shared by all chats). */
 export function setPane(patch: Partial<AppState["pane"]>): void {
   store.set((s) => ({ ...s, pane: { ...s.pane, ...patch } }));
 }
 
+/** Open the browser of the chat on screen, leaving any page, which would cover it. */
+export function showBrowser(): void {
+  if (!store.get().active) return;
+  closePage();
+  setPane({ open: true });
+}
+
+/** The browser belongs to the chat on screen; without one there is nothing to open it for. */
 export function toggleBrowser(): void {
-  const { pane, browser } = store.get();
-  setPane({ open: !pane.open, full: false });
-  if (!pane.open && browser.tabs.length === 0) window.studio.browser.newTab();
+  const { pane, browser, active, page } = store.get();
+  if (!active) return;
+  if (page || !pane.open) {
+    showBrowser();
+    if (browser.tabs.length === 0) window.studio.browser.newTab();
+  } else setPane({ open: false, full: false });
+}
+
+/** The tabs a chat owns out of every chat's; the active tab only when it is one of them. */
+export function scopeBrowser(all: BrowserState, chat: string | undefined): BrowserState {
+  const tabs = chat ? all.tabs.filter((tab) => tab.agent === chat) : [];
+  return { ...all, tabs, activeId: tabs.some((tab) => tab.id === all.activeId) ? all.activeId : undefined };
+}
+
+/** The agent works in `chat`'s browser: its pane opens, whether or not the chat is on screen. */
+function revealBrowser(chat: string | undefined): void {
+  if (!chat) return;
+  if (store.get().active === chat) return setPane({ open: true });
+  store.set((s) => ({ ...s, panes: { ...s.panes, [chat]: { full: false, ...s.panes[chat], open: true } } }));
+}
+
+// Which chat's browser is on screen: its pane state and tabs replace the previous chat's, and main is told.
+let shownBrowser: { chat?: string; all?: BrowserState } = {};
+function syncBrowser(): void {
+  const { active, browserAll, pane, panes } = store.get();
+  if (shownBrowser.chat === active && shownBrowser.all === browserAll) return;
+  const switched = shownBrowser.chat !== active;
+  const previous = shownBrowser.chat;
+  shownBrowser = { chat: active, all: browserAll };
+  if (switched) {
+    window.studio.browser.focus(active);
+    const next = active ? panes[active] : undefined;
+    store.set((s) => ({
+      ...s,
+      panes: previous ? { ...s.panes, [previous]: { open: pane.open, full: pane.full } } : s.panes,
+      pane: { ...s.pane, open: next?.open ?? false, full: next?.full ?? false },
+      browser: scopeBrowser(browserAll, active),
+    }));
+  } else {
+    store.set((s) => ({ ...s, browser: scopeBrowser(browserAll, active) }));
+  }
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -908,11 +963,15 @@ export function boot(): void {
     .board.get()
     .then((board) => store.set((s) => ({ ...s, board })));
   const browser = studio().browser;
-  browser.onState((state) => store.set((s) => ({ ...s, browser: state })));
-  browser.onReveal(() => setPane({ open: true }));
+  store.subscribe(syncBrowser);
+  browser.onState((state) => store.set((s) => ({ ...s, browserAll: state })));
+  browser.onReveal(revealBrowser);
   browser.onToggle(toggleBrowser);
-  browser.onAnnotation((annotation) => store.set((s) => ({ ...s, annotations: [...s.annotations, annotation] })));
-  void browser.state().then((state) => state && store.set((s) => ({ ...s, browser: state })));
+  browser.onAnnotation((annotation) => {
+    const chat = annotation.chat;
+    if (chat) store.set((s) => ({ ...s, annotations: { ...s.annotations, [chat]: [...(s.annotations[chat] ?? []), annotation] } }));
+  });
+  void browser.state().then((state) => state && store.set((s) => ({ ...s, browserAll: state })));
   const update = studio().update;
   update.onState((state) => store.set((s) => ({ ...s, update: state })));
   update.onReveal(() => showUpdate(true));

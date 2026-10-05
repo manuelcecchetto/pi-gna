@@ -59,6 +59,7 @@ const api: StudioApi = {
   onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),
   browser: {
     layout: (layout) => ipcRenderer.send(IPC.browserLayout, layout),
+    focus: (chat) => ipcRenderer.send(IPC.browserFocus, chat),
     newTab: (url) => ipcRenderer.send(IPC.browserNewTab, url),
     closeTab: (id) => ipcRenderer.send(IPC.browserCloseTab, id),
     activate: (id) => ipcRenderer.send(IPC.browserActivate, id),
@@ -77,7 +78,7 @@ const api: StudioApi = {
     history: () => ipcRenderer.invoke(IPC.browserHistory),
     state: () => ipcRenderer.invoke(IPC.browserGetState),
     onState: (listener) => subscribe<BrowserState>(IPC.browserState, listener),
-    onReveal: (listener) => subscribe<void>(IPC.browserReveal, listener),
+    onReveal: (listener) => subscribe<string | undefined>(IPC.browserReveal, listener),
     onAnnotation: (listener) => subscribe<Annotation>(IPC.browserAnnotation, listener),
     onToggle: (listener) => subscribe<void>(IPC.browserToggle, listener),
   },

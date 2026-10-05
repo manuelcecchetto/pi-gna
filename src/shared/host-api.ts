@@ -139,7 +139,7 @@ export type GlobalEvent =
   | { kind: "atp.held"; plans: string[] }
   | { kind: "browser"; state: BrowserState }
   /** The agent opened a browser tab: clients show the browser. */
-  | { kind: "browser.reveal" }
+  | { kind: "browser.reveal"; chat?: string }
   | { kind: "browser.annotation"; annotation: Annotation }
   | { kind: "update"; state: UpdateState }
   | { kind: "providers.login"; update: LoginUpdate }
@@ -525,6 +525,7 @@ export interface HostMethods {
   "browser.view": { args: { id: string; on: boolean; maxWidth?: number }; result: { stream: string } | null };
   "browser.input": { args: { id: string; input: BrowserInput }; result: { annotation?: Annotation } | null };
   "browser.layout": { args: { layout: unknown }; result: null };
+  "browser.focus": { args: { chat?: string }; result: null };
   "browser.popOut": { args: { id: string }; result: null };
   "browser.returnToPane": { args: { id: string }; result: null };
   "browser.preview": { args: { path: string; options?: PreviewOpenOptions }; result: string };
@@ -626,6 +627,7 @@ export const DESKTOP_ONLY_METHODS = [
   "atp.importThreads",
   "ui.importLegacy",
   "browser.layout",
+  "browser.focus",
   "browser.popOut",
   "browser.returnToPane",
   "browser.preview",
