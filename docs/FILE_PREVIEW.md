@@ -188,6 +188,117 @@ rendered in Electron with both libraries, screenshots compared.
 runs in the viewer and needs no sanitization to be a script vector: it builds DOM nodes itself; still render it
 into a container, never `innerHTML` of its own output string. Mammoth stays out.
 
+## Office formats: BetterOffice canvas **(spiked 2026-10-05, not implemented)**
+
+Question: can BetterOffice (`@betteroffice/*`, Apache-2.0, Rust/wasm engines painting to canvas) render DOCX, PPTX and XLSX
+read-only in the viewer at an acceptable cost, given that big DOCX were slow in casus-review? **Decision: canvas only, so
+BetterOffice for all three formats.** DOCX opens with `experimentalWorkerOpen` + `previewFirstPage` behind a loader.
+PPTX and XLSX use the framework-free cores. HTML renderers (docx-preview, Quick Look, a TS table) are rejected as targets.
+docx-preview stays only until the BetterOffice DOCX path ships. Nothing is implemented yet.
+
+Harness: `scripts/spikes/office-preview/` (README there). Electron 44.5.1, one fresh window per run on an in-memory
+session, assets over a privileged custom scheme with this viewer's `no-store` and CSP headers, 3 runs per cell (cold = first
+run). "Peak" is the renderer process working set, workers included. Files: d1 24-page contract with tracked changes, d3
+21-page contract, d2/d4 short; big ones b1 *SPA Müller mit Markup* (45 p, 248 KB, tracked changes), b4 *SPA Müller*
+(50 p), b2 *Framework Agreement* (167 p, 52 tables, footnotes, images), b3 *Refinancing Amendment* (~149 p, 721 KB zip,
+**17.3 MB document.xml**, 282 tables). Options:
+
+- **BetterOffice (BO)**: `@betteroffice/docx-react` 0.4.3 in `mode="viewing" readOnly`; the `pptx` 0.2.0 and `xlsx` 0.3.0 cores.
+- **Walnut + Granola**: the Codex app's own baseline, the .NET Open XML reader plus its JS layout worker, extracted from
+  `/Applications/ChatGPT.app` `app.asar` (`webview/assets`) and driven through its worker protocol. Measurement only:
+  it is proprietary and cannot be shipped.
+- **docx-preview**: the current viewer.
+- **Quick Look**: `qlmanage -p -o`, which emits HTML.
+
+### DOCX
+
+| File (Word pages) | BO default: first page / all pages / peak / longest main-thread task | BO worker + preview: first page / peak / longest task | Walnut + Granola: first page (= all pages) / peak | docx-preview: done / peak |
+|---|---|---|---|---|
+| d1 (24) | 1.06 s / 1.06 s / 842 MB / 0.18 s | **0.57 s** / 752 MB / 0.19 s | 2.5 s / 423 MB | 0.15 s / 132 MB |
+| b1 (45) | 1.50 s / 1.42 s / 1,190 MB / 0.39 s | **0.74 s** / 762 MB / 0.23 s | 4.7 s / 529 MB | 0.21 s / 184 MB |
+| b4 (50) | 1.34 s / 1.32 s / 1,143 MB / 0.40 s | **0.74 s** / 765 MB / 0.23 s | 5.4 s / 541 MB | 0.21 s / 188 MB |
+| b2 (167) | 1.51 s / 2.37 s / 1,786 MB / 0.69 s | **0.63 s** / 711 MB / under 0.05 s | 10.2 s / 800 MB | 0.29 s / 259 MB |
+| b3 (~149) | 7.29 s / 8.40 s / **2,710 MB** / **4.56 s** | **1.03 s** / 878 MB / 0.10 s; all pages ≈ 6.8 s in the worker | **40.4 s** / 1,916 MB | 1.19 s / 596 MB |
+
+- **Bytes per open** (`no-store`, nothing cached):
+  - BO: 30.6-32.7 MB. That is `docx_edit` 20.3 MB + `docx_layout` 4.2 MB wasm, 1.6 MB JS, and 4.5-6.2 MB of fonts (11-16 faces).
+  - BO in worker mode: 47-53 MB, because 0.4.3 fetches and compiles the edit wasm in the main thread *and* the worker.
+  - Walnut + Granola: 17.5-18.2 MB (12.6 MB wasm in 31 .NET assemblies + 4.9 MB JS).
+  - docx-preview: under 1 MB.
+- **Short files** (d2-d4): BO 0.7-1.3 s, Walnut 2.2-2.8 s, docx-preview under 0.16 s.
+- **Pagination vs Word's `<Pages>`**: b1 45 → BO 44 / Granola 45; b4 50 → 50 / 47; b2 167 → 172 / 163; b3 → 155 / 154
+  (its `app.xml` count is stale). docx-preview does not paginate: it only breaks at explicit breaks, so b3 is one "page"
+  and b2 has 71.
+- **Where the big-file time goes**:
+  - BO: layout and measurement in the edit wasm on the main thread (b3: 4.6 s single task, 2.7 GB).
+  - Walnut: its interpreted .NET parse (b3: 35 s of the 40 s). Granola then lays out every page before painting any,
+    so its first page equals its full layout time.
+- **Fidelity** (screenshots): both canvas engines draw the contracts faithfully (fonts, numbering, tables, headers).
+  On b2's cover, BO places the logo and the "July 2023" text box correctly; Granola paints the date on top of the logo.
+
+**The hypothesis "most of the cost is the editor, view-only is much cheaper" is false for BO 0.4.3.**
+
+- `docx_edit` (20.3 MB) *is* the viewer engine: lowering a story to layout blocks (`yrs_blocks_for_story`) and the resident
+  layout exist only there. `docx_layout` (4.2 MB) needs blocks that are already measured.
+- `mode="viewing"` loads edit + layout and never loads `docx_parse` (5.3 MB) or `opc`. So no public parse + layout-only
+  path exists. The unreleased `docx-react-viewer-worker-only` changeset on BO main only removes the main-thread copy.
+
+The cost to accept: about 24.4 MB of DOCX wasm. What makes big files usable is the stock worker + preview path:
+first page in about 1 s on every file, main thread free while the rest lays out.
+
+### PPTX and XLSX
+
+| | BO core: all slides / first viewport painted | bytes per open | peak | Walnut parse only (no paint) | Quick Look (HTML) |
+|---|---|---|---|---|---|
+| PPTX p1-p4 (5-14 slides) | 0.19-0.21 s, all 4 decks | 7.4-7.6 MB (5.4 MB wasm + 1.9 MB, 3 faces) | 179-195 MB | 0.94-1.39 s; **p3 throws** (FormatException) | 0.08-0.13 s convert; **p3 produces nothing** |
+| XLSX x1-x4 (1-6 sheets, charts) | 0.15-0.33 s | 5.2-5.3 MB wasm | 158-189 MB | 0.96-1.38 s | 0.09-0.18 s convert |
+
+The TS table prototype (jszip + DOMParser, values only, first sheet) took 0.10-0.13 s and about 0.15 MB, but it is
+HTML and is dropped by the canvas decision. BO PPTX and XLSX are cheap. Their wasm is what an "Office viewer" costs anyway.
+
+### What the viewer needs for BetterOffice
+
+- **CSP**: the current viewer CSP blocks all three engines. They fail with `WebAssembly.compileStreaming ... violates
+  CSP`; Walnut fails the same way. Required: `script-src 'self' 'wasm-unsafe-eval'` and `worker-src 'self'` (the DOCX
+  resident worker). Nothing else changes: fonts are fetched same-origin (`connect-src 'self'`), and images and styles are
+  already covered. Call `setGoogleFontsEnabled(false)`: the docx core otherwise builds `fonts.googleapis.com` URLs for
+  unknown families.
+- **Fonts**: `@betteroffice/fonts` is 14.2 MB of TTF on disk (65 faces), but faces load lazily per face, same-origin.
+  An open fetches 3-16 faces (1.5-6.2 MB).
+  - Do not ship `@betteroffice/fonts-cjk` (33 MB). Documents that name CJK families (MS Mincho, MS Gothic; 6 of the 8 test files) then fire `onError("[font] failed to register bundled Noto ...")` and fall back. That `onError` must be treated
+    as non-fatal.
+  - PPTX: register each face with the engine (`openPresentation({ fonts })`) **and** with the browser
+    (`registerBundledFontFace(face, family)`). Otherwise the canvas paints with the default serif. Use
+    `inspectPresentation` for the deck's font names.
+- **Bundle**: `vite build` emits the wasm, the worker and the font faces as hashed assets under `out/preview` (served by
+  `serveViewer`). The DOCX React bundle is 1.43 MB of JS (438 KB gz) and needs React in the viewer, which is plain TS
+  today. PPTX and XLSX cores are 46 KB and 25 KB of JS. App size grows by about 57 MB uncompressed (all wasm, including
+  the unused `docx_parse`/`opc`, + fonts).
+- **Agent text (`browser_snapshot`)**:
+  - BO DOCX keeps an accessibility mirror of the pages near the viewport only (d3: 12.7k chars of DOM text vs 46k for the
+    whole document).
+  - The PPTX/XLSX cores expose no text. Use `exportPptxMarkdown`/`exportXlsxMarkdown` or `buildA11yGrid` for a hidden text
+    layer, or the React viewers.
+  - Granola renders no DOM text at all.
+- **Phone**: the stream is a screencast of the view, so canvas output streams like any page (not separately tested).
+- **Caching**: the viewer handler sends `no-store` for every asset. Hashed wasm could be served `immutable`, which would
+  let Chromium cache compiled code. Untested here.
+
+### Recommendation
+
+| Format | Use | Why |
+|---|---|---|
+| DOCX | BO `DocxEditor` `mode="viewing" readOnly`, `experimentalWorkerOpen` + `previewFirstPage`, loader until `onFirstPagePainted`, "laying out" state until `getTotalPages()` settles | ~0.6-1.0 s first page on 24-167 pages; b3 full layout ~7 s off the main thread; Word-faithful pagination; Walnut is 4-40x slower and unshippable |
+| PPTX | BO core: `openPresentation` + `paintSlide`, one canvas per slide | 0.2 s, 7.5 MB, renders the deck Walnut and Quick Look fail on |
+| XLSX | BO core or `XlsxEditor readOnly` | 0.15-0.33 s, 5.2 MB |
+
+**Next levers if the DOCX loader is not enough**, ordered by expected value:
+
+1. Serve viewer assets cacheable.
+2. Take BO's worker-only viewer release, so the edit wasm compiles once.
+3. The casus-review engine patches (mirror removal, wasm prewarm: `docs/research/2026-09-09-native-docx-startup-default.md`
+   there).
+
 ## Viewer build **(decided)**
 
 Separate Vite entry, `vite.preview.config.ts` (`root: src/preview`, `outDir: out/preview`, `emptyOutDir`, `base: "./"`,
@@ -297,6 +408,6 @@ tapping a tab. Pop-out and DevTools buttons stay as they are for web tabs.
 2. Should rendered HTML run with `connect-src` limited to its own origin and `localhost`? Prototypes call APIs; the dotfile
    deny list plus "never auto-open" was chosen instead. Revisit if an agent-fetched untrusted HTML flow appears.
 3. Live reload of an HTML preview when a sibling asset changes (watching a whole root is costly): not done, only the opened file.
-4. `.doc`, `.xlsx`, `.pptx`: info card for now.
+4. `.doc`: info card. `.xlsx`, `.pptx` (and replacing docx-preview): BetterOffice canvas, see "Office formats"; info card until it ships.
 5. Whether `browser_snapshot` (accessibility/DOM walk) gives useful output on the Chromium PDF viewer (it is a plugin/OOPIF); the
    screenshot works (spiked), the snapshot was not tried.
