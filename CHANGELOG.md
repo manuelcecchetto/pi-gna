@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Notifications on the iPhone now arrive: the host signed pushes with a contact address Apple's push service rejected (403 BadJwtToken), so none were ever delivered.
 - ATP workers and other model-configured tasks no longer silently run on your default model when selection fails. Explicit provider selections are exact, rejected or unconfirmed model switches prevent the task prompt, and new orchestrators are not exposed until model setup succeeds.
 
 ## 0.5.2 - 2026-10-05
