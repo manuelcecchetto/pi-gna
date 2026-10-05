@@ -202,6 +202,15 @@ describe("command semantics", () => {
     expect((await host.command(handle, { type: "bash", command: "ls" } as never)).success).toBe(true);
   });
 
+  it("keeps the snapshot's model current after set_model, for clients that join later", async () => {
+    const { host, handle } = await setup();
+    const sonnet = { provider: "anthropic", id: "sonnet", name: "Sonnet" };
+    fake.send = async (command) => ((command as { type: string }).type === "get_state" ? { type: "response", success: true, data: { model: sonnet, thinkingLevel: "high" } } : undefined);
+    await host.command(handle, { type: "set_model", provider: "anthropic", modelId: "sonnet" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(host.snapshot(handle, { turns: 10 })?.state.model).toEqual(sonnet);
+  });
+
   it("makes interrupt and editQueue atomic under concurrent calls", async () => {
     const { host, handle, pi } = await setup();
     pi.handlers.onRecords([rec("agent_start")]);
