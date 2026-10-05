@@ -1,5 +1,6 @@
 // How tool calls read in the transcript: a category, a verb and a target. Pure, so the
 // collapsed one-liners and the activity summaries stay consistent and testable.
+import { parseLocalTarget } from "../../../shared/preview";
 
 export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "think" | "other";
 
@@ -139,6 +140,7 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       return { category: "web", verb: "Fetched", activeVerb: "Fetching", target: urls[0] ?? "", meta: urls.length > 1 ? `+${urls.length - 1} more` : undefined };
     }
     case "browser_open":
+      if (parseLocalTarget(str(args.url), cwd)) return { category: "browser", verb: "Previewed", activeVerb: "Previewing", target: rel(str(args.url)) };
       return { category: "browser", verb: "Opened", activeVerb: "Opening", target: str(args.url) };
     case "browser_snapshot":
       return { category: "browser", verb: "Read the page", activeVerb: "Reading the page", target: "" };

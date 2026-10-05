@@ -6,6 +6,7 @@ vi.mock("typebox", () => ({ Type: new Proxy({}, { get: () => () => ({}) }) }));
 interface Registered {
   name: string;
   executionMode?: string;
+  execute?: (id: string, params: Record<string, unknown>, signal: undefined, update: undefined, ctx: unknown) => Promise<unknown>;
 }
 
 describe("browser extension", () => {
@@ -29,5 +30,18 @@ describe("browser extension", () => {
   // a screenshot issued after browser_open captured the previous page.
   it("makes every browser tool sequential", () => {
     expect(tools.filter((tool) => tool.executionMode !== "sequential").map((tool) => tool.name)).toEqual([]);
+  });
+
+  // A local path is previewed: the bridge gets the path and cwd, with no origin approval and no URL rewriting.
+  it("sends local paths to the bridge as a preview open", async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ url: "/p/README.md", title: "README.md" }) };
+    });
+    const ctx = { cwd: "/p", hasUI: false };
+    await tools.find((tool) => tool.name === "browser_open")?.execute?.("1", { url: "./README.md" }, undefined, undefined, ctx);
+    vi.unstubAllGlobals();
+    expect(bodies).toEqual([{ action: "open", url: "./README.md", cwd: "/p" }]);
   });
 });

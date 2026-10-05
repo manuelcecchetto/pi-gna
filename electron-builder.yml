@@ -10,6 +10,7 @@ files:
   - out/**
   - resources/**
   - src/shared/browser.ts
+  - src/shared/preview.ts
   - src/shared/board.ts
   - src/shared/laments.ts
   - src/shared/viewport.ts
@@ -20,6 +21,7 @@ files:
 asarUnpack:
   - resources/**
   - src/shared/browser.ts
+  - src/shared/preview.ts
   - src/shared/board.ts
   - src/shared/laments.ts
   - src/shared/viewport.ts

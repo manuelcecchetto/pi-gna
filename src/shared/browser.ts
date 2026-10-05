@@ -61,7 +61,7 @@ export type BrowserCommand = "back" | "forward" | "reload" | "stop";
 
 /** Agent tool calls from the pi extension, routed through the localhost bridge. */
 export type AgentAction = (
-  | { action: "open"; url: string; newTab?: boolean }
+  | { action: "open"; url: string; newTab?: boolean; cwd?: string }
   | { action: "snapshot" }
   | { action: "click"; ref: number }
   | { action: "type"; ref: number; text: string; submit?: boolean; clear?: boolean }

@@ -1,8 +1,10 @@
 // Agent browser actions behind the browser_* tools. Each pi session drives its own tab. Input and
 // screenshots go through CDP (webContents.debugger): OS-level input and capturePage need composited
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
+import { homedir } from "node:os";
 import { nativeImage, type WebContents } from "electron";
 import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize, viewportLine } from "../../shared/browser";
+import { parseLocalTarget, previewLabel } from "../../shared/preview";
 import { resolveViewport, toInputCoords, type ViewportSpec } from "../../shared/viewport";
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
@@ -95,7 +97,7 @@ export class BrowserAgent {
   }
 
   private async dispatch(handle: string, request: AgentAction): Promise<AgentResult> {
-    if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false, request.tab);
+    if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false, request.tab, request.cwd);
     if (request.action === "window") return this.window(handle, request);
     const tab = this.tabFor(handle, request.tab);
     const wc = tab.view.webContents;
@@ -236,7 +238,23 @@ export class BrowserAgent {
     return { ...snap, tab: tab.id, viewport, text: `${note}${snap.text ? `\n\n${snap.text}` : ""}` };
   }
 
-  private async open(handle: string, input: string, newTab: boolean, tabId?: string): Promise<AgentResult> {
+  /** A local file opens as a preview tab; the result names the file instead of the internal preview URL. */
+  private async openFile(handle: string, target: { path: string; line?: number }, newTab: boolean, cwd?: string): Promise<AgentResult> {
+    log.info("browser", `${handle.slice(0, 4)} preview ${target.path}`);
+    const tab = await this.browser.openPreview(target.path, { newTab, agent: handle, line: target.line, root: cwd });
+    tab.agent = handle;
+    const wc = tab.view.webContents;
+    await this.browser.ensureVisible(tab);
+    await waitForStop(wc, 15_000);
+    const info = tab.preview?.info;
+    const snap = await this.snapshot(wc).catch(() => this.where(wc));
+    const note = `Opened a preview of ${target.path}${info ? ` (${info.kind}, ${info.mode} view)` : ""}. Tab [${tab.id}] is your current tab.`;
+    return { ...snap, url: target.path, title: previewLabel(target.path), tab: tab.id, text: `${note}\n\n${snap.text ?? ""}` };
+  }
+
+  private async open(handle: string, input: string, newTab: boolean, tabId?: string, cwd?: string): Promise<AgentResult> {
+    const local = parseLocalTarget(input, cwd, homedir());
+    if (local) return this.openFile(handle, local, newTab, cwd);
     const url = normalizeAddress(input);
     if (!/^(https?|file):/i.test(url)) throw new Error(`Only http(s) and file URLs can be opened, got ${url}`);
     const existing = tabId ? this.tabFor(handle, tabId) : newTab ? undefined : this.agentTab(handle);

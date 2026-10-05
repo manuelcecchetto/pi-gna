@@ -1,9 +1,11 @@
 // pi extension loaded into every pi-gna session (`pi -e`). Registers browser_* tools that drive
 // the pane the user is watching, through pi-gna's token-gated localhost bridge.
 // Policy: loopback/dev-server URLs are always allowed; any other origin asks the user once per session.
+import { homedir } from "node:os";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { isLocalUrl, normalizeAddress, viewportAction, viewportLine } from "../src/shared/browser";
+import { parseLocalTarget } from "../src/shared/preview";
 import { DEVICE_PRESETS } from "../src/shared/viewport";
 import type { ViewportSpec } from "../src/shared/viewport";
 
@@ -76,13 +78,17 @@ export default function (pi: ExtensionAPI) {
     executionMode: SEQUENTIAL,
     name: "browser_open",
     label: "Open in browser",
-    description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi-gna browser and return a snapshot of the page with numbered element refs for browser_click and browser_type.`,
+    description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi-gna browser and return a snapshot of the page with numbered element refs for browser_click and browser_type. A local file path (absolute, ~/, relative to the project, file://, optionally path:line) opens a rendered preview tab for pdf, images, docx, markdown, html and code; browser_snapshot, browser_screenshot and browser_evaluate work on it like any page.`,
     parameters: Type.Object({
-      url: Type.String({ description: "URL to open; bare localhost:PORT works" }),
+      url: Type.String({ description: "URL to open (bare localhost:PORT works), or a local file path to preview" }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing this session's tab" })),
       tab: Type.Optional(Type.String({ description: "Window tab id from browser_window; default is your current tab" })),
     }),
     async execute(_id, params, signal, _onUpdate, ctx) {
+      // A local file is previewed, not browsed: no origin to approve, and the result's URL is the file.
+      if (parseLocalTarget(params.url, ctx.cwd, homedir())) {
+        return reply(await call({ action: "open", url: params.url, cwd: ctx.cwd, newTab: params.newTab, tab: params.tab }, signal));
+      }
       const target = normalizeAddress(params.url);
       if (!(await allowed(target, ctx))) throw new Error(`Opening ${target} was blocked by the user.`);
       // Redirects can land on another origin; guard the final URL too.
