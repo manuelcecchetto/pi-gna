@@ -6,6 +6,7 @@ import { baseName, extensionOf, kindFor, parsePreviewUrl, type PreviewKind } fro
 import { looksLikeText } from "./format";
 import { showImage } from "./image";
 import { showInfo } from "./info";
+import { showMarkdown } from "./markdown";
 import { showTable } from "./table";
 import { readBytes, showMessage, type Source } from "./shell";
 import { showText } from "./text";
@@ -50,9 +51,12 @@ async function main(): Promise<void> {
       case "code":
       case "text":
       case "json":
-      case "markdown":
       case "html":
         await showText(source);
+        break;
+      case "markdown":
+        if (source.mode === "rendered") await showMarkdown(source);
+        else await showText(source);
         break;
       default:
         await showInfo(source);

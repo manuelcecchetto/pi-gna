@@ -202,7 +202,14 @@ renderer-only imports (T03 checks); otherwise it moves to `src/shared/`.
 `pnpm dev` runs the viewer build once first, `pnpm dev:preview` rebuilds on change. The viewer reads `?view=` and a `#L12`
 line fragment from its URL (append `#L<n>` to a preview URL to jump to and highlight a line), reads text with a
 `Range: bytes=0-<cap-1>` request (total size from `Content-Range`), sniffs extensionless files itself, and shows
-markdown/html in the code view until the markdown renderer lands. Media and docx fall to the info card until their nodes.
+html in the code view. Media and docx fall to the info card until their nodes.
+
+**As built (T05)**: `src/preview/markdown.ts` renders markdown with the app's `renderMarkdown` (marked GFM + DOMPurify, no
+visual fences, so those stay plain code), shiki-highlights fences via `highlightWithin`, gives headings GitHub-style ids
+(`links.ts`), shows flat YAML front matter as a small table and a collapsible Contents list from 4 headings. Relative
+images get `?raw=1` (a plain URL would return the viewer page); remote images are not loaded (CSP `img-src 'self' data:
+blob:`) and show their alt text. Links: `#x` scrolls, same-token links navigate the tab, `http(s)` open in a new tab
+(`target=_blank`), everything else loses its `href`. The Source button reloads the page with `?view=raw`.
 
 ## Size limits
 
