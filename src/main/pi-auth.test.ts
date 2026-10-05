@@ -46,7 +46,10 @@ export class ModelRuntime {
       return;
     }
     const how = await prompt({ type: "select", message: "How?", options: [{ id: "browser", label: "Browser" }, { id: "code", label: "Code" }] });
-    if (how === "browser") {
+    if (how === "device") {
+      notify({ type: "device_code", userCode: "ABCD-1234", verificationUri: "https://acme.test/device" });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    } else if (how === "browser") {
       notify({ type: "auth_url", url: "https://acme.test/auth?device=" + getDeviceId() });
       const pasted = new AbortController();
       const answer = prompt({ type: "manual_code", message: "Paste the code", signal: pasted.signal }).catch(() => "callback");
@@ -189,8 +192,12 @@ describe("PiAuth", () => {
     expect(await target.signIn("beta", "api_key", run.onUpdate)).toEqual({ ok: true });
     expect(run.updates[0]).toEqual({ kind: "prompt", prompt: { n: 1, type: "secret", message: "Enter Beta key" } });
     expect(JSON.parse(readFileSync(join(dir, "agent", "auth.json"), "utf8"))).toEqual({ beta: { type: "api_key", key: "beta-123" } });
-    const beta = (await target.list()).providers.find((provider) => provider.id === "beta");
+    const listed = await target.list();
+    const beta = listed.providers.find((provider) => provider.id === "beta");
     expect(beta).toMatchObject({ status: { method: "api_key", source: "stored" }, stored: "api_key" });
+    // What the phone can read back (providers.list) holds names and statuses, never the saved key.
+    expect(JSON.stringify(listed)).not.toContain("beta-123");
+    expect(JSON.stringify(run.updates)).not.toContain("beta-123");
 
     await target.signOut("beta");
     expect((await target.list()).providers.find((provider) => provider.id === "beta")?.status).toBeUndefined();
@@ -208,6 +215,13 @@ describe("PiAuth", () => {
       { kind: "event", event: { type: "progress", message: "Refreshing the model list…" } },
     ]);
     expect((await target.list()).providers[0]).toMatchObject({ status: { method: "oauth", source: "stored" }, stored: "oauth" });
+  });
+
+  it("passes a device code through to the client that signs in", async () => {
+    const target = start();
+    const run = responder(target, { select: "device" });
+    expect(await target.signIn("acme", "oauth", run.onUpdate)).toEqual({ ok: true });
+    expect(run.updates).toContainEqual({ kind: "event", event: { type: "device_code", userCode: "ABCD-1234", verificationUri: "https://acme.test/device" } });
   });
 
   it("cancels a login", async () => {

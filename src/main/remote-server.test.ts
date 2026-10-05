@@ -387,6 +387,24 @@ describe("RemoteServer", () => {
       s.close();
     });
 
+    it("sends login progress to the requesting stream only, as an unsequenced client event", async () => {
+      const mine = sse("/api/events?stream=stream-aaaa", cookie);
+      const other = sse("/api/events?stream=stream-bbbb", cookie);
+      await Promise.all([mine.ready, other.ready]);
+      const latest = hub.latest;
+      const update = { kind: "event", event: { type: "device_code", userCode: "AB-12", verificationUri: "https://x.test/device" } };
+      expect(server.notify("stream-aaaa", deviceId, { kind: "providers.login", update })).toBe(true);
+      await mine.until(() => mine.frames.some((f) => f.startsWith("event: client")));
+      expect(mine.frames.find((f) => f.startsWith("event: client"))).toContain('"userCode":"AB-12"');
+      expect(other.frames.some((f) => f.includes("AB-12"))).toBe(false);
+      expect(hub.latest).toBe(latest);
+      // Another device's id, or a stream that is not open, gets nothing.
+      expect(server.notify("stream-aaaa", "someone-else", {})).toBe(false);
+      expect(server.notify("stream-zzzz", deviceId, {})).toBe(false);
+      mine.close();
+      other.close();
+    });
+
     it("sends resync for unknown boots, missing ids and gaps", async () => {
       const a = sse("/api/events?stream=stream-aaaa", cookie);
       const b = sse("/api/events?stream=stream-bbbb", cookie, { "last-event-id": "other:5" });

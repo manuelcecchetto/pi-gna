@@ -19,6 +19,7 @@ import {
   type HostResult,
   type UploadResult,
 } from "../../shared/host-api";
+import type { LoginUpdate } from "../../shared/auth";
 import { reduceHostEvent, type SessionState } from "../../shared/session-state";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "unreachable" | "unauthorized" | "outdated";
@@ -186,6 +187,7 @@ export type ChatEventListener = (handle: string, event: HostEvent, session: Sess
 export class HostClient {
   readonly store: Store<ClientState>;
   private readonly chatListeners = new Set<ChatEventListener>();
+  private readonly loginListeners = new Set<(update: LoginUpdate) => void>();
   /** The SSE stream id, which doubles as the client id for leases and presence. */
   readonly streamId: string;
   private readonly env: Env;
@@ -234,7 +236,8 @@ export class HostClient {
   }
 
   private async send(method: string, body: string, key: string | undefined, signal?: AbortSignal): Promise<unknown> {
-    const headers: Record<string, string> = { "content-type": "application/json", [HEADER_CLIENT]: "1" };
+    // The stream id names this client to the host, so per-client pushes (login progress) find their way back.
+    const headers: Record<string, string> = { "content-type": "application/json", [HEADER_CLIENT]: "1", "x-pigna-stream": this.streamId };
     const boot = this.store.get().bootId;
     if (boot) headers[HEADER_BOOT] = boot;
     if (key) headers[HEADER_IDEMPOTENCY] = key;
@@ -337,6 +340,12 @@ export class HostClient {
       if (this.source !== source) return;
       this.armWatchdog();
       this.onEnvelope(JSON.parse(e.data));
+    });
+    source.addEventListener("client", (e) => {
+      if (this.source !== source) return;
+      this.armWatchdog();
+      const event = JSON.parse(e.data) as GlobalEvent;
+      if (event.kind === "providers.login") for (const listener of this.loginListeners) listener(event.update);
     });
     source.addEventListener("resync", () => {
       if (this.source !== source) return;
@@ -463,6 +472,12 @@ export class HostClient {
     const buffered = this.pending.get(envelope.topic);
     if (buffered) buffered.push(envelope);
     else this.apply(envelope);
+  }
+
+  /** Subscribe to this client's own sign-in progress (`providers.login`); returns the unsubscribe. */
+  onLoginUpdate(listener: (update: LoginUpdate) => void): () => void {
+    this.loginListeners.add(listener);
+    return () => void this.loginListeners.delete(listener);
   }
 
   /** Subscribe to chat events as they apply; `session` is the state before the event. Returns the unsubscribe. */

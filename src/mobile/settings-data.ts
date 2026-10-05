@@ -1,16 +1,17 @@
 // What the phone's Settings pages decide without React: the sections it offers, the update line and how a refused
-// change reads. Providers, the keyboard shortcuts and the host-UI buttons (Finder, System Settings, Restart) stay on the Mac.
+// change reads. The keyboard shortcuts and the host-UI buttons (Finder, System Settings, Restart) stay on the Mac.
 import type { UpdateState } from "../shared/ipc";
 import type { Feature, Task } from "../shared/settings";
 import { SETTINGS_SECTIONS } from "../shared/settings";
 
 /** The Settings sections of the desktop page the phone has, plus Updates, which the desktop shows inside General. */
-export const MOBILE_SECTIONS = ["general", "appearance", "models", "agent", "features", "computer", "remote", "updates"] as const;
+export const MOBILE_SECTIONS = ["general", "appearance", "providers", "models", "agent", "features", "computer", "remote", "updates"] as const;
 export type MobileSection = (typeof MOBILE_SECTIONS)[number];
 
 export const SECTION_LABELS: Readonly<Record<MobileSection, string>> = {
   general: "General",
   appearance: "Appearance",
+  providers: "Providers",
   models: "Models",
   agent: "Agent",
   features: "Features",

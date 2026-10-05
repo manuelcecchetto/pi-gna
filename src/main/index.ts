@@ -326,8 +326,13 @@ const desktopContext: HostContext = {
   authUpdate: (update) => send(IPC.authUpdate, update),
 };
 
-/** The remote server's per-caller context: a phone's links open on the phone, and login progress needs a per-client channel (a later node). */
-const remoteContext = (device: { id: string }, clientId: string): HostContext => ({ client: { device: device.id }, clientId, openExternal: () => undefined, authUpdate: () => undefined });
+/** The remote server's per-caller context: a phone's links open on the phone, and its login progress goes to its own stream only. */
+const remoteContext = (device: { id: string }, clientId: string): HostContext => ({
+  client: { device: device.id },
+  clientId,
+  openExternal: () => undefined,
+  authUpdate: (update) => void remoteServer?.notify(clientId, device.id, { kind: "providers.login", update }),
+});
 
 function registerIpc(shellEnv: Promise<void>): void {
   const tasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv });

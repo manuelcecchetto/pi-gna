@@ -1,4 +1,4 @@
-// Settings on the phone: the sections of the desktop page except Providers and Shortcuts. Every change goes through
+// Settings on the phone: the sections of the desktop page except Shortcuts. Every change goes through
 // the same validated host methods as the desktop (settings.apply with baseRev for the choices, settings.setPi,
 // computer.apply, devices.revoke), so the Mac shows it live; pairing a new device and the macOS permission prompts stay on the Mac.
 import { Check, ChevronRight, RotateCcw, X } from "lucide-react";
@@ -32,6 +32,7 @@ import type { Route } from "./nav";
 import { Header } from "./Screens";
 import { canDownload, changeError, isMobileSection, MOBILE_SECTIONS, type MobileSection, SECTION_LABELS, TASK_INFO, updateSummary } from "./settings-data";
 import { ModelSheet, Sheet } from "./Sheets";
+import { ProvidersSection } from "./ProvidersSection";
 import { toast } from "./toasts";
 
 // ── Controls ─────────────────────────────────────────────────────────────────
@@ -566,6 +567,8 @@ export function SettingsScreen({ client, section, push, back, signOut }: { clien
         return <GeneralSection client={client} pi={pi} homeDir={homeDir} />;
       case "appearance":
         return <AppearanceSection client={client} />;
+      case "providers":
+        return <ProvidersSection client={client} />;
       case "models":
         return <ModelsSection client={client} pi={pi} />;
       case "agent":
@@ -595,7 +598,7 @@ export function SettingsScreen({ client, section, push, back, signOut }: { clien
             ))}
           </Card>
         )}
-        {!body && <p className="px-5 pt-3 text-[12px] text-faint">Providers, keyboard shortcuts and the Mac's own windows are on the Mac.</p>}
+        {!body && <p className="px-5 pt-3 text-[12px] text-faint">Keyboard shortcuts and the Mac's own windows are on the Mac.</p>}
       </div>
     </div>
   );

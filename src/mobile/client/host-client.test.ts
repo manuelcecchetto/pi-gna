@@ -133,6 +133,19 @@ describe("calls", () => {
     expect(restarted.calls).toHaveLength(1);
   });
 
+  it("names its stream on calls and hands its own login progress to listeners", async () => {
+    const t = setup(() => ok({}));
+    await t.client.call("providers.cancel", {});
+    expect(t.calls.at(-1)!.headers["x-pigna-stream"]).toBe(t.client.streamId);
+    const seen: unknown[] = [];
+    t.client.onLoginUpdate((update) => seen.push(update));
+    t.client.start();
+    t.src().hello();
+    const update = { kind: "event", event: { type: "device_code", userCode: "AB-12", verificationUri: "https://x.test" } };
+    t.src().emit("client", { kind: "providers.login", update });
+    expect(seen).toEqual([update]);
+  });
+
   it("goes to unauthorized on a 401", async () => {
     const t = setup(() => fail(401, "unauthorized"));
     await expect(t.client.call("board.get", {})).rejects.toMatchObject({ code: "unauthorized" });

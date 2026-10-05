@@ -373,7 +373,8 @@ export class RemoteServer {
         throw new HostError("bad_request", "invalid JSON");
       }
       if (method === "chat.command" && !isAllowedRpc(args?.command ?? {})) throw new HostError("scope_denied", "this command is not available remotely");
-      const clientId = header(req, HEADER_STREAM) ?? deviceId;
+      const named = header(req, HEADER_STREAM);
+      const clientId = named && STREAM_ID.test(named) ? named : deviceId;
       const ctx = this.o.context(caller.device, clientId);
       const run = async () => this.o.call(ctx, method, args);
       let result: unknown;
@@ -512,6 +513,16 @@ export class RemoteServer {
     };
     this.views.add(view);
     req.on("close", view.close);
+  }
+
+  /** A push for one client only (login progress, which may carry an auth URL): an unsequenced `client` event on the
+   * stream `clientId` names, if that stream is open and the device's own. Never goes through the hub, so it is not
+   * replayed to anyone else. */
+  notify(clientId: string, device: string, event: unknown): boolean {
+    const stream = this.streams.get(clientId);
+    if (!stream || stream.device !== device || stream.paused) return false;
+    stream.res.write(`event: client\ndata: ${JSON.stringify(event)}\n\n`);
+    return true;
   }
 
   private deliver(stream: Stream, batch: HubEnvelope[], cap: number) {
