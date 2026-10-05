@@ -294,7 +294,15 @@ is the prompt path for the UI.
   `answered | cancelled | timeout | exit`), and all clients drop the card. A later response gets `409 already_answered`.
 - pi's dialog timeouts and chat exit settle dialogs (`settleChoices` today) and emit `dialog_resolved`.
 - Computer Use and browser-URL approvals keep Allow once / Always / Deny; whichever client answers, the device id is logged
-  (`main.log`).
+  (`main.log`). The same policy runs whoever answers: an Always allow from a phone is persisted like the desktop's, and
+  denylisted apps never reach a card.
+- Computer Use from the phone (T37): approvals and Stop (`chat.interrupt`; the run ending releases the chat's apps and
+  hides the overlays) work as above. `computer.preview { handle }` returns one JPEG frame (`{ mimeType, data, app }`) of
+  the latest app that chat currently holds, or `null` (nothing held, feature off, denied app). It takes the target only
+  from the chat's held apps, never an arbitrary app or the screen, is limited to one call per second per client
+  (`rate_limited`), and never enters the event ring. The mobile chat polls it every 2 s while the chat runs and shows it
+  view-only. Permissions: status is readable (`computer.permissions`); granting happens on the Mac (macOS UI).
+  **Non-goal:** the user operating Mac apps from the phone (no taps, keys or pointer are forwarded to any Mac app).
 - The desktop drops its card on `dialog_resolved` (it previously removed it only when it answered itself).
 
 ## 9. Store revisions and conflicts

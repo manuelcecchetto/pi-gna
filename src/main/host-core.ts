@@ -27,6 +27,7 @@ import type { BoardStore } from "./board";
 import type { BrowserManager } from "./browser/manager";
 import type { RemoteBrowser } from "./browser/remote-view";
 import type { CardImages } from "./card-images";
+import type { ComputerAgent } from "./computer/agent";
 import type { ComputerService } from "./computer/service";
 import type { ComputerStore } from "./computer/store";
 import type { Github } from "./github";
@@ -69,6 +70,7 @@ export interface HostDeps {
   uiState: UiStateStore;
   computerPolicy: ComputerStore;
   computerHelper: ComputerService;
+  computerAgent: ComputerAgent;
   laments: LamentStore;
   github: Github;
   atp: Atp;
@@ -98,6 +100,9 @@ export interface HostMethodDef {
 const method = <A>(scope: MethodScope, validate: (raw: any) => A, run: (ctx: HostContext, args: A) => unknown): HostMethodDef => ({ scope, validate, run });
 /** Arguments are used as sent, as the IPC handlers did before the table. */
 const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown) => method<A>(scope, (raw) => raw as A, run);
+
+/** Minimum gap between `computer.preview` calls of one client. */
+const PREVIEW_INTERVAL_MS = 1000;
 
 /** Turns a snapshot holds; earlier ones come page by page (`before`). */
 const SNAPSHOT_TURNS = 40;
@@ -131,9 +136,11 @@ export const project = (cwd: unknown): string => {
 };
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
+  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
+  /** clientId -> when it last asked for a Computer Use preview. */
+  const previews = new Map<string, number>();
   /** What a send names, as attachments: the caller's own uploads by id, or paths on the host (as the desktop picker gives them). */
   const resolveAttachments = async (ctx: HostContext, refs: AttachmentRef[] | undefined): Promise<PickedPath[]> => {
     if (refs === undefined) return [];
@@ -309,6 +316,15 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         native.showItemInFolder(computerHelper.installedApp);
       }
       return permissions;
+    }),
+    // A viewer may ask for a frame at most once per PREVIEW_INTERVAL_MS; the chat must hold the app (ComputerAgent.preview).
+    "computer.preview": any<{ handle: string }>("remote", (ctx, { handle }) => {
+      if (typeof handle !== "string") throw new HostError("bad_request", "handle is required");
+      const now = Date.now();
+      if (now - (previews.get(ctx.clientId) ?? 0) < PREVIEW_INTERVAL_MS) throw new HostError("rate_limited", "computer previews are limited to one per second");
+      previews.set(ctx.clientId, now);
+      if (previews.size > 200) for (const [id, at] of previews) if (now - at > PREVIEW_INTERVAL_MS) previews.delete(id);
+      return computerAgent.preview(handle);
     }),
     "computer.openSettings": method<{ pane: "accessibility" | "screen_recording" }>(
       "desktop",

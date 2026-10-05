@@ -69,6 +69,33 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
   return { handle, error };
 }
 
+/** Read-only view of the Mac app this chat is driving (Computer Use); gone when the chat holds none. Never controls it. */
+function ComputerPreview({ client, handle, running }: { client: HostClient; handle: string; running: boolean }) {
+  const [frame, setFrame] = useState<{ mimeType: string; data: string; app: string } | null>(null);
+  useEffect(() => {
+    if (!running) return setFrame(null);
+    let live = true;
+    const tick = () =>
+      client
+        .call("computer.preview", { handle })
+        .then((next) => live && setFrame(next))
+        .catch(() => undefined);
+    void tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [client, handle, running]);
+  if (!frame) return null;
+  return (
+    <div className="shrink-0 border-t border-line px-3 py-2" data-testid="computer-preview">
+      <div className="mb-1 text-[11.5px] text-muted">pi is using {frame.app} on the Mac (view only)</div>
+      <img alt={`${frame.app} on the Mac`} src={`data:${frame.mimeType};base64,${frame.data}`} className="max-h-48 w-full rounded-lg object-contain" />
+    </div>
+  );
+}
+
 export function ChatScreen({ client, route, back }: { client: HostClient; route: ChatRoute; back: () => void }) {
   const [attempt, setAttempt] = useState(0);
   const { handle, error } = useJoinedChat(client, route, attempt);
@@ -107,6 +134,7 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
               <Dialogs handle={session.handle} dialogs={session.dialogs} />
             </div>
           )}
+          <ComputerPreview client={client} handle={session.handle} running={session.running} />
           <MobileComposer client={client} session={session} />
         </>
       )}

@@ -371,6 +371,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     uiState,
     computerPolicy,
     computerHelper,
+    computerAgent,
     laments,
     github,
     atp,

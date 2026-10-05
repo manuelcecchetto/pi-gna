@@ -17,6 +17,7 @@ const children: ChildProcess[] = [];
 let dir: string;
 let bridge: AgentBridge;
 let service: ComputerService;
+let agent: ComputerAgent;
 let settings: ComputerSettings;
 let token: string;
 let answer: string | undefined;
@@ -71,7 +72,7 @@ beforeEach(async () => {
     abort: async (handle) => void aborted.push(handle),
   };
   const policy = { get: async () => settings, apply: async (op: ComputerOp) => void (settings = applyComputerOp(settings, op, 1)) };
-  const agent = new ComputerAgent(service, policy, host, { ownNames: ["pi-gna"] });
+  agent = new ComputerAgent(service, policy, host, { ownNames: ["pi-gna"] });
   bridge = new AgentBridge();
   bridge.route("/computer", computerRoute(() => agent));
   await bridge.start();
@@ -198,6 +199,31 @@ describe("POST /computer against a fake helper", () => {
     // The next call starts a fresh run and asks for approval again.
     expect((await post({ action: "get_app_state", app: "Notes" })).status).toBe(200);
     expect(chose).toHaveLength(2);
+  });
+
+  it("previews only the app the chat holds, read-only, and nothing once it is released or denied", async () => {
+    expect(await agent.preview("chat1")).toBeNull(); // holds nothing yet
+    await post({ action: "get_app_state", app: "Notes" });
+    expect(await agent.preview("chat1")).toEqual({ mimeType: "image/jpeg", data: "/9j/FAKE", app: "Notes" });
+    expect(await agent.preview("someone-else")).toBeNull();
+    const sent = await calls();
+    expect(sent.filter((c) => c === "screenshot:com.example.Notes")).toHaveLength(2); // the state's own plus the preview
+    expect(sent.some((c) => c === "screenshot")).toBe(false); // never a screen-wide capture
+    await post({ action: "end" });
+    expect(await agent.preview("chat1")).toBeNull();
+
+    answer = "Deny";
+    await post({ action: "get_app_state", app: "Calc" });
+    expect(await agent.preview("chat1")).toBeNull();
+    await post({ action: "click", app: "Terminal", element_index: 0 });
+    expect(await agent.preview("chat1")).toBeNull();
+  });
+
+  it("Stop (the run ending) hides the overlay and ends the preview", async () => {
+    await post({ action: "get_app_state", app: "Notes" });
+    await agent.release("chat1"); // what host.onRunEnd does after chat.interrupt aborts the run
+    expect(await calls()).toContain("overlay_hide:com.example.Notes");
+    expect(await agent.preview("chat1")).toBeNull();
   });
 
   it("keeps the fake helper's state shape in line with AppStateResult", async () => {

@@ -197,6 +197,16 @@ describe("computer route locks and cleanup", () => {
     expect(t.aborted).toEqual([]);
   });
 
+  it("previews the latest held app, and none after Computer Use is turned off", async () => {
+    const t = setup();
+    await t.agent.run("a1", click("Calculator"));
+    await t.agent.run("a1", click("TextEdit"));
+    expect(await t.agent.preview("a1")).toEqual({ mimeType: "image/jpeg", data: "AAAA", app: "TextEdit" });
+    expect(t.calls.at(-1)).toEqual({ method: "screenshot", params: { app: { bundleId: "com.apple.TextEdit" } } });
+    t.policy.apply({ type: "disable" });
+    expect(await t.agent.preview("a1")).toBeNull();
+  });
+
   it("takes the screenshot of the window the state came from", async () => {
     const t = setup();
     await t.agent.run("a1", { action: "get_app_state", app: "Notes" });

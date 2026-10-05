@@ -18,6 +18,7 @@ const deps = {
   uiState: {},
   computerPolicy: {},
   computerHelper: {},
+  computerAgent: { preview: async (handle: string) => (handle === "held" ? { mimeType: "image/jpeg", data: "AAAA", app: "Calc" } : null) },
   laments: {},
   github: { project: record("github.project"), list: record("github.list") },
   atp: { watch: record("atp.watch") },
@@ -78,6 +79,20 @@ describe("host methods table", () => {
     expect(() => dispatch(core, desktop(), "browser.viewport", { id: 3 })).toThrow("Invalid browser tab");
     expect(() => dispatch(core, desktop(), "browser.viewport", { id: "t", request: [] })).toThrow("Invalid viewport request");
     expect(() => dispatch(core, desktop(), "computer.openSettings", { pane: "x" })).toThrow("Unknown settings pane");
+  });
+
+  it("limits computer.preview to one per second per client and passes the handle through", async () => {
+    vi.useFakeTimers();
+    try {
+      await expect(dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held" })).resolves.toMatchObject({ app: "Calc" });
+      expect(() => dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held" })).toThrow(expect.objectContaining({ code: "rate_limited" }));
+      await expect(dispatch(core, phone({ clientId: "p2" }), "computer.preview", { handle: "other" })).resolves.toBeNull();
+      vi.advanceTimersByTime(1000);
+      await expect(dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held" })).resolves.toMatchObject({ app: "Calc" });
+      expect(() => dispatch(core, phone(), "computer.preview", {})).toThrow(expect.objectContaining({ code: "bad_request" }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("runs a valid call", async () => {

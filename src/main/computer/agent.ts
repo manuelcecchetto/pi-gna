@@ -125,6 +125,25 @@ export class ComputerAgent {
     await Promise.allSettled(held.map((bundleId) => this.service.call("overlay_hide", { app: { bundleId } })));
   }
 
+  /**
+   * A read-only frame (JPEG) of the app this chat holds right now, for a phone watching the chat; null when it holds none.
+   * Never an app the chat does not hold, never the screen: the target comes from the chat's own held apps, which passed
+   * the denylist and the user's approval, and is checked against both again. Takes no lock and does not count as activity.
+   */
+  async preview(handle: string): Promise<{ mimeType: "image/jpeg"; data: string; app: string } | null> {
+    const session = this.sessions.get(handle);
+    if (!session || !(await this.policy.get()).enabled) return null;
+    const [bundleId, held] = [...session.apps].at(-1) ?? [];
+    if (!bundleId || !held || this.denied(bundleId, held.name) || this.locks.get(bundleId) !== handle) return null;
+    try {
+      const shot = await this.service.call("screenshot", { app: { bundleId } });
+      // The chat may have released the app while the helper was capturing.
+      return session.apps.has(bundleId) ? { mimeType: "image/jpeg", data: shot.jpeg, app: held.name } : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** pi-gna quits: release every chat. */
   async releaseAll(): Promise<void> {
     await Promise.allSettled([...this.sessions.keys()].map((handle) => this.release(handle)));
