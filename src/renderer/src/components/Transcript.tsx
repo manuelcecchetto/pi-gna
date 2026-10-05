@@ -119,9 +119,9 @@ export function Transcript({ session, earlier, turns }: { session: SessionState;
         onWheel={onWheel}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
-        className="relative min-h-0 flex-1 overflow-y-auto"
+        className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
       >
-        <div ref={content} className="mx-auto flex max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
+        <div ref={content} className="mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
           {hidden === 0 && earlier && earlier.count > 0 && (
             <button
               type="button"
