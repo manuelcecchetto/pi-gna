@@ -4,9 +4,9 @@ import { ChatUiProvider, useChatActions, useChatUiHandle, useChatUi } from "../l
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
-import { openFileLink, resolveFileLinks } from "../lib/preview";
+import { loadChatImages, openFileLink, resolveFileLinks } from "../lib/preview";
 
-function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void): void {
+function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void, openLightbox: (src: string) => void): void {
   const target = event.target as HTMLElement;
   const copy = target.closest<HTMLButtonElement>("[data-copy]");
   if (copy) {
@@ -16,6 +16,12 @@ function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string
     setTimeout(() => {
       copy.textContent = "Copy";
     }, 1200);
+    return;
+  }
+  // An embedded image opens full screen, like tool-result images.
+  const image = target.closest<HTMLElement>("[data-image]")?.querySelector("img");
+  if (image) {
+    openLightbox(image.src);
     return;
   }
   const file = target.closest<HTMLElement>("[data-file]");
@@ -42,21 +48,21 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean;
   visuals?: boolean;
 }) {
-  const { openExternal } = useChatActions();
+  const { openExternal, openLightbox } = useChatActions();
   const ui = useChatUiHandle(); // the frames mount in roots of their own, which carry it along
   const enabled = useChatUi((s) => s.settings.visuals) && visuals;
   const html = useMemo(() => {
     // An unfinished visual fence streams as a placeholder instead of raw source.
     const src = enabled && streaming ? text.replace(OPEN_VISUAL, "$1*Drawing visual…*\n") : text;
-    return renderMarkdown(src, { visuals: enabled });
+    return renderMarkdown(src, { visuals: enabled, localImages: true });
   }, [text, enabled, streaming]);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!streaming) highlightWithin(ref.current);
   }, [html, streaming]);
-  // File links settle once the message is complete, not on every streamed token.
+  // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
-    if (!streaming) void resolveFileLinks(ref.current);
+    if (!streaming) void resolveFileLinks(ref.current).then(() => loadChatImages(ref.current));
   }, [html, streaming]);
   useEffect(() => {
     const root = ref.current;
@@ -93,7 +99,7 @@ export const Markdown = memo(function Markdown({
     };
   }, [html, streaming, enabled, ui]);
   return (
-    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal)}
+    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal, openLightbox)}
       onKeyDown={(event) => {
         const file = (event.target as HTMLElement).closest<HTMLElement>("[data-file]");
         if (file && event.key === "Enter") openFileLink(file, event);

@@ -5,7 +5,8 @@
 // script) and opens each file through the browser_open bridge the way the agent does. Checks the tab state, load, a
 // non-blank screenshot and kind-specific DOM facts; then confinement (a web tab and guessed tokens cannot reach local
 // files, traversal and symlinks 404, a closed tab's token dies), live reload and a chat file link. Prints a pass/fail
-// table; exit code 1 on any failure. Not covered: mp4 (no encoder here; video shares the audio path) and the eyeball pass
+// table; exit code 1 on any failure. The chat answer also embeds an image (`![alt](path)`), which must load and open
+// the lightbox. Not covered: mp4 (no encoder here; video shares the audio path) and the eyeball pass
 // (themes, split/full pane, pop-out window) in docs/FILE_PREVIEW.md.
 import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -136,7 +137,7 @@ writeFileSync(join(files, "linked.md"), "# Linked from chat\n");
 writeFileSync(join(files, ".env"), "SECRET=1\n");
 writeFileSync(join(outside, "secret.txt"), "top secret\n");
 symlinkSync(join(outside, "secret.txt"), join(files, "escape.txt"));
-writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}) and [data](${join(files, "data.json")}:2).\n`);
+writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}) and [data](${join(files, "data.json")}:2).\n\n![a picture](${join(files, "pic.png")}) ![gone](missing.png)\n`);
 
 // A web page to attack the previews from.
 const server = http.createServer((_req, res) => {
@@ -335,6 +336,16 @@ try {
     await appWindow(`document.querySelector("[data-file$='linked.md']")?.click()`);
     const opened = await until("the preview tab", async () => (await state()).tabs.find((t) => t.preview?.path === join(files, "linked.md")), 8000).catch(() => undefined);
     check("chat: clicking the link opens a preview tab", !!opened, opened ? opened.preview.name : "no tab");
+  }
+  const picture = await until("the embedded image", () => appWindow(`(() => { const i = document.querySelector(".chat-image img"); return i && i.complete && i.naturalWidth ? i.naturalWidth + "x" + i.naturalHeight + "|" + i.alt : ""; })()`), 8000).catch(() => "");
+  check("chat: an embedded image renders inline", picture === "40x30|a picture", picture);
+  const missing = await appWindow(`(() => { const el = [...document.querySelectorAll(".chat-image")].find((e) => e.textContent === "gone"); return el ? el.className + "|" + el.title : ""; })()`);
+  check("chat: a missing embedded image is muted text", /file-missing/.test(missing) && /missing\.png/.test(missing), missing);
+  if (picture) {
+    const before = (await state()).tabs.length;
+    await appWindow(`document.querySelector(".chat-image img").click()`);
+    const zoomed = await until("the lightbox", () => appWindow(`(() => { const i = document.querySelector("button.fixed img"); return i?.src.startsWith("data:image/png") ? "open" : ""; })()`), 4000).catch(() => "");
+    check("chat: clicking the image opens the lightbox, not a preview", zoomed === "open" && (await state()).tabs.length === before, `${zoomed} tabs ${before}->${(await state()).tabs.length}`);
   }
 } catch (error) {
   check("run", false, error instanceof Error ? error.message : String(error));

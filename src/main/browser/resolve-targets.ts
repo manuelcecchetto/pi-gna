@@ -1,8 +1,8 @@
 // Which chat file links exist: link targets -> absolute file path or null, with a short-lived cache so a
-// streaming answer's repeated renders stay cheap.
-import { stat } from "node:fs/promises";
+// streaming answer's repeated renders stay cheap. Also the bytes of the images an answer embeds (`![alt](path)`).
+import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { parseLinkTarget } from "../../shared/preview";
+import { extensionOf, kindFor, parseLinkTarget } from "../../shared/preview";
 
 const TTL_MS = 5000;
 const MAX_ENTRIES = 500;
@@ -27,6 +27,30 @@ async function resolveOne(cwd: string, target: string): Promise<string | null> {
   if (cache.size >= MAX_ENTRIES) for (const [k, v] of cache) if (now - v.at >= TTL_MS || cache.size >= MAX_ENTRIES) cache.delete(k);
   cache.set(key, { at: now, path });
   return path;
+}
+
+/** An embedded image larger than this stays a file link: the bytes travel to the renderer as base64. */
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
+const IMAGE_TYPES: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", avif: "image/avif", bmp: "image/bmp",
+  ico: "image/x-icon", svg: "image/svg+xml",
+};
+
+/**
+ * The image a chat answer embeds with `![alt](target)`, resolved like a file link; null when the target is missing,
+ * not an image by extension, or too large. An `<img>` never runs an SVG's scripts.
+ */
+export async function readPreviewImage(cwd: string, target: string): Promise<{ mimeType: string; data: string } | null> {
+  const path = await resolveOne(cwd, target);
+  const mimeType = path && kindFor(path) === "image" ? IMAGE_TYPES[extensionOf(path)] : undefined;
+  if (!path || !mimeType) return null;
+  try {
+    if ((await stat(path)).size > MAX_IMAGE_BYTES) return null;
+    return { mimeType, data: (await readFile(path)).toString("base64") };
+  } catch {
+    return null;
+  }
 }
 
 /** Targets resolve against the chat's cwd (its worktree for worktree chats). */

@@ -1,6 +1,7 @@
 // Markdown -> sanitized HTML. Model output is untrusted: DOMPurify always runs, remote images are
 // blocked by CSP, and web links open outside the app, local file links
-// become `data-file` chips the component wires to the file preview (docs/FILE_PREVIEW.md, Chat links).
+// become `data-file` chips the component wires to the file preview, and local images (`![alt](path)`)
+// become `data-image` placeholders it loads through main (docs/FILE_PREVIEW.md, Chat links).
 import DOMPurify from "dompurify";
 import { Marked } from "marked";
 import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget } from "../../../shared/preview";
@@ -11,6 +12,8 @@ const escapeHtml = (text: string) =>
 export interface MarkdownOptions {
   /** Turn complete ```visual fences into placeholders for the sandboxed frame. */
   visuals?: boolean;
+  /** Turn local images (`![alt](path)`) into placeholders the chat loads; the file viewer resolves its own. */
+  localImages?: boolean;
 }
 
 /** Fragment cap, shared with the frame host (docs/DESIGN.md, Visuals). */
@@ -18,6 +21,7 @@ export const VISUAL_MAX_BYTES = 64 * 1024;
 
 // marked renderers have no per-call options, so markdownToHtml sets this around each synchronous parse.
 let visualsOn = false;
+let localImagesOn = false;
 
 /** True when the fence's raw text ends with a closing fence line (false while streaming). */
 function isClosedFence(raw: string): boolean {
@@ -54,6 +58,16 @@ const marked = new Marked({
       const kind = kindFor(parseLinkTarget(href, "/")?.path ?? href);
       return `<span class="file-link" role="link" tabindex="0" data-file="${escapeHtml(href.trim())}" data-kind="${kind}">${this.parser.parseInline(tokens)}</span>`;
     },
+    // A local image is a placeholder showing its alt text; the component swaps in the image once it loads.
+    // Other local targets read as a file link, web images stay `<img>` for CSP to block.
+    image({ href, text }) {
+      if (!localImagesOn || !isLocalLinkHref(href)) return false;
+      const target = escapeHtml(href.trim());
+      const kind = kindFor(parseLinkTarget(href, "/")?.path ?? href);
+      const label = escapeHtml(text || href.trim().split("/").pop() || href);
+      if (kind !== "image") return `<span class="file-link" role="link" tabindex="0" data-file="${target}" data-kind="${kind}">${label}</span>`;
+      return `<span class="file-link chat-image" role="link" tabindex="0" data-image="${target}" data-file="${target}" data-kind="image">${label}</span>`;
+    },
     // Inline code that reads as a path is a candidate; the component links it only if the file exists.
     codespan({ text }) {
       return looksLikePath(text) ? `<code data-path="${escapeHtml(text.trim())}">${escapeHtml(text)}</code>` : false;
@@ -68,13 +82,15 @@ const marked = new Marked({
 /** Markdown -> HTML before sanitizing (exported for tests). */
 export function markdownToHtml(source: string, options: MarkdownOptions = {}): string {
   visualsOn = options.visuals === true;
+  localImagesOn = options.localImages === true;
   try {
     return marked.parse(source, { async: false }) as string;
   } finally {
     visualsOn = false;
+    localImagesOn = false;
   }
 }
 
 export function renderMarkdown(source: string, options: MarkdownOptions = {}): string {
-  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-kind", "data-path"], FORBID_TAGS: ["style", "form", "input"] });
+  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-kind", "data-path", "data-image"], FORBID_TAGS: ["style", "form", "input"] });
 }
