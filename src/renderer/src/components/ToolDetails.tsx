@@ -4,6 +4,7 @@ import { langFromPath } from "../lib/highlight";
 import type { ToolRun } from "../../../shared/session-state";
 import { Ansi } from "./primitives";
 import { CodeView } from "./Markdown";
+import { previewClick } from "../lib/preview";
 
 const MAX_LINES = 400;
 
@@ -94,15 +95,37 @@ export function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function Section({ file, children }: { file?: string; children: React.ReactNode }) {
+/** A file path that previews the file on click (cmd-click: new tab). */
+export function FileLink({ path, children, className = "" }: { path: string; children?: React.ReactNode; className?: string }) {
+  return (
+    <span role="link" onClick={previewClick(path)} title="Preview (⌘-click: new tab)" className={`cursor-pointer hover:text-fg hover:underline ${className}`}>
+      {children ?? path}
+    </span>
+  );
+}
+
+function Section({ file, path, children }: { file?: string; path?: string; children: React.ReactNode }) {
   return (
     <div className="border-t border-line first:border-t-0">
-      {file && <div className="selectable px-3 pt-2 font-mono text-[11.5px] text-muted">{file}</div>}
+      {file && (
+        <div className="selectable px-3 pt-2 font-mono text-[11.5px] text-muted">
+          {path ? <FileLink path={path}>{file}</FileLink> : file}
+        </div>
+      )}
       {children}
     </div>
   );
 }
 
+
+function PathBar({ path }: { path: string }) {
+  if (!path) return null;
+  return (
+    <div className="selectable border-b border-line px-3 py-1.5 font-mono text-[11.5px] text-muted">
+      <FileLink path={path} />
+    </div>
+  );
+}
 
 export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
   const args = call.arguments;
@@ -131,12 +154,16 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
       const fileDiffs = Array.isArray(details.fileDiffs) ? (details.fileDiffs as { path: string; status?: string; diff: string }[]) : undefined;
       if (fileDiffs?.length) {
         body = fileDiffs.map((file) => (
-          <Section key={file.path} file={`${file.status ?? "M"} ${file.path}`}>
+          <Section key={file.path} file={`${file.status ?? "M"} ${file.path}`} path={file.path}>
             <DiffView diff={file.diff} />
           </Section>
         ));
       } else if (str(details.diff)) {
-        body = <DiffView diff={str(details.diff)} />;
+        body = (
+          <Section file={str(args.path)} path={str(args.path)}>
+            <DiffView diff={str(details.diff)} />
+          </Section>
+        );
       } else if (Array.isArray(args.edits)) {
         // Still running or failed before producing a diff: show the requested replacements.
         body = (args.edits as { oldText?: string; newText?: string }[]).map((edit, index) => (
@@ -153,6 +180,7 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
     case "write":
       body = (
         <>
+          <PathBar path={str(args.path)} />
           <Clipped text={str(args.content)}>{(visible) => <CodeView code={visible} lang={langFromPath(str(args.path))} className="max-h-96 overflow-auto" />}</Clipped>
           {failed && (
             <Section>
@@ -167,6 +195,7 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
         <Output text={text} error />
       ) : (
         <>
+          <PathBar path={str(args.path)} />
           {text.trim() && <Clipped text={text}>{(visible) => <CodeView code={visible} lang={langFromPath(str(args.path))} className="max-h-96 overflow-auto" />}</Clipped>}
         </>
       );

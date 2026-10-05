@@ -18,6 +18,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "r
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
+import { previewClick } from "../lib/preview";
 import { type RailItem, railItems } from "../lib/rail";
 import { distanceToEnd, END_SLACK, followsAfterScroll } from "../lib/turn-scroll";
 import type { SessionState } from "../../../shared/session-state";
@@ -466,7 +467,8 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
               <span
                 key={mention.path}
                 title={mention.path}
-                className="flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 font-mono text-[11.5px] text-muted"
+                onClick={mention.isDir ? undefined : previewClick(mention.path)}
+                className={`flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 font-mono text-[11.5px] text-muted ${mention.isDir ? "" : "cursor-pointer hover:bg-raised hover:text-fg"}`}
               >
                 <Icon size={12} className="shrink-0 text-faint" />
                 <span className="truncate">{tildify(mention.path, homeDir)}</span>

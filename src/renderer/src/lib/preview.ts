@@ -2,17 +2,33 @@
 import { File, FileCode, FileImage, FileText, Film, Music, type LucideIcon } from "lucide-react";
 import type { PreviewKind, PreviewOpenOptions } from "../../../shared/preview";
 import { setPane, store, toast } from "../state/app";
+import { resolveFilePath } from "./preview-path";
 
 /** Opens a local file in a preview tab; the active chat's project is the root so relative links work. */
 export async function openPreviewPath(path: string, options: PreviewOpenOptions = {}): Promise<void> {
   const state = store.get();
   const cwd = state.active ? state.sessions[state.active]?.cwd : undefined;
+  const resolved = resolveFilePath(path, cwd, window.studio.homeDir);
+  if (!resolved) return toast("Could not resolve the file path", "error");
   setPane({ open: true });
   try {
-    await window.studio.browser.preview(path, { root: cwd, ...options });
+    await window.studio.browser.preview(resolved, { root: cwd, ...options });
   } catch (error) {
     toast(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : "Could not open the file", "error");
   }
+}
+
+/**
+ * Click handler for a file path in the transcript: plain click previews, cmd/ctrl-click opens a new tab.
+ * Ignored while text is being selected so the path stays copyable.
+ */
+export function previewClick(path: string, line?: number) {
+  return (event: { metaKey: boolean; ctrlKey: boolean; stopPropagation: () => void }): void => {
+    // The phone shares the transcript but has no preview tabs.
+    if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
+    event.stopPropagation();
+    void openPreviewPath(path, { line, newTab: event.metaKey || event.ctrlKey });
+  };
 }
 
 /** The native file dialog, then a preview of the choice. */

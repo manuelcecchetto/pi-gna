@@ -4,6 +4,7 @@ import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
+import { previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
 import type { SessionState } from "../../../shared/session-state";
 import {
@@ -465,7 +466,10 @@ function AttachmentChips({ handle, attachments, card }: { handle: string; attach
               <img alt={attachment.name} className="h-14 w-14 rounded-lg border border-line object-cover" src={`data:${attachment.mimeType};base64,${attachment.data}`} />
             </button>
           ) : (
-            <div className="flex h-14 max-w-56 items-center gap-2 rounded-lg border border-line bg-sunken px-3">
+            <div
+              onClick={attachment.path && !attachment.isDir ? previewClick(attachment.path) : undefined}
+              className={`flex h-14 max-w-56 items-center gap-2 rounded-lg border border-line bg-sunken px-3 ${attachment.path && !attachment.isDir ? "cursor-pointer hover:bg-raised" : ""}`}
+            >
               {attachment.isDir ? <Folder size={15} className="shrink-0 text-muted" /> : <FileText size={15} className="shrink-0 text-muted" />}
               <span className="truncate text-[12.5px] text-fg">
                 {attachment.name}
