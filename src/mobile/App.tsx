@@ -8,6 +8,7 @@ import { Lightbox } from "./Lightbox";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { useRoute } from "./nav";
 import { LamentsScreen } from "./Laments";
+import { GithubScreen } from "./Github";
 import { Chats, PageSoon, Projects } from "./Screens";
 import { SettingsScreen } from "./SettingsScreen";
 import { noticeFor } from "./notices";
@@ -72,7 +73,8 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
         {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
         {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
-        {route.screen === "page" && route.page !== "laments" && <PageSoon route={route} back={back} />}
+        {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
+        {route.screen === "page" && route.page !== "laments" && route.page !== "github" && <PageSoon route={route} back={back} />}
         {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} />}
       </div>
       <Toasts />

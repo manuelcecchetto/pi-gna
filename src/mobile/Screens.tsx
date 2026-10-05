@@ -51,7 +51,7 @@ const row = "flex min-h-14 w-full items-center gap-3 border-b border-line px-4 p
 const name = (cwd: string) => cwd.split("/").filter(Boolean).at(-1) ?? cwd;
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-function copy(text: string): void {
+export function copy(text: string): void {
   navigator.clipboard.writeText(text).then(
     () => toast("Copied"),
     () => toast("Could not copy", "warning"),
