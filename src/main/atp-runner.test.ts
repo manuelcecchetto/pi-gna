@@ -314,6 +314,29 @@ describe("the ATP runner", () => {
 });
 
 describe("orchestrator chats", () => {
+  it("does not expose a default-model orchestrator when the configured model cannot be selected", async () => {
+    h.tasks.useModel.mockRejectedValueOnce(new Error("model selection rejected"));
+    await expect(h.runs.orchestrator(client, "/repo", PLAN)).rejects.toThrow("model selection rejected");
+    expect(h.runs.state().orchestrators[PLAN]).toBeUndefined();
+    expect(h.closed).toEqual(["chat1"]);
+    await h.runs.orchestrator(client, "/repo", PLAN);
+    expect(h.host.open).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not hand a second client the chat before its model selection finishes", async () => {
+    let finish!: () => void;
+    h.tasks.useModel.mockImplementationOnce(() => new Promise<undefined>((resolve) => { finish = () => resolve(undefined); }));
+    const first = h.runs.orchestrator(client, "/repo", PLAN);
+    await vi.waitFor(() => expect(h.tasks.useModel).toHaveBeenCalledOnce());
+    let joined = false;
+    const second = h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", PLAN).then((result) => { joined = true; return result; });
+    await Promise.resolve();
+    expect(joined).toBe(false);
+    expect(h.runs.state().orchestrators[PLAN]).toBeUndefined();
+    finish();
+    expect((await second).handle).toBe((await first).handle);
+  });
+
   it("starts one per plan on the orchestrator model, and joins it for a second client", async () => {
     const first = await h.runs.orchestrator(client, "/repo", PLAN);
     expect(h.host.open).toHaveBeenCalledWith({ cwd: "/repo", atp: { role: "orchestrator", plan: PLAN } }, { client });

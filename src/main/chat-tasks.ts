@@ -217,7 +217,7 @@ export class ChatTasks {
       if (!ready.success) throw new Error(ready.error ?? "pi did not start");
       if (setup.card) await this.attach(handle, setup.card, setup.name).catch((error: Error) => notices.push({ level: "warning", text: error.message }));
       if (setup.lament) await this.linkLament(handle, setup.lament, notices);
-      if (setup.model) await this.useModel(handle, setup.model, notices);
+      if (setup.model) await this.useModel(handle, setup.model);
       // Registered before the prompt: the run's end is what ends the lease.
       this.running.set(handle, { hold, closeWhenDone: setup.closeWhenDone === true });
       const sent = await host.command(handle, { type: "prompt", message: setup.prompt });
@@ -271,16 +271,20 @@ export class ChatTasks {
     }
   }
 
-  /** Switch a new chat to a task's model. For this chat only: pi keeps your default model and thinking level. */
-  async useModel(handle: string, want: TaskModel, notices: TaskNotice[] = []): Promise<void> {
+  /** Confirm the task's exact model before prompting; never silently send work on a default model.
+   * Session-only: pi keeps the user's default model and thinking level. */
+  async useModel(handle: string, want: TaskModel): Promise<void> {
     const { host } = this.deps;
     const models = (await host.command(handle, { type: "get_available_models" })) as RpcResponse<{ models: Model[] }>;
+    if (!models.success) throw new Error(`get_available_models failed: ${models.error ?? "pi could not list models"}`);
     const model = pickModel(models.data?.models ?? [], want, host.stateOf(handle)?.model?.provider);
-    if (!model) {
-      notices.push({ level: "warning", text: `${want.provider ? `${want.provider}/` : ""}${want.id} is not available, so this chat runs on your default model` });
-      return;
+    if (!model) throw new Error(`${want.provider ? `${want.provider}/` : ""}${want.id} is not available; no task prompt was sent`);
+    const selected = (await host.command(handle, { type: "set_model", provider: model.provider, modelId: model.id })) as RpcResponse<Model>;
+    if (!selected.success) throw new Error(`set_model failed for ${model.provider}/${model.id}: ${selected.error ?? "pi refused the model switch"}`);
+    if (selected.data?.provider !== model.provider || selected.data?.id !== model.id) {
+      throw new Error(`set_model did not confirm ${model.provider}/${model.id}; no task prompt was sent`);
     }
-    await host.command(handle, { type: "set_model", provider: model.provider, modelId: model.id });
-    await host.command(handle, { type: "set_thinking_level", level: want.thinking });
+    const thinking = await host.command(handle, { type: "set_thinking_level", level: want.thinking });
+    if (!thinking.success) throw new Error(`set_thinking_level failed: ${thinking.error ?? "pi refused the thinking level"}`);
   }
 }
