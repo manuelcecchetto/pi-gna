@@ -20,6 +20,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Phone: attach photos (library or camera), files and files or folders on the Mac to a message. Uploads are kept on the Mac for 30 days.
 - Phone: tool calls open in a sheet (diffs scroll sideways, bash output keeps its colors, copy command or output), Expand all, images open in a zoomable viewer (long-press to save or copy), a turn list with bookmarks replaces the Mac's hover rail, tap a message for its time, and inline visuals draw on tap in a sandboxed frame.
 - ATP page: new plans are written to `docs/plans/draft/` instead of the project root.
+- The window opens where you left it (size, position and zoom); the first launch, or one after the display it was on is gone, fills the screen's work area instead of a centered 1320×880 window.
 
 ## 0.4.5 - 2026-10-04
 
