@@ -167,8 +167,12 @@ export interface HostClientOptions {
   onUnauthorized?: () => void;
 }
 
+/** Sees each chat event once, as it is applied to a chat on screen (not the snapshots a resync replaces it with). */
+export type ChatEventListener = (handle: string, event: HostEvent, session: SessionState) => void;
+
 export class HostClient {
   readonly store: Store<ClientState>;
+  private readonly chatListeners = new Set<ChatEventListener>();
   /** The SSE stream id, which doubles as the client id for leases and presence. */
   readonly streamId: string;
   private readonly env: Env;
@@ -425,6 +429,12 @@ export class HostClient {
     else this.apply(envelope);
   }
 
+  /** Subscribe to chat events as they apply; `session` is the state before the event. Returns the unsubscribe. */
+  onChatEvent(listener: ChatEventListener): () => void {
+    this.chatListeners.add(listener);
+    return () => void this.chatListeners.delete(listener);
+  }
+
   private apply(envelope: EventEnvelope): void {
     if (envelope.topic === "global") {
       this.store.set((s) => ({ ...s, global: applyGlobal(s.global, envelope.event as GlobalEvent) }));
@@ -434,6 +444,7 @@ export class HostClient {
     this.store.set((s) => {
       const entry = s.chats[handle];
       if (!entry?.session || envelope.seq <= entry.seq) return s;
+      for (const listener of this.chatListeners) listener(handle, envelope.event as HostEvent, entry.session);
       const session = reduceHostEvent(entry.session, envelope.event as HostEvent, Date.now());
       return { ...s, chats: { ...s.chats, [handle]: { ...entry, session, seq: envelope.seq } } };
     });

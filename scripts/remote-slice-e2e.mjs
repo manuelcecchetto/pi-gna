@@ -81,6 +81,7 @@ function build() {
 function seed(ports) {
   mkdirSync(project, { recursive: true });
   spawnSync("git", ["init", "-q"], { cwd: project });
+  writeFileSync(join(project, "notes-alpha.md"), "alpha\n");
   const dir = join(sessionsDir, `--${project.slice(1).replaceAll("/", "-")}--`);
   mkdirSync(dir, { recursive: true });
   const id = "01a20000-0000-7000-8000-000000000002";
@@ -776,12 +777,123 @@ async function screens({ desktop, ports }, { handle, A }) {
   await sleep(800);
   await shot("7-stopped");
   check(!(await exists('[data-testid="stop"]')), "the phone no longer offers Stop");
+  await composerChecks({ phone, A, handle, shot, text, tap, exists, present });
   if (flag("--hold")) {
     log(`holding on the mobile page; debug port ${ports.debug}`);
     await new Promise(() => undefined);
   }
   await mainEval(`${view}.debugger.detach(), globalThis.__sliceWin.destroy(), true`);
   inspector.close();
+}
+
+/** The phone's composer chrome (T26): model and thinking sheets, commands, mentions, context meter, queue, extension UI. */
+async function composerChecks({ phone, A, handle, shot, text, tap, exists, present }) {
+  log("mobile composer parity");
+  const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);
+  const clickText = (testId, label) => phone.eval(`(() => { const e = [...document.querySelectorAll('[data-testid="${testId}"]')].find((x) => x.innerText.includes(${JSON.stringify(label)})); if (!e) return false; e.click(); return true; })()`);
+  const value = () => phone.eval("document.querySelector('textarea').value");
+  const type = async (t) => {
+    await phone.eval("document.querySelector('textarea').focus()");
+    await phone.send("Input.insertText", { text: t });
+  };
+  const clear = async () => {
+    await phone.eval("(() => { const t = document.querySelector('textarea'); t.focus(); t.select(); })()");
+    await phone.send("Input.insertText", { text: "" });
+    await phone.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+    await phone.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  };
+  const state = async () => (await A.ok("chat.command", { handle, command: { type: "get_state" } })).data;
+  const label = (testId) => phone.eval(`document.querySelector('[data-testid="${testId}"]')?.innerText ?? ''`);
+  const idle = () => until("the run to end", async () => !(await exists('[data-testid="stop"]')), 30_000, 100);
+
+  // Model and thinking sheets, calling chat.command on the host.
+  await until("the model chip", () => exists('[data-testid="model-chip"]'));
+  check((await label("model-chip")).trim().startsWith("Fake"), "the model chip names the model", await label("model-chip"));
+  check(!(await exists('[data-testid="thinking-chip"]')), "no thinking chip for a model without reasoning");
+  await click("model-chip");
+  await until("the model sheet", () => exists('[data-testid="model-option"]'));
+  await shot("8-model-sheet");
+  check(await clickText("model-option", "Fake Large"), "the sheet lists Fake Large and the phone taps it");
+  await until("the new model", async () => (await label("model-chip")).includes("Fake Large"));
+  check((await state()).model.id === "fake-large", "the host runs the chosen model");
+  await until("the thinking chip", () => exists('[data-testid="thinking-chip"]'));
+  await click("thinking-chip");
+  await until("the thinking sheet", () => exists('[data-testid="thinking-option"]'));
+  await shot("9-thinking-sheet");
+  check(await clickText("thinking-option", "high"), "the phone picks the thinking level high");
+  await until("the level on the chip", async () => (await label("thinking-chip")).includes("high"));
+  check((await state()).thinkingLevel === "high", "the host runs the chosen thinking level");
+
+  // Slash commands and @ mentions as touch lists.
+  await type("/");
+  await until("the command list", () => exists('[data-testid="menu-item"]'));
+  await shot("10-commands");
+  check((await text()).includes("/compact"), "typing / lists pi's commands");
+  check(await clickText("menu-item", "/review"), "the phone taps a command");
+  check((await value()) === "/review ", "the command lands in the composer", await value());
+  await clear();
+  await type("look at @notes-al");
+  await until("the file list", () => exists('[data-testid="menu-item"]'));
+  await shot("11-mentions");
+  check(await clickText("menu-item", "notes-alpha.md"), "typing @ lists project files and the phone taps one");
+  check((await value()) === "look at @notes-alpha.md ", "the mention lands in the composer", await value());
+  await clear();
+
+  // Context meter sheet and Compact now.
+  await until("the context meter", () => phone.eval(`!!document.querySelector('button[aria-label^="Context usage"]')`));
+  check((await phone.eval(`document.querySelector('button[aria-label^="Context usage"]').innerText`)).includes("25%"), "the meter shows the context share");
+  await phone.eval(`document.querySelector('button[aria-label^="Context usage"]').click()`);
+  await until("the context sheet", () => exists('[data-testid="context-sheet"]'));
+  await shot("12-context");
+  const sheetText = await phone.eval(`document.querySelector('[data-testid="context-sheet"]').innerText`);
+  check(/Auto-compacts at/.test(sheetText) && /Cache hit/.test(sheetText) && /Compact now/.test(sheetText), "the sheet shows tokens, the auto-compaction point, cache hits and Compact now", sheetText.slice(0, 200));
+  check(await tap("Compact now"), "the phone taps Compact now");
+  await until("the meter after compaction", async () => (await phone.eval(`document.querySelector('button[aria-label^="Context usage"]')?.innerText ?? ''`)).includes("10%"), 20_000, 200);
+  check(true, "the context meter follows the compaction");
+
+  // The queue card: a run with two follow-ups.
+  await type("queue run [lines=300][delay=100]");
+  await click("send");
+  await until("the run", () => exists('[data-testid="stop"]'));
+  for (const t of ["follow one", "follow two"]) {
+    await type(t);
+    await until("Queue to enable", () => phone.eval(`!document.querySelector('[data-testid="queue"]').disabled`));
+    await click("queue");
+    await until("the draft to clear", async () => (await value()) === "");
+  }
+  await until("two queue rows", async () => (await phone.eval(`document.querySelectorAll('[data-testid="queue-row"]').length`)) === 2);
+  await shot("13-queue");
+  check(await phone.eval(`!!document.querySelector('[data-testid="queue-steer"]') && !!document.querySelector('[data-testid="queue-edit"]') && !!document.querySelector('[data-testid="queue-delete"]')`), "queue rows offer Steer now, Edit and Remove");
+  await phone.eval(`document.querySelector('[data-testid="queue-steer"]').click()`);
+  await until("a steering row", () => phone.eval(`!!document.querySelector('[data-testid="queue-row"][data-kind="steering"]')`));
+  check(true, "Steer now moves a follow-up to steering");
+  await phone.eval(`[...document.querySelectorAll('[data-testid="queue-row"]')].at(-1).querySelector('[data-testid="queue-edit"]').click()`);
+  await until("the edit to reach the composer", async () => (await value()).includes("follow"));
+  check(true, "Edit takes the message back into the composer");
+  await clear();
+  await until("one row left", async () => (await phone.eval(`document.querySelectorAll('[data-testid="queue-row"]').length`)) === 1);
+  await phone.eval(`document.querySelector('[data-testid="queue-delete"], [data-testid="queue-defer"]') && document.querySelector('[data-testid="queue-delete"]').click()`);
+  await until("the queue to empty", () => phone.eval(`!document.querySelector('[data-testid="queue-card"]')`));
+  check(true, "Remove deletes a queued message");
+  await click("stop");
+  await click("confirm-stop");
+  await idle();
+
+  // Extension UI and retry callouts.
+  await type("ext-ui retry-demo [lines=40][delay=100]");
+  await click("send");
+  await until("the extension widget", () => exists('[data-testid="widget"]'));
+  await shot("14-extension-ui");
+  check((await text()).includes("fake widget line"), "an extension widget shows above the composer");
+  check((await text()).includes("fake-ext: heads up"), "an extension notify becomes a toast");
+  await until("the editor text", async () => (await value()) === "prefilled by fake-ext");
+  check(true, "set_editor_text fills the composer");
+  await until("the retry callout", () => exists('[data-testid="retry-callout"]'));
+  check((await text()).includes("Retrying (1/3)"), "an auto-retry shows a callout");
+  await click("stop");
+  await click("confirm-stop");
+  await idle();
+  await clear();
 }
 
 let exitCode = 1;

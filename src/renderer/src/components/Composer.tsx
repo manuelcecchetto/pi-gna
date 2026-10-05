@@ -4,9 +4,11 @@ import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
+import { detectMenu, type MenuState } from "../../../shared/composer-menu";
 import type { SessionState } from "../../../shared/session-state";
 import {
   attachFiles,
+  compact,
   composerCard,
   interrupt,
   openLightbox,
@@ -26,7 +28,8 @@ import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QueueCard } from "./QueueCard";
 import { TokenRate } from "./TokenRate";
-import { Ansi, Kbd, Popover } from "./primitives";
+import { Kbd, Popover } from "./primitives";
+import { Widget } from "./Widget";
 
 const drafts = new Map<string, string>();
 /** The editor text injection each chat has applied, so a remount (switching back to the chat) does not apply it again. */
@@ -34,27 +37,11 @@ const injections = new Map<string, number>();
 const NO_ATTACHMENTS: Attachment[] = [];
 const fileLists = new Map<string, Promise<string[]>>();
 
-interface MenuState {
-  kind: "command" | "file";
-  query: string;
-  /** Index in the text where the trigger (/ or @) starts. */
-  start: number;
-}
-
 interface MenuItem {
   key: string;
   label: string;
   detail?: string;
   insert: string;
-}
-
-function detectMenu(text: string, caret: number): MenuState | undefined {
-  const before = text.slice(0, caret);
-  const command = before.match(/^\/(\S*)$/);
-  if (command) return { kind: "command", query: command[1] ?? "", start: 0 };
-  const file = before.match(/(^|\s)@([^\s@]*)$/);
-  if (file) return { kind: "file", query: file[2] ?? "", start: caret - (file[2]?.length ?? 0) - 1 };
-  return undefined;
 }
 
 /** How long a first Esc keeps the stop button armed for the second. */
@@ -74,6 +61,7 @@ export function Composer({ session, placeholder, floating = false }: { session: 
   const [armed, setArmed] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const commands = useApp((state) => state.commands[handle]);
+  const compaction = useApp((state) => state.compaction);
   const annotations = useApp((state) => state.annotations);
   const attachments = useApp((state) => state.attachments[handle]) ?? NO_ATTACHMENTS;
   const card = useApp((state) => composerCard(state, handle));
@@ -306,7 +294,7 @@ export function Composer({ session, placeholder, floating = false }: { session: 
           <ThinkingPicker session={session} />
           <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
             <TokenRate session={session} />
-            <ContextMeter session={session} />
+            <ContextMeter session={session} compaction={compaction} onCompact={() => void compact(handle)} />
             {busy && (empty || armed) ? (
               <button
                 type="button"
@@ -336,18 +324,6 @@ export function Composer({ session, placeholder, floating = false }: { session: 
       </div>
       {widgetsBelow.map(([key, widget]) => (
         <Widget key={key} lines={widget.lines} />
-      ))}
-    </div>
-  );
-}
-
-function Widget({ lines }: { lines: string[] }) {
-  return (
-    <div className="rounded-xl border border-line bg-sunken px-3 py-2 font-mono text-[12px] leading-relaxed text-muted">
-      {lines.map((line, index) => (
-        <div key={index} className="whitespace-pre-wrap">
-          <Ansi text={line} />
-        </div>
       ))}
     </div>
   );

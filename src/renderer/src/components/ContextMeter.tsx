@@ -1,12 +1,13 @@
 // Context meter next to the send button (Codex-style ring). Hover for the details card: how full the
-// window is, how far pi's auto-compaction is, session totals, and Compact now.
+// window is, how far pi's auto-compaction is, session totals, and Compact now. On a touch screen (`touch`) a tap
+// opens the same card as a bottom sheet.
 import { FoldVertical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { type ContextLevel, cacheHitRate, lastRequestUsage, summarizeContext } from "../lib/context";
 import { formatCost, formatTokens } from "../lib/format";
 import type { SessionState } from "../../../shared/session-state";
-import { compact, useApp } from "../state/app";
+import type { CompactionSettings } from "../../../shared/compaction";
 
 const LEVEL_COLOR: Record<ContextLevel, string> = {
   unknown: "var(--faint)",
@@ -15,9 +16,18 @@ const LEVEL_COLOR: Record<ContextLevel, string> = {
   high: "var(--bad)",
 };
 
-export function ContextMeter({ session }: { session: SessionState }) {
-  const settings = useApp((state) => state.compaction);
-  const reserve = resolveReserveTokens(settings, session.model?.provider, session.model?.id);
+export function ContextMeter({
+  session,
+  compaction,
+  onCompact,
+  touch = false,
+}: {
+  session: SessionState;
+  compaction: CompactionSettings;
+  onCompact: () => void;
+  touch?: boolean;
+}) {
+  const reserve = resolveReserveTokens(compaction, session.model?.provider, session.model?.id);
   const summary = summarizeContext(session.stats, reserve, session.autoCompaction ?? true);
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -36,18 +46,28 @@ export function ContextMeter({ session }: { session: SessionState }) {
   const label = summary.percent === null ? "—" : `${Math.round(summary.percent)}%`;
 
   return (
-    <div className="relative" onMouseEnter={show} onMouseLeave={hide}>
+    <div className="relative" onMouseEnter={touch ? undefined : show} onMouseLeave={touch ? undefined : hide}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
         aria-label={`Context usage: ${label}`}
-        className="flex items-center gap-1.5 rounded-lg px-1.5 py-1 font-mono text-[11.5px] tabular-nums hover:bg-raised"
+        className={`flex items-center gap-1.5 rounded-lg px-1.5 font-mono text-[11.5px] tabular-nums hover:bg-raised ${touch ? "min-h-10 min-w-10 justify-center" : "py-1"}`}
         style={{ color }}
       >
         <Ring fraction={summary.percent === null ? null : summary.percent / 100} color={color} />
         {label}
       </button>
-      {open && <ContextCard session={session} summary={summary} />}
+      {open && touch && (
+        <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/50" onClick={() => setOpen(false)} data-testid="context-sheet">
+          <div
+            className="rounded-t-2xl border-t border-line-strong bg-panel p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-[14px]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ContextCard session={session} summary={summary} onCompact={() => { setOpen(false); onCompact(); }} touch />
+          </div>
+        </div>
+      )}
+      {open && !touch && <ContextCard session={session} summary={summary} onCompact={onCompact} />}
     </div>
   );
 }
@@ -75,13 +95,23 @@ function Ring({ fraction, color }: { fraction: number | null; color: string }) {
   );
 }
 
-function ContextCard({ session, summary }: { session: SessionState; summary: NonNullable<ReturnType<typeof summarizeContext>> }) {
+function ContextCard({
+  session,
+  summary,
+  onCompact,
+  touch = false,
+}: {
+  session: SessionState;
+  summary: NonNullable<ReturnType<typeof summarizeContext>>;
+  onCompact: () => void;
+  touch?: boolean;
+}) {
   const stats = session.stats;
   const busy = session.running || Boolean(session.compacting) || session.phase !== "ready";
   const color = LEVEL_COLOR[summary.level];
   const marker = summary.compactAt !== null ? (summary.compactAt / summary.window) * 100 : null;
   return (
-    <div className="absolute right-0 bottom-full z-30 mb-2 w-80 rounded-xl border border-line-strong bg-panel p-3.5 text-[12.5px] shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
+    <div className={touch ? "text-[13.5px]" : "absolute right-0 bottom-full z-30 mb-2 w-80 rounded-xl border border-line-strong bg-panel p-3.5 text-[12.5px] shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]"}>
       <div className="flex items-baseline justify-between">
         <span className="font-medium text-fg">Context window</span>
         <span className="tabular-nums text-muted">
@@ -125,9 +155,9 @@ function ContextCard({ session, summary }: { session: SessionState; summary: Non
       <button
         type="button"
         disabled={busy}
-        onClick={() => void compact(session.handle)}
+        onClick={onCompact}
         title={session.running ? "Available when pi is idle" : "Summarize older messages now (/compact)"}
-        className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg enabled:hover:bg-raised disabled:opacity-40"
+        className={`mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-line px-3 text-fg enabled:hover:bg-raised disabled:opacity-40 ${touch ? "min-h-11 text-[14px]" : "py-1.5 text-[12.5px]"}`}
       >
         <FoldVertical size={13} />
         {session.compacting ? "Compacting…" : "Compact now"}

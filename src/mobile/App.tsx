@@ -7,7 +7,8 @@ import { createChatUi, closeLightbox, useLightbox } from "./chat-ui";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { useRoute } from "./nav";
 import { Chats, Projects } from "./Screens";
-import { Toasts } from "./toasts";
+import { noticeFor } from "./notices";
+import { toast, Toasts } from "./toasts";
 
 const BANNER: Partial<Record<ConnectionState, string>> = {
   connecting: "Connecting…",
@@ -57,6 +58,15 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
     client.start();
     void client.call("app.info", {}).then((info) => setHomeDir(info.homeDir), () => undefined);
     return () => client.stop();
+  }, [client]);
+
+  // Extension notices become toasts; startup warnings show once per app run (the set lives as long as the page).
+  useEffect(() => {
+    const seen = new Set<string>();
+    return client.onChatEvent((_handle, event, session) => {
+      const notice = noticeFor(event, session, seen);
+      if (notice) toast(notice.text, notice.level);
+    });
   }, [client]);
 
   const ui = useMemo(() => createChatUi(client, homeDir), [client, homeDir]);

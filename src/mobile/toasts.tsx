@@ -4,7 +4,7 @@ import { createStore, useStore } from "../renderer/src/lib/store";
 interface Toast {
   id: number;
   text: string;
-  level: "info" | "error";
+  level: "info" | "warning" | "error";
 }
 
 const store = createStore<Toast[]>([]);
@@ -27,7 +27,7 @@ export function Toasts() {
         <div
           key={t.id}
           role="status"
-          className={`pointer-events-auto flex max-w-full items-start gap-2 rounded-xl border bg-panel px-3.5 py-2.5 text-[13.5px] shadow-[0_8px_24px_-8px_rgb(0_0_0/0.6)] ${t.level === "error" ? "border-bad/50 text-bad" : "border-line-strong text-fg"}`}
+          className={`pointer-events-auto flex max-w-full items-start gap-2 rounded-xl border bg-panel px-3.5 py-2.5 text-[13.5px] shadow-[0_8px_24px_-8px_rgb(0_0_0/0.6)] ${t.level === "error" ? "border-bad/50 text-bad" : t.level === "warning" ? "border-warn/50 text-warn" : "border-line-strong text-fg"}`}
         >
           <span className="min-w-0 break-words">{t.text}</span>
           <button type="button" aria-label="Dismiss" onClick={() => dismiss(t.id)} className="shrink-0 p-0.5 text-faint">

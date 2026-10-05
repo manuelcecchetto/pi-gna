@@ -8,6 +8,9 @@
 // FAKE_ATP=1: a prompt that assigns an ATP node (the runner's claim packet) is answered by completing that node with the
 // plan's librarian CLI, so a throwaway plan runs end to end; FAKE_ATP=idle leaves the node claimed (a worker that gave up).
 // `abort` ends the answer early, as Stop and Esc do with pi.
+// Composer chrome: get_commands, thinking levels (large models offer them), set_model / set_thinking_level, compact and
+// session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
+// a widget above the editor, set_editor_text, setTitle); "retry-demo" shows an auto-retry for a moment.
 import { execFileSync } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,6 +25,14 @@ const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
 // A prompt may carry `[lines=N]` and `[delay=N]` to override FAKE_LINES / FAKE_DELAY for that answer (scripts/remote-slice-e2e.mjs).
 const directive = (text, name, fallback) => Number(text.match(new RegExp(`\\[${name}=(\\d+)\\]`))?.[1] ?? fallback);
+let current = model;
+let thinkingLevel = "off";
+let compactions = 0;
+const commandsList = [
+  { name: "compact", description: "Summarize older messages now", source: "extension" },
+  { name: "review", description: "Review the working tree", source: "prompt" },
+  { name: "fake-skill", description: "A skill that does nothing", source: "skill" },
+];
 let streaming = false;
 let aborted = false;
 // Queued messages (steer / follow_up while streaming) so clear_queue and queue edits behave like pi's.
@@ -35,11 +46,35 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   const reply = (data) => out({ type: "response", id: command.id, command: command.type, success: true, data });
   switch (command.type) {
     case "get_state":
-      return reply({ model, thinkingLevel: "off", isStreaming: streaming, isCompacting: false, steeringMode: "all", followUpMode: "all", sessionId: "fake", sessionFile, autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 });
+      return reply({ model: current, thinkingLevel, isStreaming: streaming, isCompacting: false, steeringMode: "all", followUpMode: "all", sessionId: "fake", sessionFile, autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 });
     case "get_available_models":
       return reply({ models: [model, { ...model, id: "fake-large", name: "Fake Large", reasoning: true }, { ...model, id: "fake", provider: "other-fake" }] });
     case "get_session_stats":
-      return reply({ sessionId: "fake", userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0 });
+      return reply({
+        sessionId: "fake", userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0,
+        contextUsage: { tokens: compactions ? 20000 : 50000, contextWindow: current.contextWindow, percent: compactions ? 10 : 25 },
+      });
+    case "get_commands":
+      return reply({ commands: commandsList });
+    case "get_available_thinking_levels":
+      return reply({ levels: current.reasoning ? ["off", "low", "medium", "high"] : ["off"] });
+    case "set_model": {
+      const found = [model, { ...model, id: "fake-large", name: "Fake Large", reasoning: true }, { ...model, id: "fake", provider: "other-fake" }].find((m) => m.id === command.modelId && m.provider === command.provider);
+      if (!found) return out({ type: "response", id: command.id, command: command.type, success: false, error: "Unknown model" });
+      current = found;
+      if (!found.reasoning) thinkingLevel = "off";
+      return reply(found);
+    }
+    case "set_thinking_level":
+      thinkingLevel = command.level;
+      return reply(undefined);
+    case "compact":
+      compactions += 1;
+      out({ type: "compaction_start", reason: "manual" });
+      return setTimeout(() => {
+        out({ type: "compaction_end", reason: "manual", aborted: false, willRetry: false });
+        reply(undefined);
+      }, 300);
     case "prompt":
       reply(undefined);
       if (streaming) {
@@ -85,6 +120,14 @@ async function run(text) {
   streaming = true;
   aborted = false;
   out({ type: "agent_start" });
+  if (text.includes("ext-ui")) {
+    const ui = (fields) => out({ type: "extension_ui_request", id: `ui-${process.pid}-${Date.now()}-${Math.random()}`, ...fields });
+    ui({ method: "notify", message: "fake-ext: heads up", notifyType: "warning" });
+    ui({ method: "setWidget", widgetKey: "fake", widgetLines: ["fake widget line"], widgetPlacement: "aboveEditor" });
+    ui({ method: "setTitle", title: "Fake extension title" });
+    ui({ method: "set_editor_text", text: "prefilled by fake-ext" });
+  }
+  if (text.includes("retry-demo")) out({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "overloaded" });
   if (text.includes("ask-confirm")) out({ type: "extension_ui_request", id: `confirm-${process.pid}-${Date.now()}`, method: "confirm", title: "Run the fake tool?", message: "Approve to continue." });
   out({ type: "message_start", message: { role: "user", content: text, timestamp: Date.now() } });
   out({ type: "message_end", message: { role: "user", content: text, timestamp: Date.now() } });

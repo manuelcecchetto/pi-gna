@@ -439,6 +439,14 @@ Additional decisions made while writing the contract:
 - **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". After a browser-side EventSource retry (same URL, so without the chats on screen) the client re-subscribes and rereads the chats on `hello`, so a reconnect cannot leave a transcript stale.
 - **App info:** `app.info` (`homeDir`, `launchCwd`, `version`, `buildId`) is in the table; the phone uses `homeDir` to shorten paths.
 
+### Mobile composer parity (T26, `src/mobile/MobileComposer.tsx`)
+
+- **Pickers:** model and thinking chips open bottom sheets (`Sheets.tsx`). Reads and writes go through `chat.command` on the RPC allowlist (`get_available_models`, `get_available_thinking_levels`, `set_model`, `set_thinking_level`, `get_state`); after `set_model` the levels and thinking level are read again. `composer-data.ts` holds the reads (plain functions, tested with a fake call) and `useComposerData`, which also keeps `get_session_stats` fresh whenever a run or compaction ends.
+- **Commands and mentions:** `get_commands` and `chat.files` (cached 15 s per folder) feed touch lists above the textarea; trigger detection is `src/shared/composer-menu.ts`, shared with the desktop composer.
+- **Shared components made touch-friendly, not forked:** `ContextMeter` (props `compaction`, `onCompact`, `touch`: a tap opens the card as a bottom sheet; compaction settings come from `chat.compactionSettings`), `QueueCard` (`touch`: rows show Steer now / After the run, Edit, Remove as full-size buttons; ops are `chat.editQueue`), `TokenRate`, `Widget`. The compaction indicator is the transcript's own `CompactionProgress`; an auto-retry shows a callout with "Give up" (`abort_retry`).
+- **Extension UI:** `HostClient.onChatEvent` sees each applied chat event once; `notices.ts` turns `notify` into toasts (startup info dropped, each startup warning once per page run). Widgets render above or below the composer, `set_editor_text` fills the draft (once per nonce), `setTitle` is the chat header.
+- **Verification:** `scripts/remote-slice-e2e.mjs` ends with `composerChecks` on the phone (fake-pi serves commands, thinking levels, model switches, compaction, stats; a prompt with `ext-ui` or `retry-demo` raises extension UI and an auto-retry). Real pi for models and commands: see docs/REMOTE_VERIFICATION.md.
+
 ### Automated end-to-end test (T20, `scripts/remote-slice-e2e.mjs`)
 
 `pnpm e2e:remote` (or `node scripts/remote-slice-e2e.mjs`) proves the vertical slice without a phone, in about 4 minutes. It builds the app
