@@ -2,6 +2,7 @@
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
 import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
+import { formatAnnotations } from "../../../shared/annotations";
 import type { Annotation, BrowserState } from "../../../shared/browser";
 import type { GithubItem, GithubRepo } from "../../../shared/github";
 import { emptyLaments, type Lament, type LamentOp, type Laments } from "../../../shared/laments";
@@ -510,21 +511,6 @@ function readImage(file: File): Promise<Attachment> {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
-}
-
-/** Browser comments as a prompt block; element crops travel as images in the same order. */
-export function formatAnnotations(annotations: Annotation[]): string {
-  if (!annotations.length) return "";
-  const items = annotations.map((a, index) =>
-    [
-      `${index + 1}. ${a.comment}`,
-      `   page: ${a.url}${a.title ? ` (${a.title})` : ""}`,
-      `   element: ${a.label}  selector: ${a.selector}`,
-      `   html: ${a.html.replace(/\s+/g, " ").slice(0, 400)}`,
-    ].join("\n"),
-  );
-  const note = annotations.some((a) => a.image) ? " Attached images are crops of the commented elements, in order." : "";
-  return `<browser-comments>\nThe user commented on elements in the pi-gna browser.${note}\n${items.join("\n")}\n</browser-comments>`;
 }
 
 export function removeAnnotation(id: string): void {

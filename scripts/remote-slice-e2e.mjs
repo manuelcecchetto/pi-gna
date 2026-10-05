@@ -868,12 +868,147 @@ async function screens({ desktop, ports }, { handle, A }) {
   await atpChecks({ phone, A, shot, text, exists, present });
   await settingsChecks({ phone, A, shot, text, exists, present });
   await transcriptChecks({ phone, A, shot, text, tap, exists, present });
+  await browserChecks({ phone, A, shot, text, tap, exists, present });
   if (flag("--hold")) {
     log(`holding on the mobile page; debug port ${ports.debug}`);
     await new Promise(() => undefined);
   }
   await mainEval(`${view}.debugger.detach(), globalThis.__sliceWin.destroy(), true`);
   inspector.close();
+}
+
+/** The phone's browser screen (T36): drive a local dev page in the instance's own browser with the iPhone preset, the instance's window hidden. */
+async function browserChecks({ phone, A, shot, text, tap, exists, present }) {
+  log("mobile browser screen");
+  const hits = [];
+  const fixture = http.createServer((req, res) => {
+    const url = new URL(req.url, "http://x");
+    if (url.pathname === "/hit") {
+      hits.push([url.searchParams.get("k"), url.searchParams.get("v")]);
+      return res.end("ok");
+    }
+    res.setHeader("Content-Type", "text/html");
+    res.end(`<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>Dev page</title><body style="margin:0;height:4000px">
+<button id=b style="position:fixed;left:100px;top:200px;width:160px;height:80px">tap me</button>
+<input id=i style="position:fixed;left:20px;top:320px;width:300px;height:40px">
+<script>const hit=(k,v)=>fetch('/hit?k='+k+'&v='+encodeURIComponent(v||''));
+b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('keydown',e=>hit('key',e.key));addEventListener('scroll',()=>hit('scroll',scrollY));</script>`);
+  });
+  await new Promise((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${fixture.address().port}/`;
+  const hit = (k) => hits.filter(([key]) => key === k);
+  const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);
+  const touch = (type, points) => phone.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
+  const rect = () => phone.eval(`(() => { const r = document.querySelector('[data-testid="frame"]')?.getBoundingClientRect(); return r ? { left: r.left, top: r.top, width: r.width, height: r.height } : null; })()`);
+  const onFrame = async (cssX, cssY) => {
+    const r = await rect();
+    return [r.left + (cssX / 393) * r.width, r.top + (cssY / 852) * r.height];
+  };
+  const tapPage = async (cssX, cssY) => {
+    const [x, y] = await onFrame(cssX, cssY);
+    await touch("touchStart", [[x, y]]);
+    await touch("touchEnd", []);
+  };
+  const typeInto = async (testId, t) => {
+    await phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); e.focus(); e.select(); })()`);
+    await phone.send("Input.insertText", { text: t });
+  };
+
+  try {
+    await phone.eval("location.href = '/'");
+    await until("the projects screen", () => exists('[data-testid="open-browser"]'), 30_000, 250);
+    await A.ok("browser.newTab", { url });
+    check(await click("open-browser"), "the projects screen opens the browser");
+    await until("the tab", async () => (await text()).includes("Dev page"), 20_000, 100);
+    check(!(await exists('[data-testid="window-badge"]')), "a pane tab is not marked as a window");
+    await click("viewport-open");
+    await until("the viewport sheet", () => exists('[data-testid="viewport-sheet"]'));
+    check(await phone.eval(`(() => { const e = [...document.querySelectorAll('[data-testid="viewport-option"]')].find((x) => x.innerText.includes("iPhone 15")); if (!e) return false; e.click(); return true; })()`), "the viewport sheet offers the iPhone 15 preset");
+    await until("the viewport on the host", async () => (await A.ok("browser.state")).tabs.some((t) => t.viewport?.label === "iPhone 15"));
+    check(true, "the host tab runs the iPhone 15 viewport");
+    await until("the frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
+    await sleep(800);
+    await shot("browser-1-frame");
+    check(true, "the stream draws a frame of the page with the instance's window hidden");
+
+    await tapPage(180, 240);
+    await until("the tap to land", async () => hit("click").length > 0, 10_000, 100);
+    check(true, "a tap on the frame clicks the page's button on the host");
+
+    await tapPage(100, 340);
+    await sleep(500);
+    await typeInto("type-field", "hello");
+    await click("type-send");
+    await until("the typed text", async () => hit("input").some(([, v]) => v === "hello"), 10_000, 100);
+    check(true, "the text field types into the focused input");
+    await click("keys-open");
+    await until("the keys sheet", () => exists('[data-testid="key-Enter"]'));
+    await click("key-Enter");
+    await until("the Enter key", async () => hit("key").some(([, v]) => v === "Enter"), 10_000, 100);
+    check(true, "a key button sends the key to the page");
+    await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
+
+    const [fx, fy] = await onFrame(196, 500);
+    await touch("touchStart", [[fx, fy]]);
+    for (let i = 1; i <= 8; i++) {
+      await touch("touchMove", [[fx, fy - i * 25]]);
+      await sleep(40);
+    }
+    await touch("touchEnd", []);
+    await until("the page to scroll", async () => hit("scroll").some(([, v]) => Number(v) > 100), 10_000, 100);
+    check(true, "dragging on the frame scrolls the page", hit("scroll"));
+
+    const [cx, cy] = await onFrame(196, 426);
+    await touch("touchStart", [[cx - 20, cy], [cx + 20, cy]]);
+    for (let i = 1; i <= 6; i++) {
+      await touch("touchMove", [[cx - 20 - i * 10, cy], [cx + 20 + i * 10, cy]]);
+      await sleep(30);
+    }
+    await touch("touchEnd", []);
+    await until("the zoom", () => exists('[data-testid="zoom-reset"]'));
+    check((await phone.eval(`new DOMMatrix(getComputedStyle(document.querySelector('[data-testid="frame"]')).transform).a`)) > 1.5, "two fingers zoom the picture locally");
+    await shot("browser-2-zoomed");
+    await click("zoom-reset");
+    check(!(await exists('[data-testid="zoom-reset"]')), "the reset button restores the fit");
+
+    // Address bar with history suggestions, then reload.
+    await typeInto("address", "127.0");
+    await until("a suggestion", () => exists('[data-testid="suggestion"]'));
+    check(true, "the address bar suggests visited pages");
+    await phone.eval(`document.querySelector('[data-testid="address"]').blur()`);
+    await click("nav-reload");
+
+    // Comment mode.
+    await click("comment-mode");
+    await sleep(300);
+    await tapPage(180, 240);
+    await until("the comment sheet", () => exists('[data-testid="comment-sheet"]'));
+    await typeInto("comment-text", "make this bigger");
+    await click("comment-add");
+    await until("the annotation chip", () => exists('[data-testid="annotation-chip"]'), 20_000, 100);
+    check(true, "comment mode turns a tap into an annotation chip");
+    await shot("browser-3-comment");
+    await click("comment-mode");
+
+    // The chip rides with this phone's next prompt.
+    await phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
+    await until("the projects screen", () => exists('[data-testid="open-browser"]'));
+    check(await tap("project"), "back on the projects list");
+    await until("the chats screen", present("Earlier question 1"));
+    await tap("Earlier question 1");
+    await until("the composer", () => exists('[data-testid="send"]'));
+    check(await exists('[data-testid="annotation-chip"]'), "the composer shows the comment chip");
+    await phone.eval("document.querySelector('textarea').focus()");
+    await phone.send("Input.insertText", { text: "echo-attach zzcomment" });
+    await until("Send to enable", () => phone.eval(`!document.querySelector('[data-testid="send"]').disabled`));
+    await phone.eval(`document.querySelector('[data-testid="send"]').click()`);
+    await until("the host's echo", async () => /zzcomment[^]*\[images=\d\]/.test(await text()), 30_000, 200);
+    const echoed = await text();
+    check((() => { const tail = echoed.slice(echoed.indexOf("zzcomment")); return tail.includes("Browser comments (1)") && tail.includes("[images=1]"); })(), "the host composed the comment and its crop into the prompt", echoed.slice(-300));
+    check(!(await exists('[data-testid="annotation-chip"]')), "the chip is gone once the prompt was taken");
+  } finally {
+    fixture.close();
+  }
 }
 
 /** The phone's ATP page (T32): plans, nodes, graph gestures, start / stop / resume on the host, the orchestrator and a new plan. */

@@ -1,5 +1,5 @@
 // Projects and Chats: the two list screens above a chat.
-import { ChevronLeft, ChevronRight, FolderOpen, Pin, Search, Settings, SquarePen } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Globe, Pin, Search, Settings, SquarePen } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import { relativeTime, tildify } from "../renderer/src/lib/format";
@@ -135,6 +135,9 @@ export function Projects({ client, homeDir, push, footer }: { client: HostClient
           <>
             <IconButton label="Open a folder" onClick={() => setPicking(true)} testId="open-folder">
               <FolderOpen size={20} />
+            </IconButton>
+            <IconButton label="Browser" onClick={() => push({ screen: "browser" })} testId="open-browser">
+              <Globe size={20} />
             </IconButton>
             <IconButton label="Settings" onClick={() => push({ screen: "settings" })} testId="open-settings">
               <Settings size={20} />

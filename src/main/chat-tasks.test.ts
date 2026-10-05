@@ -294,6 +294,15 @@ describe("sending to a chat about a card", () => {
     expect(prompt(s.log)).toEqual(expect.objectContaining({ message: "/compact", images: undefined }));
   });
 
+  it("composes a phone's browser comments and their crops after the text, but not for a command", async () => {
+    const s = setup();
+    const note = { id: "a", url: "http://localhost:3000/", title: "App", selector: "#go", label: 'button "Go"', html: "<button>Go</button>", comment: "too small", image: "QUJD" };
+    await s.tasks.send("chat1", "fix this", "send", undefined, [], [note]);
+    expect(prompt(s.log)).toMatchObject({ message: expect.stringMatching(/^fix this\n\n<browser-comments>[^]*1\. too small[^]*<\/browser-comments>$/), images: [{ type: "image", data: "QUJD", mimeType: "image/jpeg" }] });
+    await s.tasks.send("chat1", "/compact", "send", undefined, [], [note]);
+    expect(prompt(s.log)).toEqual(expect.objectContaining({ message: "/compact", images: undefined }));
+  });
+
   it("queues behind a running turn as asked", async () => {
     const s = setup();
     s.host.stateOf.mockReturnValue({ running: true } as never);

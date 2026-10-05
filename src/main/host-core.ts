@@ -1,7 +1,8 @@
 import { isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import type { BoardOp, Column } from "../shared/board";
-import type { BrowserCommand } from "../shared/browser";
+import { parseAnnotations } from "../shared/annotations";
+import type { Annotation, BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
@@ -206,10 +207,15 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     }),
     "chat.startTask": any<{ target: TaskTarget }>("remote", async (ctx, { target }) => tasks.start(presence(ctx), target)),
     "chat.send": any<{ handle: string; text: string; mode?: "send" | "followUp"; cardId?: string; attachments?: AttachmentRef[]; annotations?: unknown[] }>("remote", async (ctx, args) => {
-      // Annotations are composed host-side once the host holds them (the phone's).
-      if (args.annotations?.length) throw new HostError("bad_request", "annotations are not supported by chat.send yet");
+      // The phone keeps its browser comments and sends them with the prompt; the host composes the block and the crops.
+      let annotations: Annotation[] = [];
+      try {
+        annotations = args.annotations?.length ? parseAnnotations(args.annotations) : [];
+      } catch (error) {
+        throw new HostError("bad_request", (error as Error).message);
+      }
       const attachments = await resolveAttachments(ctx, args.attachments);
-      return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId, attachments);
+      return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId, attachments, annotations);
     }),
     "chat.files": any<{ cwd: string }>("remote", async (_ctx, { cwd }) => (await env(), listFiles(cwd))),
     "chat.compactionSettings": any("remote", async () => (await env(), readCompactionSettings())),

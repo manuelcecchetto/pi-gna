@@ -19,6 +19,8 @@ import { AttachmentChips, AttachSheet, HostFilesSheet } from "./Attachments";
 import { ModelSheet, ThinkingSheet } from "./Sheets";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 import { toast } from "./toasts";
+import { annotations as phoneAnnotations, useAnnotations } from "./annotations";
+import { AnnotationChips } from "./Browser";
 
 const failure = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -41,6 +43,7 @@ export function MobileComposer({ client, session: reduced, initialText = "" }: {
   const [attached, setAttached] = useState<Attached[]>([]);
   const key = draftKey(reduced);
   const [text, setText] = useState(() => loadDraft(key) || initialText);
+  const comments = useAnnotations();
   const [busy, setBusy] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -110,7 +113,7 @@ export function MobileComposer({ client, session: reduced, initialText = "" }: {
   const running = session.running || Boolean(session.compacting);
   const ended = session.phase === "exited";
   const refs = readyRefs(attached);
-  const typed = text.trim().length > 0 || refs.length > 0;
+  const typed = text.trim().length > 0 || refs.length > 0 || comments.length > 0;
   const waiting = uploading(attached);
 
   /** Each file uploads at once, so Send only waits for the slowest; a failed one stays as a red chip to remove. */
@@ -139,10 +142,13 @@ export function MobileComposer({ client, session: reduced, initialText = "" }: {
     if (!typed || waiting || busy || ended) return;
     const sent = text;
     const sentRefs = refs;
+    // Browser comments ride with a prompt, not a slash command.
+    const sentComments = sent.trim().startsWith("/") ? [] : comments;
     setBusy(true);
     try {
-      const result = await client.call("chat.send", { handle: session.handle, text: sent.trim(), mode, ...(sentRefs.length ? { attachments: sentRefs } : {}) });
+      const result = await client.call("chat.send", { handle: session.handle, text: sent.trim(), mode, ...(sentRefs.length ? { attachments: sentRefs } : {}), ...(sentComments.length ? { annotations: sentComments } : {}) });
       if (result.accepted) {
+        phoneAnnotations.drop(sentComments);
         edit((current) => (current === sent ? "" : current));
         setAttached((list) => list.filter((a) => a.state === "error" || !a.ref || !sentRefs.includes(a.ref)));
       }
@@ -216,6 +222,7 @@ export function MobileComposer({ client, session: reduced, initialText = "" }: {
                 ))}
               </div>
             )}
+            <AnnotationChips />
             <AttachmentChips list={attached} onRemove={(key) => setAttached((list) => list.filter((a) => a.key !== key))} />
             <textarea
               ref={field}
