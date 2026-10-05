@@ -23,6 +23,7 @@ import {
   type Topic,
 } from "../shared/host-api";
 import { FrameGate, frameParams, parseViewer, type ViewerSpec } from "../shared/browser-view";
+import { VISUAL_CSP, visualRemoteAsset } from "./visual-frame";
 import type { Frame, ViewHandle } from "./browser/remote-view";
 import type { HostContext } from "./host-core";
 import type { DeviceStore } from "./devices";
@@ -63,6 +64,8 @@ export interface RemoteServerOptions {
   buildId: string;
   /** `out/mobile`; a placeholder page is served until it exists. */
   staticDir?: string;
+  /** `resources/visual`: the inline-visual frame document and kit, served at `/visual/<frameId>/` for sandboxed iframes. */
+  visualDir?: string;
   /** Audit line, names and statuses only. */
   log?(line: string): void;
   /** A stream opened or closed, so leases can start or end their grace. */
@@ -201,6 +204,7 @@ export class RemoteServer {
       const host = (header(req, "host") ?? "").toLowerCase();
       if (!this.o.allowedHosts().some((h) => h.toLowerCase() === host)) throw new HostError("forbidden", "unexpected Host");
 
+      if (path.startsWith("/visual/")) return await this.serveVisual(req, res, path);
       if (!path.startsWith("/api/")) return await this.serveStatic(req, res, path);
       this.apiHeaders(res);
       const post = req.method === "POST";
@@ -558,6 +562,27 @@ export class RemoteServer {
   }
 
   // ── Static ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Visual frame assets. No credentials: a sandboxed frame has an opaque origin and sends no cookies, and the files are
+   * the bundled kit, nothing per user. The frame CSP is the desktop's (no network, forms or navigation).
+   */
+  private async serveVisual(req: IncomingMessage, res: ServerResponse, path: string) {
+    if (req.method !== "GET" && req.method !== "HEAD") throw new HostError("bad_request", "method not allowed");
+    const asset = visualRemoteAsset(path);
+    if (!asset || !this.o.visualDir) throw new HostError("not_found", "not found");
+    const data = await readFile(join(this.o.visualDir, asset.file)).catch(() => undefined);
+    if (!data) throw new HostError("not_found", "not found");
+    res.writeHead(200, {
+      "Content-Type": asset.type,
+      "Content-Length": data.length,
+      "Content-Security-Policy": VISUAL_CSP,
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "no-store",
+    });
+    res.end(req.method === "HEAD" ? undefined : data);
+  }
 
   private async serveStatic(req: IncomingMessage, res: ServerResponse, path: string) {
     if (req.method !== "GET" && req.method !== "HEAD") throw new HostError("bad_request", "method not allowed");

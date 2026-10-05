@@ -259,6 +259,24 @@ describe("RemoteServer", () => {
     expect((await send("GET", "/..%2f..%2fdevices.json")).status).not.toBe(200);
   });
 
+  it("serves the visual frame with the frame CSP and without credentials", async () => {
+    mkdirSync(join(dir, "visual"));
+    writeFileSync(join(dir, "visual", "doc.html"), "<!doctype html><title>frame</title>");
+    writeFileSync(join(dir, "visual", "kit.js"), "1");
+    await server.stop();
+    await start({ visualDir: join(dir, "visual") });
+    const doc = await send("GET", "/visual/abcd1234ef/doc"); // no cookie: a sandboxed frame sends none
+    expect(doc.status).toBe(200);
+    expect(doc.text).toContain("<title>frame</title>");
+    expect(doc.headers["content-security-policy"]).toContain("default-src 'none'");
+    expect(doc.headers["content-security-policy"]).toContain("connect-src 'none'");
+    expect((await send("GET", "/visual/abcd1234ef/kit.js")).headers["content-type"]).toContain("javascript");
+    expect((await send("GET", "/visual/abcd1234ef/kit.css")).status).toBe(404); // not on disk
+    expect((await send("GET", "/visual/abcd1234ef/secret")).status).toBe(404);
+    expect((await send("POST", "/visual/abcd1234ef/doc", { body: {} })).status).toBe(400);
+    expect((await send("GET", "/visual/abcd1234ef/doc", { host: "evil.example" })).status).toBe(403);
+  });
+
   it("rate limits pairing and locks on wrong codes", async () => {
     devices.startPairing();
     const wrong = await send("POST", "/api/pair", { body: { code: "ZZZZZZZZ", deviceName: "x" } });

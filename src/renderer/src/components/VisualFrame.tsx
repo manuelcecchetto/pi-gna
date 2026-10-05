@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useChatActions } from "../lib/chat-ui";
 import { CodeView } from "./Markdown";
 
 const MIN_H = 40;
@@ -28,9 +29,27 @@ function newFrameId(): string {
 
 /** Sandboxed iframe running one HTML fragment. Memoised by source so transcript re-renders keep the frame. */
 export const VisualFrame = memo(function VisualFrame({ source }: { source: string }) {
+  const { visualFrames } = useChatActions();
+  const [armed, setArmed] = useState(!visualFrames?.tapToRender);
+  if (!armed)
+    return (
+      <>
+        <header>
+          <span>visual</span>
+        </header>
+        <button type="button" onClick={() => setArmed(true)} className="visual-tap" data-testid="visual-tap">
+          Tap to render
+        </button>
+      </>
+    );
+  return <LiveFrame source={source} />;
+});
+
+function LiveFrame({ source }: { source: string }) {
+  const { visualFrames, openExternal } = useChatActions();
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [frameId] = useState(newFrameId);
-  const src = `pigna-visual://${frameId}/doc`;
+  const src = visualFrames ? visualFrames.src(frameId) : `pigna-visual://${frameId}/doc`;
   const [height, setHeight] = useState(MIN_H);
   const [expanded, setExpanded] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -38,10 +57,11 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
   const [copied, setCopied] = useState(false);
 
   // A frame that stopped responding keeps spinning even after its iframe is removed: its process has to be killed.
+  // A remote client has no process to kill: removing the iframe is all it can do.
   useEffect(() => {
-    if (error) window.studio.killVisual(frameId);
-  }, [error, frameId]);
-  useEffect(() => () => window.studio.killVisual(frameId), [frameId]);
+    if (error && !visualFrames) window.studio.killVisual(frameId);
+  }, [error, frameId, visualFrames]);
+  useEffect(() => () => (visualFrames ? undefined : window.studio.killVisual(frameId)), [frameId, visualFrames]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -70,7 +90,7 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
           if (typeof data.px === "number" && Number.isFinite(data.px)) setHeight(Math.max(MIN_H, Math.ceil(data.px)));
           break;
         case "open-link":
-          if (typeof data.href === "string" && /^https?:\/\//i.test(data.href)) window.studio.openExternal(data.href);
+          if (typeof data.href === "string" && /^https?:\/\//i.test(data.href)) openExternal(data.href);
           break;
         case "error":
           setError(typeof data.message === "string" ? data.message : "Visual failed to run");
@@ -95,7 +115,7 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
       frame.removeEventListener("load", onLoad);
       media.removeEventListener("change", onTheme);
     };
-  }, [source]);
+  }, [source, openExternal]);
 
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(source);
@@ -124,6 +144,8 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
         </span>
       </header>
       {error && <div className="visual-error">Visual error: {error}</div>}
+      {/* A remote client cannot kill the frame's process, so a failed frame is taken out of the page altogether. */}
+      {!(error && visualFrames) && (
       <iframe
         ref={frameRef}
         className="visual-frame"
@@ -133,7 +155,8 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
         src={src}
         style={{ height: shown, display: error ? "none" : undefined }}
       />
+      )}
       {(showSource || error) && <CodeView code={source} lang="html" />}
     </>
   );
-});
+}

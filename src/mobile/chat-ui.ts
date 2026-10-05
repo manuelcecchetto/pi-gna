@@ -5,10 +5,12 @@ import type { ChatUi, ChatUiState } from "../renderer/src/lib/chat-ui";
 import { emptyBoard } from "../shared/board";
 import type { QueueOp } from "../shared/queue";
 import type { HostClient } from "./client/host-client";
+import { Sheet } from "./Sheets";
 import { toast } from "./toasts";
 
 const lightbox = createStore<string | undefined>(undefined);
 export const useLightbox = (): string | undefined => useStore(lightbox, (src) => src);
+export const toggleExpandAll = (ui: ChatUi): void => ui.store.set((state) => ({ ...state, expandAll: !state.expandAll, expanded: {} }));
 export const closeLightbox = (): void => lightbox.set(() => undefined);
 
 export function createChatUi(client: HostClient, homeDir: string): ChatUi {
@@ -16,12 +18,16 @@ export function createChatUi(client: HostClient, homeDir: string): ChatUi {
     expandAll: false,
     expanded: {},
     board: { ...emptyBoard(), rev: 0 },
-    // The phone draws no wallpaper and no visual frames (they run in a window-bound protocol on the Mac).
+    // No wallpaper on the phone; visuals follow the Mac's setting.
     settings: { visuals: false, wallpaper: "none", wallpaperLoop: false },
   });
   const syncBoard = () => {
-    const board = client.store.get().global.board;
-    if (board) store.set((state) => (state.board === board ? state : { ...state, board }));
+    const { board, settings } = client.store.get().global;
+    store.set((state) => {
+      const visuals = settings?.visuals ?? state.settings.visuals;
+      if (state.board === (board ?? state.board) && state.settings.visuals === visuals) return state;
+      return { ...state, board: board ?? state.board, settings: { ...state.settings, visuals } };
+    });
   };
   client.store.subscribe(syncBoard);
   syncBoard();
@@ -31,6 +37,9 @@ export function createChatUi(client: HostClient, homeDir: string): ChatUi {
     store,
     actions: {
       homeDir,
+      Sheet,
+      // Frames come from the host's /visual path (sandboxed, opaque origin, the desktop's frame CSP).
+      visualFrames: { src: (frameId) => `/visual/${frameId}/doc`, tapToRender: true },
       setExpanded: (key, open) => store.set((state) => ({ ...state, expanded: { ...state.expanded, [key]: open } })),
       openLightbox: (src) => lightbox.set(() => src),
       openExternal: (url) => void window.open(url, "_blank", "noopener,noreferrer"),

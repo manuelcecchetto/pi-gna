@@ -338,12 +338,12 @@ function useInView(scroller: React.RefObject<HTMLDivElement | null>, items: Rail
   return inView;
 }
 
-function findRun(root: HTMLElement, key: string): HTMLElement | null {
+export function findRun(root: HTMLElement, key: string): HTMLElement | null {
   return root.querySelector<HTMLElement>(`[data-run="${CSS.escape(key)}"]`);
 }
 
 /** Wait (up to 1.5 s) for a revealed turn to render. */
-function rendered(root: HTMLElement, key: string): Promise<HTMLElement | null> {
+export function rendered(root: HTMLElement, key: string): Promise<HTMLElement | null> {
   const started = performance.now();
   return new Promise((resolve) => {
     const check = () => {
@@ -356,7 +356,7 @@ function rendered(root: HTMLElement, key: string): Promise<HTMLElement | null> {
 }
 
 /** Briefly light up the message you jumped to. */
-function flash(section: HTMLElement): void {
+export function flash(section: HTMLElement): void {
   const bubble = section.querySelector<HTMLElement>("[data-user-bubble]");
   if (!bubble || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   bubble.animate([{ backgroundColor: HIGHLIGHT }, { backgroundColor: HIGHLIGHT, offset: 0.35 }, { backgroundColor: "var(--raised)" }], {

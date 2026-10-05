@@ -15,17 +15,18 @@ import {
   SquareTerminal,
   Wrench,
 } from "lucide-react";
-import { memo, type ReactNode, useMemo } from "react";
+import { memo, type ReactNode, useMemo, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
-import { userText } from "../../../shared/session-state";
+import type { ToolCall } from "../../../shared/protocol";
+import { type ToolRun, userText } from "../../../shared/session-state";
 import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
 import { Elapsed, useNow } from "./primitives";
-import { resultImages, ToolDetails } from "./ToolDetails";
+import { resultImages, resultText, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, LucideIcon> = {
   read: FileText,
@@ -216,7 +217,8 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
 }
 
 function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool" }>; cwd: string; home: string; live: boolean }) {
-  const { setExpanded } = useChatActions();
+  const { setExpanded, Sheet } = useChatActions();
+  const [sheet, setSheet] = useState(false);
   const open = useExpanded(step.key, false);
   const { call, run } = step;
   const presentation = presentTool(call.name, call.arguments, cwd, run?.result?.details, home);
@@ -233,8 +235,8 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
     <div>
       <button
         type="button"
-        onClick={() => setExpanded(step.key, !open)}
-        className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-[3px] text-left text-[13px] hover:bg-raised/60"
+        onClick={() => (Sheet ? setSheet(true) : setExpanded(step.key, !open))}
+        className="group flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-[3px] touch:min-h-9 text-left text-[13px] hover:bg-raised/60"
       >
         {running ? (
           <PiSpinner size={12} />
@@ -265,6 +267,43 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
       </button>
       <InlineImages images={resultImages(run?.result ?? run?.partial)} />
       {open && <ToolDetails call={call} run={run} />}
+      {Sheet && sheet && (
+        <Sheet title={[verb, presentation.target].filter(Boolean).join(" ")} onClose={() => setSheet(false)}>
+          <ToolSheetBody call={call} run={run} />
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+/** A phone's tool details: the desktop's views at full height, with the command and the output to copy. */
+function ToolSheetBody({ call, run }: { call: ToolCall; run?: ToolRun }) {
+  const [copied, setCopied] = useState<string>();
+  const output = resultText(run?.result ?? run?.partial);
+  const command = call.name === "bash" && typeof call.arguments.command === "string" ? call.arguments.command : "";
+  const copy = (what: string, text: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopied(what);
+    setTimeout(() => setCopied(undefined), 1200);
+  };
+  const button = "rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-muted";
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 [&_.max-h-72]:max-h-none [&_.max-h-96]:max-h-none [&_.max-h-\[28rem\]]:max-h-none" data-testid="tool-sheet">
+      {(command || output) && (
+        <div className="mb-2 flex gap-2">
+          {command && (
+            <button type="button" onClick={() => copy("command", command)} className={button}>
+              {copied === "command" ? "Copied" : "Copy command"}
+            </button>
+          )}
+          {output && (
+            <button type="button" onClick={() => copy("output", output)} className={button}>
+              {copied === "output" ? "Copied" : "Copy output"}
+            </button>
+          )}
+        </div>
+      )}
+      <ToolDetails call={call} run={run} />
     </div>
   );
 }

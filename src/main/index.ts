@@ -350,6 +350,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     upload: (device, name, type, body, declared) => uploads.put(device.id, name, type, body, declared),
     buildId: __PIGNA_BUILD__,
     staticDir: join(import.meta.dirname, "../mobile"),
+    visualDir: onDisk("resources", "visual"),
     log: (line) => log.info("remote", line),
   });
   remoteHost = new RemoteHost({

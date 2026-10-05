@@ -11,6 +11,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Phone: Settings like the Mac's (except Shortcuts): general, appearance, models, agent and Beta, features, Computer use (allowed apps, permission status), remote devices with revoke, and updates with Download. Changes show live on the Mac.
 - Phone: sign in to model providers from Settings > Providers: API keys typed on the phone are saved by pi on the Mac and never sent back; device-code and paste-a-code sign-ins work on the phone, and sign-ins that only finish in the Mac's browser say so.
 - Phone: attach photos (library or camera), files and files or folders on the Mac to a message. Uploads are kept on the Mac for 30 days.
+- Phone: tool calls open in a sheet (diffs scroll sideways, bash output keeps its colors, copy command or output), Expand all, images open in a zoomable viewer (long-press to save or copy), a turn list with bookmarks replaces the Mac's hover rail, tap a message for its time, and inline visuals draw on tap in a sandboxed frame.
 - ATP page: new plans are written to `docs/plans/draft/` instead of the project root.
 
 ## 0.4.5 - 2026-10-04

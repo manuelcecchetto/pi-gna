@@ -861,6 +861,12 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
   `registerSchemesAsPrivileged` call). `standard` is needed for relative URLs and `script-src 'self'`; nothing else (no fetch).
 - One host per frame: `pigna-visual://<frameId>/doc`, `<frameId>` random per `VisualFrame`. `visual-protocol.ts` serves only
   `/doc`, `/kit.css`, `/kit.js` (from `resources/visual/`) and 404s the rest. The fragment never goes in the URL.
+- The phone loads the same document from the remote server at `/visual/<frameId>/doc` (`visualRemoteAsset`,
+  `RemoteServer.serveVisual`): same three files, same `VISUAL_CSP`, no credentials (a sandboxed frame has an opaque origin and
+  sends no cookie) and `doc.html` links `kit.css`/`kit.js` relatively so both schemes resolve them. The iframe is
+  `sandbox="allow-scripts"`, tap to render (`ChatUiActions.visualFrames.tapToRender`); the same heartbeat watchdog, on error,
+  removes the iframe (a remote client cannot kill its process) and shows the source. A frame that blocks the page's thread
+  outright cannot be caught by any watchdog in that page; the 64 KB cap and the CSP are what bound a hostile one.
 - `/doc` CSP: `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:;
   font-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors app://pigna` (`VISUAL_CSP`,
   `visual-frame.ts`). `unsafe-inline` is acceptable: opaque origin, no network, navigation or parent access.

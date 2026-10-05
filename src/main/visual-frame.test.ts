@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { VISUAL_CSP, visualAsset, visualFrameToKill } from "./visual-frame";
+import { VISUAL_CSP, visualAsset, visualFrameToKill, visualRemoteAsset } from "./visual-frame";
 
 describe("visualAsset", () => {
   const host = "pigna-visual://abcd1234ef";
@@ -23,6 +23,18 @@ describe("visualAsset", () => {
       "not a url",
     ])
       expect(visualAsset(url), url).toBeNull();
+  });
+});
+
+describe("visualRemoteAsset", () => {
+  it("maps the frame paths to the same three assets", () => {
+    expect(visualRemoteAsset("/visual/abcd1234ef/doc")?.file).toBe("doc.html");
+    expect(visualRemoteAsset("/visual/abcd1234ef/kit.css")?.file).toBe("kit.css");
+    expect(visualRemoteAsset("/visual/abcd1234ef/kit.js")?.file).toBe("kit.js");
+  });
+  it("refuses anything else", () => {
+    for (const path of ["/visual/abcd1234ef/", "/visual/abcd1234ef/doc/x", "/visual/x/doc", "/visual/abcd1234ef/../doc", "/visual/abcd1234ef/__proto__", "/visual//doc", "/visual/abcd1234ef/kit.js.map"])
+      expect(visualRemoteAsset(path), path).toBeNull();
   });
 });
 

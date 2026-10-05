@@ -36,6 +36,13 @@ export function visualAsset(rawUrl: string): { file: string; type: string } | nu
   return asset ? { file: asset[0], type: asset[1] } : null;
 }
 
+/** The remote server's path for the same frame: `/visual/<frameId>/<asset>`, relative links in doc.html resolve beside it. */
+export function visualRemoteAsset(path: string): { file: string; type: string } | null {
+  const match = /^\/visual\/[a-z0-9-]{8,64}(\/[^/]*)$/.exec(path);
+  const asset = match && Object.hasOwn(ASSETS, match[1]!) ? ASSETS[match[1]!] : undefined;
+  return asset ? { file: asset[0], type: asset[1] } : null;
+}
+
 /** The process to kill for a stuck frame: the one hosting `pigna-visual://<frameId>/`, never the app window's own. */
 export function visualFrameToKill(frames: readonly { url: string; osProcessId: number }[], frameId: string, appPid: number): number | undefined {
   if (!/^[0-9a-f]{16}$/.test(frameId)) return undefined;

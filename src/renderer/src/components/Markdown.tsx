@@ -1,6 +1,6 @@
 import { memo, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { useChatActions, useChatUi } from "../lib/chat-ui";
+import { ChatUiProvider, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
@@ -36,6 +36,7 @@ export const Markdown = memo(function Markdown({
   visuals?: boolean;
 }) {
   const { openExternal } = useChatActions();
+  const ui = useChatUiHandle(); // the frames mount in roots of their own, which carry it along
   const enabled = useChatUi((s) => s.settings.visuals) && visuals;
   const html = useMemo(() => {
     // An unfinished visual fence streams as a placeholder instead of raw source.
@@ -66,7 +67,11 @@ export const Markdown = memo(function Markdown({
       el.classList.remove("pending");
       el.textContent = "";
       const mount = createRoot(el);
-      mount.render(<VisualFrame source={source} />);
+      mount.render(
+        <ChatUiProvider ui={ui}>
+          <VisualFrame source={source} />
+        </ChatUiProvider>,
+      );
       roots.push(mount);
     }
     return () => {
@@ -75,7 +80,7 @@ export const Markdown = memo(function Markdown({
         for (const mount of roots) mount.unmount();
       }, 0);
     };
-  }, [html, streaming, enabled]);
+  }, [html, streaming, enabled, ui]);
   return (
     <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal)} dangerouslySetInnerHTML={{ __html: html }} />
   );

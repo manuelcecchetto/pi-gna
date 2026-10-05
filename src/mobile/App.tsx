@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { ChatUiProvider } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import { ChatScreen } from "./Chat";
-import { createChatUi, closeLightbox, useLightbox } from "./chat-ui";
+import { createChatUi } from "./chat-ui";
+import { Lightbox } from "./Lightbox";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { useRoute } from "./nav";
 import { Chats, PageSoon, Projects } from "./Screens";
@@ -32,16 +33,6 @@ function ConnectionBanner({ client }: { client: HostClient }) {
         </button>
       )}
     </div>
-  );
-}
-
-function Lightbox() {
-  const src = useLightbox();
-  if (!src) return null;
-  return (
-    <button type="button" aria-label="Close image" onClick={closeLightbox} className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-3">
-      <img alt="" src={src} className="max-h-full max-w-full object-contain" />
-    </button>
   );
 }
 

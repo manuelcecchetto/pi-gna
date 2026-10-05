@@ -9,7 +9,8 @@
 // Exit code 0 only when every check passed. Uses Node's built-in fetch/WebSocket/http; no dependencies.
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { closeSync, copyFileSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { deflateSync } from "node:zlib";
+import { closeSync, copyFileSync, createWriteStream, existsSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -96,10 +97,76 @@ function seed(ports) {
     parent = answer.id;
   }
   writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+  seedTools(dir, usage);
   mkdirSync(userData, { recursive: true });
   // Remote access on through the profile's settings; the server follows them at launch.
   writeFileSync(join(userData, "settings.json"), JSON.stringify({ version: 1, remote: { enabled: true, port: ports.remote, keepAwake: "off" } }));
   return file;
+}
+
+/** A solid-color PNG (zlib from node), for image blocks. */
+function png(width, height, [r, g, b]) {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc(body), body.length + 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [r, g, b]).flat())]);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))), chunk("IEND", Buffer.alloc(0))]).toString("base64");
+}
+
+const VISUAL_OK = '<div class="stack"><div class="stat"><span class="stat-value" id="v">42</span><span class="stat-label">answers</span></div></div>';
+// Stops the kit's heartbeat without blocking the page: what a wedged frame looks like to the watchdog.
+const VISUAL_STUCK = "<div>stuck</div><script>for (let i = 0; i < 99999; i++) clearInterval(i);</script>";
+
+/** A second session with every kind of transcript content the phone's extras handle (tool calls, images, links, visuals). */
+function seedTools(dir, usage) {
+  const id = "01a20000-0000-7000-8000-000000000003";
+  const lines = [{ type: "session", version: 3, id, timestamp: "2026-10-03T08:00:00.000Z", cwd: project }];
+  let parent = null;
+  let n = 0;
+  const entry = (message) => {
+    const e = { type: "message", id: `t${String(++n).padStart(3, "0")}xxxxx`, parentId: parent, timestamp: new Date(1791100000000 + n * 1000).toISOString(), message: { ...message, timestamp: 1791100000000 + n * 1000 } };
+    lines.push(e);
+    parent = e.id;
+  };
+  const assistant = (content, stopReason) => entry({ role: "assistant", content, api: "fake", provider: "fake", model: "fake", usage, stopReason });
+  const tool = (callId, name, args, text, extra = {}) => {
+    assistant([{ type: "toolCall", id: callId, name, arguments: args }], "toolUse");
+    entry({ role: "toolResult", toolCallId: callId, toolName: name, content: text === undefined ? [] : [{ type: "text", text }], isError: false, ...extra });
+  };
+  const long = `const veryLongLineOfCode = "${"x".repeat(160)}";`;
+  entry({ role: "user", content: [{ type: "text", text: "Tools demo: change the file" }, { type: "image", mimeType: "image/png", data: png(120, 80, [200, 80, 40]) }] });
+  tool("c1", "bash", { command: "ls --color" }, "\u001b[31mred-file\u001b[0m\nplain-file");
+  tool("c2", "edit", { path: "src/a.ts" }, "Edited", { details: { diff: ` 1 const a = 1;\n-2 const b = 2;\n+2 ${long}\n 3 export {};` } });
+  tool("c3", "read", { path: "notes-alpha.md" }, "alpha");
+  tool("c4", "frobnicate", { level: 3, flags: ["x", "y"] }, "frobbed");
+  assistant([{ type: "toolCall", id: "c5", name: "screenshot", arguments: {} }], "toolUse");
+  entry({ role: "toolResult", toolCallId: "c5", toolName: "screenshot", content: [{ type: "image", mimeType: "image/png", data: png(160, 90, [40, 120, 200]) }], isError: false });
+  assistant([{ type: "text", text: `Done. See [the docs](https://example.com/docs).\n\n\`\`\`visual\n${VISUAL_OK}\n\`\`\`\n\n\`\`\`visual\n${VISUAL_STUCK}\n\`\`\`\n` }], "stop");
+  entry({ role: "user", content: [{ type: "text", text: "Second turn of the demo" }] });
+  assistant([{ type: "text", text: "Second answer." }], "stop");
+  // Older than the first session in every sense, so it sorts second and the earlier checks keep opening the first row.
+  const file = join(dir, `2026-10-03T08-00-00-000Z_${id}.jsonl`);
+  writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
+  utimesSync(file, new Date("2026-10-03T08:10:00Z"), new Date("2026-10-03T08:10:00Z"));
 }
 
 function launch(ports) {
@@ -378,7 +445,7 @@ async function scenario(ctx) {
   // ── Open ────────────────────────────────────────────────────────────────
   log("open an existing session");
   const opened = await A.ok("chat.open", { request: { cwd, sessionPath: sessionFile } });
-  const handle = opened.handle;
+  let handle = opened.handle;
   const topic = `chat:${handle}`;
   check(!opened.reused && /^[a-z0-9]{6,32}$/.test(handle), "A opens the session file and gets a host handle", opened);
   check(Array.isArray(opened.entries) && opened.entries.length === 0, "a remote open returns no entries (the phone reads chat.snapshot)");
@@ -612,6 +679,8 @@ async function scenario(ctx) {
   sleeper.drop();
 
   await screens(ctx, { handle, A });
+  // The phone checks close the chat (Close chat in the sheet): the sections below need it live again.
+  handle = (await A.ok("chat.open", { request: { cwd, sessionPath: sessionFile } })).handle;
 
   // ── Host restart: new bootId, old idempotency keys, resync ──────────────
   log("restart the host: new boot id");
@@ -780,6 +849,7 @@ async function screens({ desktop, ports }, { handle, A }) {
   await composerChecks({ phone, A, handle, shot, text, tap, exists, present });
   await projectChecks({ phone, A, handle, shot, text, exists, present });
   await settingsChecks({ phone, A, shot, text, exists, present });
+  await transcriptChecks({ phone, A, shot, text, tap, exists, present });
   if (flag("--hold")) {
     log(`holding on the mobile page; debug port ${ports.debug}`);
     await new Promise(() => undefined);
@@ -903,7 +973,7 @@ async function settingsChecks({ phone, A, shot, text, exists, present }) {
   await click("open-settings");
   await until("the sections", () => exists('[data-testid="section-general"]'));
   const list = await text();
-  check(["General", "Appearance", "Models", "Agent", "Features", "Computer use", "Remote access", "Updates"].every((l) => list.includes(l)) && !(await exists('[data-testid="section-providers"]')) && !(await exists('[data-testid="section-shortcuts"]')), "the sections list has everything but Providers and Shortcuts");
+  check(["General", "Appearance", "Models", "Agent", "Features", "Computer use", "Remote access", "Updates", "Providers"].every((l) => list.includes(l)) && (await exists('[data-testid="section-providers"]')) && !(await exists('[data-testid="section-shortcuts"]')), "the sections list has everything but Shortcuts (Providers arrived with T34)");
   await shot("17-settings");
 
   await click("section-appearance");
@@ -968,6 +1038,129 @@ async function settingsChecks({ phone, A, shot, text, exists, present }) {
 }
 
 /** The phone's composer chrome (T26): model and thinking sheets, commands, mentions, context meter, queue, extension UI. */
+/** The phone's transcript extras (T28): tool sheets, expand all, images and the lightbox, the turn list and bookmarks, visuals, copy, links, times. */
+async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) {
+  log("mobile transcript extras");
+  const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);
+  const count = (selector) => phone.eval(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
+  const clickText = (selector, label) => phone.eval(`(() => { const e = [...document.querySelectorAll(${JSON.stringify(selector)})].find((x) => x.innerText.includes(${JSON.stringify(label)})); if (!e) return false; e.click(); return true; })()`);
+  const scale = () => phone.eval(`(() => { const m = /scale\\(([\\d.]+)\\)/.exec(document.querySelector('[data-testid="lightbox"] img')?.style.transform ?? ""); return m ? Number(m[1]) : 0; })()`);
+  const touch = (type, points) => phone.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
+
+  // Open the tools session: back out to Projects, then the project's list.
+  for (let i = 0; i < 6 && !(await exists('[data-testid="open-settings"]')); i++) {
+    await phone.eval(`document.querySelector('[aria-label="Back"]')?.click()`);
+    await sleep(500);
+  }
+  await until("the projects screen", () => exists('[data-testid="open-settings"]'));
+  await sleep(500);
+  await tap("project");
+  await until("the chats list", present("Tools demo"));
+  check(await tap("Tools demo"), "the phone opens the tools session");
+  await until("the tools transcript", present("Second answer."));
+  await sleep(800);
+  await shot("22-tools-chat");
+
+  // Tool detail sheets.
+  check(await clickText("button", "Worked"), "the first turn's work accordion opens");
+  await until("the tool rows", present("ls --color"));
+  check(!(await exists('[data-testid="tool-sheet"]')), "a tool's details start closed");
+  check(await clickText("button", "ls --color"), "tapping a bash call opens its sheet");
+  await until("the bash sheet", () => exists('[data-testid="tool-sheet"]'));
+  const sheet = () => phone.eval(`document.querySelector('[data-testid="tool-sheet"]')?.innerText ?? ''`);
+  check((await sheet()).includes("red-file") && !(await sheet()).includes("[31m"), "bash output shows without raw ANSI codes", await sheet());
+  check((await sheet()).includes("Copy output"), "the sheet offers copying the output");
+  await shot("23-bash-sheet");
+  await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
+  check(await clickText("button", "src/a.ts"), "tapping an edit opens its sheet");
+  await until("the edit sheet", () => exists('[data-testid="tool-sheet"]'));
+  check(
+    await phone.eval(`[...document.querySelectorAll('[data-testid="tool-sheet"] .overflow-auto')].some((e) => e.scrollWidth > e.clientWidth + 20)`),
+    "the diff scrolls sideways instead of wrapping its long line",
+  );
+  await shot("24-edit-sheet");
+  await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
+  check(await clickText("button", "frobnicate"), "a generic tool opens its sheet");
+  await until("the generic sheet", () => exists('[data-testid="tool-sheet"]'));
+  check((await sheet()).includes('"level": 3') && (await sheet()).includes("frobbed"), "the generic sheet shows the JSON arguments and the result", await sheet());
+  await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
+
+  // Expand all.
+  const rowsClosed = await count('[data-testid="tool-sheet"]');
+  check(rowsClosed === 0, "no sheet is left open");
+  check(!(await text()).includes("const veryLongLine"), "steps are collapsed before Expand all");
+  check(await click("expand-all"), "the header's Expand all is tapped");
+  await until("the steps open inline", present("const veryLongLine"));
+  await click("expand-all");
+  await until("the steps close again", async () => !(await text()).includes("const veryLongLine"));
+
+  // Images and the lightbox.
+  check((await count("img")) >= 2, "the transcript shows the message's image and the tool's image");
+  check(await phone.eval(`(() => { const i = document.querySelector('button img'); i.closest('button').click(); return true; })()`), "an image is tapped");
+  await until("the lightbox", () => exists('[data-testid="lightbox"]'));
+  check((await scale()) === 1, "the lightbox opens at fit size");
+  const [cx, cy] = [196, 426];
+  await touch("touchStart", [[cx - 40, cy], [cx + 40, cy]]);
+  await touch("touchMove", [[cx - 90, cy], [cx + 90, cy]]);
+  await touch("touchEnd", []);
+  await sleep(300);
+  const zoomed = await scale();
+  check(zoomed > 1.5, "a two-finger spread zooms the image", zoomed);
+  await shot("25-lightbox-zoom");
+  check(await phone.eval(`document.querySelector('[data-testid="lightbox"] img').tagName === "IMG" && !document.querySelector('[data-testid="lightbox"] img').closest("a,button")`), "the image is a plain <img>, so iOS offers Save and Copy on a long press");
+  check(await phone.eval(`(() => { document.querySelector('[aria-label="Close image"]').click(); return true; })()`), "the lightbox's close button is tapped");
+  await until("the lightbox to close", async () => !(await exists('[data-testid="lightbox"]')));
+
+  // Times on tap, copy, links.
+  check(!(await exists('[data-testid="user-stamp"]')), "no time is shown on a message until it is tapped");
+  check(await phone.eval(`(() => { document.querySelector('[data-user-bubble]').click(); return true; })()`), "a message is tapped");
+  await until("the message time", () => exists('[data-testid="user-stamp"]'));
+  check(await phone.eval(`!!document.querySelector('[title="Copy answer"]')`), "a finished answer has a copy button");
+  await phone.eval(`window.__opened = []; window.open = (url) => { window.__opened.push(String(url)); return null; }; true`);
+  check(await phone.eval(`(() => { const a = [...document.querySelectorAll("a")].find((x) => x.href.startsWith("https://example.com/docs")); if (!a) return false; a.click(); return true; })()`), "a link in an answer is tapped");
+  check((await phone.eval("window.__opened")).includes("https://example.com/docs"), "links open in the phone's browser", await phone.eval("window.__opened"));
+
+  // Visuals: tap to render, sandboxed frame from the host, watchdog.
+  // The settings checks left Inline visuals however they found it: switch it on from the host; the phone follows live.
+  const current = await A.ok("settings.get");
+  if (!current.visuals) await A.ok("settings.apply", { op: { type: "visuals", on: true }, baseRev: current.rev });
+  await until("the visual placeholders", () => exists('[data-testid="visual-tap"]'));
+  check((await count("iframe")) === 0, "no visual runs before it is tapped");
+  check(await click("visual-tap"), "the first visual is tapped");
+  await until("the visual frame", () => exists("iframe.visual-frame"));
+  const frame = await phone.eval(`(() => { const f = document.querySelector("iframe.visual-frame"); return { sandbox: f.getAttribute("sandbox"), src: f.getAttribute("src") }; })()`);
+  check(frame.sandbox === "allow-scripts", "the frame is sandboxed with scripts only (opaque origin)", frame.sandbox);
+  check(/^\/visual\/[0-9a-f]{16}\/doc$/.test(frame.src), "the frame loads from the host's /visual path", frame.src);
+  await until("the frame to size itself", () => phone.eval(`document.querySelector("iframe.visual-frame").offsetHeight > 41`), 15_000, 200).catch(async (error) => {
+    log(`  frame: ${await phone.eval(`(() => { const f = document.querySelector("iframe.visual-frame"); return JSON.stringify({ h: f?.offsetHeight, err: document.querySelector(".visual-error")?.innerText }); })()`)}`);
+    throw error;
+  });
+  await shot("26-visual");
+  const headers = await phone.eval(`fetch(${JSON.stringify(frame.src)}).then((r) => ({ status: r.status, csp: r.headers.get("content-security-policy") }))`);
+  check(headers.status === 200 && /default-src 'none'/.test(headers.csp) && /connect-src 'none'/.test(headers.csp), "the frame document carries the visual CSP", headers);
+  // The second visual stops its heartbeat: the watchdog removes the frame and shows the source.
+  check(await phone.eval(`(() => { const t = [...document.querySelectorAll('[data-testid="visual-tap"]')]; if (!t[0]) return false; t[0].click(); return true; })()`), "the second visual is tapped");
+  await until("the watchdog to fire", present("Visual stopped responding"), 20_000, 500);
+  check((await count("iframe.visual-frame")) === 1, "the stuck frame is removed (the healthy one stays)");
+  check((await text()).includes("clearInterval"), "its source is shown instead");
+  await shot("27-visual-stuck");
+
+  // Turn list and bookmarks (the host keeps them).
+  check(await click("turn-list-button"), "the turn list button is tapped");
+  await until("the turn list", () => exists('[data-testid="turn-list"]'));
+  check((await count('[data-testid="turn-row"]')) === 2, "the list has one row per message sent", await count('[data-testid="turn-row"]'));
+  await shot("28-turn-list");
+  check(await phone.eval(`(() => { document.querySelector('[data-testid="turn-list"] [aria-label="Bookmark"]').click(); return true; })()`), "the first turn's star is tapped");
+  await until("the host to hold the bookmark", async () => Object.values((await A.ok("ui.get")).bookmarks ?? {}).some((marks) => marks.length === 1));
+  check(true, "the bookmark is in the host's ui state");
+  await phone.eval(`window.__flashes = 0; const animate = Element.prototype.animate; Element.prototype.animate = function (...args) { window.__flashes++; return animate.apply(this, args); }; true`);
+  check(await clickText('[data-testid="turn-row"]', "Second turn"), "the second turn's row is tapped");
+  await until("the list to close", async () => !(await exists('[data-testid="turn-list"]')));
+  await until("the view to scroll to the second turn", () => phone.eval(`(() => { const s = document.querySelector('[data-run]:last-of-type'); const sc = s?.closest(".overflow-y-auto"); return !!sc && sc.scrollTop > 0; })()`), 8_000, 100);
+  check((await phone.eval("window.__flashes")) >= 1, "the jump flashes the message");
+  await shot("29-after-jump");
+}
+
 async function composerChecks({ phone, A, handle, shot, text, tap, exists, present }) {
   log("mobile composer parity");
   const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);

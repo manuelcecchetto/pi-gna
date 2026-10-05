@@ -1,14 +1,18 @@
 // One chat: join it on the host (open, or attach to a live one), show its transcript and approvals, and let go on leave.
 // Leaving detaches only: the host keeps the run going (docs/REMOTE.md section 5).
 import { useEffect, useState } from "react";
+import { ListChevronsDownUp, ListChevronsUpDown } from "lucide-react";
 import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
+import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import { attention } from "../shared/session-state";
+import { toggleExpandAll } from "./chat-ui";
 import type { HostClient } from "./client/host-client";
 import { MobileComposer } from "./MobileComposer";
 import type { Route } from "./nav";
 import { Header, Mark } from "./Screens";
+import { TurnList } from "./TurnList";
 
 type ChatRoute = Extract<Route, { screen: "chat" }>;
 
@@ -104,11 +108,30 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
   const failure = error ?? entry?.error;
   const title = session?.name ?? session?.title ?? route.title ?? "Chat";
   const level = session ? attention(session) : undefined;
+  const ui = useChatUiHandle();
+  const expandAll = useChatUi((s) => s.expandAll);
   const earlier = entry?.turns && entry.turns.from > 0 && handle ? { count: entry.turns.from, load: () => client.loadEarlier(handle) } : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Header title={title} onBack={back} trailing={<span className="pr-4"><Mark level={level} /></span>} />
+      <Header title={title} onBack={back} trailing={
+          <>
+            {session && (
+              <button
+                type="button"
+                aria-label={expandAll ? "Collapse all steps" : "Expand all steps"}
+                aria-pressed={expandAll}
+                data-testid="expand-all"
+                onClick={() => toggleExpandAll(ui)}
+                className={`grid h-11 w-11 shrink-0 place-items-center ${expandAll ? "text-accent" : "text-muted"}`}
+              >
+                {expandAll ? <ListChevronsDownUp size={18} /> : <ListChevronsUpDown size={18} />}
+              </button>
+            )}
+            <span className="pr-4"><Mark level={level} /></span>
+          </>
+        }
+      />
       {failure && !session ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <div className="text-[14px] text-bad">{failure}</div>
@@ -128,7 +151,7 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
               </button>
             </div>
           )}
-          <Transcript session={session} earlier={earlier} />
+          <Transcript session={session} earlier={earlier} turns={(nav) => <TurnList client={client} nav={nav} />} />
           {session.dialogs.length > 0 && (
             <div className="max-h-[55%] shrink-0 overflow-y-auto px-3 pb-2" data-testid="dialogs">
               <Dialogs handle={session.handle} dialogs={session.dialogs} />

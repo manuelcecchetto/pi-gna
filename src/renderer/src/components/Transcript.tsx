@@ -18,7 +18,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "r
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
-import { railItems } from "../lib/rail";
+import { type RailItem, railItems } from "../lib/rail";
 import type { SessionState } from "../../../shared/session-state";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
@@ -28,7 +28,7 @@ import { CompactionProgress } from "./CompactionProgress";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
 import { Ansi } from "./primitives";
-import { TurnRail } from "./TurnRail";
+import { findRun, flash, rendered, TurnRail } from "./TurnRail";
 
 const PAGE = 30;
 
@@ -38,7 +38,14 @@ export interface EarlierTurns {
   load: () => Promise<void>;
 }
 
-export function Transcript({ session, earlier }: { session: SessionState; earlier?: EarlierTurns }) {
+/** What a client with its own turn navigation (the phone's jump list) gets: the turns and a way to scroll to one. */
+export interface TurnNav {
+  items: RailItem[];
+  jump: (key: string) => Promise<void>;
+  sessionPath?: string;
+}
+
+export function Transcript({ session, earlier, turns }: { session: SessionState; earlier?: EarlierTurns; turns?: (nav: TurnNav) => React.ReactNode }) {
   const derive = useMemo(() => createRunDeriver(), []);
   const runs = derive(session);
   const [limit, setLimit] = useState(PAGE);
@@ -73,6 +80,22 @@ export function Transcript({ session, earlier }: { session: SessionState; earlie
     } finally {
       setPaging(false);
     }
+  };
+
+  /** Scroll to a turn (paging it in first when it is on an earlier page) and flash it. */
+  const jump = async (key: string) => {
+    const root = scroller.current;
+    if (!root) return;
+    let section = findRun(root, key);
+    let behavior: ScrollBehavior = "smooth";
+    if (!section) {
+      reveal(key);
+      section = await rendered(root, key);
+      behavior = "instant";
+    }
+    if (!section) return;
+    root.scrollTo({ top: section.offsetTop - TOP_GAP, behavior });
+    flash(section);
   };
 
   const last = visible.at(-1);
@@ -121,6 +144,7 @@ export function Transcript({ session, earlier }: { session: SessionState; earlie
           ))}
         </div>
       </div>
+      {turns?.({ items: railItems(runs), jump, sessionPath: session.sessionPath })}
       <TurnRail items={railItems(runs)} scroller={scroller} column={content} topGap={TOP_GAP} reveal={reveal} sessionPath={session.sessionPath} />
       {below && (
         <button
@@ -349,6 +373,7 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
   const [text, comments] = splitComments(withoutCard);
   const images = parts.images;
   const [expanded, setOpen] = useState(false);
+  const [tapped, setTapped] = useState(false);
   const long = text.split("\n").length > 14 || text.length > 1400;
   const stamp = <HoverStamp at={message.timestamp} group="user" />;
   return (
@@ -380,14 +405,20 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {text && (
         <div className="flex w-full items-center justify-end gap-3">
           {stamp}
-          <div data-user-bubble className="max-w-[78%] touch:max-w-[88%] rounded-[22px] bg-raised px-5 touch:px-4 py-3 text-[14.5px] leading-relaxed text-fg">
+          <div data-user-bubble onClick={() => setTapped((on) => !on)} className="max-w-[78%] touch:max-w-[88%] rounded-[22px] bg-raised px-5 touch:px-4 py-3 text-[14.5px] leading-relaxed text-fg">
             <div className={`selectable whitespace-pre-wrap break-words ${long && !expanded ? "line-clamp-[14]" : ""}`}>{text}</div>
             {long && (
-              <button type="button" onClick={() => setOpen(!expanded)} className="mt-1 text-[12px] text-muted hover:text-fg">
+              <button type="button" onClick={(event) => (event.stopPropagation(), setOpen(!expanded))} className="mt-1 text-[12px] text-muted hover:text-fg">
                 {expanded ? "Show less" : "Show more"}
               </button>
             )}
           </div>
+        </div>
+      )}
+      {tapped && (
+        <div className="hidden items-center gap-3 text-[12px] text-faint touch:flex" data-testid="user-stamp">
+          <span>{new Date(message.timestamp).toLocaleString()}</span>
+          <CopyText text={text} label="Copy message" />
         </div>
       )}
       {mentions.length > 0 && (
@@ -460,10 +491,32 @@ function AnswerFooter({ blocks }: { blocks: Block[] }) {
   );
 }
 
+/** A small copy button that says so for a moment. */
+function CopyText({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title={label}
+      onClick={(event) => {
+        event.stopPropagation();
+        void navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      }}
+      className="flex items-center gap-1 rounded-md p-1 hover:text-fg"
+    >
+      {copied ? <Check size={14} /> : <Copy size={14} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
 /** Time stamps are noise most of the time: shown while hovering their message, full date in the tooltip. */
 function HoverStamp({ at, group }: { at: number; group: "user" | "answer" }) {
   // No hover on a touch screen: a message's stamp would only take room from its bubble.
-  const reveal = group === "user" ? "group-hover/user:opacity-100 touch:hidden" : "group-hover/answer:opacity-100";
+  // Tapping a message shows its time (the user bubble's own line); an answer's time is always there.
+  const reveal = group === "user" ? "group-hover/user:opacity-100 touch:hidden" : "group-hover/answer:opacity-100 touch:opacity-100";
   return (
     <span title={new Date(at).toLocaleString()} className={`shrink-0 text-[12px] text-faint opacity-0 transition-opacity ${reveal}`}>
       {formatStamp(at)}
