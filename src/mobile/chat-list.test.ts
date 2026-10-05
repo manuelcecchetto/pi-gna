@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AttentionSummary } from "../shared/host-api";
 import type { ProjectGroup } from "../shared/ipc";
-import { chatItems, projectItems } from "./chat-list";
+import { chatItems, projectItems, searchChats, searchProjects } from "./chat-list";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 
 const session = (path: string, modifiedAt: number, title = path) => ({ path, id: path, cwd: "/a", title, named: false, createdAt: 1, modifiedAt });
@@ -29,6 +29,22 @@ describe("project and chat lists", () => {
     ]);
     expect(chatItems(projects, [], attention, "/b")[0]).toMatchObject({ handle: "h3", attention: undefined });
     expect(chatItems(projects, [], attention, "/missing")).toEqual([]);
+  });
+
+  it("shows unread per device: a chat this phone opened for that outcome is quiet until it settles again", () => {
+    const settled = (at: number): AttentionSummary => ({ ...live("h1", "/a/1.jsonl", "unread"), settled: { outcome: "done", at } });
+    expect(chatItems(projects, [], { h1: settled(100) }, "/a", { h1: 100 }).find((c) => c.handle === "h1")).toMatchObject({ attention: undefined, settledAt: 100 });
+    expect(chatItems(projects, [], { h1: settled(200) }, "/a", { h1: 100 }).find((c) => c.handle === "h1")!.attention).toBe("unread");
+    expect(projectItems(projects, [], { h1: settled(100) }, { h1: 100 }).find((p) => p.cwd === "/a")!.attention).toBeUndefined();
+  });
+
+  it("searches projects by folder or chat title, and chats by title", () => {
+    const named: ProjectGroup[] = [{ cwd: "/a/alpha", modifiedAt: 2, sessions: [session("/a/1.jsonl", 1, "Fix login bug")] }, { cwd: "/a/beta", modifiedAt: 1, sessions: [session("/b/1.jsonl", 1, "Write docs")] }];
+    const items = projectItems(named, [], {});
+    expect(searchProjects(items, "beta").map((p) => p.cwd)).toEqual(["/a/beta"]);
+    expect(searchProjects(items, "login").map((p) => p.cwd)).toEqual(["/a/alpha"]);
+    expect(searchProjects(items, " ")).toHaveLength(2);
+    expect(searchChats(chatItems(named, [], {}, "/a/alpha"), "docs")).toEqual([]);
   });
 });
 

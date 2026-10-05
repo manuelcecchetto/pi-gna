@@ -1,12 +1,12 @@
 // `fs.browseFolders` for phones: folders (and optionally file names) below the home folder, for the project and
-// attachment pickers. Names only, no contents; symlinks are shown but never followed out of the home folder.
+// attachment pickers (dot-entries only when `hidden`). Names only, no contents; symlinks are shown but never followed out of the home folder.
 import { readdir, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, sep } from "node:path";
 import { HostError, type FolderListing } from "../shared/host-api";
 
 const MAX_ENTRIES = 500;
 
-export async function browse(home: string, requested: unknown, withFiles: boolean): Promise<FolderListing> {
+export async function browse(home: string, requested: unknown, withFiles: boolean, hidden = false): Promise<FolderListing> {
   const root = await realpath(home);
   const wanted = requested === undefined || requested === "" ? root : requested;
   if (typeof wanted !== "string" || !isAbsolute(wanted) || wanted.includes("\0")) throw new HostError("bad_request", "a folder is an absolute path");
@@ -17,7 +17,7 @@ export async function browse(home: string, requested: unknown, withFiles: boolea
   if (!(await stat(path)).isDirectory()) throw new HostError("bad_request", "not a folder");
   const folders: FolderListing["folders"] = [];
   const files: NonNullable<FolderListing["files"]> = [];
-  const entries = (await readdir(path, { withFileTypes: true }).catch(() => [])).filter((e) => !e.name.startsWith(".")).sort((a, b) => a.name.localeCompare(b.name));
+  const entries = (await readdir(path, { withFileTypes: true }).catch(() => [])).filter((e) => hidden || !e.name.startsWith(".")).sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of entries) {
     if (folders.length + files.length >= MAX_ENTRIES) break;
     const full = join(path, entry.name);

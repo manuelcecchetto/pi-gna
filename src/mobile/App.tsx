@@ -6,7 +6,7 @@ import { ChatScreen } from "./Chat";
 import { createChatUi, closeLightbox, useLightbox } from "./chat-ui";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { useRoute } from "./nav";
-import { Chats, Projects } from "./Screens";
+import { Chats, PageSoon, Projects } from "./Screens";
 import { noticeFor } from "./notices";
 import { toast, Toasts } from "./toasts";
 
@@ -77,6 +77,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
         <ConnectionBanner client={client} />
         {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} footer={signOut} />}
         {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
+        {route.screen === "page" && <PageSoon route={route} back={back} />}
         {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} />}
       </div>
       <Toasts />

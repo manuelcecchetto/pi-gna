@@ -213,7 +213,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     }),
     "chat.files": any<{ cwd: string }>("remote", async (_ctx, { cwd }) => (await env(), listFiles(cwd))),
     "chat.compactionSettings": any("remote", async () => (await env(), readCompactionSettings())),
-    "fs.browseFolders": any<{ path?: string; files?: boolean }>("remote", (_ctx, { path, files }) => browse(deps.app.homeDir, path, files === true)),
+    "fs.browseFolders": any<{ path?: string; files?: boolean; hidden?: boolean }>("remote", (_ctx, { path, files, hidden }) => browse(deps.app.homeDir, path, files === true, hidden === true)),
     "uploads.discard": any<{ id: string }>("remote", async (ctx, { id }) => {
       await deps.uploads.discard(deviceOf(ctx), id);
       return null;

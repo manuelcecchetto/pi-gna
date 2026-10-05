@@ -105,6 +105,15 @@ export interface ClientState {
 
 type GlobalKey = keyof GlobalState;
 
+/**
+ * The methods typed `Snapshot<T>` answer with the bare value today (the host does not stamp them with a `seq`), so
+ * take either shape; a bare value then counts as read at the resync base.
+ */
+function snapshotOf(result: unknown): { seq?: number; value: unknown } {
+  const wrapped = result as { seq?: unknown; value?: unknown } | null;
+  return wrapped && typeof wrapped === "object" && typeof wrapped.seq === "number" && "value" in wrapped ? (wrapped as { seq: number; value: unknown }) : { value: result };
+}
+
 /** How each global value is read and how its event replaces it. `seq` is absent for reads that carry none. */
 const GLOBAL_READS: { key: GlobalKey; read: (c: HostClient) => Promise<{ seq?: number; value: unknown }> }[] = [
   {
@@ -112,13 +121,13 @@ const GLOBAL_READS: { key: GlobalKey; read: (c: HostClient) => Promise<{ seq?: n
     read: async (c) => ({ value: Object.fromEntries((await c.call("chat.live", {})).map((chat) => [chat.handle, chat])) }),
   },
   { key: "projects", read: async (c) => ({ value: await c.call("chat.list", {}) }) },
-  { key: "board", read: (c) => c.call("board.get", {}) },
-  { key: "laments", read: (c) => c.call("laments.get", {}) },
-  { key: "settings", read: (c) => c.call("settings.get", {}) },
-  { key: "computer", read: (c) => c.call("computer.get", {}) },
-  { key: "ui", read: (c) => c.call("ui.get", {}) },
-  { key: "atp", read: (c) => c.call("atp.state", {}) },
-  { key: "browser", read: (c) => c.call("browser.state", {}) },
+  { key: "board", read: async (c) => snapshotOf(await c.call("board.get", {})) },
+  { key: "laments", read: async (c) => snapshotOf(await c.call("laments.get", {})) },
+  { key: "settings", read: async (c) => snapshotOf(await c.call("settings.get", {})) },
+  { key: "computer", read: async (c) => snapshotOf(await c.call("computer.get", {})) },
+  { key: "ui", read: async (c) => snapshotOf(await c.call("ui.get", {})) },
+  { key: "atp", read: async (c) => snapshotOf(await c.call("atp.state", {})) },
+  { key: "browser", read: async (c) => snapshotOf(await c.call("browser.state", {})) },
 ];
 
 /** The `GlobalKey` an event replaces whole, with the new value; null for events the store does not hold. */
