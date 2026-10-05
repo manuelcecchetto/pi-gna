@@ -856,6 +856,7 @@ async function screens({ desktop, ports }, { handle, A }) {
   check(await tap("Allow"), "the phone taps Allow");
   await until("the card to go", async () => !(await text()).includes("Run the fake tool?"));
   await until("streamed lines on the phone", present("Line 4 of the streamed"));
+  await followChecks({ phone, present });
   const ph = await A.ok("chat.live");
   check(ph.find((c) => c.handle === handle)?.running === true, "the host shows the phone's prompt running");
   await sleep(500);
@@ -886,6 +887,50 @@ async function screens({ desktop, ports }, { handle, A }) {
   }
   await mainEval(`${view}.debugger.detach(), globalThis.__sliceWin.destroy(), true`);
   inspector.close();
+}
+
+/** While the phone's prompt streams: at the end the view follows it, and the jump-to-latest button shows exactly when it does not. */
+async function followChecks({ phone, present }) {
+  log("mobile streaming follow");
+  const scroller = `[...document.querySelectorAll('.overflow-y-auto')].find((e) => e.innerText.includes('streamed'))`;
+  const end = () => phone.eval(`(() => { const s = ${scroller}; return s.scrollHeight - s.scrollTop - s.clientHeight; })()`);
+  const bubble = () => phone.eval(`!!document.querySelector('button[title="Jump to latest"]')`);
+  const touch = (type, points) => phone.send("Input.dispatchTouchEvent", { type, touchPoints: points.map(([x, y], id) => ({ x, y, id })) });
+  await until("the answer to outgrow the view", present("Line 40 of the streamed"));
+  await sleep(1000);
+  check((await end()) <= 2 && !(await bubble()), "the phone follows the streaming answer at the end", await end());
+
+  // iOS's rubber band: pulled past the end, the view bounces back up to it. Chromium cannot overscroll, so replay those offsets.
+  await phone.eval(`(async () => {
+    const s = ${scroller};
+    for (const past of [30, 15, 5, 0]) {
+      const top = s.scrollHeight - s.clientHeight + past;
+      Object.defineProperty(s, "scrollTop", { configurable: true, get: () => top, set: () => undefined });
+      s.dispatchEvent(new Event("scroll"));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    delete s.scrollTop;
+    return true;
+  })()`);
+  await sleep(2000);
+  check((await end()) <= 2 && !(await bubble()), "after a bounce at the end the phone still follows", await end());
+
+  // A finger dragging the transcript down scrolls up: following stops and the button shows.
+  const box = await phone.eval(`(() => { const r = (${scroller}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 3 }; })()`);
+  await touch("touchStart", [[box.x, box.y]]);
+  for (let step = 1; step <= 6; step++) {
+    await touch("touchMove", [[box.x, box.y + step * 40]]);
+    await sleep(30);
+  }
+  await touch("touchEnd", []);
+  await sleep(1500);
+  const left = await end();
+  check(left > 2 && (await bubble()), "scrolling up stops following and shows the jump-to-latest button", left);
+  await sleep(1000);
+  check((await end()) > left, "the answer streams on below without pulling the view down");
+  await phone.eval(`document.querySelector('button[title="Jump to latest"]').click()`);
+  await sleep(2000);
+  check((await end()) <= 2 && !(await bubble()), "Jump to latest follows the stream again", await end());
 }
 
 /** The phone's browser screen (T36): drive a local dev page in the instance's own browser with the iPhone preset, the instance's window hidden. */

@@ -827,11 +827,14 @@ Verified live (pi 1.0.0, Oct 2026):
 - Scrolling (Codex-style, `useTurnScroll`): sending a message scrolls it to the top of the view and the answer
   streams in below. The newest turn gets a min-height of one viewport so that is possible even for short answers
   (sessions opened from disk keep their natural height until you send). Opening a session shows its end;
-  "Show earlier turns" keeps your place; a ↓ button appears when content is below the fold. While a run is live
-  the view follows it if you are at the end (`pinned`): opening a running chat, sending (your message at the top
-  is the end until the answer outgrows the view) and ↓ pin; wheel up or any upward scroll unpins; scrolling back
-  to the end re-pins. Following moves the view only when the content height changes, so it never fights the
-  send glide, and it does not depend on scroll events (hidden windows get none).
+  "Show earlier turns" keeps your place. While a run is live the view follows it if you are at the end (`pinned`):
+  opening a running chat, sending (your message at the top is the end until the answer outgrows the view) and ↓
+  pin; wheel up, a finger dragging down or any other upward scroll unpins; being at the end (within `END_SLACK`,
+  2 px for iOS's fractional offsets, or past it) re-pins, checked before the upward test so iOS's rubber band
+  bouncing back to the end keeps following (`followsAfterScroll` in `lib/turn-scroll.ts`). The ↓ button shows
+  exactly while the view is off the end and not pinned, so without it output keeps you at the end. Following
+  moves the view only when the content height changes, so it never fights the send glide, and it does not
+  depend on scroll events (hidden windows get none). `followChecks` in `pnpm e2e:remote` checks it on the phone.
 - Turn rail (`TurnRail`, Codex's "user message navigation rail", read from the Codex app bundle's
   `thread-user-message-navigation-rail-app` chunk and its CSS): a 2px line per message you sent, vertically
   centered left of the transcript, shown from 4 messages on and only while the column leaves a 48px gutter.
