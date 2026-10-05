@@ -4,6 +4,7 @@ import { ChatUiProvider, useChatActions, useChatUiHandle, useChatUi } from "../l
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
+import { openFileLink, resolveFileLinks } from "../lib/preview";
 
 function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void): void {
   const target = event.target as HTMLElement;
@@ -15,6 +16,12 @@ function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string
     setTimeout(() => {
       copy.textContent = "Copy";
     }, 1200);
+    return;
+  }
+  const file = target.closest<HTMLElement>("[data-file]");
+  if (file) {
+    event.preventDefault();
+    openFileLink(file, event);
     return;
   }
   const link = target.closest<HTMLAnchorElement>("a[href]");
@@ -46,6 +53,10 @@ export const Markdown = memo(function Markdown({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!streaming) highlightWithin(ref.current);
+  }, [html, streaming]);
+  // File links settle once the message is complete, not on every streamed token.
+  useEffect(() => {
+    if (!streaming) void resolveFileLinks(ref.current);
   }, [html, streaming]);
   useEffect(() => {
     const root = ref.current;
@@ -82,7 +93,12 @@ export const Markdown = memo(function Markdown({
     };
   }, [html, streaming, enabled, ui]);
   return (
-    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal)} dangerouslySetInnerHTML={{ __html: html }} />
+    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal)}
+      onKeyDown={(event) => {
+        const file = (event.target as HTMLElement).closest<HTMLElement>("[data-file]");
+        if (file && event.key === "Enter") openFileLink(file, event);
+      }}
+      dangerouslySetInnerHTML={{ __html: html }} />
   );
 });
 

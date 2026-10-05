@@ -70,6 +70,7 @@ const api: StudioApi = {
     popOut: (id) => ipcRenderer.invoke(IPC.browserPopOut, id),
     returnToPane: (id) => ipcRenderer.invoke(IPC.browserReturn, id),
     preview: (path, options) => ipcRenderer.invoke(IPC.browserPreview, path, options),
+    resolvePreviewTargets: (cwd, targets) => ipcRenderer.invoke(IPC.browserResolveTargets, cwd, targets),
     previewMode: (id, mode) => ipcRenderer.invoke(IPC.browserPreviewMode, id, mode),
     previewReveal: (id) => ipcRenderer.invoke(IPC.browserPreviewReveal, id),
     previewOpen: (id) => ipcRenderer.invoke(IPC.browserPreviewOpen, id),

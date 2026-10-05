@@ -163,6 +163,9 @@ function normalizePath(path: string): string {
 export function parseLocalTarget(input: string, cwd?: string, home?: string): LocalTarget | undefined {
   let text = input.trim();
   if (!text || /^[a-z]:[\\/]/i.test(text) || text.startsWith("\\\\")) return undefined;
+  const hashLine = /^(file:.*?)(#L\d+(?:C\d+)?(?:-L?\d+(?:C\d+)?)?)$/i.exec(text);
+  const fileAnchor = hashLine?.[2];
+  if (hashLine) text = hashLine[1] ?? text;
   if (/^file:/i.test(text)) {
     let url: URL;
     try {
@@ -178,13 +181,15 @@ export function parseLocalTarget(input: string, cwd?: string, home?: string): Lo
       return undefined;
     }
     if (/^\/[a-z]:/i.test(path)) return undefined;
-    text = path;
+    text = fileAnchor ? path + fileAnchor : path;
   } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || text.startsWith("//")) {
     return undefined;
   }
   let line: number | undefined;
   let column: number | undefined;
-  const position = /^(.+?):(\d+)(?::(\d+))?$/.exec(text);
+  // GitHub-style `#L10`, `#L10-L20`, `#L10C3`: the first line wins.
+  const anchor = /^(.+?)#L(\d+)(?:C(\d+))?(?:-L?\d+(?:C\d+)?)?$/.exec(text);
+  const position = anchor ?? /^(.+?):(\d+)(?::(\d+))?$/.exec(text);
   if (position) {
     text = position[1] ?? text;
     line = Number(position[2]);
@@ -236,4 +241,48 @@ export function parsePreviewUrl(url: string): ParsedPreviewUrl | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A Markdown link target that points at a local file rather than the web: absolute, `~/`, `./`, `../`,
+ * bare relative (`src/a.ts`, `docs/x.md#L10`) and `file:` URLs. Any other scheme, `//host` and `#anchor`
+ * stay web links.
+ */
+export function isLocalLinkHref(href: string): boolean {
+  const text = href.trim();
+  if (!text || text.startsWith("#") || text.startsWith("//") || text.startsWith("\\") || /^[a-z]:[\\/]/i.test(text)) return false;
+  if (/^file:/i.test(text)) return true;
+  // `scheme:` unless it is really `name.ts:12`.
+  const scheme = /^([a-z][a-z0-9+.-]*):(\d+(?::\d+)?)?/i.exec(text);
+  return !scheme || (scheme[2] !== undefined && scheme[1]!.includes(".") && scheme[0] === text);
+}
+
+/** A link target as a local file; relative input resolves against `cwd`, so it needs one. Percent-escapes decode. */
+export function parseLinkTarget(href: string, cwd?: string, home?: string): LocalTarget | undefined {
+  if (!isLocalLinkHref(href)) return undefined;
+  let text = href.trim();
+  if (!/^file:/i.test(text) && text.includes("%")) {
+    try {
+      text = decodeURIComponent(text);
+    } catch {
+      // keep the literal text
+    }
+  }
+  if (!/^(file:|\/|~|\.\.?\/)/i.test(text)) text = `./${text}`;
+  return parseLocalTarget(text, cwd, home);
+}
+
+/**
+ * Inline code that reads as a file path (`src/a.ts`, `src/a.ts:12`, `/abs/x.md`, `README.md`). Deliberately
+ * strict; the renderer only links candidates that exist.
+ */
+export function looksLikePath(code: string): boolean {
+  const text = code.trim();
+  if (!text || text.length > 300 || /[\s<>|*?(){}[\]"'`=,;$]/.test(text) || text.includes("://") || text.startsWith("-")) return false;
+  const bare = text.replace(/(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?)$/, "");
+  const name = bare.split("/").pop() ?? "";
+  if (!/^[\w@.+~-]*\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(name) || name === ".") return false;
+  if (bare.includes("/")) return !bare.endsWith("/");
+  // A lone name needs an extension the preview knows (a.b, 1.2.3, e.g. are not files).
+  return kindFor(bare) !== "other";
 }

@@ -99,6 +99,39 @@ describe("markdownToHtml", () => {
   });
 });
 
+describe("markdown file links", () => {
+  it("renders local targets as file chips without an href", () => {
+    const html = markdownToHtml("[manager.ts](src/main/manager.ts:120) and [design](<docs/A b.md#L10>) and [abs](/p/x.pdf)");
+    expect(html).toContain('data-file="src/main/manager.ts:120"');
+    expect(html).toContain('data-file="docs/A b.md#L10"');
+    expect(html).toContain('data-kind="code"');
+    expect(html).toContain('data-kind="pdf"');
+    expect(html).not.toContain("href");
+    expect(html).toContain("manager.ts</span>");
+  });
+
+  // DOMPurify needs a DOM, which the node test environment lacks: this checks the pre-sanitize HTML, where
+  // script URLs are still ordinary hrefs for the sanitizer to strip, exactly as before.
+  it("leaves web links alone", () => {
+    const html = markdownToHtml("[a](https://x.com/a.ts) [b](mailto:a@b.c) [c](javascript:alert(1)) [d](#top)");
+    expect(html).toContain('href="https://x.com/a.ts"');
+    expect(html).toContain('href="mailto:a@b.c"');
+    expect(html).toContain('href="javascript:alert(1)"');
+    expect(html).not.toContain("data-file");
+  });
+
+  it("escapes the target and keeps file links out of event attributes", () => {
+    const html = markdownToHtml('[x](<a"onmouseover="alert(1).ts>)');
+    expect(html).not.toMatch(/ onmouseover=/);
+  });
+
+  it("marks path-like inline code as candidates only", () => {
+    const html = markdownToHtml("`src/a.ts:3` `1.2.3` `and/or` `a.b` `https://x.com/a.ts` `foo()`");
+    expect(html).toContain('<code data-path="src/a.ts:3">');
+    expect(html.match(/data-path/g)).toHaveLength(1);
+  });
+});
+
 describe("markdownToHtml visual fences", () => {
   const on = { visuals: true };
   const fence = (body: string) => "```visual\n" + body + "\n```";

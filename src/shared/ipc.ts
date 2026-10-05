@@ -68,6 +68,7 @@ export const IPC = {
   browserPreviewMode: "browser:preview-mode",
   browserPreviewReveal: "browser:preview-reveal",
   browserPreviewOpen: "browser:preview-open",
+  browserResolveTargets: "browser:resolve-targets",
   sidebarToggle: "studio:sidebar-toggle",
   pageToggle: "studio:page-toggle",
   openProject: "studio:open-project",
@@ -382,6 +383,8 @@ export interface BrowserApi {
   popOut(id: string): Promise<void>;
   /** Move a window tab back into the pane. */
   returnToPane(id: string): Promise<void>;
+  /** For each chat link target: the absolute path of the existing file it names (resolved against `cwd`), or null. */
+  resolvePreviewTargets(cwd: string, targets: string[]): Promise<(string | null)[]>;
   /** Open a local file in a preview tab (reusing one for the same file). Resolves with the tab id; rejects for missing paths and directories. */
   preview(path: string, options?: PreviewOpenOptions): Promise<string>;
   /** Switch a preview tab between its rendered and raw view. */

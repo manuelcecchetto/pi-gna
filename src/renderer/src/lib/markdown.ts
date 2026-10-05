@@ -1,7 +1,9 @@
 // Markdown -> sanitized HTML. Model output is untrusted: DOMPurify always runs, remote images are
-// blocked by CSP, and links open outside the app.
+// blocked by CSP, and web links open outside the app, local file links
+// become `data-file` chips the component wires to the file preview (docs/FILE_PREVIEW.md, Chat links).
 import DOMPurify from "dompurify";
 import { Marked } from "marked";
+import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget } from "../../../shared/preview";
 
 const escapeHtml = (text: string) =>
   text.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] as string);
@@ -46,6 +48,16 @@ const marked = new Marked({
       }
       return note + `<div class="code-block"><header><span>${label}</span><button type="button" data-copy>Copy</button></header><pre><code data-lang="${label}">${escapeHtml(text)}</code></pre></div>`;
     },
+    // Local file targets get no href (nothing can navigate); the component resolves and opens them.
+    link({ href, tokens }) {
+      if (!isLocalLinkHref(href)) return false;
+      const kind = kindFor(parseLinkTarget(href, "/")?.path ?? href);
+      return `<span class="file-link" role="link" tabindex="0" data-file="${escapeHtml(href.trim())}" data-kind="${kind}">${this.parser.parseInline(tokens)}</span>`;
+    },
+    // Inline code that reads as a path is a candidate; the component links it only if the file exists.
+    codespan({ text }) {
+      return looksLikePath(text) ? `<code data-path="${escapeHtml(text.trim())}">${escapeHtml(text)}</code>` : false;
+    },
     // Task lists: a styled box instead of an <input>, which the sanitizer strips.
     checkbox({ checked }) {
       return `<span class="task-box${checked ? " done" : ""}" aria-hidden="true"></span>`;
@@ -64,5 +76,5 @@ export function markdownToHtml(source: string, options: MarkdownOptions = {}): s
 }
 
 export function renderMarkdown(source: string, options: MarkdownOptions = {}): string {
-  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual"], FORBID_TAGS: ["style", "form", "input"] });
+  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-kind", "data-path"], FORBID_TAGS: ["style", "form", "input"] });
 }

@@ -1,6 +1,6 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
 import { File, FileCode, FileImage, FileText, Film, Music, type LucideIcon } from "lucide-react";
-import type { PreviewKind, PreviewOpenOptions } from "../../../shared/preview";
+import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
 import { setPane, store, toast } from "../state/app";
 import { resolveFilePath } from "./preview-path";
 
@@ -63,4 +63,72 @@ export function iconForKind(kind: PreviewKind): LucideIcon {
     default:
       return File;
   }
+}
+
+const activeCwd = () => {
+  const state = store.get();
+  return state.active ? state.sessions[state.active]?.cwd : undefined;
+};
+
+/**
+ * Settles the file links of a rendered answer (docs/FILE_PREVIEW.md, Chat links): links to missing files
+ * become plain text with a tooltip, path-like inline code that exists becomes a link. Where there is no
+ * preview (the phone) every file link becomes plain text.
+ */
+export async function resolveFileLinks(root: HTMLElement | null): Promise<void> {
+  if (!root) return;
+  const links = [...root.querySelectorAll<HTMLElement>("[data-file]:not([data-checked])")];
+  const codes = [...root.querySelectorAll<HTMLElement>("code[data-path]:not([data-checked])")].filter((el) => !el.closest("[data-file], a"));
+  const api = window.studio?.browser;
+  const cwd = activeCwd();
+  const downgrade = (el: HTMLElement, reason: string) => {
+    el.removeAttribute("data-file");
+    el.removeAttribute("role");
+    el.removeAttribute("tabindex");
+    el.classList.add("file-missing");
+    el.title = reason;
+  };
+  if (!api?.resolvePreviewTargets) {
+    for (const el of links) downgrade(el, el.dataset.file ?? "");
+    return;
+  }
+  if (!cwd || links.length + codes.length === 0) return;
+  const raw = (el: HTMLElement) => el.dataset.file ?? el.dataset.path ?? "";
+  const targets = [...new Set([...links, ...codes].map(raw))];
+  let resolved: (string | null)[];
+  try {
+    resolved = await api.resolvePreviewTargets(cwd, targets);
+  } catch {
+    return;
+  }
+  if (!root.isConnected) return;
+  const found = new Map(targets.map((target, index) => [target, resolved[index] ?? null]));
+  for (const el of [...links, ...codes]) {
+    el.dataset.checked = "1";
+    const path = found.get(raw(el));
+    if (!path) {
+      if (el.dataset.file) downgrade(el, `File not found: ${raw(el)}`);
+      continue;
+    }
+    const line = parseLinkTarget(raw(el), cwd, window.studio.homeDir)?.line;
+    el.dataset.resolved = path;
+    el.title = `${shortenHome(path, window.studio.homeDir)}${line ? `:${line}` : ""} (⌘-click: new tab)`;
+    if (!el.dataset.file) {
+      el.dataset.file = raw(el);
+      el.dataset.kind = kindFor(path);
+      el.classList.add("file-link");
+      el.setAttribute("role", "link");
+      el.tabIndex = 0;
+    }
+  }
+}
+
+/** Click or Enter on a `[data-file]` element of a rendered answer: preview it (cmd/ctrl: new tab). */
+export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey: boolean }): void {
+  if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
+  const raw = el.dataset.file ?? "";
+  const target = parseLinkTarget(raw, activeCwd(), window.studio.homeDir);
+  const path = el.dataset.resolved ?? target?.path;
+  if (!path) return toast("Could not resolve the file path", "error");
+  void openPreviewPath(path, { line: target?.line, newTab: event.metaKey || event.ctrlKey });
 }

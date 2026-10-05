@@ -16,6 +16,7 @@ import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
+import { resolvePreviewTargets } from "./browser/resolve-targets";
 import { listFiles } from "./files";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
@@ -366,6 +367,15 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "browser.previewOpen": method<{ id: string }>("desktop", tabId, async (_ctx, { id }) => {
       await deps.browser()?.openPreviewExternally(id);
     }),
+    "browser.resolveTargets": method<{ cwd: string; targets: string[] }>(
+      "desktop",
+      (raw) => {
+        if (typeof raw.cwd !== "string" || !isAbsolute(raw.cwd) || raw.cwd.includes("\0")) throw new Error("Invalid directory");
+        if (!Array.isArray(raw.targets) || (raw.targets as unknown[]).some((t) => typeof t !== "string" || t.length > 4096 || t.includes("\0"))) throw new Error("Invalid targets");
+        return { cwd: raw.cwd, targets: raw.targets as string[] };
+      },
+      (_ctx, { cwd, targets }) => resolvePreviewTargets(cwd, targets),
+    ),
     "browser.history": any("remote", () => deps.browser()?.getHistory() ?? []),
     "browser.state": any("remote", () => deps.browser()?.snapshot()),
 
@@ -635,6 +645,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserPreview, "browser.preview", (path, options) => ({ path, options })),
   route(IPC.browserPreviewMode, "browser.previewMode", (id, mode) => ({ id, mode })),
   route(IPC.browserPreviewReveal, "browser.previewReveal", (id) => ({ id })),
+  route(IPC.browserResolveTargets, "browser.resolveTargets", (cwd, targets) => ({ cwd, targets })),
   route(IPC.browserPreviewOpen, "browser.previewOpen", (id) => ({ id })),
   route(IPC.browserHistory, "browser.history"),
   route(IPC.browserGetState, "browser.state"),

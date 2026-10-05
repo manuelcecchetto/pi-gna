@@ -250,6 +250,17 @@ Limits are constants in `src/shared/preview.ts`, enforced in the viewer (it know
    paths outside the active cwd ask once per session like any other origin.
 All entries go through one main method, `openFile(path) -> tabId` (in `host-core.ts`'s table so IPC and the phone share it).
 
+## Chat links
+
+The agent cites files as Markdown links (`resources/pigna-prompt.md` asks for it); the transcript renders them as file chips and a click previews the file, like the Codex app.
+
+- **Local targets** (`isLocalLinkHref`, `src/shared/preview.ts`): absolute paths, `~/`, `./`, `../`, bare relative paths (`src/a.ts`) and `file://` URLs, each with an optional `:line[:col]` or `#L<n>[-L<m>]` / `#L<n>C<c>` suffix (`parseLocalTarget` reads both; the first line wins). Percent-escapes decode (`<docs/A b.md>` and `docs/A%20b.md` both work). Everything else (`http(s)`, `mailto`, other schemes, `//host`, `#anchor`) keeps the old behavior: `openExternal`.
+- **Rendering** (`lib/markdown.ts`): a local link becomes `<span class="file-link" data-file="<raw target>" data-kind="<kind>">` with no `href`, so nothing can navigate; `javascript:` and friends are still ordinary links that DOMPurify strips. The icon comes from `data-kind` (CSS mask).
+- **Existence** (`resolvePreviewTargets(cwd, targets[]) -> (path | null)[]`, `main/browser/resolve-targets.ts`, 5 s cache; IPC `browser:resolve-targets`, host method `browser.resolveTargets`, desktop only): `Markdown.tsx` resolves once the message is complete (not while streaming) against the chat's cwd. Missing files lose `data-file` and render as muted text with a "File not found" tooltip. Before resolution (streaming) chips are clickable; a click on a missing file toasts the open error.
+- **Bare paths**: inline code that `looksLikePath` (needs a `/` and a dotted file name, or a lone name with an extension the preview knows; no spaces, URLs, calls, versions) becomes `code[data-path]`. It turns into a file link only if the file exists.
+- **Click**: plain click opens/focuses the preview and the pane, cmd/ctrl-click opens a new tab, Enter on a focused chip works too; the line scrolls the viewer.
+- **Phone**: the mobile transcript shares `Markdown.tsx` but has no preview API, so file links render as plain muted text with the path as tooltip (no broken URL). Asking the host to open the preview from the phone is not done.
+
 ## Phone
 
 The phone's Browser screen already lists tabs and streams the active view; a preview tab is just a tab, so it appears

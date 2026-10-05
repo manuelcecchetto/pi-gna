@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeAddress } from "./browser";
-import { kindFor, languageFor, modesFor, parseLocalTarget, parsePreviewUrl, previewFor, previewLabel, previewUrl, servedAs } from "./preview";
+import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget, languageFor, modesFor, parseLocalTarget, parsePreviewUrl, previewFor, previewLabel, previewUrl, servedAs } from "./preview";
 
 describe("kindFor", () => {
   it.each([
@@ -118,5 +118,50 @@ describe("preview URLs", () => {
     expect(parsePreviewUrl("https://t/a.md")).toBeUndefined();
     expect(parsePreviewUrl("pigna-file://t/%E0%A4%A")).toBeUndefined();
     expect(parsePreviewUrl("nonsense")).toBeUndefined();
+  });
+});
+
+describe("#L line anchors", () => {
+  it("reads GitHub-style anchors", () => {
+    expect(parseLocalTarget("/p/a.ts#L10")).toEqual({ path: "/p/a.ts", line: 10 });
+    expect(parseLocalTarget("/p/a.ts#L10-L20")).toEqual({ path: "/p/a.ts", line: 10 });
+    expect(parseLocalTarget("/p/a.ts#L10C3")).toEqual({ path: "/p/a.ts", line: 10, column: 3 });
+    expect(parseLocalTarget("file:///p/a%20b.ts#L7")).toEqual({ path: "/p/a b.ts", line: 7 });
+    expect(parseLocalTarget("./a.md#L3", "/p")).toEqual({ path: "/p/a.md", line: 3 });
+  });
+});
+
+describe("link targets", () => {
+  it("separates local files from web links", () => {
+    for (const href of ["/abs/a.ts", "/abs/a.ts:12", "~/a.md", "./a.md", "../a.md#L2", "src/a.ts", "docs/A.md#L10", "file:///a/b.ts", "README.md", "a.ts:12", "a%20b/c.md"]) {
+      expect(isLocalLinkHref(href), href).toBe(true);
+    }
+    for (const href of ["https://x.com/a.ts", "http://localhost:3000", "mailto:a@b.c", "javascript:alert(1)", "data:text/html,x", "#top", "//host/x", "", "C:\\a\\b", "tel:123"]) {
+      expect(isLocalLinkHref(href), href).toBe(false);
+    }
+  });
+
+  it("resolves them against the cwd", () => {
+    expect(parseLinkTarget("src/a.ts:120", "/p")).toEqual({ path: "/p/src/a.ts", line: 120 });
+    expect(parseLinkTarget("docs/A%20b.md#L10-L12", "/p")).toEqual({ path: "/p/docs/A b.md", line: 10 });
+    expect(parseLinkTarget("../x/a.ts", "/p/q")).toEqual({ path: "/p/x/a.ts" });
+    expect(parseLinkTarget("/abs/a.ts#L4", "/p")).toEqual({ path: "/abs/a.ts", line: 4 });
+    expect(parseLinkTarget("~/a.md", "/p", "/Users/me")).toEqual({ path: "/Users/me/a.md" });
+    expect(parseLinkTarget("src/a.ts")).toBeUndefined();
+    expect(parseLinkTarget("https://x.com/a.ts", "/p")).toBeUndefined();
+  });
+});
+
+describe("looksLikePath", () => {
+  it("accepts file paths", () => {
+    for (const code of ["src/foo.ts", "src/foo.ts:12", "src/foo.ts:12:3", "/abs/x.md", "~/a/b.json", "./a.ts", "../a.ts", "README.md", "docs/A.md#L10", "package.json", "a/.env.local"]) {
+      expect(looksLikePath(code), code).toBe(true);
+    }
+  });
+
+  it("rejects look-alikes", () => {
+    for (const code of ["https://x.com/a.ts", "1.2.3", "v1.2", "and/or", "a.b", "e.g.", "foo()", "foo.bar()", "a b.ts", "src/", "x = a/b.ts", "--flag.x", "obj.prop", "$HOME/a.ts", "a/b"]) {
+      expect(looksLikePath(code), code).toBe(false);
+    }
   });
 });
