@@ -158,8 +158,11 @@ export async function handlePreview(registry: PreviewRegistry, viewerDir: string
     if (!info.isFile()) return notFound();
     const kind: PreviewKind = kindFor(file);
     const rendered = parsed.view !== "raw" && parsed.view !== "source";
-    // A navigation to a viewer kind gets the viewer page; the viewer itself fetches the bytes with ?raw=1.
-    if (!parsed.raw && servedAs(kind, rendered ? "rendered" : "raw") === "viewer") return serveViewer(viewerDir, `${VIEWER_PREFIX}/index.html`, head);
+    // A navigation to a viewer kind gets the viewer page; the viewer itself fetches the bytes with ?raw=1. A subresource
+    // of a raw HTML page (its stylesheet, script, image) names no text/html in Accept and must get the file's bytes.
+    const accept = request.headers.get("accept");
+    const subresource = accept !== null && !accept.includes("text/html");
+    if (!parsed.raw && !subresource && servedAs(kind, rendered ? "rendered" : "raw") === "viewer") return serveViewer(viewerDir, `${VIEWER_PREFIX}/index.html`, head);
     return serveBytes(file, info.size, contentTypeFor(file), request.headers.get("range"), head);
   } catch {
     return notFound();

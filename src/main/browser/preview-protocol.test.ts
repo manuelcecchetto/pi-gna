@@ -120,6 +120,11 @@ describe("handlePreview", () => {
     expect(await (await get(`${token}/a.md?raw=1`)).text()).toBe("# hi");
     expect(await (await get(`${token}/__viewer/a.js`)).text()).toBe("1");
   });
+  it("serves bytes, not the viewer, to subresource requests of a page", async () => {
+    const asset = await get(`${token}/a.md`, { accept: "text/css,*/*;q=0.1" });
+    expect(await asset.text()).toBe("# hi");
+    expect(await (await get(`${token}/a.md`, { accept: "text/html,application/xhtml+xml,*/*;q=0.8" })).text()).toContain("__viewer");
+  });
   it("404s unknown tokens, traversal, dotfiles, directories, symlink escapes and missing files", async () => {
     for (const path of ["deadbeef/a.pdf", `${token}/%2e%2e/secret.txt`, `${token}/a%2f..%2f..%2fsecret.txt`, `${token}/.env`, `${token}/sub`, `${token}/link.txt`, `${token}/missing.txt`, `${token}/__viewer/../../secret.txt`]) {
       const response = await get(path);

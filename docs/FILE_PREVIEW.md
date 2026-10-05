@@ -223,6 +223,14 @@ footer shows page count and size. No raw mode: docx is rendered-only. Messages: 
 file, a fake OLE `.docx` and `.doc`. Progressive rendering is not done: the 25 MB cap is the guard. Tracked changes are not
 shown (`renderChanges: false`: deletions hidden, insertions shown as plain text).
 
+**As built (T12)**: `src/preview/media.ts` is a bare `<video>`/`<audio controls>` over the raw URL. `node scripts/verify-file-preview.mjs`
+(`pnpm verify:preview`, after `pnpm build`) is the end-to-end check through a throwaway app: every kind, confinement from a web tab,
+handler containment, live reload, a chat file link. It found that the handler answered a raw HTML page's own stylesheet/script/image
+requests with the viewer page (they were viewer kinds without `?raw=1`); a request whose `Accept` lacks `text/html` is now a
+subresource and gets bytes. Reality vs the spike: `img` from a web tab with a known token still loads, which is why the script asserts
+fetch, iframe reads, navigation and `window.open` and not `img`. Not covered by the script: mp4 (no encoder; audio covers the
+element), themes, split/full pane, pop-out window (eyeball).
+
 ## Size limits
 
 | Kind | Limit | Over the limit |

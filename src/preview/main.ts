@@ -7,6 +7,7 @@ import { looksLikeText } from "./format";
 import { showDocx } from "./docx";
 import { showImage } from "./image";
 import { showInfo } from "./info";
+import { showMedia } from "./media";
 import { showMarkdown } from "./markdown";
 import { showTable } from "./table";
 import { readBytes, showMessage, type Source } from "./shell";
@@ -57,6 +58,10 @@ async function main(): Promise<void> {
         break;
       case "docx":
         await showDocx(source);
+        break;
+      case "video":
+      case "audio":
+        showMedia(source);
         break;
       case "markdown":
         if (source.mode === "rendered") await showMarkdown(source);

@@ -4,6 +4,7 @@
 //   PIGNA_PI_BIN=$PWD/scripts/fake-pi.mjs FAKE_LINES=400 FAKE_DELAY=100 node bin/pi-gna.mjs ...
 // FAKE_LINES paragraphs, one every FAKE_DELAY ms (about 13 tokens each, so 150 ms is ~89 tok/s). Like pi, it names a
 // session file (in the temp folder) before writing anything, so cards and laments can link its chats; none is written.
+// FAKE_TEXT_FILE=<path> replies with that file's text (scripts/verify-file-preview.mjs).
 // FAKE_FIXTURE=<name> (see fake-pi-visuals.mjs) replies with that fixed text instead, FAKE_CHUNK chars per delta.
 // FAKE_ATP=1: a prompt that assigns an ATP node (the runner's claim packet) is answered by completing that node with the
 // plan's librarian CLI, so a throwaway plan runs end to end; FAKE_ATP=idle leaves the node claimed (a worker that gave up).
@@ -12,7 +13,7 @@
 // session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
 // a widget above the editor, set_editor_text, setTitle); "retry-demo" shows an auto-retry for a moment.
 import { execFileSync } from "node:child_process";
-import { appendFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -136,7 +137,7 @@ async function run(text) {
   out({ type: "message_start", message: base });
   out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
   let body = "";
-  const fixture = process.env.FAKE_FIXTURE ? fixtureText(process.env.FAKE_FIXTURE) : undefined;
+  const fixture = process.env.FAKE_TEXT_FILE ? readFileSync(process.env.FAKE_TEXT_FILE, "utf8") : process.env.FAKE_FIXTURE ? fixtureText(process.env.FAKE_FIXTURE) : undefined;
   const chunk = Number(process.env.FAKE_CHUNK || 40);
   const count = fixture ? Math.ceil(fixture.length / chunk) : directive(text, "lines", LINES);
   const delay = directive(text, "delay", DELAY);
