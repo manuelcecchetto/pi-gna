@@ -27,7 +27,7 @@ import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { fuzzyFilter } from "../lib/fuzzy";
-import { iconForKind, openFileDialog, openPreviewPath, shortenHome } from "../lib/preview";
+import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
 import { setPane, store, toast, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -116,6 +116,7 @@ export function BrowserPane() {
             <Plus size={14} />
           </IconButton>
         </div>
+        {active?.preview && active.preview.modes.length > 1 && <PreviewModes tab={active} />}
         <IconButton title={pane.full ? "Split view" : "Full view"} onClick={() => setPane({ full: !pane.full })}>
           {pane.full ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </IconButton>
@@ -124,7 +125,6 @@ export function BrowserPane() {
         </IconButton>
       </div>
 
-      {active?.preview && <PreviewToolbar tab={active} inWindow={inWindow} />}
       {active && !active.preview && (
         <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line px-2">
           <IconButton title="Back" disabled={!active.canGoBack} onClick={() => browser().command(active.id, "back")}>
@@ -187,51 +187,25 @@ export function BrowserPane() {
   );
 }
 
-function PreviewToolbar({ tab, inWindow }: { tab: BrowserTab; inWindow: boolean }) {
+/**
+ * Rendered/Raw switch of the active preview, in the tab strip. A preview has no toolbar row of its own: the viewer's bar is
+ * the only header, and the file actions (Copy path, Reveal, Open with default app, Reload, Pop out, Inspect) are in the
+ * tab's context menu.
+ */
+function PreviewModes({ tab }: { tab: BrowserTab }) {
   const preview = tab.preview as TabPreview;
-  const shown = shortenHome(preview.path, window.studio.homeDir);
   return (
-    <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line px-2">
-      <div className="selectable mx-1 flex h-7 min-w-0 flex-1 items-center rounded-lg bg-sunken px-3 font-mono text-[12px] text-fg" title="Click to copy the full path">
-        <button type="button" onClick={() => void navigator.clipboard.writeText(preview.path)} className="min-w-0 truncate text-left">
-          {shown}
+    <div className="mr-1 flex shrink-0 rounded-md bg-sunken p-0.5 text-[11.5px]">
+      {preview.modes.map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => void browser().previewMode(tab.id, mode)}
+          className={`rounded px-2 py-0.5 capitalize ${preview.mode === mode ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}
+        >
+          {mode}
         </button>
-      </div>
-      {preview.modes.length > 1 && (
-        <div className="mr-1 flex shrink-0 rounded-md bg-sunken p-0.5 text-[11.5px]">
-          {preview.modes.map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => void browser().previewMode(tab.id, mode)}
-              className={`rounded px-2 py-0.5 capitalize ${preview.mode === mode ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
-      )}
-      <IconButton title="Reload" onClick={() => browser().command(tab.id, "reload")}>
-        <RotateCw size={14} />
-      </IconButton>
-      <IconButton title="Reveal in Finder" onClick={() => void browser().previewReveal(tab.id).catch(() => {})}>
-        <FolderOpen size={15} />
-      </IconButton>
-      <IconButton title="Open with default app" onClick={() => void browser().previewOpen(tab.id).catch((e) => toast(String(e.message ?? e), "error"))}>
-        <ExternalLink size={14} />
-      </IconButton>
-      {inWindow ? (
-        <IconButton title="Return to pane" onClick={() => void browser().returnToPane(tab.id).catch(() => {})}>
-          <PanelTop size={15} />
-        </IconButton>
-      ) : (
-        <IconButton title="Pop out into window" onClick={() => void browser().popOut(tab.id).catch(() => {})}>
-          <AppWindow size={15} />
-        </IconButton>
-      )}
-      <IconButton title="Inspect" onClick={() => browser().inspect(tab.id)}>
-        <Code2 size={15} />
-      </IconButton>
+      ))}
     </div>
   );
 }
@@ -265,6 +239,7 @@ function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
           { label: "Copy path", icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(preview.path) },
           { label: "Reveal in Finder", icon: <FolderOpen size={13} />, onSelect: () => void browser().previewReveal(tab.id).catch(() => {}) },
           { label: "Open with default app", icon: <ExternalLink size={13} />, onSelect: () => void browser().previewOpen(tab.id).catch((e) => toast(String(e.message ?? e), "error")) },
+          { label: "Reload", icon: <RotateCw size={13} />, onSelect: () => browser().command(tab.id, "reload") },
         ]
       :
     [
@@ -281,6 +256,8 @@ function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
         ? { label: "Return to pane", icon: <PanelTop size={13} />, onSelect: () => void browser().returnToPane(tab.id).catch(() => {}) }
         : { label: "Pop out into window", icon: <AppWindow size={13} />, onSelect: () => void browser().popOut(tab.id).catch(() => {}) },
       ...(tab.surface === "window" ? [{ label: "Close window", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) }] : []),
+      // Web tabs have Inspect in their toolbar; previews have no toolbar row.
+      ...(preview ? [{ label: "Inspect", icon: <Code2 size={13} />, onSelect: () => browser().inspect(tab.id) }] : []),
     ],
     [
       { label: "Close tab", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) },

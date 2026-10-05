@@ -77,6 +77,7 @@
     "@betteroffice/docx-react": "0.4.3",
     "@betteroffice/fonts": "0.4.0",
     "@betteroffice/pptx": "0.2.0",
-    "@betteroffice/xlsx": "0.3.0"
+    "@betteroffice/xlsx": "0.3.0",
+    "pdfjs-dist": "6.4.299"
   }
 }

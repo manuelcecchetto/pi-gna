@@ -123,9 +123,9 @@ export function modesFor(path: string, kind: PreviewKind = kindFor(path)): Previ
   }
 }
 
-/** How a file in a given mode is delivered: bytes straight to Chromium, or through the bundled viewer page. */
+/** How a file in a given mode is delivered: bytes straight to Chromium (rendered HTML only), or through the bundled viewer page. */
 export function servedAs(kind: PreviewKind, mode: PreviewMode): "raw" | "viewer" {
-  return (kind === "pdf" || kind === "html") && mode === "rendered" ? "raw" : "viewer";
+  return kind === "html" && mode === "rendered" ? "raw" : "viewer";
 }
 
 /** Preview state for a freshly opened file, in the kind's default mode. */

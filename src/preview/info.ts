@@ -1,4 +1,4 @@
-// Info card for files with no viewer: the host's toolbar offers Reveal in Finder and Open with default app.
+// Info card for files with no viewer: the tab's context menu offers Reveal in Finder and Open with default app.
 import { app, readBytes, type Source } from "./shell";
 import { formatBytes } from "./format";
 import { extensionOf } from "../shared/preview";
@@ -26,7 +26,7 @@ export async function showInfo(source: Source): Promise<void> {
   }
   const hint = document.createElement("p");
   hint.className = "muted";
-  hint.textContent = "Use Reveal in Finder or Open with default app in the toolbar above.";
+  hint.textContent = "Right-click the tab for Reveal in Finder or Open with default app.";
   card.append(title, list, hint);
   const wrap = document.createElement("div");
   wrap.className = "center";

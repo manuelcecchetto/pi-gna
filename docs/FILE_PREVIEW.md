@@ -14,7 +14,7 @@ token registry `src/main/browser/preview-protocol.ts`, tab wiring and live reloa
 | Scheme | `pigna-file`, registered in the one `registerAppScheme()` call with `{ standard: true, secure: true, supportFetchAPI: true }`. No `stream`, no `bypassCSP`, no `corsEnabled`. |
 | URL | `pigna-file://<token>/<path relative to the root, percent-encoded>[?view=raw]` (`rendered` is the default; `#L<n>` jumps to a line) |
 | Handler | `session.fromPartition("persist:pigna-browser").protocol.handle("pigna-file", ...)` in `src/main/browser/preview-protocol.ts` (`servePreview`, wired in `main/index.ts`). Only on that session, never on the default session. |
-| PDF | Served raw as `application/pdf`; Chromium's built-in viewer renders it. No pdf.js. |
+| PDF | Viewer + pdf.js (`pdfjs-dist`, Apache-2.0) with our own bar; Chromium's PDF plugin is not used (its UI can't be hidden or themed). |
 | HTML | Served raw; relative assets resolve under the same token. Source mode (`?view=raw`) goes through the viewer. |
 | Media | Wrapped by the viewer (`<video>`/`<audio>` against the raw URL); handler supports Range. |
 | docx, pptx, xlsx | BetterOffice canvas engines (Apache-2.0) in the viewer bundle: `@betteroffice/docx-react` 0.4.3 for DOCX, the `pptx` 0.2.0 and `xlsx` 0.3.0 cores. Canvas only, no HTML rendering ("Office formats"). |
@@ -32,7 +32,7 @@ token registry `src/main/browser/preview-protocol.ts`, tab wiring and live reloa
   tokens are not written to `browser-history.json`: `remember()` already stores only `https?:` URLs, keep it so.
 - The file the user opened is `<root>/<rel>`; the tab URL is `pigna-file://<token>/<rel>`. A tab must **show the real
   path**, not the token: the manager reports `BrowserTab.url` as `pigna-file://...` (needed internally) plus a new
-  optional `file?: { path, kind }`; the renderer address bar shows `path` and the tab title is the file name. The
+  optional `file?: { path, kind }`; the tab title is the file name and its tooltip the path. A preview has **one header, the viewer's own bar**: the pane draws no toolbar row for it. The Rendered/Raw switch sits in the tab strip (kinds with two modes only), and the file actions are in the tab's context menu (Copy path, Reveal in Finder, Open with default app, Reload, Pop out, Inspect). The
   agent's `browser_open` also accepts an absolute path and answers with the real path.
 - Reverse lookup (URL -> real path) lives next to the token table: `resolvePreviewUrl(url) -> { path, root } | undefined`.
   "Reveal in Finder", "Open with default app" and drag out use it.
@@ -46,7 +46,7 @@ agent extension share one table.
 
 | Extension | Kind | Modes (default first) | Served |
 |---|---|---|---|
-| `pdf` | pdf | rendered | raw `application/pdf` (Chromium viewer) |
+| `pdf` | pdf | rendered | viewer + pdf.js over raw bytes (Range) |
 | `png jpg jpeg gif webp avif bmp ico` | image | rendered | viewer page (`<img>`, fit/zoom/checkerboard) over raw bytes |
 | `svg` | image | rendered, source | viewer `<img src=raw>` (an `<img>` never runs SVG scripts); source = text viewer |
 | `docx` | docx | rendered | viewer, BetterOffice `DocxEditor` (canvas pages); `.doc` and other legacy formats get the info card |
@@ -61,10 +61,10 @@ agent extension share one table.
 | code and text (`ts tsx js jsx py rs go rb java c cpp h css yml yaml toml sh sql txt log env ...` and sniffed text) | code / text | source | viewer, highlighted by the app's shiki setup, line numbers |
 | everything else | other | info card | viewer: name, size, mtime, type, Reveal in Finder, Open with default app |
 
-Raw kinds (pdf, html) are served as bytes by the handler. Every other kind loads `/__viewer/index.html?...` from
+The raw kind (rendered html) is served as bytes by the handler. Every other kind loads `/__viewer/index.html?...` from
 `out/preview` and the viewer fetches the file bytes from `pigna-file://<token>/<rel>?raw=1` (same origin). The handler
 tells the two apart: for a viewer kind a navigation (`Accept` includes `text/html`, or is absent) returns the viewer HTML, anything else
-(`?raw=1`, or a subresource such as a raw HTML page's own css/js/images) returns bytes. `?raw=1` for pdf/html is identical to the default, so "Open raw" is a free toggle.
+(`?raw=1`, or a subresource such as a raw HTML page's own css/js/images) returns bytes. `?raw=1` for html is identical to the default, so "Open raw" is a free toggle; `?raw=1` on a PDF is its bytes (what pdf.js reads).
 
 ## Viewer architecture and theming
 
@@ -77,14 +77,14 @@ tells the two apart: for a viewer kind a navigation (`Accept` includes `text/htm
 - The viewer response has a strict CSP: `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self';
   style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:;
   connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`.
-  `'wasm-unsafe-eval'` lets the BetterOffice engines compile their wasm (it allows no JS `eval`); `worker-src 'self'`
+  `'wasm-unsafe-eval'` lets the BetterOffice engines and pdf.js's decoders compile their wasm (it allows no JS `eval`); `worker-src 'self'`
   covers the DOCX layout worker and the text-export worker. (`'unsafe-inline'` styles are needed for BetterOffice's
   React styles and shiki.) Plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. Viewer pages have no
   preload and no Node (the partition is already sandboxed, context-isolated).
 - **Raw HTML gets no CSP from us** (it must behave like a web page), only `Referrer-Policy: no-referrer` and `nosniff`.
 - Theming: the app theme is mirrored by `prefers-color-scheme` of the view (`nativeTheme` already follows the app);
   the viewer styles with CSS variables mirroring the renderer tokens and `color-scheme: light dark`. The rendered
-  docx page stays white (it is a page); the surround follows the theme. Raw PDF/HTML keep their own look.
+  docx page stays white (it is a page); the surround follows the theme. PDF pages stay white like docx; raw HTML keeps its own look.
 - Untrusted content rules: markdown rendered with `renderMarkdown` (DOMPurify), images inside it fetched through
   the same token; links to other files in the root navigate within the tab (relative), `https` links open as a new
   browser tab (existing `setWindowOpenHandler`), `file:` and other schemes are dropped.
@@ -94,7 +94,9 @@ tells the two apart: for a viewer kind a navigation (`Accept` includes `text/htm
 
 ## Spike results (Electron 44.5.1, `persist:`-partition `WebContentsView`, handler on `ses.protocol`)
 
-### a. PDF **(spiked)**
+### a. PDF **(spiked; superseded)**
+
+The Chromium viewer described here is no longer used: see **PDF viewer** below. Kept as the record of why it was not enough.
 
 - `pigna-file://<token>/t.pdf` served as `application/pdf` renders in Chromium's built-in PDF viewer: toolbar, thumbnail
   rail, `1 / 1`, zoom controls. `document.contentType` is `application/pdf`. The CDP `Page.captureScreenshot` of the
@@ -388,7 +390,20 @@ needs no change; `out/mobile` is the precedent for reading a built bundle from `
 Dev: `electron-vite dev` does not run it; `pnpm dev` builds the viewer once first, `pnpm dev:preview` rebuilds on change, and main reports a clear 500 page "viewer not built" if `out/preview` is missing.
 The viewer imports `renderMarkdown` and `highlight` from `src/renderer/src/lib/` by relative path.
 
-**Viewer files**: `src/preview/` (`main.ts` dispatch, `text.ts`, `image.ts`, `table.ts`, `info.ts`, `shell.ts`, `style.css`).
+**PDF viewer**: `src/preview/pdf.ts`, lazily imported. pdf.js `PDFViewer` renders canvas pages plus a text layer (text selects,
+and the agent's snapshot reads it) inside an absolutely positioned scroller (pdf.js requires it). Our one bar: page `‹ n / m ›`
+(type a number + Enter), zoom `−` / `Fit` / `+` (Fit = pdf.js `auto`: page width, max 125%), ctrl/cmd+wheel, `+`/`-`/`0`,
+←/→ page when nothing scrolls sideways, file size. Find is a card over the pages that **only Cmd/Ctrl+F opens** (field,
+`n of m`, up/down chevrons; Enter/Shift+Enter, Cmd/Ctrl+G step; Escape closes and clears highlights). `#page=3` or
+`#L3` opens at that page; live reload keeps zoom and scroll (`sessionStorage`). pdf.js loads the file with Range requests
+from `?raw=1`; its worker is a bundled asset (`?url` import); CMaps, standard fonts, ICC profiles and image decoders (wasm)
+are copied to `out/preview/pdfjs/` by a plugin in `vite.preview.config.ts` (quickjs, pdf.js scripting, is left out:
+scripting, XFA and annotation editing are off). The wasm decoders need `'wasm-unsafe-eval'` in the viewer CSP; it allows
+compiling WebAssembly, not `eval`. Links in a PDF open in a new tab (`_blank`, via the existing window-open handler).
+Messages: empty, password-protected, invalid/corrupt. `pnpm verify:preview` checks pages, text layer, no plugin
+(`<embed>`), find (hidden until Cmd+F, jumps, counts, no-match, Escape), zoom, page box and a clean console.
+
+**Viewer files**: `src/preview/` (`main.ts` dispatch, `text.ts`, `image.ts`, `table.ts`, `pdf.ts`, `info.ts`, `shell.ts`, `style.css`).
 `pnpm dev` runs the viewer build once first, `pnpm dev:preview` rebuilds on change. The viewer reads `?view=` and a `#L12`
 line fragment from its URL (append `#L<n>` to a preview URL to jump to and highlight a line), reads text with a
 `Range: bytes=0-<cap-1>` request (total size from `Content-Range`), sniffs extensionless files itself, and shows
@@ -422,7 +437,7 @@ element), themes, split/full pane, pop-out window (eyeball).
 | markdown | 2 MB | raw mode for the rest |
 | docx, pptx, xlsx | 25 MB (`PREVIEW_LIMITS.office`) | message pointing at Open with default app |
 | image | no cap (Chromium decodes) | n/a |
-| pdf, video, audio | none (streamed with Range) | n/a |
+| pdf, video, audio | none (pdf.js and media read with Range) | n/a |
 | any file read by the handler | stream with `createReadStream` (spiked path), never `readFile` of the whole file | n/a |
 
 Limits are constants in `src/shared/preview.ts`, enforced in the viewer (it knows the size from `Content-Length`/HEAD).
@@ -476,11 +491,9 @@ tapping a tab. Pop-out and DevTools buttons stay as they are for web tabs.
 
 ## Open questions
 
-1. PDF find (Cmd+F) was not observed in an Electron `WebContentsView`; decide whether to hand-roll nothing (accept) or add
-   a pdf.js viewer later. Not needed for the first release.
+1. ~~PDF find~~: resolved by the pdf.js viewer (Cmd/Ctrl+F find card).
 2. Should rendered HTML run with `connect-src` limited to its own origin and `localhost`? Prototypes call APIs; the dotfile
    deny list plus "never auto-open" was chosen instead. Revisit if an agent-fetched untrusted HTML flow appears.
 3. Live reload of an HTML preview when a sibling asset changes (watching a whole root is costly): not done, only the opened file.
 4. `.doc`, `.xls`, `.ppt` (legacy binary formats): info card. BetterOffice reads only OOXML.
-5. Whether `browser_snapshot` (accessibility/DOM walk) gives useful output on the Chromium PDF viewer (it is a plugin/OOPIF); the
-   screenshot works (spiked), the snapshot was not tried.
+5. ~~`browser_snapshot` on the Chromium PDF plugin~~: moot, PDFs are DOM pages with a pdf.js text layer now.

@@ -77,13 +77,19 @@ function png(width, height, [r, g, b]) {
   const raw = Buffer.concat(Array.from({ length: height }, () => row));
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
+/** Three pages: "Preview PDF", "Page two", "Page three". */
 function pdf() {
+  const texts = ["Preview PDF", "Page two", "Page three"];
+  const stream = (text) => {
+    const body = `BT /F1 24 Tf 40 100 Td (${text}) Tj ET`;
+    return `<< /Length ${body.length} >>\nstream\n${body}\nendstream`;
+  };
+  // 1 catalog, 2 pages, 3 font, then a page and its content per text.
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-    "<< /Length 52 >>\nstream\nBT /F1 24 Tf 40 100 Td (Preview PDF) Tj ET\nendstream",
+    `<< /Type /Pages /Kids [${texts.map((_, i) => `${4 + i * 2} 0 R`).join(" ")}] /Count ${texts.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ...texts.flatMap((text, i) => [`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents ${5 + i * 2} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`, stream(text)]),
   ];
   let out = "%PDF-1.4\n";
   const offsets = objects.map((body, i) => {
@@ -266,7 +272,7 @@ const LOADED = "String(performance.timeOrigin)";
 
 // One row per kind: file, expected kind, DOM facts through evaluate (evaluated in the preview tab).
 const kinds = [
-  { file: "doc.pdf", kind: "pdf", dom: `document.contentType`, ok: (v) => v === "application/pdf", what: "PDF viewer document" },
+  { file: "doc.pdf", kind: "pdf", dom: `JSON.stringify({ type: document.contentType, plugin: !!document.querySelector("embed, object"), pages: document.querySelectorAll(".pdfViewer .page").length, text: document.querySelector(".textLayer")?.textContent ?? "", count: document.querySelector(".pdf-bar")?.textContent ?? "" })`, ok: (v) => { const r = JSON.parse(v); return r.type === "text/html" && !r.plugin && r.pages === 3 && /Preview PDF/.test(r.text) && /\/ 3/.test(r.count); }, what: "pdf.js pages + text layer under our toolbar, no Chromium plugin" },
   { file: "pic.png", kind: "image", dom: `(() => { const i = document.querySelector("img"); return i && i.complete ? i.naturalWidth + "x" + i.naturalHeight : "" })()`, ok: (v) => v === "40x30", what: "image natural size 40x30" },
   { file: "vector.svg", kind: "image", dom: `(() => { const i = document.querySelector("img"); return i && i.complete ? i.naturalWidth + ":" + (window.__pwned ?? "inert") : "" })()`, ok: (v) => /^64:inert$/.test(v), what: "svg shown as <img>, script inert" },
   { file: "doc.md", kind: "markdown", dom: `JSON.stringify({ h: document.querySelector("h1")?.textContent, bold: !!document.querySelector("strong"), img: document.querySelector("img[src*='pic.png']")?.naturalWidth ?? 0, pwned: window.__pwned ?? null })`, ok: (v) => { const r = JSON.parse(v); return /Hello preview/.test(r.h) && r.bold && r.img === 40 && r.pwned === null; }, what: "heading + bold + relative image rendered, script inert" },
@@ -316,14 +322,80 @@ try {
     }
   }
 
-  // 1b. opening an open file again shows its tab as it is (a long document keeps its layout and scroll position)
+  // 1a. one header: a preview gets no app toolbar row (the viewer's bar is the header); two-mode kinds show the
+  // Rendered/Raw switch in the tab strip instead
+  try {
+    const chrome = async (id) => {
+      await appWindow(`studio.browser.activate(${JSON.stringify(id)})`);
+      await sleep(300);
+      return appWindow(`JSON.stringify({ row: !!document.querySelector('button[title="Reveal in Finder"]'), modes: [...document.querySelectorAll(".titlebar button")].map((b) => b.textContent.trim().toLowerCase()).filter((t) => t === "rendered" || t === "raw") })`).then(JSON.parse);
+    };
+    const pdfChrome = await chrome(tabs["doc.pdf"]);
+    const mdChrome = await chrome(tabs["doc.md"]);
+    check("one header: no app toolbar row on a preview", !pdfChrome.row && !mdChrome.row, JSON.stringify({ pdfChrome, mdChrome }));
+    check("one header: mode switch in the tab strip only for two-mode kinds", pdfChrome.modes.length === 0 && mdChrome.modes.join() === "rendered,raw");
+  } catch (error) {
+    check("one header", false, error.message);
+  }
+
+  // 1b. our PDF controls drive pdf.js: Cmd+F opens the find card, which moves to the match's page; zoom leaves Fit; the
+  // page box jumps; Escape hides find again. The page script always settles (a throw would hang the bridge call).
+  try {
+    const pdfTab = tabs["doc.pdf"];
+    const facts = JSON.parse(
+      await evaluate(
+        pdfTab,
+        `new Promise((done) => (async () => {
+          const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+          const key = (init) => document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+          const card = document.querySelector(".pdf-find");
+          const page = document.querySelector(".pdf-page");
+          const query = card.querySelector("input");
+          const hiddenAtStart = card.hidden;
+          key({ key: "f", metaKey: true });
+          const shown = !card.hidden && document.activeElement === query && getComputedStyle(card).position === "absolute";
+          query.value = "page three";
+          query.dispatchEvent(new Event("input"));
+          for (let i = 0; i < 40 && page.value !== "3"; i++) await wait(100);
+          const found = { page: page.value, matches: card.querySelector(".pdf-matches").textContent, highlight: !!document.querySelector(".textLayer .highlight") };
+          query.value = "no such words";
+          query.dispatchEvent(new Event("input"));
+          for (let i = 0; i < 20 && !query.classList.contains("missing"); i++) await wait(100);
+          const missing = card.querySelector(".pdf-matches").textContent;
+          query.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+          const closed = card.hidden;
+          const [, level, inn] = document.querySelectorAll(".pdf-zoom button");
+          const fit = level.textContent;
+          inn.click();
+          await wait(200);
+          const zoomed = level.textContent;
+          page.value = "1";
+          page.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+          await wait(300);
+          done(JSON.stringify({ hiddenAtStart, shown, found, missing, closed, fit, zoomed, back: page.value, prevDisabled: document.querySelector(".pdf-nav button").disabled }));
+        })().catch((error) => done(JSON.stringify({ error: String(error) }))))`,
+      ),
+    );
+    if (facts.error) throw new Error(facts.error);
+    check("pdf: find is hidden until Cmd+F opens it as a floating card", facts.hiddenAtStart === true && facts.shown === true, `${facts.hiddenAtStart} ${facts.shown}`);
+    check("pdf: find jumps to the matching page and counts it", facts.found.page === "3" && facts.found.matches === "1 of 1" && facts.found.highlight, JSON.stringify(facts.found));
+    check("pdf: find reports no matches", facts.missing === "No matches", facts.missing);
+    check("pdf: Escape closes find", facts.closed === true);
+    check("pdf: zoom in leaves Fit for a percentage", facts.fit === "Fit" && /^\d+%$/.test(facts.zoomed), `${facts.fit} -> ${facts.zoomed}`);
+    check("pdf: page box jumps back to page 1", facts.back === "1" && facts.prevDisabled === true, `${facts.back} prev disabled ${facts.prevDisabled}`);
+    const consoleLog = await call({ action: "console", tab: pdfTab });
+    check("pdf: no CSP violations or load errors", !/Content Security Policy|Refused to|Failed to (load|fetch)|wasm/i.test(consoleLog.text), consoleLog.text.slice(0, 160));
+  } catch (error) {
+    check("pdf controls", false, error.message);
+  }
+  // 1c. opening an open file again shows its tab as it is (a long document keeps its layout and scroll position)
   const docxTab = tabs["doc.docx"];
   const loadedAt = await evaluate(docxTab, LOADED);
   const again = await open(join(files, "doc.docx"));
   check("reopen: an open docx comes back in its tab", again.tab === docxTab, again.tab);
   check("reopen: the docx page is not reloaded", (await evaluate(docxTab, LOADED)) === loadedAt);
 
-  // 1c. a link in a rendered Markdown preview opens the file in the same tab
+  // 1d. a link in a rendered Markdown preview opens the file in the same tab
   const index = (await open(join(files, "index.md"), { newTab: true })).tab;
   await until("the index link", async () => (await evaluate(index, `!!document.querySelector('a[href$="doc.docx"]')`)) === "true");
   await evaluate(index, `document.querySelector('a[href$="doc.docx"]').click(); 1`);

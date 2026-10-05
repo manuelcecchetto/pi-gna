@@ -14,7 +14,8 @@ const VIEWER_PREFIX = "__viewer";
 
 const VIEWER_CSP = [
   "default-src 'none'",
-  // BetterOffice (docx, pptx, xlsx) compiles its wasm engines and runs the DOCX layout in a same-origin worker.
+  // BetterOffice (docx, pptx, xlsx) and pdf.js compile wasm engines/decoders (this allows compiling wasm, not JS eval);
+  // the DOCX layout runs in a same-origin worker.
   "script-src 'self' 'wasm-unsafe-eval'",
   "worker-src 'self'",
   "style-src 'self' 'unsafe-inline'",
