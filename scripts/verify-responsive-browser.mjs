@@ -82,7 +82,7 @@ async function main(expression) {
   }
   const id = ++seq;
   const answer = new Promise((done) => waiting.set(id, done));
-  mainWs.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
+  mainWs.send(JSON.stringify({ id, method: "Runtime.evaluate", params: { expression, returnByValue: true, awaitPromise: true } }));
   const message = await answer;
   if (message.result?.exceptionDetails) throw new Error(message.result.exceptionDetails.exception?.description ?? "main eval failed");
   return message.result?.result?.value;
@@ -99,6 +99,19 @@ async function renderer(expression) {
   if (message.result?.exceptionDetails) throw new Error(message.result.exceptionDetails.exception?.description ?? "renderer eval failed");
   return message.result?.result?.value;
 }
+// The pane view's native bounds and the size its page actually paints (capturePage, in DIPs); they differ when Chromium
+// resized the surface to the emulated size, which shows as a blank strip past the fitted rect.
+const paneSurface = () =>
+  main(`(async () => {
+    const { BrowserWindow, screen } = process.mainModule.require("electron");
+    const app = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith("app://"));
+    const view = app.contentView.children.find((child) => child.webContents && !child.webContents.getURL().startsWith("app://"));
+    const image = await view.webContents.capturePage();
+    const factor = screen.getDisplayMatching(app.getBounds()).scaleFactor;
+    const { width, height } = view.getBounds();
+    return { bounds: [width, height], painted: [Math.round(image.getSize().width / factor), Math.round(image.getSize().height / factor)] };
+  })()`);
+const sameSurface = (s) => Math.abs(s.bounds[0] - s.painted[0]) <= 1 && Math.abs(s.bounds[1] - s.painted[1]) <= 1;
 const windowTitles = () =>
   main(`(() => { const { BrowserWindow } = process.mainModule.require("electron"); return BrowserWindow.getAllWindows().map((w) => w.getTitle()).filter((t) => t !== "pi-gna"); })()`);
 const windows = () =>
@@ -172,6 +185,12 @@ try {
   await sleep(1000);
   const fitted = await clickTarget();
   check("fit below 1: click hits its element", big.viewport?.width === 2400 && fitted.ok, fitted.detail);
+  const fitSurface = await paneSurface();
+  check("fit below 1: page paints the view's bounds", sameSurface(fitSurface), JSON.stringify(fitSurface));
+  await call({ action: "open", url: `${base.replace("127.0.0.1", "localhost")}/x` });
+  await sleep(1000);
+  const navSurface = await paneSurface();
+  check("fit below 1: still after a cross-origin navigation", sameSurface(navSurface), JSON.stringify(navSurface));
   await call({ action: "viewport", set: { aspect: "16:9", width: 1280, dpr: 2 } });
   await sleep(1000);
   const wideShot = jpegSize((await call({ action: "screenshot" })).image);

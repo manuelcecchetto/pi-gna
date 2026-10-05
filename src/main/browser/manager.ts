@@ -467,6 +467,8 @@ export class BrowserManager {
     if (!wc.getURL()) await this.load(tab, "about:blank");
     const scale = this.fitFor(tab)?.scale ?? 1;
     tab.emulatedScale = scale;
+    // Without dontSetVisibleSize Chromium resizes the view's surface to the unscaled emulated size, which spills past
+    // the fitted bounds as a blank area until the next real setBounds; the view's size is ours to set.
     await cdp(wc, "Emulation.setDeviceMetricsOverride", {
       width: spec.width,
       height: spec.height,
@@ -475,6 +477,7 @@ export class BrowserManager {
       screenWidth: spec.width,
       screenHeight: spec.height,
       scale,
+      dontSetVisibleSize: true,
     });
     await cdp(wc, "Emulation.setTouchEmulationEnabled", { enabled: spec.touch, maxTouchPoints: 5 });
     await cdp(wc, "Emulation.setEmitTouchEventsForMouse", { enabled: spec.touch, configuration: "mobile" });

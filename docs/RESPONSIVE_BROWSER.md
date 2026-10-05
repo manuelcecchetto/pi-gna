@@ -24,4 +24,5 @@ partition `persist:pigna-spike` with `webContents.debugger` attached ("1.3"), fi
 - Fit with CDP `scale`, never clip (c). Input coordinates are scaled by it (c'); screenshots are not (d).
 - The `webRequest` hook is required for `Sec-CH-UA-*` (b'); windows cannot exceed the display (f); screenshots from a minimized window hang (d).
 - Later finding (scripts/verify-responsive-browser.mjs): emulating a never-navigated view crashes Electron 44.5.1 on macOS, so views load `about:blank` first.
+- Later finding: `setDeviceMetricsOverride` without `dontSetVisibleSize: true` resizes the view's surface to the *unscaled* emulated size on every call (1920x1080 into a 1200x675 view: native `capturePage` 3840x2160 at 2x), leaving a blank strip past the fitted bounds until a `setBounds` that changes the size. With the flag the surface keeps the view's bounds through emulate, navigation and reload, while `innerWidth/Height`, `captureScreenshot` (1920x1080) and scaled input are unchanged. Always send it.
 - Code truth lives in `src/shared/viewport.ts` (presets, limits, math) and `src/main/browser/manager.ts`.
