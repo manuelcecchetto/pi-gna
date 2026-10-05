@@ -1,5 +1,6 @@
 // Integrated browser: shared between the main process (tabs, agent bridge) and the renderer (pane UI).
 
+import type { TabPreview } from "./preview";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 
 export interface BrowserTab {
@@ -17,6 +18,8 @@ export interface BrowserTab {
   surface?: "pane" | "window";
   /** When the agent last drove this tab (ms since epoch); clients show "agent is using this" while it is recent. */
   agentAt?: number;
+  /** Set when the tab previews a local file; `url` is then a pigna-file:// address and clients show `preview.path`. */
+  preview?: TabPreview;
 }
 
 /** How long after its last action a tab still counts as driven by the agent. */
