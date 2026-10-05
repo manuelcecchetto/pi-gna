@@ -71,7 +71,7 @@ const PARK_SIZE = { width: 1280, height: 800 };
 export interface BrowserEvents {
   state(state: BrowserState): void;
   /** Ask the renderer to show the pane (the agent is about to use it). */
-  reveal(): void;
+  reveal(chat?: string): void;
   annotation(annotation: Annotation): void;
 }
 
@@ -82,6 +82,10 @@ export class BrowserManager {
   private activeId?: string;
   /** The pane tab that is drawn in the pane. */
   private paneId?: string;
+  /** The chat on screen. Tabs belong to chats: only this chat's tabs are addressed by the toolbar and drawn in the pane. */
+  private chat?: string;
+  /** Each chat's last addressed tab, restored when it comes back on screen. */
+  private readonly recent = new Map<string, string>();
   private layout: BrowserLayout = { visible: false, bounds: { x: 0, y: 0, width: 0, height: 0 } };
   private attached?: WebContentsView;
   /** Views of tabs held for remote viewers that are not in the pane or a window; they sit in the keeper window. */
@@ -123,7 +127,7 @@ export class BrowserManager {
   // ── State ──────────────────────────────────────────────────────────────────
 
   snapshot(): BrowserState {
-    const previewed = [...this.tabs.values()].flatMap((tab) => (tab.preview ? [tab.preview.info.path] : []));
+    const previewedBy = (owner?: string) => [...this.tabs.values()].flatMap((tab) => (tab.preview && tab.agent === owner ? [tab.preview.info.path] : []));
     return {
       activeId: this.activeId,
       annotating: this.annotating,
@@ -135,7 +139,7 @@ export class BrowserManager {
           {
             id,
             url: wc.getURL(),
-            title: tab.preview ? previewLabel(tab.preview.info.path, previewed) : wc.getTitle(),
+            title: tab.preview ? previewLabel(tab.preview.info.path, previewedBy(tab.agent)) : wc.getTitle(),
             loading: wc.isLoading(),
             canGoBack: wc.navigationHistory.canGoBack(),
             canGoForward: wc.navigationHistory.canGoForward(),
@@ -166,7 +170,7 @@ export class BrowserManager {
       webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
     });
     view.setBackgroundColor("#ffffff");
-    const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent, surface: "pane", holds: 0 };
+    const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent: agent ?? this.chat, surface: "pane", holds: 0 };
     this.tabs.set(tab.id, tab);
     this.order.push(tab.id);
     this.wire(tab);
@@ -218,7 +222,7 @@ export class BrowserManager {
     wc.on("will-navigate", (event, url) => {
       if (previewGate(url) || !/^(https?|file|about|data|blob|pigna-file):/i.test(url)) event.preventDefault();
     });
-    attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url) });
+    attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url, tab.agent) });
   }
 
   private pushConsole(tab: Tab, level: string, message: string, source: string): void {
@@ -236,8 +240,11 @@ export class BrowserManager {
   closeTab(id: string): void {
     const tab = this.tabs.get(id);
     if (!tab) return;
-    const index = this.order.indexOf(id);
-    this.order.splice(index, 1);
+    // The tab's neighbours among its own chat's tabs take over when it was the one shown.
+    const siblings = this.order.filter((other) => this.tabs.get(other)?.agent === tab.agent && other !== id);
+    const index = this.order.filter((other) => this.tabs.get(other)?.agent === tab.agent).indexOf(id);
+    this.order.splice(this.order.indexOf(id), 1);
+    if (tab.agent && this.recent.get(tab.agent) === id) this.recent.delete(tab.agent);
     this.tabs.delete(id);
     this.hintHeaders.delete(tab.view.webContents.id);
     if (tab.preview) this.dropPreview(tab.preview);
@@ -249,20 +256,39 @@ export class BrowserManager {
     tab.view.webContents.close();
     if (this.paneId === id) {
       this.paneId = undefined;
-      const next = [this.order[index], this.order[index - 1]].find((candidate) => candidate && this.tabs.get(candidate)?.surface === "pane");
+      const next = [siblings[index], siblings[index - 1]].find((candidate) => candidate && this.tabs.get(candidate)?.surface === "pane");
       if (next) this.paneId = next;
     }
     if (this.activeId === id) {
       this.activeId = undefined;
-      const next = this.order[index] ?? this.order[index - 1];
+      const next = siblings[index] ?? siblings[index - 1];
       if (next) this.activate(next);
     }
     this.applyLayout();
     this.emitState();
   }
 
+  /** Put a chat on screen: its tabs, and the one it last addressed, replace the previous chat's. */
+  focus(chat?: string): void {
+    if (this.chat === chat) return;
+    if (this.annotating) this.setAnnotating(false);
+    this.chat = chat;
+    const mine = this.order.filter((id) => this.tabs.get(id)?.agent === chat);
+    const remembered = chat ? this.recent.get(chat) : undefined;
+    const pane = (id: string) => this.tabs.get(id)?.surface === "pane";
+    const next = remembered && mine.includes(remembered) ? remembered : (mine.find(pane) ?? mine[0]);
+    this.activeId = next;
+    this.paneId = next && pane(next) ? next : mine.find(pane);
+    this.applyLayout();
+    this.emitState();
+  }
+
   activate(id: string): void {
-    if (!this.tabs.has(id)) return;
+    const target = this.tabs.get(id);
+    if (!target) return;
+    if (target.agent) this.recent.set(target.agent, id);
+    // A tab of a chat that is not on screen is only remembered: it must not replace what is drawn.
+    if (target.agent !== this.chat) return;
     if (this.annotating && this.activeId !== id) this.setAnnotating(false);
     this.activeId = id;
     if (this.tabs.get(id)?.surface === "pane") this.paneId = id;
@@ -303,15 +329,17 @@ export class BrowserManager {
     if (!(await stat(file)).isFile()) throw new Error(`${path} is not a file`);
     const project = options.root ? await realpath(options.root).catch(() => undefined) : undefined;
     const root = previewRoot(file, project);
-    const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
+    // A chat reuses only its own previews: another chat's tab of the same file stays that chat's.
+    const owner = options.agent ?? this.chat;
+    const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].filter((tab) => tab.agent === owner).map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
     const reused = reuse ? this.tabs.get(reuse) : undefined;
-    const tab = reused ?? this.makeTab(options.agent);
+    const tab = reused ?? this.makeTab(owner);
     const defaults = previewFor(file);
     const mode = options.mode && defaults.modes.includes(options.mode) ? options.mode : defaults.mode;
     const shown = reused?.preview?.info.mode;
     if (!shown || needsReload(shown, mode, options.line, tab.view.webContents.isCrashed())) this.startPreview(tab, file, root, mode, options.line);
     this.activate(tab.id);
-    if (!tab.win) this.events.reveal();
+    if (!tab.win) this.events.reveal(tab.agent);
     return tab;
   }
 
@@ -434,9 +462,10 @@ export class BrowserManager {
     return tab;
   }
 
-  /** Close the device windows a chat spawned, when its session ends. */
-  closeWindowsOf(agent: string): void {
-    for (const tab of [...this.tabs.values()]) if (tab.win && tab.agent === agent) this.closeTab(tab.id);
+  /** Close a chat's tabs and device windows, when its session ends. */
+  closeTabsOf(chat: string): void {
+    for (const tab of [...this.tabs.values()]) if (tab.agent === chat) this.closeTab(tab.id);
+    this.recent.delete(chat);
   }
 
   /** Move a pane tab into a window sized to its viewport, or to the pane when it has none. */
@@ -452,7 +481,7 @@ export class BrowserManager {
     if (this.attached === tab.view) this.detach();
     const win = this.attachWindow(tab, spec);
     if (this.paneId === id) {
-      this.paneId = this.order.find((other) => other !== id && this.tabs.get(other)?.surface === "pane");
+      this.paneId = this.order.find((other) => other !== id && this.tabs.get(other)?.agent === tab.agent && this.tabs.get(other)?.surface === "pane");
     }
     // An existing viewport moves as is (attachWindow re-emulates it at the window's fit); re-resolving it from its
     // numbers would drop the device label and re-derive the user agent (a Pixel would turn into an iPhone).
@@ -776,8 +805,13 @@ export class BrowserManager {
       if (!tab.win.isDestroyed() && tab.win.isMinimized()) tab.win.restore();
       return;
     }
+    // Another chat's pane is not drawn now; opening it for that chat is all there is to do.
+    if (tab.agent !== this.chat) {
+      this.events.reveal(tab.agent);
+      return;
+    }
     if (this.layout.visible) return;
-    this.events.reveal();
+    this.events.reveal(tab.agent);
     await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, 1500);
       this.visibleWaiters.push(() => {
@@ -833,7 +867,7 @@ export class BrowserManager {
         })
         .catch(() => undefined);
       const image = crop && !crop.isEmpty() ? (crop.getSize().width > 800 ? crop.resize({ width: 800 }) : crop).toJPEG(80).toString("base64") : undefined;
-      this.events.annotation({ ...rest, id: randomUUID().slice(0, 8), image });
+      this.events.annotation({ ...rest, id: randomUUID().slice(0, 8), image, chat: tab.agent });
       log.info("browser", `annotation on ${rest.url}: ${rest.label}`);
     }
   }

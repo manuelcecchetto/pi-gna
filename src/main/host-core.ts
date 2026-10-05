@@ -279,6 +279,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "update.download": any("remote", () => deps.updater()?.download()),
 
     "browser.layout": any<{ layout: Parameters<BrowserManager["setLayout"]>[0] }>("desktop", (_ctx, { layout }) => deps.browser()?.setLayout(layout)),
+    "browser.focus": any<{ chat?: string }>("desktop", (_ctx, { chat }) => deps.browser()?.focus(typeof chat === "string" ? chat : undefined)),
     "browser.newTab": any<{ url?: string }>("remote", (_ctx, { url }) => deps.browser()?.createTab(url)),
     "browser.closeTab": any<{ id: string }>("remote", (_ctx, { id }) => deps.browser()?.closeTab(id)),
     "browser.activate": any<{ id: string }>("remote", (ctx, { id }) => {
@@ -641,6 +642,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.describePaths, "fs.describePaths", (paths) => ({ paths })),
   route(IPC.pickAttachments, "fs.pickAttachments", (kind) => ({ kind })),
   route(IPC.browserLayout, "browser.layout", (layout) => ({ layout }), true),
+  route(IPC.browserFocus, "browser.focus", (chat) => ({ chat }), true),
   route(IPC.browserNewTab, "browser.newTab", (url) => ({ url }), true),
   route(IPC.browserCloseTab, "browser.closeTab", (id) => ({ id }), true),
   route(IPC.browserActivate, "browser.activate", (id) => ({ id }), true),

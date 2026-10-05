@@ -11,7 +11,7 @@ import { HeroBackdrop } from "./components/Transcript";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
-import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, store, toggleExpandAll, useApp } from "./state/app";
+import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, showBrowser, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
   useEffect(() => {
@@ -23,7 +23,7 @@ export function App() {
         toggleExpandAll();
       } else if (event.metaKey && !event.shiftKey && key === "o") {
         event.preventDefault();
-        setPane({ open: true });
+        showBrowser();
         void openFileDialog();
       } else if (event.metaKey && key === "n") {
         event.preventDefault();
@@ -50,7 +50,9 @@ export function App() {
 
   const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
   const page = useApp((state) => state.page);
-  const pane = useApp((state) => state.pane);
+  const paneState = useApp((state) => state.pane);
+  // The browser belongs to the chat: a page (Kanban, Settings, ...) covers the window and hides it.
+  const pane = { ...paneState, open: paneState.open && !page };
   const collapsed = useApp((state) => state.sidebar.collapsed);
   const main = useRef<HTMLElement>(null);
 

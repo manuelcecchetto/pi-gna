@@ -2,6 +2,7 @@ import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageS
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
+import type { Annotation } from "../../../shared/browser";
 import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { previewClick } from "../lib/preview";
@@ -36,6 +37,7 @@ const drafts = new Map<string, string>();
 /** The editor text injection each chat has applied, so a remount (switching back to the chat) does not apply it again. */
 const injections = new Map<string, number>();
 const NO_ATTACHMENTS: Attachment[] = [];
+const NO_ANNOTATIONS: Annotation[] = [];
 const fileLists = new Map<string, Promise<string[]>>();
 
 interface MenuItem {
@@ -63,7 +65,7 @@ export function Composer({ session, placeholder, floating = false }: { session: 
   const area = useRef<HTMLTextAreaElement>(null);
   const commands = useApp((state) => state.commands[handle]);
   const compaction = useApp((state) => state.compaction);
-  const annotations = useApp((state) => state.annotations);
+  const annotations = useApp((state) => state.annotations[handle]) ?? NO_ANNOTATIONS;
   const attachments = useApp((state) => state.attachments[handle]) ?? NO_ATTACHMENTS;
   const card = useApp((state) => composerCard(state, handle));
   /** Nothing to send: no text, attachment, browser comment or card. */
@@ -232,7 +234,7 @@ export function Composer({ session, placeholder, floating = false }: { session: 
               )}
               <span className="truncate text-fg">{annotation.comment}</span>
               <span className="min-w-0 shrink truncate font-mono text-[11px] text-faint">{annotation.label}</span>
-              <button type="button" title="Remove comment" onClick={() => removeAnnotation(annotation.id)} className="ml-auto shrink-0 text-faint hover:text-fg">
+              <button type="button" title="Remove comment" onClick={() => removeAnnotation(handle, annotation.id)} className="ml-auto shrink-0 text-faint hover:text-fg">
                 <X size={12} />
               </button>
             </div>

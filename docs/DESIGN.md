@@ -170,6 +170,13 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
 
 ## Browser (M2)
 
+**The browser belongs to a chat.** Every tab has an owner (`BrowserTab.agent`, the chat that opened it, the user's own tabs included).
+Main keeps all tabs; the renderer tells it which chat is on screen (`browser.focus`) and main draws and addresses only that
+chat's tabs, remembering each chat's last tab. The renderer scopes `state.browser` to the active chat (`scopeBrowser`) and keeps
+the pane (open/full), and the browser comments, per chat; a page (Kanban, Settings, ...) hides the pane. An agent acting in a chat
+that is not on screen keeps working (its view is held while it acts) and opens that chat's pane for when you return. A chat's
+tabs close when its session ends. The phone still lists every chat's tabs.
+
 - **Tabs** are `WebContentsView`s in the persistent partition `persist:pigna-browser` (separate cookies and
   storage from the app; no camera, mic, location or notifications). The renderer draws the tab strip and toolbar
   and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views

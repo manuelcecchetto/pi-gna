@@ -139,7 +139,7 @@ hub.subscribe({
         case "atp.runners": send(IPC.atpRunners, { runners: e.runners, notes: e.notes, orchestrators: e.orchestrators }); break;
         case "atp.threads": send(IPC.atpThreadsChanged, { plan: e.plan, threads: e.threads }); break;
         case "browser": send(IPC.browserState, e.state); break;
-        case "browser.reveal": send(IPC.browserReveal); break;
+        case "browser.reveal": send(IPC.browserReveal, e.chat); break;
         case "browser.annotation": send(IPC.browserAnnotation, e.annotation); break;
         case "update": send(IPC.updateState, e.state); break;
         case "devices": send(IPC.devicesChanged, e.devices); break;
@@ -214,7 +214,7 @@ const computerAgent = new ComputerAgent(
 );
 bridge.route("/computer", computerRoute(() => computerAgent));
 host.onRunEnd((handle) => void computerAgent.release(handle));
-host.onExit((handle) => browser?.closeWindowsOf(handle));
+host.onExit((handle) => browser?.closeTabsOf(handle));
 bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) => host.identify(handle))));
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
@@ -310,7 +310,7 @@ function createWindow(): void {
 
   browser = new BrowserManager(window, {
     state: (state) => publish({ kind: "browser", state }),
-    reveal: () => publish({ kind: "browser.reveal" }),
+    reveal: (chat) => publish({ kind: "browser.reveal", chat }),
     annotation: (annotation) => publish({ kind: "browser.annotation", annotation }),
   });
   agent = new BrowserAgent(browser);
@@ -318,8 +318,8 @@ function createWindow(): void {
   attachContextMenu(window.webContents, {
     page: false,
     openTab: (url) => {
-      browser?.createTab(url);
-      publish({ kind: "browser.reveal" });
+      const tab = browser?.createTab(url);
+      publish({ kind: "browser.reveal", chat: tab?.agent });
     },
   });
 

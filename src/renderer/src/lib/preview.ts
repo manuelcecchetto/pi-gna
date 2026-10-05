@@ -1,7 +1,7 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
 import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type LucideIcon } from "lucide-react";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
-import { setPane, store, toast } from "../state/app";
+import { showBrowser, store, toast } from "../state/app";
 import { resolveFilePath } from "./preview-path";
 
 /** Opens a local file in a preview tab; the active chat's project is the root so relative links work. */
@@ -10,7 +10,7 @@ export async function openPreviewPath(path: string, options: PreviewOpenOptions 
   const cwd = state.active ? state.sessions[state.active]?.cwd : undefined;
   const resolved = resolveFilePath(path, cwd, window.studio.homeDir);
   if (!resolved) return toast("Could not resolve the file path", "error");
-  setPane({ open: true });
+  showBrowser();
   try {
     await window.studio.browser.preview(resolved, { root: cwd, ...options });
   } catch (error) {

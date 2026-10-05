@@ -19,6 +19,7 @@ import {
   openSettings,
   removeComposerCard,
   respondDialog,
+  scopeBrowser,
   reviewPullRequest,
   send,
   sessionTitle,
@@ -303,5 +304,24 @@ describe("the Settings page", () => {
     expect(await applySettings({ type: "theme", theme: "dark" })).toBe(false);
     await vi.runAllTimersAsync();
     expect(store.get().settings).toEqual(before);
+  });
+});
+
+describe("scopeBrowser", () => {
+  const tab = (id: string, agent?: string) => ({ id, url: "", title: id, loading: false, canGoBack: false, canGoForward: false, agent });
+  const all = { tabs: [tab("a", "chat1"), tab("b", "chat2"), tab("c", "chat1")], activeId: "b", annotating: false };
+
+  it("shows a chat only its own tabs", () => {
+    expect(scopeBrowser(all, "chat1").tabs.map((t) => t.id)).toEqual(["a", "c"]);
+    expect(scopeBrowser(all, "chat2").tabs.map((t) => t.id)).toEqual(["b"]);
+  });
+
+  it("drops the active tab when it belongs to another chat", () => {
+    expect(scopeBrowser(all, "chat1").activeId).toBeUndefined();
+    expect(scopeBrowser(all, "chat2").activeId).toBe("b");
+  });
+
+  it("shows no tabs without a chat", () => {
+    expect(scopeBrowser(all, undefined).tabs).toEqual([]);
   });
 });

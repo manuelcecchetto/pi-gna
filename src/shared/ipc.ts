@@ -48,6 +48,7 @@ export const IPC = {
   visualKill: "studio:visual-kill",
   events: "studio:events",
   browserLayout: "browser:layout",
+  browserFocus: "browser:focus",
   browserNewTab: "browser:new-tab",
   browserCloseTab: "browser:close-tab",
   browserActivate: "browser:activate",
@@ -371,6 +372,8 @@ export interface RemoteApi {
 
 export interface BrowserApi {
   layout(layout: BrowserLayout): void;
+  /** Tell main which chat is on screen: the pane shows that chat's tabs (undefined: none). */
+  focus(chat?: string): void;
   newTab(url?: string): void;
   closeTab(id: string): void;
   activate(id: string): void;
@@ -399,7 +402,8 @@ export interface BrowserApi {
   history(): Promise<HistoryEntry[]>;
   state(): Promise<BrowserState>;
   onState(listener: (state: BrowserState) => void): () => void;
-  onReveal(listener: () => void): () => void;
+  /** The agent is about to use the browser of `chat`: show its pane. */
+  onReveal(listener: (chat?: string) => void): () => void;
   onAnnotation(listener: (annotation: Annotation) => void): () => void;
   /** View > Toggle Browser (a menu accelerator, so it works while a page has focus). */
   onToggle(listener: () => void): () => void;
