@@ -86,7 +86,7 @@ export type SettingsOp =
   | { type: "model"; task: Task; model: TaskModel | null };
 
 /** The sections of the Settings page; main opens it at one (View > Computer Use). */
-export const SETTINGS_SECTIONS = ["general", "appearance", "shortcuts", "providers", "models", "agent", "features", "remote", "computer"] as const;
+export const SETTINGS_SECTIONS = ["general", "appearance", "shortcuts", "providers", "plugins", "models", "agent", "features", "remote", "computer"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export const isSettingsSection = (value: unknown): value is SettingsSection => SETTINGS_SECTIONS.includes(value as SettingsSection);

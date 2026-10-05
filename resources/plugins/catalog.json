@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "attio",
+      "kind": "mcp",
+      "name": "Attio",
+      "publisher": "Attio",
+      "description": "Search and update your CRM: people, companies, deals, lists and notes.",
+      "homepage": "https://docs.attio.com/mcp/overview",
+      "logo": {
+        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMS4wOCAyNS41NSI+PGcgZmlsbD0iIzAwMDAwMCI+PHBhdGggZD0iTTMwLjY0NjggMTcuNzgyM0wyOC4wNTk5IDEzLjY0MjJDMjguMDU5OSAxMy42NDIyIDI4LjA1MDMgMTMuNjI0OCAyOC4wNDQ1IDEzLjYxNzJMMjcuODQwNSAxMy4yOTE5QzI3LjQ1NTUgMTIuNjc0IDI2Ljc4OTUgMTIuMzA0NSAyNi4wNjIgMTIuMzAyNUwyMS44OTQ5IDEyLjI4OTFMMjEuNjA0MiAxMi43NTQ5TDE2LjYyNDkgMjAuNzIzNEwxNi4zNDk2IDIxLjE2NDJMMTguNDM2MSAyNC40OTc4QzE4LjgyMSAyNS4xMTc2IDE5LjQ4NyAyNS40ODcyIDIwLjIyMDMgMjUuNDg3MkgyNi4wNkMyNi43Nzk5IDI1LjQ4NzIgMjcuNDYxMyAyNS4xMDggMjcuODQyNCAyNC40OTk4TDI4LjA0ODMgMjQuMTcwNkMyOC4wNDgzIDI0LjE3MDYgMjguMDU2IDI0LjE2MSAyOC4wNTggMjQuMTU3MkwzMC42NDg3IDIwLjAxMTJDMzEuMDc0MSAxOS4zMzM3IDMxLjA3NDEgMTguNDU3OSAzMC42NDg3IDE3Ljc4MjNIMzAuNjQ2OFpNMjkuODU3NiAxOS41MTY2TDI3LjI2NjkgMjMuNjYyNUMyNy4yNTUzIDIzLjY4MTcgMjcuMjQxOSAyMy42OTcxIDI3LjIzMDMgMjMuNzEyNUMyNy4xMzk4IDIzLjgxNDYgMjcuMDIyNCAyMy44MjggMjYuOTcwNSAyMy44MjhDMjYuOTEwOCAyMy44MjggMjYuNzY0NSAyMy44MTA3IDI2LjY3MDIgMjMuNjYwNkwyNC4wNzk1IDE5LjUxNDZDMjQuMDUwNiAxOS40Njg0IDI0LjAyNTYgMTkuNDIwMyAyNC4wMDI1IDE5LjM2ODNDMjMuOTc5NCAxOS4zMTgzIDIzLjk2MjEgMTkuMjY4MyAyMy45NDY3IDE5LjIxNjNDMjMuODg4OSAxOS4wMDg0IDIzLjg4ODkgMTguNzg1MSAyMy45NDY3IDE4LjU3NzNDMjMuOTc1NSAxOC40NzUzIDI0LjAxOTggMTguMzczMiAyNC4wNzc1IDE4LjI4MDlMMjYuNjY0NCAxNC4xMzg4QzI2LjY2NDQgMTQuMTM4OCAyNi42NjgzIDE0LjEzMyAyNi42NzAyIDE0LjEyOTFDMjYuNzMxOCAxNC4wMzY3IDI2LjgwODggMTMuOTk0NCAyNi44NzYyIDEzLjk4MDlDMjYuOTAzMSAxMy45NzMyIDI2LjkyNjIgMTMuOTcxMyAyNi45NDU0IDEzLjk2NzVDMjYuOTU1MSAxMy45Njc1IDI2Ljk2NDcgMTMuOTY3NSAyNi45NzQzIDEzLjk2NzVDMjcuMDM0IDEzLjk2NzUgMjcuMTgyMiAxMy45ODY3IDI3LjI3NDYgMTQuMTM2OEwyOS44NjE1IDE4LjI3N0MzMC4wOTgyIDE4LjY1NDMgMzAuMDk4MiAxOS4xMzkzIDI5Ljg2MTUgMTkuNTE2NkgyOS44NTc2WiIvPjxwYXRoIGQ9Ik0yMi45OTEzIDcuNzY0NEMyMy40MTQ4IDcuMDg0OTYgMjMuNDE0OCA2LjIxMTEyIDIyLjk5MTMgNS41MzU1M0wyMC40MDQ0IDEuMzk1MzZMMjAuMTg4OSAxLjA0Njk3QzE5LjgwMiAwLjQyOTEyNSAxOS4xMzYgMC4wNTk1NzAzIDE4LjQwNDYgMC4wNTk1NzAzSDEyLjU2NDlDMTEuODM1NCAwLjA1OTU3MDMgMTEuMTY5NCAwLjQyOTEyNSAxMC43ODA2IDEuMDQ4OUwwLjMyMzM2MSAxNy43ODQ3QzAuMTEzNTYxIDE4LjExOTYgMCAxOC41MDY1IDAgMTguODk5MkMwIDE5LjI5MTggMC4xMTE2MzYgMTkuNjc4NyAwLjMyMTQzNiAyMC4wMTE3TDMuMTI1ODIgMjQuNTAyMkMzLjUxMjcgMjUuMTIxOSA0LjE3ODY2IDI1LjQ4OTYgNC45MDgxNSAyNS40ODk2SDEwLjc0NzlDMTEuNDgxMiAyNS40ODk2IDEyLjE0NzIgMjUuMTIgMTIuNTMyMSAyNC41MDAyTDEyLjc0NTggMjQuMTYxNUMxMi43NDU4IDI0LjE2MTUgMTIuNzQ1OCAyNC4xNjE1IDEyLjc0NTggMjQuMTU3NkMxMi43NDU4IDI0LjE1NzYgMTIuNzQ5NiAyNC4xNTE5IDEyLjc0OTYgMjQuMTQ5OUwxNC44MzQyIDIwLjgxNjJMMjEuMDEyNyAxMC45Mjg3TDIyLjk4NzUgNy43NjYzM0wyMi45OTEzIDcuNzY0NFpNMjIuMzgxMiA2LjY0OTk2QzIyLjM4MTIgNi44NjM2MSAyMi4zMjE1IDcuMDc5MTkgMjIuMjAwMiA3LjI2OTc0TDExLjk1NjYgMjMuNjY0OUMxMS44NjQzIDIzLjgxMzEgMTEuNzE2IDIzLjgzMDQgMTEuNjU2NCAyMy44MzA0QzExLjU5NjcgMjMuODMwNCAxMS40NTA0IDIzLjgxMzEgMTEuMzU2MSAyMy42NjQ5TDguNzY3MyAxOS41MTdDOC41MzI0OCAxOS4xNDE3IDguNTMyNDggMTguNjU4NiA4Ljc2NzMgMTguMjc5NEwxOS4wMTA5IDEuODg4MUMxOS4xMDMzIDEuNzM3OTcgMTkuMjUxNSAxLjcyMDY0IDE5LjMxMTIgMS43MjA2NEMxOS4zNzA4IDEuNzIwNjQgMTkuNTE5IDEuNzM3OTcgMTkuNjEzNCAxLjg5MDAyTDIyLjIwMDIgNi4wMzAxOUMyMi4zMjE1IDYuMjIwNzQgMjIuMzgxMiA2LjQzNjMyIDIyLjM4MTIgNi42NDk5NlY2LjY0OTk2WiIvPjwvZz48L3N2Zz4=",
+        "background": "#ffffff",
+        "scale": 0.56
+      },
+      "server": "attio",
+      "endpoints": [
+        {
+          "id": "default",
+          "label": "Attio",
+          "url": "https://mcp.attio.com/mcp"
+        }
+      ],
+      "auth": {
+        "type": "oauth"
+      }
+    },
+    {
+      "id": "notion",
+      "kind": "mcp",
+      "name": "Notion",
+      "publisher": "Notion",
+      "description": "Search, read and write pages and databases in your workspace.",
+      "homepage": "https://developers.notion.com/docs/mcp",
+      "logo": {
+        "src": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjMDAwMDAwIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTQuNDU5IDQuMjA4Yy43NDYuNjA2IDEuMDI2LjU2IDIuNDI4LjQ2NmwxMy4yMTUtLjc5M2MuMjggMCAuMDQ3LS4yOC0uMDQ2LS4zMjZMMTcuODYgMS45NjhjLS40Mi0uMzI2LS45ODEtLjctMi4wNTUtLjYwN0wzLjAxIDIuMjk1Yy0uNDY2LjA0Ni0uNTYuMjgtLjM3NC40NjZ6bS43OTMgMy4wOHYxMy45MDRjMCAuNzQ3LjM3MyAxLjAyNyAxLjIxNC45OGwxNC41MjMtLjg0Yy44NDEtLjA0Ni45MzUtLjU2LjkzNS0xLjE2N1Y2LjM1NGMwLS42MDYtLjIzMy0uOTMzLS43NDgtLjg4N2wtMTUuMTc3Ljg4N2MtLjU2LjA0Ny0uNzQ3LjMyNy0uNzQ3LjkzM3ptMTQuMzM3Ljc0NWMuMDkzLjQyIDAgLjg0LS40Mi44ODhsLS43LjE0djEwLjI2NGMtLjYwOC4zMjctMS4xNjguNTE0LTEuNjM1LjUxNC0uNzQ4IDAtLjkzNS0uMjM0LTEuNDk1LS45MzNsLTQuNTc3LTcuMTg2djYuOTUyTDEyLjIxIDE5czAgLjg0LTEuMTY4Ljg0bC0zLjIyMi4xODZjLS4wOTMtLjE4NiAwLS42NTMuMzI3LS43NDZsLjg0LS4yMzNWOS44NTRMNy44MjIgOS43NmMtLjA5NC0uNDIuMTQtMS4wMjYuNzkzLTEuMDczbDMuNDU2LS4yMzMgNC43NjQgNy4yNzl2LTYuNDRsLTEuMjE1LS4xMzljLS4wOTMtLjUxNC4yOC0uODg3Ljc0Ny0uOTMzek0xLjkzNiAxLjAzNWwxMy4zMS0uOThjMS42MzQtLjE0IDIuMDU1LS4wNDcgMy4wODIuN2w0LjI0OSAyLjk4NmMuNy41MTMuOTM0LjY1My45MzQgMS4yMTN2MTYuMzc4YzAgMS4wMjYtLjM3MyAxLjYzNC0xLjY4IDEuNzI2bC0xNS40NTguOTM0Yy0uOTguMDQ3LTEuNDQ4LS4wOTMtMS45NjItLjc0N2wtMy4xMjktNC4wNmMtLjU2LS43NDctLjc5My0xLjMwNi0uNzkzLTEuOTZWMi42NjdjMC0uODM5LjM3NC0xLjU0IDEuNDQ3LTEuNjMyeiIvPjwvc3ZnPg==",
+        "background": "#ffffff",
+        "scale": 0.62
+      },
+      "server": "notion",
+      "endpoints": [
+        {
+          "id": "default",
+          "label": "Notion",
+          "url": "https://mcp.notion.com/mcp"
+        }
+      ],
+      "auth": {
+        "type": "oauth"
+      }
+    },
+    {
+      "id": "granola",
+      "kind": "mcp",
+      "name": "Granola",
+      "publisher": "Granola",
+      "description": "Your meeting notes and transcripts, to search and quote.",
+      "homepage": "https://docs.granola.ai/help-center/sharing/integrations/mcp",
+      "logo": {
+        "src": "data:image/png;base64,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",
+        "background": "#b2c248",
+        "scale": 1
+      },
+      "server": "granola",
+      "endpoints": [
+        {
+          "id": "default",
+          "label": "Granola",
+          "url": "https://mcp.granola.ai/mcp"
+        }
+      ],
+      "auth": {
+        "type": "oauth"
+      }
+    },
+    {
+      "id": "intercom",
+      "kind": "mcp",
+      "name": "Intercom",
+      "publisher": "Intercom",
+      "description": "Conversations, contacts and tickets from your support inbox.",
+      "homepage": "https://developers.intercom.com/docs/guides/mcp",
+      "logo": {
+        "src": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjZmZmZmZmIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTIxIDBIM0MxLjM0MyAwIDAgMS4zNDMgMCAzdjE4YzAgMS42NTggMS4zNDMgMyAzIDNoMThjMS42NTggMCAzLTEuMzQyIDMtM1YzYzAtMS42NTctMS4zNDItMy0zLTN6bS01LjgwMSA0LjM5OWMwLS40NC4zNi0uOC44MDItLjguNDQgMCAuOC4zNi44Ljh2MTAuNjg4YzAgLjQ0Mi0uMzYuODAxLS44LjgwMS0uNDQzIDAtLjgwMi0uMzU5LS44MDItLjgwMVY0LjM5OXpNMTEuMiAzLjk5NGMwLS40NC4zNTctLjc5OS44LS43OTlzLjguMzU5LjguNzk5djExLjYwMmMwIC40NC0uMzU3LjgtLjguOHMtLjgtLjM2LS44LS44VjMuOTk0em0tNCAuNDA1YzAtLjQ0LjM1OS0uOC43OTktLjguNDQzIDAgLjgwMi4zNi44MDIuOHYxMC42ODhjMCAuNDQyLS4zNi44MDEtLjgwMi44MDEtLjQ0IDAtLjc5OS0uMzU5LS43OTktLjgwMVY0LjM5OXpNMy4xOTkgNmMwLS40NDIuMzYtLjguODAyLS44LjQ0IDAgLjc5OS4zNTguNzk5Ljh2Ny4xOTVjMCAuNDQxLS4zNTkuOC0uNzk5LjgtLjQ0MyAwLS44MDItLjM2LS44MDItLjhWNnpNMjAuNTIgMTguMjAyYy0uMTIzLjEwNS0zLjA4NiAyLjU5My04LjUyIDIuNTkzLTUuNDMzIDAtOC4zOTctMi40ODYtOC41MjEtMi41OTMtLjMzNS0uMjg4LS4zNzUtLjc5Mi0uMDg2LTEuMTI4LjI4NS0uMzM0Ljc5LS4zNzUgMS4xMjUtLjA5LjA0Ny4wNDEgMi42OTMgMi4yMTEgNy40ODEgMi4yMTEgNC44NDggMCA3LjQ1Ni0yLjE4NiA3LjQ3OS0yLjIwNy4zMzQtLjI4OS44MzktLjI1IDEuMTI4LjA4Ni4yODkuMzM2LjI1Ljg0LS4wODYgMS4xMjh6bS4yODEtNS4wMDdjMCAuNDQxLS4zNi44LS44MDEuOC0uNDQxIDAtLjgwMS0uMzYtLjgwMS0uOFY2YzAtLjQ0Mi4zNjEtLjguODAxLS44LjQ0MSAwIC44MDEuMzU3LjgwMS44djcuMTk1eiIvPjwvc3ZnPg==",
+        "background": "#000000",
+        "scale": 0.58
+      },
+      "server": "intercom",
+      "endpoints": [
+        {
+          "id": "us",
+          "label": "US",
+          "url": "https://mcp.intercom.com/mcp"
+        },
+        {
+          "id": "eu",
+          "label": "Europe",
+          "url": "https://mcp.eu.intercom.com/mcp"
+        }
+      ],
+      "auth": {
+        "type": "oauth"
+      }
+    },
+    {
+      "id": "brevo",
+      "kind": "mcp",
+      "name": "Brevo",
+      "publisher": "Brevo",
+      "description": "Contacts, lists, email campaigns and their results.",
+      "homepage": "https://developers.brevo.com/docs/mcp-protocol",
+      "logo": {
+        "src": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjZmZmZmZmIiB2aWV3Qm94PSIwIDAgMjQgMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEyIDBBMTIgMTIgMCAwIDAgMCAxMmExMiAxMiAwIDAgMCAxMiAxMiAxMiAxMiAwIDAgMCAxMi0xMkExMiAxMiAwIDAgMCAxMiAwek03LjIgNC44aDUuNzQ3YzIuMzQgMCAzLjg5NSAxLjQwNiAzLjg5NSAzLjUxNiAwIDEuMDIyLS4zNDggMS44NjItMS4wOSAyLjU4OEMxNy4xODkgMTEuODEyIDE4IDEzLjIyIDE4IDE0Ljc4NWMwIDIuODYtMi42NCA1LjAxNi02LjE2NCA1LjAxNkg3LjE5OXYtMTV6bTIuMDg1IDEuOTUydjUuNTM3aC4wN2MuMjMzLS40MzIuODU4LS43OTYgMi4yNDktMS4yMjYgMi4wMzktLjY1OSAzLjAzNy0xLjUyIDMuMDM3LTIuNjU1IDAtLjk5OC0uNzY2LTEuNjU2LTEuOTI0LTEuNjU2SDkuMjg1em00Ljg3IDUuMjY2Yy0uNzY2LjM4NS0xLjY3Ljc0OC0yLjc2IDEuMTEtMS4yMjkuMzg3LTIuMTEgMS4zODYtMi4xMSAyLjQwN3YyLjMxNWgyLjM2NWMyLjM4NyAwIDQuMTQ5LTEuMzQgNC4xNDktMy4xNTUgMC0xLjA2Ny0uNjI1LTIuMDg3LTEuNjQ1LTIuNjc3eiIvPjwvc3ZnPg==",
+        "background": "#0b996e",
+        "scale": 0.6
+      },
+      "server": "brevo",
+      "endpoints": [
+        {
+          "id": "default",
+          "label": "Brevo",
+          "url": "https://mcp.brevo.com/v1/brevo/mcp"
+        }
+      ],
+      "auth": {
+        "type": "key",
+        "label": "MCP token",
+        "help": "In Brevo, open Account › SMTP & API › API Keys, generate a key with the MCP option checked, and paste it here.",
+        "url": "https://app.brevo.com/settings/keys/api"
+      }
+    },
+    {
+      "id": "pi-web-access",
+      "kind": "package",
+      "name": "Web access",
+      "publisher": "pi-web-access",
+      "description": "Web search, page and PDF fetching, GitHub repos and YouTube videos as tools.",
+      "homepage": "https://www.npmjs.com/package/pi-web-access",
+      "icon": "globe",
+      "source": "npm:pi-web-access@0.35.0"
+    },
+    {
+      "id": "pi-codex-image-gen",
+      "kind": "package",
+      "name": "Image generation",
+      "publisher": "pi-codex-image-gen",
+      "description": "Generate and edit images with your ChatGPT Codex login.",
+      "homepage": "https://www.npmjs.com/package/pi-codex-image-gen",
+      "icon": "image",
+      "source": "npm:pi-codex-image-gen@0.1.13"
+    }
+  ]
+}

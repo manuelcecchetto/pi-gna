@@ -1,7 +1,7 @@
 // The Settings page (⌘,): pi-gna's own settings (main's settings.json: features, appearance, the models of the chats
 // pi-gna starts), the pi settings it edits in pi's settings.json (pi reads them when a chat starts, so they apply to
 // new chats) and Computer Use. While it is open, the sidebar lists its sections instead of the chats (SettingsNav).
-import { ArrowLeft, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Blocks, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
@@ -11,6 +11,7 @@ import { applySettings, closeSettings, openSettings, type PageState, remoteError
 import { useAtp } from "../state/atp";
 import { applyComputer, ComputerSection, useComputerSettings } from "./Computer";
 import { DigitHint, Kbd, Switch, useCommandDigits } from "./primitives";
+import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
 import { RemoteSection } from "./Remote";
 import { Button, Card, Choice, ModelChoice, NumberField, Row, Segmented } from "./SettingsControls";
@@ -39,6 +40,14 @@ const SECTIONS: SectionInfo[] = [
     group: "pi",
     about: "Sign in to the providers pi runs models on, the way pi's /login does: with your account or subscription, or with an API key.",
     keywords: "login log in sign in sign out logout auth authentication api key keys account subscription oauth credentials claude anthropic chatgpt openai codex copilot",
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    icon: Blocks,
+    group: "pi",
+    about: "Connect apps over MCP, install pi packages, and choose what pi loads, for you or for this project. Saved in pi's own settings, so pi in the terminal sees the same.",
+    keywords: "mcp servers connections packages extensions skills prompts themes install uninstall enable disable built-in codemode tool search llama attio notion granola intercom brevo pi config",
   },
   {
     id: "models",
@@ -180,6 +189,8 @@ export function SettingsPage({ page }: { page: PageState }) {
             <ShortcutsSection />
           ) : section.id === "providers" ? (
             <ProvidersSection />
+          ) : section.id === "plugins" ? (
+            <PluginsSection cwd={page.cwd} />
           ) : section.id === "models" ? (
             <ModelsSection pi={pi} />
           ) : section.id === "agent" ? (

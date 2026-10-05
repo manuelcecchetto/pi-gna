@@ -2,6 +2,7 @@
 import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
+import type { CatalogState, McpLoginResult, McpLoginUpdate, McpStatusState, PackageToggle, PluginsState, PluginToggle } from "./plugins";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { CompactionSettings } from "./compaction";
@@ -94,6 +95,20 @@ export const IPC = {
   authAnswer: "auth:answer",
   authCancel: "auth:cancel",
   authLogout: "auth:logout",
+  pluginsCatalog: "plugins:catalog",
+  pluginsState: "plugins:state",
+  pluginsStatus: "plugins:status",
+  pluginsToggle: "plugins:toggle",
+  pluginsTogglePackage: "plugins:toggle-package",
+  pluginsInstall: "plugins:install",
+  pluginsRemove: "plugins:remove",
+  pluginsConnect: "plugins:connect",
+  pluginsDisconnect: "plugins:disconnect",
+  pluginsEnableServer: "plugins:enable-server",
+  pluginsLogin: "plugins:login",
+  pluginsLoginUpdate: "plugins:login-update",
+  pluginsCancelLogin: "plugins:cancel-login",
+  pluginsLogout: "plugins:logout",
   boardSaveImage: "board:save-image",
   githubProject: "github:project",
   githubChoose: "github:choose",
@@ -191,6 +206,29 @@ export interface AuthApi {
   cancel(): void;
   /** Removes the credential pi saved in auth.json. */
   logout(provider: string): Promise<void>;
+}
+
+/** The Plugins section (src/main/plugins.ts): pi's packages, resources and MCP servers, changed in pi's own files.
+ * `cwd` is the project of the page, for its view and its .pi files; absent outside a project. Desktop only. */
+export interface PluginsApi {
+  catalog(): Promise<CatalogState>;
+  state(cwd?: string): Promise<PluginsState>;
+  /** `pi mcp list`: connects to every enabled server, so it takes a second or so. */
+  status(cwd?: string): Promise<McpStatusState>;
+  toggle(cwd: string | undefined, toggle: PluginToggle): Promise<void>;
+  togglePackage(cwd: string | undefined, toggle: PackageToggle): Promise<void>;
+  /** A catalog package by its id, into your personal settings. */
+  install(id: string): Promise<void>;
+  remove(cwd: string | undefined, source: string, scope: "user" | "project"): Promise<void>;
+  /** A catalog connection by its id, at one of its endpoints; `token` for one that signs in with a key. */
+  connect(id: string, endpoint: string, token?: string): Promise<void>;
+  disconnect(cwd: string | undefined, server: string, scope: "global" | "project"): Promise<void>;
+  enableServer(cwd: string | undefined, server: string, scope: "global" | "project", enabled: boolean): Promise<void>;
+  /** `pi mcp login`, to its end; pi opens the browser, and its page arrives through onLogin. A new one cancels the last. */
+  login(cwd: string | undefined, server: string): Promise<McpLoginResult>;
+  onLogin(listener: (update: McpLoginUpdate) => void): () => void;
+  cancelLogin(): void;
+  logout(cwd: string | undefined, server: string): Promise<void>;
 }
 
 /** The laments live in main, which agents file them with; every change is pushed back. */
@@ -479,6 +517,7 @@ export interface StudioApi {
   settings: SettingsApi;
   ui: UiApi;
   auth: AuthApi;
+  plugins: PluginsApi;
   github: GithubApi;
   atp: AtpApi;
   update: UpdateApi;

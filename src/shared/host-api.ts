@@ -4,6 +4,7 @@
 import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
+import type { CatalogState, McpLoginResult, McpStatusState, PackageToggle, PluginsState, PluginToggle } from "./plugins";
 import type { Annotation, BrowserCommand, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
@@ -564,6 +565,21 @@ export interface HostMethods {
   "providers.cancel": { args: Record<string, never>; result: null };
   "providers.logout": { args: { provider: string }; result: null };
 
+  // plugins (desktop only: installs run code, sign-ins open the Mac's browser)
+  "plugins.catalog": { args: Record<string, never>; result: CatalogState };
+  "plugins.state": { args: { cwd?: string }; result: PluginsState };
+  "plugins.status": { args: { cwd?: string }; result: McpStatusState };
+  "plugins.toggle": { args: { cwd?: string; toggle: PluginToggle }; result: null };
+  "plugins.togglePackage": { args: { cwd?: string; toggle: PackageToggle }; result: null };
+  "plugins.install": { args: { id: string }; result: null };
+  "plugins.remove": { args: { cwd?: string; source: string; scope: "user" | "project" }; result: null };
+  "plugins.connect": { args: { id: string; endpoint: string; token?: string }; result: null };
+  "plugins.disconnect": { args: { cwd?: string; server: string; scope: "global" | "project" }; result: null };
+  "plugins.enableServer": { args: { cwd?: string; server: string; scope: "global" | "project"; enabled: boolean }; result: null };
+  "plugins.login": { args: { cwd?: string; server: string }; result: McpLoginResult };
+  "plugins.cancelLogin": { args: Record<string, never>; result: null };
+  "plugins.logout": { args: { cwd?: string; server: string }; result: null };
+
   // github
   "github.project": { args: { cwd: string; refresh?: boolean }; result: GithubProject };
   "github.choose": { args: { cwd: string; login: string | null }; result: GithubProject };
@@ -625,6 +641,19 @@ export const DESKTOP_ONLY_METHODS = [
   "host.windowFocused",
   "host.focusWindow",
   "host.killVisual",
+  "plugins.catalog",
+  "plugins.state",
+  "plugins.status",
+  "plugins.toggle",
+  "plugins.togglePackage",
+  "plugins.install",
+  "plugins.remove",
+  "plugins.connect",
+  "plugins.disconnect",
+  "plugins.enableServer",
+  "plugins.login",
+  "plugins.cancelLogin",
+  "plugins.logout",
 ] as const satisfies readonly HostMethod[];
 
 const DESKTOP_ONLY: ReadonlySet<string> = new Set(DESKTOP_ONLY_METHODS);
@@ -665,6 +694,9 @@ export const READ_ONLY_METHODS = [
   "app.hello",
   "app.info",
   "providers.list",
+  "plugins.catalog",
+  "plugins.state",
+  "plugins.status",
   "github.project",
   "github.list",
   "github.lookup",

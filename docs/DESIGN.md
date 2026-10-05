@@ -659,7 +659,7 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
 
 Codex-style: a Settings row is fixed at the foot of the sidebar (⌘, or pi-gna > Settings…). While the page is open the
 sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appearance, Keyboard shortcuts), pi
-(Providers, Models, Agent) and Integrations (Features, Computer use), with a search over their labels and keywords.
+(Providers, Plugins, Models, Agent) and Integrations (Features, Remote access, Computer use), with a search over their labels and keywords.
 Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible chat rows everywhere else
 (`useCommandDigits`). ⌘⇧U opens the Computer use section.
 
@@ -704,6 +704,28 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   `node scripts/provider-logos.mjs` from pinned LobeHub icons (MIT), drawn as LobeHub's Avatar draws them; Radius,
   TypeSafe and Ant Ling come from the companies' own sites. A provider pi adds later shows its initial until it is
   mapped in the script's `BRANDS`. Gradient ids get a per-instance prefix (`useId`), because a logo can show twice.
+- **Plugins** (desktop only: installs run code, sign-ins open the Mac's browser). pi-gna has no plugin system of its
+  own: pi's `settings.json` (`packages` and the `extensions`/`skills`/`prompts`/`themes` filters) and `mcp.json` are
+  the state, so the terminal and pi-gna agree and new chats load every change. `PiPlugins` (`src/main/plugins.ts`)
+  runs `resources/pi-plugins.mts` once per request with pi's SDK (found as for Providers), the request on stdin and the
+  reply on fd 3 (pi's `npm install` inherits stdout), one change at a time. Toggles drive `pi config`'s own list
+  (`ConfigSelectorComponent`'s `resourceList`: `toggleResource` for Personal, `setProjectResourceOverride` for This
+  project, which pi offers only when the project is trusted, `ProjectTrustStore`); state reads resolve with
+  `onMissing` "skip", so reading never installs. A whole package off in Personal is all four filters `[]`, on drops
+  them (back to a plain string); in This project it is one override per resource, and pi then lists the package as a
+  project group with a source relative to `.pi/`. Installs (`installAndPersist`) and connections take a catalog id,
+  never a source or URL from the window. MCP status, sign-in and sign-out are pi's own `pi mcp list --json` (exit 1
+  on a failed server, JSON still valid; it connects to every enabled server, about a second), `pi mcp login`
+  (prints the URL, opens the browser itself, waits for the loopback callback; ✕ kills it) and `pi mcp logout`.
+  A catalog connection that takes a token (Brevo) keeps it in the login Keychain (`security -i` on stdin, item
+  `pi-gna.mcp.<server>`), and its `mcp.json` header is `!echo "Bearer $(security find-generic-password …)"`, which
+  pi runs through the shell when it connects; Remove deletes the item. With pi-mcp-adapter loaded, chats reach
+  `mcp.json`'s servers through it and it keeps its own sign-ins (`/mcp-auth`), so the page says so and offers no
+  pi sign-in. The catalog (`resources/plugins/catalog.json`, `parseCatalog` in `src/shared/plugins.ts`: https only,
+  logos as base64 SVG/PNG `data:` URLs drawn with `<img>`, npm packages pinned to an exact version) is fetched from
+  this repository's `main` once per launch and kept in `userData/plugins-catalog.json`; a failed or invalid fetch
+  falls back to that copy, then to the bundled one. Logos: Notion, Intercom and Brevo from simple-icons (CC0), Attio's
+  mark from attio.com, Granola's app icon from granola.ai.
 
 ## pi RPC notes (pi 1.0.0)
 
@@ -995,6 +1017,11 @@ runs just opens a chat in it (old build and all). Check that the port is free fi
 too, and on a taken port Electron only logs "Cannot start http server for devtools" and runs without one, so
 `scripts/cdp.mjs` would drive the other agent's window. `PIGNA_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
+Providers and Plugins find pi's SDK by walking up from that executable to the pi package, so a bare wrapper loses
+it: put the wrapper in `<dir>/bin/pi` with `<dir>/package.json` naming `@earendil-works/pi-coding-agent` and
+`<dir>/dist` symlinked to the real package's `dist` (that is how the Plugins sign-in was tested with a fake
+`pi mcp login` that prints a URL and waits). Point `PI_CODING_AGENT_DIR` at a scratch folder for anything that
+writes pi's settings, and launch from the project folder you want as the page's project (`launchCwd`).
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
 A `PIGNA_BACKGROUND=1` instance never paints for `scripts/cdp.mjs shot` (it hangs); start it with `--inspect=<port>`
 too and use `capture`, and wait a few seconds after opening a page (its enter animation captures blank).

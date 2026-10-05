@@ -8,6 +8,7 @@ import type { GithubFilter, GithubKind } from "../shared/github";
 import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest, type PickedPath } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
+import { type PackageToggle, type PluginToggle, RESOURCE_TYPES } from "../shared/plugins";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
@@ -34,6 +35,7 @@ import type { ComputerStore } from "./computer/store";
 import type { Github } from "./github";
 import type { LamentStore } from "./laments";
 import type { PiAuth } from "./pi-auth";
+import type { PiPlugins } from "./plugins";
 import type { SessionHost } from "./session-host";
 import type { SettingsStore } from "./settings";
 import type { UiStateStore } from "./ui-state";
@@ -79,6 +81,7 @@ export interface HostDeps {
   atpRuns: AtpRuns;
   atpThreads: AtpThreads;
   auth: PiAuth;
+  plugins: PiPlugins;
   browser(): BrowserManager | undefined;
   /** Frames and input for phones; exists with the browser manager. */
   remoteBrowser(): RemoteBrowser | undefined;
@@ -139,8 +142,39 @@ export const project = (cwd: unknown): string => {
   return cwd;
 };
 
+/** The Plugins section's project, when the page has one. */
+const maybeProject = (cwd: unknown): string | undefined => (cwd === undefined || cwd === null ? undefined : project(cwd));
+
+const text = (value: unknown, what: string): string => {
+  if (typeof value !== "string" || !value || value.length > 4096) throw new Error(`invalid ${what}`);
+  return value;
+};
+
+const mcpScope = (scope: unknown): "global" | "project" => {
+  if (scope !== "global" && scope !== "project") throw new Error("invalid mcp.json scope");
+  return scope;
+};
+
+const packageScope = (scope: unknown): "user" | "project" => {
+  if (scope !== "user" && scope !== "project") throw new Error("invalid package scope");
+  return scope;
+};
+
+const pluginToggle = (raw: any): PluginToggle => {
+  const path = text(raw?.path, "resource");
+  if (!RESOURCE_TYPES.includes(raw.type)) throw new Error("invalid resource type");
+  if (raw.scope === "global" && typeof raw.enabled === "boolean") return { scope: "global", path, type: raw.type, enabled: raw.enabled };
+  if (raw.scope === "project" && ["inherit", "load", "unload"].includes(raw.override)) return { scope: "project", path, type: raw.type, override: raw.override };
+  throw new Error("invalid toggle");
+};
+
+const packageToggle = (raw: any): PackageToggle => {
+  if ((raw?.scope !== "global" && raw?.scope !== "project") || typeof raw.enabled !== "boolean") throw new Error("invalid package toggle");
+  return { scope: raw.scope, source: text(raw.source, "package"), packageScope: packageScope(raw.packageScope), enabled: raw.enabled };
+};
+
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
+  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
   /** clientId -> when it last asked for a Computer Use preview. */
@@ -387,6 +421,56 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       await auth.signOut(String(provider));
     }),
 
+    // pi's packages and MCP servers, changed in pi's own files with the pi on the login shell's PATH.
+    "plugins.catalog": any("desktop", () => plugins.catalog()),
+    "plugins.state": method<{ cwd?: string }>("desktop", (raw) => ({ cwd: maybeProject(raw.cwd) }), async (_ctx, { cwd }) => (await env(), plugins.state(cwd))),
+    "plugins.status": method<{ cwd?: string }>("desktop", (raw) => ({ cwd: maybeProject(raw.cwd) }), async (_ctx, { cwd }) => (await env(), plugins.status(cwd))),
+    "plugins.toggle": method<{ cwd?: string; toggle: PluginToggle }>(
+      "desktop",
+      (raw) => ({ cwd: maybeProject(raw.cwd), toggle: pluginToggle(raw.toggle) }),
+      async (_ctx, { cwd, toggle }) => (await env(), await plugins.toggle(cwd, toggle), null),
+    ),
+    "plugins.togglePackage": method<{ cwd?: string; toggle: PackageToggle }>(
+      "desktop",
+      (raw) => ({ cwd: maybeProject(raw.cwd), toggle: packageToggle(raw.toggle) }),
+      async (_ctx, { cwd, toggle }) => (await env(), await plugins.togglePackage(cwd, toggle), null),
+    ),
+    "plugins.install": method<{ id: string }>("desktop", (raw) => ({ id: text(raw.id, "catalog id") }), async (_ctx, { id }) => (await env(), await plugins.install(id), null)),
+    "plugins.remove": method<{ cwd?: string; source: string; scope: "user" | "project" }>(
+      "desktop",
+      (raw) => ({ cwd: maybeProject(raw.cwd), source: text(raw.source, "package"), scope: packageScope(raw.scope) }),
+      async (_ctx, { cwd, source, scope }) => (await env(), await plugins.remove(cwd, source, scope), null),
+    ),
+    "plugins.connect": method<{ id: string; endpoint: string; token?: string }>(
+      "desktop",
+      (raw) => ({ id: text(raw.id, "catalog id"), endpoint: text(raw.endpoint, "endpoint"), ...(raw.token !== undefined && raw.token !== null && { token: text(raw.token, "token") }) }),
+      async (_ctx, { id, endpoint, token }) => (await env(), await plugins.connect(id, endpoint, token), null),
+    ),
+    "plugins.disconnect": method<{ cwd?: string; server: string; scope: "global" | "project" }>(
+      "desktop",
+      (raw) => ({ cwd: maybeProject(raw.cwd), server: text(raw.server, "server"), scope: mcpScope(raw.scope) }),
+      async (_ctx, { cwd, server, scope }) => (await env(), await plugins.disconnect(cwd, server, scope), null),
+    ),
+    "plugins.enableServer": method<{ cwd?: string; server: string; scope: "global" | "project"; enabled: boolean }>(
+      "desktop",
+      (raw) => {
+        if (typeof raw.enabled !== "boolean") throw new Error("invalid enabled");
+        return { cwd: maybeProject(raw.cwd), server: text(raw.server, "server"), scope: mcpScope(raw.scope), enabled: raw.enabled };
+      },
+      async (_ctx, { cwd, server, scope, enabled }) => (await env(), await plugins.enableServer(cwd, server, scope, enabled), null),
+    ),
+    "plugins.login": method<{ cwd?: string; server: string }>(
+      "desktop",
+      (raw) => ({ cwd: maybeProject(raw.cwd), server: text(raw.server, "server") }),
+      async (_ctx, { cwd, server }) => (await env(), plugins.signIn(server, cwd)),
+    ),
+    "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
+    "plugins.logout": method<{ cwd?: string; server: string }>(
+      "desktop",
+      (raw) => ({ cwd: maybeProject(raw.cwd), server: text(raw.server, "server") }),
+      async (_ctx, { cwd, server }) => (await env(), await plugins.signOut(server, cwd), null),
+    ),
+
     // gh runs with the login shell's PATH.
     "github.project": method<{ cwd: string; refresh?: boolean }>("remote", (raw) => ({ cwd: project(raw.cwd), refresh: raw.refresh === true }), async (_ctx, { cwd, refresh }) => (await env(), github.project(cwd, refresh === true))),
     "github.choose": method<{ cwd: string; login: string | null }>("remote", (raw) => ({ cwd: project(raw.cwd), login: typeof raw.login === "string" ? raw.login : null }), async (_ctx, { cwd, login }) => (await env(), github.choose(cwd, login))),
@@ -537,6 +621,19 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.authAnswer, "providers.answer", (n, value) => ({ n, value }), true),
   route(IPC.authCancel, "providers.cancel", () => ({}), true),
   route(IPC.authLogout, "providers.logout", (provider) => ({ provider })),
+  route(IPC.pluginsCatalog, "plugins.catalog"),
+  route(IPC.pluginsState, "plugins.state", (cwd) => ({ cwd })),
+  route(IPC.pluginsStatus, "plugins.status", (cwd) => ({ cwd })),
+  route(IPC.pluginsToggle, "plugins.toggle", (cwd, toggle) => ({ cwd, toggle })),
+  route(IPC.pluginsTogglePackage, "plugins.togglePackage", (cwd, toggle) => ({ cwd, toggle })),
+  route(IPC.pluginsInstall, "plugins.install", (id) => ({ id })),
+  route(IPC.pluginsRemove, "plugins.remove", (cwd, source, scope) => ({ cwd, source, scope })),
+  route(IPC.pluginsConnect, "plugins.connect", (id, endpoint, token) => ({ id, endpoint, token })),
+  route(IPC.pluginsDisconnect, "plugins.disconnect", (cwd, server, scope) => ({ cwd, server, scope })),
+  route(IPC.pluginsEnableServer, "plugins.enableServer", (cwd, server, scope, enabled) => ({ cwd, server, scope, enabled })),
+  route(IPC.pluginsLogin, "plugins.login", (cwd, server) => ({ cwd, server })),
+  route(IPC.pluginsCancelLogin, "plugins.cancelLogin", () => ({}), true),
+  route(IPC.pluginsLogout, "plugins.logout", (cwd, server) => ({ cwd, server })),
   route(IPC.githubProject, "github.project", (cwd, refresh) => ({ cwd, refresh })),
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),
   route(IPC.githubList, "github.list", (cwd, kind, filter) => ({ cwd, kind, filter })),

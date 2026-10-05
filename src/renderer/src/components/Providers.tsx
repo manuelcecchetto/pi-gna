@@ -415,7 +415,7 @@ function PromptField({ prompt, focus, onAnswer }: { prompt: AuthPrompt; focus: b
   );
 }
 
-function CopyButton({ text, label }: { text: string; label: string }) {
+export function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -434,7 +434,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   );
 }
 
-function host(url: string): string {
+export function host(url: string): string {
   try {
     return new URL(url).host;
   } catch {

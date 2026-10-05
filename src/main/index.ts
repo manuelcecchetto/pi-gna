@@ -39,6 +39,7 @@ import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
 import { PiAuth } from "./pi-auth";
+import { PiPlugins } from "./plugins";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { onDisk } from "./resources";
 import { SettingsStore } from "./settings";
@@ -230,6 +231,13 @@ const atp = new Atp(
 const atpThreads = new AtpThreads(join(app.getPath("userData"), "atp-threads.json"), (plan, threads) => publish({ kind: "atp.threads", plan, threads }));
 bridge.route("/atp", settings.gate("atp", atp.route()));
 const auth = new PiAuth({ script: onDisk("resources", "pi-auth.mts") });
+const plugins = new PiPlugins({
+  script: onDisk("resources", "pi-plugins.mts"),
+  bundled: onDisk("resources", "plugins", "catalog.json"),
+  cache: join(app.getPath("userData"), "plugins-catalog.json"),
+  remote: "https://raw.githubusercontent.com/manuelcecchetto/pi-gna/main/resources/plugins/catalog.json",
+  onLogin: (update) => send(IPC.pluginsLoginUpdate, update),
+});
 
 function createWindow(): void {
   window = new BrowserWindow({
@@ -399,6 +407,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     atpRuns,
     atpThreads,
     auth,
+    plugins,
     browser: () => browser,
     remoteBrowser: () => remoteBrowser,
     updater: () => updater,
@@ -571,6 +580,7 @@ function init(): void {
     }
     bridge.stop();
     auth.close();
+    plugins.close();
     if (quitting) return;
     event.preventDefault();
     quitting = true;

@@ -1,5 +1,6 @@
 // What the phone's Settings pages decide without React: the sections it offers, the update line and how a refused
-// change reads. The keyboard shortcuts and the host-UI buttons (Finder, System Settings, Restart) stay on the Mac.
+// change reads. The keyboard shortcuts, the plugins (installs run code and sign-ins open a browser on the Mac) and the
+// host-UI buttons (Finder, System Settings, Restart) stay on the Mac.
 import type { UpdateState } from "../shared/ipc";
 import type { Feature, Task } from "../shared/settings";
 import { SETTINGS_SECTIONS } from "../shared/settings";

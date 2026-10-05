@@ -5,6 +5,7 @@ import type { LoginUpdate } from "../shared/auth";
 import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
+import type { McpLoginUpdate } from "../shared/plugins";
 import type { Settings, SettingsSection } from "../shared/settings";
 import type { AtpPlanThreads, AtpRunnerState, DeviceInfo, PairingStatus, RemoteStatus, Revved, UiState } from "../shared/host-api";
 import { type HostEventBatch, IPC, type Page, type StudioApi, type UpdateState } from "../shared/ipc";
@@ -138,6 +139,22 @@ const api: StudioApi = {
     answer: (n, value) => ipcRenderer.send(IPC.authAnswer, n, value),
     cancel: () => ipcRenderer.send(IPC.authCancel),
     logout: (provider) => ipcRenderer.invoke(IPC.authLogout, provider),
+  },
+  plugins: {
+    catalog: () => ipcRenderer.invoke(IPC.pluginsCatalog),
+    state: (cwd) => ipcRenderer.invoke(IPC.pluginsState, cwd),
+    status: (cwd) => ipcRenderer.invoke(IPC.pluginsStatus, cwd),
+    toggle: (cwd, toggle) => ipcRenderer.invoke(IPC.pluginsToggle, cwd, toggle),
+    togglePackage: (cwd, toggle) => ipcRenderer.invoke(IPC.pluginsTogglePackage, cwd, toggle),
+    install: (id) => ipcRenderer.invoke(IPC.pluginsInstall, id),
+    remove: (cwd, source, scope) => ipcRenderer.invoke(IPC.pluginsRemove, cwd, source, scope),
+    connect: (id, endpoint, token) => ipcRenderer.invoke(IPC.pluginsConnect, id, endpoint, token),
+    disconnect: (cwd, server, scope) => ipcRenderer.invoke(IPC.pluginsDisconnect, cwd, server, scope),
+    enableServer: (cwd, server, scope, enabled) => ipcRenderer.invoke(IPC.pluginsEnableServer, cwd, server, scope, enabled),
+    login: (cwd, server) => ipcRenderer.invoke(IPC.pluginsLogin, cwd, server),
+    onLogin: (listener) => subscribe<McpLoginUpdate>(IPC.pluginsLoginUpdate, listener),
+    cancelLogin: () => ipcRenderer.send(IPC.pluginsCancelLogin),
+    logout: (cwd, server) => ipcRenderer.invoke(IPC.pluginsLogout, cwd, server),
   },
   update: {
     state: () => ipcRenderer.invoke(IPC.updateGet),

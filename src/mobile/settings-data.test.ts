@@ -5,8 +5,8 @@ import { canDownload, changeError, HOST_ONLY_SECTIONS, MOBILE_SECTIONS, updateSu
 const release: UpdateRelease = { version: "1.2.0", notes: "", url: "https://example.com", publishedAt: "" };
 
 describe("settings sections", () => {
-  it("leaves out the keyboard shortcuts, keeps the rest", () => {
-    expect(HOST_ONLY_SECTIONS).toEqual(["shortcuts"]);
+  it("leaves out the keyboard shortcuts and the plugins, keeps the rest", () => {
+    expect(HOST_ONLY_SECTIONS).toEqual(["shortcuts", "plugins"]);
     expect(new Set(MOBILE_SECTIONS).size).toBe(MOBILE_SECTIONS.length);
   });
 });

@@ -4,5 +4,5 @@
     "lib": ["ES2024"],
     "types": ["node", "electron-vite/node"]
   },
-  "include": ["electron.vite.config.ts", "vite.mobile.config.ts", "vitest.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*", "resources/pi-auth.mts"]
+  "include": ["electron.vite.config.ts", "vite.mobile.config.ts", "vitest.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*", "resources/pi-auth.mts", "resources/pi-plugins.mts"]
 }

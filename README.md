@@ -96,6 +96,11 @@ updates the `--pigna` flag.
   GitHub, ATP and Computer Use off, and **Providers**, to sign in to pi's model providers as pi's `/login` does,
   with an account or an API key. With [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge)
   installed, your Claude plan signs in through Claude Code's own login instead of pi's.
+- **Plugins.** Settings > Plugins connects apps over MCP (Attio, Notion, Granola, Intercom, Brevo) and installs pi
+  packages from a short catalog, turns installed packages and each of their extensions, skills and prompts on or off,
+  for you or for the current project, and switches pi's built-in extensions. Everything is written to pi's own
+  `settings.json` and `mcp.json`, as `pi config`, `pi install` and `pi mcp add` write them, so pi in the terminal sees
+  the same and new chats load it.
 
 ## iPhone remote access
 
