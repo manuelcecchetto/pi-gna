@@ -83,6 +83,7 @@ export interface GlobalState {
   ui?: HostResult<"ui.get">["value"];
   atp?: HostResult<"atp.state">["value"];
   browser?: HostResult<"browser.state">["value"];
+  update?: HostResult<"update.get">;
 }
 
 export interface ChatEntry {
@@ -109,7 +110,7 @@ type GlobalKey = keyof GlobalState;
  * The methods typed `Snapshot<T>` answer with the bare value today (the host does not stamp them with a `seq`), so
  * take either shape; a bare value then counts as read at the resync base.
  */
-function snapshotOf(result: unknown): { seq?: number; value: unknown } {
+export function snapshotOf(result: unknown): { seq?: number; value: unknown } {
   const wrapped = result as { seq?: unknown; value?: unknown } | null;
   return wrapped && typeof wrapped === "object" && typeof wrapped.seq === "number" && "value" in wrapped ? (wrapped as { seq: number; value: unknown }) : { value: result };
 }
@@ -128,6 +129,7 @@ const GLOBAL_READS: { key: GlobalKey; read: (c: HostClient) => Promise<{ seq?: n
   { key: "ui", read: async (c) => snapshotOf(await c.call("ui.get", {})) },
   { key: "atp", read: async (c) => snapshotOf(await c.call("atp.state", {})) },
   { key: "browser", read: async (c) => snapshotOf(await c.call("browser.state", {})) },
+  { key: "update", read: async (c) => ({ value: await c.call("update.get", {}) }) },
 ];
 
 /** The `GlobalKey` an event replaces whole, with the new value; null for events the store does not hold. */
@@ -140,6 +142,7 @@ function globalPatch(event: GlobalEvent): { key: GlobalKey; value: unknown } | n
     case "computer": return { key: "computer", value: event.settings };
     case "ui": return { key: "ui", value: event.ui };
     case "browser": return { key: "browser", value: event.state };
+    case "update": return { key: "update", value: event.state };
     default: return null;
   }
 }

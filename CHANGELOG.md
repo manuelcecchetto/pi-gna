@@ -8,6 +8,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Phone: while pi drives a Mac app with Computer Use, the chat shows a view-only preview of it; approvals and Stop work from the phone as on the Mac.
 - Settings > Remote access (off by default): while on, closing the window hides it and pi-gna keeps running, Quit asks first when chats are running, and the Mac can be kept from idle-sleeping (never while the lid is closed on battery). Also: open at login. Serve it on your tailnet with one click (never Funnel), pair phones with a one-time code and a QR, and revoke them.
 - Phone: projects and chats like the sidebar: search, pins, attention marks, long-press menu (open, add to or show on the board, close chat, copy path), new chat, and a folder browser to open any folder on the Mac.
+- Phone: Settings like the Mac's (except Providers and Shortcuts): general, appearance, models, agent and Beta, features, Computer use (allowed apps, permission status), remote devices with revoke, and updates with Download. Changes show live on the Mac.
 - Phone: attach photos (library or camera), files and files or folders on the Mac to a message. Uploads are kept on the Mac for 30 days.
 - ATP page: new plans are written to `docs/plans/draft/` instead of the project root.
 

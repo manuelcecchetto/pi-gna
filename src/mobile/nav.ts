@@ -1,9 +1,12 @@
 // Projects -> Chats -> Chat as a stack on the browser's history, so the iPhone's back swipe and the back button agree.
+import type { MobileSection } from "./settings-data";
 import { useCallback, useEffect, useState } from "react";
 
 export type Route =
   | { screen: "projects" }
   | { screen: "chats"; cwd: string }
+  /** Settings: the sections list, or one section. */
+  | { screen: "settings"; section?: MobileSection }
   /** A project page (board, laments, GitHub, ATP) the phone shows as it gains them. */
   | { screen: "page"; page: "board" | "laments" | "github" | "atp"; cwd: string; cardId?: string }
   /** `handle`: a live chat to join; otherwise the session file is opened (or joined when already live). */
