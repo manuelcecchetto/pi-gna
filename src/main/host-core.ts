@@ -108,6 +108,7 @@ const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown)
 const PREVIEW_INTERVAL_MS = 1000;
 
 /** Turns a snapshot holds; earlier ones come page by page (`before`). */
+/** Turns in a snapshot page unless the caller asks for fewer (the phone opens a chat with a short first page). */
 const SNAPSHOT_TURNS = 40;
 
 const tabId = (raw: { id: unknown }) => {
@@ -167,15 +168,16 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       // A phone reads the chat through chat.snapshot (paged); the session file's whole branch would only cost bandwidth.
       return ctx.client === "desktop" ? opened : { ...opened, entries: [] };
     }),
-    "chat.snapshot": method<{ handle: string; before?: number }>(
+    "chat.snapshot": method<{ handle: string; before?: number; turns?: number }>(
       "remote",
       (raw) => {
         if (typeof raw.handle !== "string") throw new Error("Invalid chat");
         if (raw.before !== undefined && !(Number.isInteger(raw.before) && raw.before >= 0)) throw new Error("Invalid turn cursor");
-        return { handle: raw.handle, before: raw.before as number | undefined };
+        if (raw.turns !== undefined && !(Number.isInteger(raw.turns) && raw.turns >= 1 && raw.turns <= SNAPSHOT_TURNS)) throw new Error("Invalid page size");
+        return { handle: raw.handle, before: raw.before as number | undefined, turns: raw.turns as number | undefined };
       },
-      (_ctx, { handle, before }) => {
-        const snapshot = host.snapshot(handle, { turns: SNAPSHOT_TURNS, beforeTurn: before });
+      (_ctx, { handle, before, turns }) => {
+        const snapshot = host.snapshot(handle, { turns: turns ?? SNAPSHOT_TURNS, beforeTurn: before });
         if (!snapshot) throw new HostError("not_found", "session is not running");
         const { seq, ...value } = snapshot;
         return { seq, value };
@@ -190,8 +192,11 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       } catch {
         return null; // it ended meanwhile
       }
-      // Attach and snapshot in one turn: the snapshot's seq says which events the client must still apply.
-      return host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER }) ?? null;
+      // Attach and snapshot in one turn: the snapshot's seq says which events the client must still apply. A phone
+      // pages the transcript in through chat.snapshot, so it gets only the seq: the whole chat cost it megabytes.
+      const snapshot = host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER });
+      if (!snapshot) return null;
+      return ctx.client === "desktop" ? snapshot : { seq: snapshot.seq };
     }),
     "chat.viewing": any<{ handle: string; viewing: boolean }>("remote", (ctx, { handle, viewing }) => host.viewing(handle, ctx.clientId, viewing === true)),
     "chat.live": any("remote", () => host.attentionAll()),

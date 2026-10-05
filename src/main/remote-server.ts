@@ -2,6 +2,7 @@
 // only while remote access is on. Every request is checked in the same order (REMOTE.md s.11): Host, body size,
 // device cookie, CSRF headers, Tailscale login. AgentBridge tokens are never looked at here.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { RemoteImages } from "./remote-images";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import {
@@ -139,6 +140,9 @@ export class RemoteServer {
   private readonly views = new Set<ViewStream>();
   private readonly pairHits = new Map<string, number[]>();
 
+  /** Image bytes the phone loads by URL instead of inside JSON. */
+  private readonly images = new RemoteImages();
+
   constructor(private readonly o: RemoteServerOptions) {}
 
   get listening(): boolean {
@@ -222,6 +226,8 @@ export class RemoteServer {
       if (path === "/api/events" && !post) return this.events(req, res, url, caller);
       if (path === "/api/subscribe" && post) return this.json(res, 200, this.subscribe(caller, await this.body(req)));
       if (put) return await this.putUpload(req, res, url, caller);
+      const image = /^\/api\/image\/([a-f0-9]{64})$/.exec(path);
+      if (image && !post) return this.serveImage(res, image[1]!);
       const view = /^\/api\/browser\/view\/([A-Za-z0-9-]{1,64})$/.exec(path);
       if (view && !post) return this.browserView(req, res, url, caller, view[1]!);
       const call = /^\/api\/call\/([A-Za-z0-9_.-]{1,64})$/.exec(path);
@@ -296,8 +302,8 @@ export class RemoteServer {
     });
   }
 
-  private json(res: ServerResponse, status: number, value: unknown, extra: Record<string, string | string[]> = {}) {
-    const text = JSON.stringify(value ?? null);
+  private json(res: ServerResponse, status: number, value: unknown, extra: Record<string, string | string[]> = {}, images = false) {
+    const text = JSON.stringify(value ?? null, images ? this.images.replacer : undefined);
     res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(text), ...extra });
     res.end(text);
   }
@@ -389,7 +395,7 @@ export class RemoteServer {
       } else {
         result = await run();
       }
-      this.json(res, 200, result ?? null);
+      this.json(res, 200, result ?? null, {}, true);
     } catch (error) {
       status = error instanceof HostError ? error.status : 500;
       throw error;
@@ -522,6 +528,19 @@ export class RemoteServer {
   /** A push for one client only (login progress, which may carry an auth URL): an unsequenced `client` event on the
    * stream `clientId` names, if that stream is open and the device's own. Never goes through the hub, so it is not
    * replayed to anyone else. */
+  /** `GET /api/image/<id>`: an image a result or event referred to; immutable, so the phone's cache keeps it. */
+  private serveImage(res: ServerResponse, id: string) {
+    const image = this.images.get(id);
+    if (!image) throw new HostError("not_found", "image not found");
+    res.writeHead(200, {
+      "Content-Type": image.mimeType,
+      "Content-Length": image.bytes.length,
+      "Cache-Control": "private, max-age=31536000, immutable",
+      "Content-Security-Policy": "default-src 'none'",
+    });
+    res.end(image.bytes);
+  }
+
   notify(clientId: string, device: string, event: unknown): boolean {
     const stream = this.streams.get(clientId);
     if (!stream || stream.device !== device || stream.paused) return false;
@@ -531,7 +550,7 @@ export class RemoteServer {
 
   private deliver(stream: Stream, batch: HubEnvelope[], cap: number) {
     if (stream.paused) return;
-    for (const e of batch) stream.res.write(`id: ${e.bootId}:${e.seq}\nevent: host\ndata: ${JSON.stringify(e)}\n\n`);
+    for (const e of batch) stream.res.write(`id: ${e.bootId}:${e.seq}\nevent: host\ndata: ${JSON.stringify(e, this.images.replacer)}\n\n`);
     if (stream.res.writableLength > cap) {
       stream.paused = true;
       stream.hardTimer = setTimeout(() => {

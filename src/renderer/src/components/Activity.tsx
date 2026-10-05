@@ -18,6 +18,7 @@ import {
 import { memo, type ReactNode, useMemo, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
+import { imageSrc } from "../lib/image-src";
 import type { ToolCall } from "../../../shared/protocol";
 import { type ToolRun, userText } from "../../../shared/session-state";
 import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
@@ -199,8 +200,8 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {images.map((image, index) =>
               image.type === "image" ? (
-                <button key={index} type="button" onClick={() => openLightbox(`data:${image.mimeType};base64,${image.data}`)} className="cursor-zoom-in">
-                  <img alt="" src={`data:${image.mimeType};base64,${image.data}`} className="h-12 max-w-28 rounded-md border border-line object-cover" />
+                <button key={index} type="button" onClick={() => openLightbox(imageSrc(image))} className="cursor-zoom-in">
+                  <img alt="" loading="lazy" decoding="async" src={imageSrc(image)} className="h-12 max-w-28 rounded-md border border-line object-cover" />
                 </button>
               ) : null,
             )}
@@ -352,10 +353,10 @@ function InlineImages({ images }: { images: ReturnType<typeof resultImages> }) {
   return (
     <div className="mt-1 mb-1.5 flex flex-wrap gap-2 pl-7">
       {images.map((image, index) => {
-        const src = `data:${image.mimeType};base64,${image.data}`;
+        const src = imageSrc(image);
         return (
           <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
-            <img alt="" src={src} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
+            <img alt="" loading="lazy" decoding="async" src={src} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
           </button>
         );
       })}

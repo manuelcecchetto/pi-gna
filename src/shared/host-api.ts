@@ -442,14 +442,16 @@ export interface HostMethods {
   /** A remote caller gets `entries: []`: its snapshot comes from `chat.snapshot`, not from the session file. */
   "chat.open": { args: { request: OpenSessionRequest }; result: OpenSessionResult };
   /** Null when the chat ended meanwhile. */
-  "chat.attach": { args: { handle: string }; result: (ChatSnapshot & { seq: number }) | null };
+  /** A remote caller gets only `{ seq }`: it reads the transcript through `chat.snapshot`. */
+  "chat.attach": { args: { handle: string }; result: (ChatSnapshot & { seq: number }) | { seq: number } | null };
   /** This client shows (or stops showing) the chat in the foreground; that marks a finished run as seen. */
   "chat.viewing": { args: { handle: string; viewing: boolean }; result: null };
   /** Attention summaries of every live chat. */
   "chat.live": { args: Record<string, never>; result: AttentionSummary[] };
   "chat.detach": { args: { handle: string }; result: null };
   "chat.close": { args: { handle: string }; result: null };
-  "chat.snapshot": { args: { handle: string; before?: number }; result: Snapshot<ChatSnapshot> };
+  /** `turns`: page size, 1 to 40 (default 40). */
+  "chat.snapshot": { args: { handle: string; before?: number; turns?: number }; result: Snapshot<ChatSnapshot> };
   "chat.send": {
     args: { handle: string; text: string; mode: "send" | "followUp"; attachments?: AttachmentRef[]; annotations?: Annotation[]; cardId?: string };
     result: { accepted: boolean; error?: string };

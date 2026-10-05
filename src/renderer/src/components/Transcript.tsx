@@ -27,6 +27,7 @@ import { ColumnIcon } from "./ColumnIcon";
 import { CompactionProgress } from "./CompactionProgress";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
+import { imageSrc } from "../lib/image-src";
 import { Ansi } from "./primitives";
 import { findRun, flash, rendered, TurnRail } from "./TurnRail";
 
@@ -106,7 +107,16 @@ export function Transcript({ session, earlier, turns }: { session: SessionState;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div ref={scroller} onScroll={onScroll} onWheel={onWheel} className="relative min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scroller}
+        onScroll={() => {
+          onScroll();
+          // Near the top the host's earlier page loads by itself; the button stays for when it cannot scroll.
+          if (hidden === 0 && earlier && earlier.count > 0 && (scroller.current?.scrollTop ?? Infinity) < 600) void loadEarlier();
+        }}
+        onWheel={onWheel}
+        className="relative min-h-0 flex-1 overflow-y-auto"
+      >
         <div ref={content} className="mx-auto flex max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
           {hidden === 0 && earlier && earlier.count > 0 && (
             <button
@@ -399,10 +409,10 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!text && stamp}
           {images.map((image, index) => {
-            const src = `data:${image.mimeType};base64,${image.data}`;
+            const src = imageSrc(image);
             return (
               <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
-                <img alt="" className="h-24 max-w-56 rounded-xl border border-line object-cover" src={src} />
+                <img alt="" loading="lazy" decoding="async" className="h-24 max-w-56 rounded-xl border border-line object-cover" src={src} />
               </button>
             );
           })}

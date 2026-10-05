@@ -24,6 +24,10 @@ import { reduceHostEvent, type SessionState } from "../../shared/session-state";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "unreachable" | "unauthorized" | "outdated";
 
+/** Turns a chat opens with: enough to fill the screen, so it shows at once; the rest pages in on scroll. */
+const FIRST_TURNS = 6;
+/** Turns per page when scrolling up. */
+const EARLIER_TURNS = 20;
 /** Failed reconnects in a row before the UI is told the host is unreachable (it keeps trying meanwhile). */
 const UNREACHABLE_AFTER = 3;
 const RETRY_DELAYS_MS = [500, 1500, 4000];
@@ -561,7 +565,7 @@ export class HostClient {
   async loadEarlier(handle: string): Promise<void> {
     const entry = this.store.get().chats[handle];
     if (!entry?.session || !entry.turns || entry.turns.from === 0) return;
-    const page = await this.call("chat.snapshot", { handle, before: entry.turns.from });
+    const page = await this.call("chat.snapshot", { handle, before: entry.turns.from, turns: EARLIER_TURNS });
     const older = page.value.state as unknown as SessionState;
     this.store.set((s) => {
       const current = s.chats[handle];
@@ -576,7 +580,7 @@ export class HostClient {
     const topic = `chat:${handle}`;
     if (!this.pending.has(topic)) this.pending.set(topic, []);
     try {
-      const snapshot = await this.call("chat.snapshot", { handle });
+      const snapshot = await this.call("chat.snapshot", { handle, turns: FIRST_TURNS });
       this.store.set((s) => ({
         ...s,
         chats: {

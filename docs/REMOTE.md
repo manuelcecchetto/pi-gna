@@ -68,12 +68,12 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 |---|---|---|---|
 | `chat.list` | remote | no | `listSessions`. Projects with sessions (`ProjectGroup[]`). |
 | `chat.open` | remote | yes | `openSession`. Args `{ request: OpenSessionRequest }`. **Host issues the handle.** Opening a session file already live attaches to its handle (`reused: true`); otherwise spawns pi. Takes a lease. Returns `{ handle, reused, entries }`; a remote caller gets `entries: []` and reads the chat with `chat.snapshot` (the whole branch would only cost bandwidth). ATP sessions via `request.atp`. |
-| `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). Returns the flat `ChatSnapshot & { seq }`, or null when the chat ended. |
+| `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). Returns the flat `ChatSnapshot & { seq }` to the desktop and only `{ seq }` to a remote caller (which pages through `chat.snapshot`), or null when the chat ended. |
 | `chat.viewing` | remote | yes | new. This client shows (or stops showing) the chat in the foreground; showing it clears the chat's unread mark. |
 | `chat.live` | remote | no | new. `AttentionSummary[]` of every live chat (first paint of the marks; `global` `attention` events carry the deltas). A summary carries the chat's `sessionPath`, which matches it to its row in `chat.list`. |
 | `chat.detach` | remote | yes | new. Releases the lease; the host may then dispose (section 5). |
 | `chat.close` | remote | yes | `closeSession`. Explicit stop of pi; broadcast to all clients. Mobile asks for confirmation. |
-| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last 40 turns; `before` (a turn index, the previous page's `turns.from`) pages earlier ones, whose `state` carries just their items and tools. |
+| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last `turns` turns (1 to 40, default 40; the phone opens with 6 and pages 20); `before` (a turn index, the previous page's `turns.from`) pages earlier ones, whose `state` carries just their items and tools. |
 | `chat.send` | remote | yes | the `send` action in `state/app.ts` plus `command(prompt)`. Args: text, mode (`send`/`followUp`), `attachments` (upload ids or host paths), `annotationIds`, `cardId`. Host composes the message (card block, annotations, file mentions, images), picks `streamingBehavior`, marks the chat prompted. |
 | `chat.command` | remote | yes | `command`, restricted to the RPC allowlist (section 7). Result `RpcResponse`. |
 | `chat.interrupt` | remote | yes | `interrupt` (`app.ts:560`): clear_queue then abort under the chat mutex; returns the restored queued texts (`string[]`). |
@@ -539,10 +539,27 @@ service-worker `push`/`notificationclick`, doc updates in `docs/DESIGN.md`, a CH
 
 - **Stack:** Projects (`chat.list`, ordered like the sidebar by `projectViews` with the host's pins) -> Chats (rows carry the live chat's attention mark, matched by `sessionPath`) -> Chat, on `history` so the back swipe works. A reload inside a chat lands on Projects.
 - **Joining a chat:** `chat.open { request: { cwd, sessionPath } }` (or `chat.attach` for a handle the list already knows), then `HostClient.setChats([handle])` subscribes the stream and reads `chat.snapshot`; `chat.viewing` marks it seen. Leaving sends `chat.viewing false` + `chat.detach` and drops the subscription; the host keeps a running chat going. When the stream is live again after a drop the screen attaches once more (the lease may have lapsed).
-- **Transcript:** the desktop's `Transcript`, `Activity`, `ToolDetails`, `Markdown`, `Dialogs` and `QueueCard`, unchanged but for `src/renderer/src/lib/chat-ui.tsx`: they read expansion state, board cards, wallpaper/visuals and actions (lightbox, open link, answer dialog, edit queue) from a `ChatUi` context. The desktop provides it from its store in `renderer/src/main.tsx`; the phone from `src/mobile/chat-ui.ts` (no visual frames or wallpaper, links open in the phone's browser). "Show earlier turns" pages `chat.snapshot { before }` through `HostClient.loadEarlier`, keeping the scroll position. Touch sizing uses the `touch:` Tailwind variant (`pointer: coarse`).
+- **Transcript:** the desktop's `Transcript`, `Activity`, `ToolDetails`, `Markdown`, `Dialogs` and `QueueCard`, unchanged but for `src/renderer/src/lib/chat-ui.tsx`: they read expansion state, board cards, wallpaper/visuals and actions (lightbox, open link, answer dialog, edit queue) from a `ChatUi` context. The desktop provides it from its store in `renderer/src/main.tsx`; the phone from `src/mobile/chat-ui.ts` (no visual frames or wallpaper, links open in the phone's browser). "Show earlier turns" pages `chat.snapshot { before }` through `HostClient.loadEarlier`, keeping the scroll position; scrolling within 600 px of the top loads the next page by itself. Touch sizing uses the `touch:` Tailwind variant (`pointer: coarse`).
 - **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. `@` mentions and slash-command pickers are later nodes.
 - **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". After a browser-side EventSource retry (same URL, so without the chats on screen) the client re-subscribes and rereads the chats on `hello`, so a reconnect cannot leave a transcript stale.
 - **App info:** `app.info` (`homeDir`, `launchCwd`, `version`, `buildId`) is in the table; the phone uses `homeDir` to shorten paths.
+
+### Images by URL and a short first page (2026-10-05)
+
+Opening a long chat with pasted screenshots took seconds: images rode inside the JSON as base64 (13.7 MB in one
+real chat), `chat.attach` returned the whole transcript, which the phone discarded, and the phone attached twice per open,
+so about 40 MB crossed Tailscale before "Opening…" cleared. Now:
+
+- **Images by URL** (`src/main/remote-images.ts`): the RemoteServer serializes method results and stream events with a
+  `JSON.stringify` replacer that swaps every `{ type: "image", data }` block of 16 KB or more, in a renderable type (png,
+  jpeg, gif, webp, heic), for `{ type: "image", mimeType, data: "", url: "/api/image/<sha256>" }`. `GET /api/image/<id>`
+  needs a paired device and answers `private, max-age=31536000, immutable` with `default-src 'none'`, so each image
+  downloads once. The bytes stay in an LRU of 256 M base64 characters (strings the session state already holds); an
+  evicted id is a 404 until the next snapshot or event names it again. The host's state and the desktop are untouched;
+  the renderer reads `imageSrc(block)` (`url` or a data URL) and lazy-loads.
+- **Short first page:** the phone opens with `chat.snapshot { turns: 6 }` and pages 20 at a time.
+- **Attach without the transcript:** for a remote caller `chat.attach` returns `{ seq }`; the desktop still gets the
+  snapshot over IPC.
 
 ### Mobile composer parity (T26, `src/mobile/MobileComposer.tsx`)
 

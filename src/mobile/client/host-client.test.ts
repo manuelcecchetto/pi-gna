@@ -239,7 +239,7 @@ describe("stream", () => {
     const entry = t.client.store.get().chats.abc123!;
     expect(entry.session!.items.map((i) => (i as any).message.content)).toEqual(["a", "b", "c", "d"]);
     expect(entry.turns).toEqual({ total: 4, from: 0 });
-    expect(t.calls.filter((c) => c.path === "chat.snapshot").at(-1)!.body).toEqual({ handle: "abc123", before: 2 });
+    expect(t.calls.filter((c) => c.path === "chat.snapshot").at(-1)!.body).toEqual({ handle: "abc123", before: 2, turns: 20 });
     await t.client.loadEarlier("abc123"); // nothing before turn 0: no call
     expect(served).toBe(2);
   });

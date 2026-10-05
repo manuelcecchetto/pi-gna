@@ -118,8 +118,8 @@ function seed(ports) {
   return file;
 }
 
-/** A solid-color PNG (zlib from node), for image blocks. */
-function png(width, height, [r, g, b]) {
+/** A solid-color PNG (zlib from node), for image blocks; `noise` makes it incompressible (a photo-sized block). */
+function png(width, height, [r, g, b], noise = false) {
   const crcTable = Array.from({ length: 256 }, (_, n) => {
     let c = n;
     for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -142,8 +142,8 @@ function png(width, height, [r, g, b]) {
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header.set([8, 2, 0, 0, 0], 8);
-  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [r, g, b]).flat())]);
-  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: height }, () => row)))), chunk("IEND", Buffer.alloc(0))]).toString("base64");
+  const row = () => Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => (noise ? [r, g, b].map((v) => (v + Math.floor(Math.random() * 64)) & 255) : [r, g, b])).flat())]);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: height }, row)))), chunk("IEND", Buffer.alloc(0))]).toString("base64");
 }
 
 const VISUAL_OK = '<div class="stack"><div class="stat"><span class="stat-value" id="v">42</span><span class="stat-label">answers</span></div></div>';
@@ -167,7 +167,7 @@ function seedTools(dir, usage) {
     entry({ role: "toolResult", toolCallId: callId, toolName: name, content: text === undefined ? [] : [{ type: "text", text }], isError: false, ...extra });
   };
   const long = `const veryLongLineOfCode = "${"x".repeat(160)}";`;
-  entry({ role: "user", content: [{ type: "text", text: "Tools demo: change the file" }, { type: "image", mimeType: "image/png", data: png(120, 80, [200, 80, 40]) }] });
+  entry({ role: "user", content: [{ type: "text", text: "Tools demo: change the file" }, { type: "image", mimeType: "image/png", data: png(200, 150, [200, 80, 40], true) }] });
   tool("c1", "bash", { command: "ls --color" }, "\u001b[31mred-file\u001b[0m\nplain-file");
   tool("c2", "edit", { path: "src/a.ts" }, "Edited", { details: { diff: ` 1 const a = 1;\n-2 const b = 2;\n+2 ${long}\n 3 export {};` } });
   tool("c3", "read", { path: "notes-alpha.md" }, "alpha");
@@ -665,7 +665,9 @@ async function scenario(ctx) {
   const idle = (await desktop.eval("window.studio.liveChats()")).find((c) => c.handle === handle);
   check(idle && idle.running === false && idle.settled?.outcome === "done", "the host records the run as done", idle);
   const back = await A.ok("chat.attach", { handle });
-  check(back && JSON.stringify(back).includes("Line 50 of the streamed"), "a phone attaching afterwards reads the finished answer");
+  check(back && Object.keys(back).join() === "seq", "a phone's attach carries only the seq, not the transcript", back);
+  const lastPage = await A.ok("chat.snapshot", { handle, turns: 1 });
+  check(JSON.stringify(lastPage).includes("Line 50 of the streamed") && lastPage.value.turns.from === lastPage.value.turns.total - 1, "a phone attaching afterwards reads the finished answer from a one-turn page");
 
   // ── Host asleep: the process is paused (SIGSTOP on this test instance only), then resumed ──
   log("pause the host process (simulated sleep), then resume");
@@ -829,10 +831,18 @@ async function screens({ desktop, ports }, { handle, A }) {
   await shot("2-chats");
   check(await tap("Earlier question 1"), "the phone lists the session");
   await until("the chat", () => exists('[data-testid="send"]'));
-  await until("the transcript", present("Earlier answer"));
+  await until("the transcript", present("Line 50 of the streamed"));
   await sleep(800);
   await shot("3-chat");
-  check((await text()).includes("Line 50 of the streamed"), "the phone's chat ends with the last answer of the scenario");
+  check(true, "the phone's chat ends with the last answer of the scenario");
+  // It opens on the last few turns; scrolling to the top pages the earlier ones in, with no button to tap.
+  check(!(await text()).includes("Earlier answer 1."), "the chat opens on a short first page");
+  await until("the earliest turn after scrolling up", async () => {
+    await phone.eval(`(() => { const s = [...document.querySelectorAll('.overflow-y-auto')].find((e) => e.scrollHeight > e.clientHeight && e.innerText.includes('streamed')); if (s) { s.scrollTop = 0; s.dispatchEvent(new Event('scroll')); } })()`);
+    return (await text()).includes("Earlier answer 1.");
+  }, 20_000, 300);
+  check(true, "scrolling to the top loads the earlier turns");
+  await phone.eval(`(() => { const s = [...document.querySelectorAll('.overflow-y-auto')].find((e) => e.scrollHeight > e.clientHeight && e.innerText.includes('streamed')); if (s) s.scrollTop = s.scrollHeight; })()`);
 
   // The phone's own composer: send a prompt that raises an approval.
   await phone.eval("document.querySelector('textarea').focus()");
@@ -1608,6 +1618,16 @@ async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) 
   await until("the tools transcript", present("Second answer."));
   await sleep(800);
   await shot("22-tools-chat");
+
+  // Large images come by URL, not inside the JSON, and only to a paired device.
+  const photo = await until("the user's photo to load", () =>
+    phone.eval(`(() => { const img = [...document.images].find((i) => i.getAttribute("src")?.startsWith("/api/image/")); return img && img.complete && img.naturalWidth === 200 ? img.getAttribute("src") : ""; })()`),
+  );
+  check(true, "the transcript shows the large photo from /api/image/<id>");
+  const fetched = await request(A.port, { path: photo, headers: A.headers() });
+  check(fetched.status === 200 && fetched.headers["content-type"] === "image/png" && /immutable/.test(fetched.headers["cache-control"] ?? ""), "the image URL serves the PNG, cacheable", fetched.headers);
+  const stranger = await request(A.port, { path: photo, headers: { ...A.headers(), cookie: "" } });
+  check(stranger.status === 401 || stranger.status === 403, "an unpaired browser cannot load it", stranger.status);
 
   // Tool detail sheets.
   check(await clickText("button", "Worked"), "the first turn's work accordion opens");
