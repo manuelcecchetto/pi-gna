@@ -22,6 +22,10 @@ moves those lines under the new version, and they become its GitHub release note
 - ATP page: new plans are written to `docs/plans/draft/` instead of the project root.
 - Settings > Plugins: connect apps over MCP (Attio, Notion, Granola, Intercom, Brevo) and install reviewed pi packages from a catalog, sign in to a connection in the browser (a Brevo token is kept in the Keychain), see each connection's status, and turn installed packages and each of their extensions, skills and prompts on or off, for you or for the current project, plus pi's built-in extensions. Everything is written to pi's own `settings.json` and `mcp.json`, so pi in the terminal sees the same and new chats load it. Mac only.
 - The window opens where you left it (size, position and zoom); the first launch, or one after the display it was on is gone, fills the screen's work area instead of a centered 1320×880 window.
+- The title bar stays level with the traffic lights at every zoom (⌘+/⌘−): the sidebar header and the pane headers keep their height and the lights' space instead of drifting against them.
+- Browser: a page in a responsive viewport no longer leaves a blank white strip below it after navigating.
+- Chats (most visibly on the iPhone): the transcript keeps following a streaming answer when you are at the end, including after iOS's bounce at the bottom; the ↓ button shows exactly when it stops following.
+- ATP page: a plan the architect writes into a folder it just created shows up right away.
 
 ## 0.4.5 - 2026-10-04
 
