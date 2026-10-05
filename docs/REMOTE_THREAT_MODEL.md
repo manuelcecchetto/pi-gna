@@ -72,6 +72,10 @@ Scope: everything reachable from the phone (`docs/REMOTE.md`). Reviewed against 
   the host whoever started the run; `computer.apply` edits it through the same revision-checked path; the preview only shows
   apps the chat holds and rechecks denylist, enabled flag and lock; there is no screen capture method. Interrupt from the
   phone aborts the run and releases held apps (`route.integration.test.ts`).
+- **Preview tabs**: `BrowserTab.preview` carries the file's real path and name; the phone shows those, not the
+  `pigna-file://<token>` URL (the token is only a capability inside the host browser partition; the phone gets pixels).
+  `browser.previewMode` (Rendered/Raw) is remote-allowed: it takes a tab id and a two-value enum, no paths. Opening,
+  revealing and opening externally stay desktop-only. No BrowserState change was needed.
 - **Browser**: agent browser control and approvals are in `BrowserAgent`/`BrowserManager`, not per client; phone input is
   limited to `browser.input` on host tabs, and the agent indicator uses the same `agentAt` stamp.
 - **Desktop-only** (never callable remotely, `scope_denied`): enabling/disabling remote, pairing codes and approvals,

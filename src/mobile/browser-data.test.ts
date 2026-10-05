@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BrowserTab } from "../shared/browser";
-import { agentActive, classify, isWindowTab, pageSize, RESPONSIVE_SIZE, suggestions, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
+import { agentActive, classify, isWindowTab, pageSize, RESPONSIVE_SIZE, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
 
 const tab = (patch: Partial<BrowserTab> = {}): BrowserTab => ({ id: "t1", url: "http://localhost:5173/app", title: "", loading: false, canGoBack: false, canGoForward: false, ...patch });
 const viewport = { width: 393, height: 852, dpr: 3, mobile: true, touch: true, userAgent: "iphone" as const, label: "iPhone 15", source: "user" as const };
@@ -29,6 +29,7 @@ describe("tabs", () => {
     expect(tabTitle(tab())).toBe("localhost:5173");
     expect(tabTitle(tab({ title: " App " }))).toBe("App");
     expect(pageSize(tab())).toEqual(RESPONSIVE_SIZE);
+    expect(tabAddress(tab())).toBe("http://localhost:5173/app");
     expect(pageSize(tab({ viewport }))).toEqual({ width: 393, height: 852 });
     expect(viewportLabel(tab({ viewport }))).toBe("iPhone 15");
     expect(viewportLabel(tab())).toBe("Responsive");
@@ -60,5 +61,18 @@ describe("classify", () => {
     expect(classify(3, 120)).toBe("tap");
     expect(classify(3, 700)).toBe("longPress");
     expect(classify(40, 100)).toBe("drag");
+  });
+});
+
+describe("preview tabs", () => {
+  const preview = tab({
+    url: "pigna-file://secrettoken/notes/a.md",
+    title: "a.md",
+    preview: { path: "/Users/me/notes/a.md", name: "a.md", kind: "markdown", mode: "rendered", modes: ["rendered", "raw"] },
+  });
+  it("shows the file name and real path, never the token URL", () => {
+    expect(tabTitle({ ...preview, title: "" })).toBe("a.md");
+    expect(tabAddress(preview)).toBe("/Users/me/notes/a.md");
+    expect(tabAddress(preview)).not.toContain("secrettoken");
   });
 });

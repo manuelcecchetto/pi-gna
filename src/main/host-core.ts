@@ -351,7 +351,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
     ),
     "browser.previewMode": method<{ id: string; mode: PreviewMode }>(
-      "desktop",
+      "remote",
       (raw) => {
         if (raw.mode !== "rendered" && raw.mode !== "raw") throw new Error("Invalid preview mode");
         return { ...tabId(raw), mode: raw.mode as PreviewMode };

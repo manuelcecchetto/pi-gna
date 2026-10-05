@@ -2,14 +2,14 @@
 // stream) and driven with `browser.input`. The page runs on the Mac, with the window hidden or the pane closed. A tap is a
 // click, a drag scrolls the page, two fingers zoom the picture locally (the page does not change), a long press is a right
 // click. Comment mode turns a tap into an annotation that rides with this phone's next prompt (`chat.send`).
-import { AppWindow, ArrowLeft, ArrowRight, Bot, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "lucide-react";
+import { AppWindow, ArrowLeft, ArrowRight, Bot, File, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import type { Annotation, BrowserTab, HistoryEntry } from "../shared/browser";
 import type { BrowserInput } from "../shared/host-api";
 import { DEVICE_PRESETS } from "../shared/viewport";
 import { annotations, useAnnotations } from "./annotations";
-import { agentActive, type Box, classify, isWindowTab, KEYS, LONG_PRESS_MS, pageSize, suggestions, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
+import { agentActive, type Box, classify, isWindowTab, KEYS, LONG_PRESS_MS, pageSize, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
 import type { HostClient } from "./client/host-client";
 import { clampView, distance, FIT, midpoint, type View, zoomAt } from "./pinch";
 import { Header } from "./Screens";
@@ -84,6 +84,7 @@ export function BrowserScreen({ client, back }: { client: HostClient; back: () =
           return (
             <div key={t.id} className={`${chip} ${active ? "border-accent/60 text-fg" : "border-line text-muted"}`} data-testid="browser-tab" data-active={active}>
               <button type="button" onClick={() => void call("browser.activate", { id: t.id })} className="flex min-h-9 max-w-40 items-center gap-1.5">
+                {t.preview && <File size={13} className="shrink-0 text-faint" data-testid="preview-icon" />}
                 <span className="truncate">{tabTitle(t)}</span>
                 {t.agent && (
                   <span className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${agentActive(t, now) ? "bg-accent/20 text-accent" : "text-faint"}`} data-testid="agent-badge" title={agentActive(t, now) ? "The agent is using this tab" : "Opened by an agent"}>
@@ -183,14 +184,15 @@ function TextBar({ client, tab, onKeys }: { client: HostClient; tab: BrowserTab;
 }
 
 function AddressBar({ client, tab, call }: { client: HostClient; tab: BrowserTab; call: Call }) {
-  const [value, setValue] = useState(tab.url);
+  const preview = tab.preview;
+  const [value, setValue] = useState(tabAddress(tab));
   const [focused, setFocused] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   // The page's own navigation shows in the bar unless the user is typing.
   useEffect(() => {
-    if (!focused) setValue(tab.url);
-  }, [tab.url, focused]);
-  const shown = focused ? suggestions(history, value) : [];
+    if (!focused) setValue(tabAddress(tab));
+  }, [tab, focused]);
+  const shown = focused && !preview ? suggestions(history, value) : [];
   const go = (input: string) => {
     setFocused(false);
     (document.activeElement as HTMLElement | null)?.blur();
@@ -211,11 +213,12 @@ function AddressBar({ client, tab, call }: { client: HostClient; tab: BrowserTab
         </button>
         <input
           value={value}
+          readOnly={!!preview}
           onChange={(event) => setValue(event.target.value)}
           onFocus={(event) => {
             setFocused(true);
             event.currentTarget.select();
-            client.call("browser.history", {}).then(setHistory, () => undefined);
+            if (!preview) client.call("browser.history", {}).then(setHistory, () => undefined);
           }}
           onBlur={() => setTimeout(() => setFocused(false), 150)}
           inputMode="url"
@@ -227,6 +230,15 @@ function AddressBar({ client, tab, call }: { client: HostClient; tab: BrowserTab
           className="selectable min-h-10 min-w-0 flex-1 rounded-xl bg-sunken px-3 text-[15px] text-fg outline-none"
         />
       </form>
+      {preview && preview.modes.length > 1 && (
+        <div className="flex gap-1 px-2 pt-1" role="group" aria-label="Preview mode" data-testid="preview-modes">
+          {preview.modes.map((mode) => (
+            <button key={mode} type="button" aria-pressed={mode === preview.mode} onClick={() => void call("browser.previewMode", { id: tab.id, mode })} className={`min-h-9 rounded-lg border px-3 text-[13px] capitalize ${mode === preview.mode ? "border-accent/60 text-fg" : "border-line text-muted"}`}>
+              {mode}
+            </button>
+          ))}
+        </div>
+      )}
       {shown.length > 0 && (
         <div className="absolute inset-x-1 top-full z-30 overflow-hidden rounded-xl border border-line-strong bg-panel shadow-lg" data-testid="suggestions">
           {shown.map((entry) => (

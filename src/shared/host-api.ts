@@ -628,7 +628,6 @@ export const DESKTOP_ONLY_METHODS = [
   "browser.popOut",
   "browser.returnToPane",
   "browser.preview",
-  "browser.previewMode",
   "browser.previewReveal",
   "browser.previewOpen",
   "browser.reveal",

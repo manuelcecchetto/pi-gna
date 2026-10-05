@@ -41,6 +41,7 @@ export const agentActive = (tab: BrowserTab, now: number) => tab.agentAt !== und
 export const isWindowTab = (tab: BrowserTab) => tab.surface === "window";
 
 export function tabTitle(tab: BrowserTab): string {
+  if (tab.preview) return tab.preview.name;
   if (tab.title.trim()) return tab.title.trim();
   try {
     return new URL(tab.url).host || tab.url;
@@ -48,6 +49,9 @@ export function tabTitle(tab: BrowserTab): string {
     return tab.url || "New tab";
   }
 }
+
+/** What the address bar shows: a preview's file path (the tab URL carries a pigna-file token), else the URL. */
+export const tabAddress = (tab: BrowserTab) => tab.preview?.path ?? tab.url;
 
 export const viewportLabel = (tab: BrowserTab) => tab.viewport?.label ?? "Responsive";
 
