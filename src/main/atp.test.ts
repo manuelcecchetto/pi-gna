@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Atp } from "./atp";
 
@@ -60,6 +60,20 @@ describe("Atp", () => {
     expect(found.plans.map((file) => file.path)).toEqual([join(repo, "broken.atp.json"), path]);
     expect(found.plans[0]?.error).toBeTruthy();
     expect(found.plans[1]?.plan?.name).toBe("Tiny");
+  });
+
+  it("shows a plan the architect writes to docs/plans/draft, also when it creates that folder", async () => {
+    const plans: string[][] = [];
+    atp = new Atp(
+      (found) => plans.push(found.plans.map((file) => file.path)),
+      () => undefined,
+    );
+    await atp.watch(repo);
+    const draft = join(repo, "docs", "plans", "draft", "fresh.atp.json");
+    await mkdir(dirname(draft), { recursive: true });
+    await vi.waitFor(() => expect(plans.length).toBeGreaterThan(0), { timeout: 3000 });
+    await writeFile(draft, JSON.stringify(plan));
+    await vi.waitFor(() => expect(plans.at(-1)).toContain(draft), { timeout: 3000 });
   });
 
   it("activates, claims, gets the same node back for the same agent, and releases it", async () => {

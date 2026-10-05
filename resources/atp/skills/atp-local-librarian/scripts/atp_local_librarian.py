@@ -712,6 +712,29 @@ def cmd_activate_project(args: argparse.Namespace) -> str:
     return f"Project activated: {current_status} -> ACTIVE by {args.actor_id}."
 
 
+def cmd_retry_task(args: argparse.Namespace) -> str:
+    ensure_string(args.actor_id, "actor_id")
+    ensure_string(args.reason, "reason")
+    with locked_graph(args.plan_path) as (graph, _plan_file):
+        node = graph["nodes"].get(args.node_id)
+        if node is None or node["status"] != "FAILED":
+            raise ValueError("Only an existing FAILED node can be retried.")
+        if node.get("type") == "SCOPE" or node.get("future_state"):
+            raise ValueError("Cannot retry a scope or closed future node.")
+        node.setdefault("retry_history", []).append({
+            "actor": args.actor_id, "reason": args.reason, "at": isoformat(utc_now()),
+            "report": node.get("report"), "completed_at": node.get("completed_at"),
+            "artifacts": node.get("artifacts", []),
+        })
+        clear_worker(node)
+        for key in ("started_at", "completed_at", "judged_at", "judged_by"):
+            node.pop(key, None)
+        node["status"] = "LOCKED"
+        refresh_ready_nodes(graph)
+        status = node["status"]
+    return f"Task {args.node_id} reopened as {status}. Previous outcome preserved in retry_history."
+
+
 def cmd_complete_task(args: argparse.Namespace) -> str:
     now = utc_now()
     report = read_text_arg(args.report, args.report_file)
@@ -864,6 +887,13 @@ def build_parser() -> argparse.ArgumentParser:
     release.add_argument("--agent-id", required=True)
     release.add_argument("--reason", required=True)
     release.set_defaults(handler=cmd_release_claim)
+
+    retry = subparsers.add_parser("atp-retry-task", help="Reopen a FAILED node, preserving its prior report.")
+    retry.add_argument("--plan-path", default=None)
+    retry.add_argument("--node-id", required=True)
+    retry.add_argument("--actor-id", required=True)
+    retry.add_argument("--reason", required=True)
+    retry.set_defaults(handler=cmd_retry_task)
 
     complete = subparsers.add_parser(
         "atp-complete-task", aliases=["complete-task"], help="Complete or fail an ATP node."

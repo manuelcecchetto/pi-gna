@@ -135,6 +135,9 @@ export interface AtpSession {
   node?: string;
 }
 
+/** Where the architect writes a new plan, relative to the project root: plans stay out of the root. */
+export const NEW_PLAN_DIR = "docs/plans/draft";
+
 export const isPlanPath = (path: unknown): path is string => typeof path === "string" && path.startsWith("/") && path.endsWith(".atp.json") && !path.includes("\0");
 
 /** The project's plans as main found them; a plan that cannot be read has an error instead. */

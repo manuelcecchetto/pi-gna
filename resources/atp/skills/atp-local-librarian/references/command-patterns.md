@@ -152,3 +152,11 @@ python3 /abs/path/to/skills/atp-local-librarian/scripts/atp_local_librarian.py a
 - `--report-file -`, `--subtasks-file -`, and `--patch-file -` read from stdin.
 - `atp-read-graph --view-mode full` prints JSON and injects `meta.graph_version` at runtime.
 - Closed future nodes are tracked through `future_state`; they are not claimable and do not count as READY work.
+
+## Retry a Failed Node
+
+When a blocker is resolved (including human confirmation of a device gate), use
+`atp-retry-task --plan-path /absolute/plan.atp.json --node-id T21 --actor-id CODEX --reason "Human confirmed the gate checks"`.
+This preserves the old report in `retry_history` and recomputes readiness under the
+file lock. Then claim and complete normally. Do not edit graph JSON or mark
+unreported tests as passed; record precisely what the human confirmed.

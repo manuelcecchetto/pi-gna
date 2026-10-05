@@ -2,9 +2,9 @@
 // bundled librarian CLI, which the runner claims and releases nodes with (plans are never written here); git around
 // each node, for atp-runner's commit-per-node; and the hold an orchestrator puts on a plan while it changes it.
 import { execFile } from "node:child_process";
-import { type FSWatcher, watch } from "node:fs";
+import { existsSync, type FSWatcher, watch } from "node:fs";
 import { appendFile, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   type AtpBridgeRequest,
   type AtpClaim,
@@ -13,6 +13,7 @@ import {
   type AtpPlanFile,
   type AtpProjectPlans,
   isPlanPath,
+  NEW_PLAN_DIR,
   parseClaim,
   parsePlan,
   workingNodes,
@@ -48,6 +49,9 @@ const SKIP_DIRS = ["node_modules", ".git", "dist", "build", "out", "target", ".v
 const MAX_DEPTH = "5";
 const PAUSE_WAIT = 4 * 60_000;
 
+/** The folder new plans go to and the folders above it, down from the project root, which may not exist yet. */
+const newPlanDirs = (cwd: string): string[] => [cwd, ...NEW_PLAN_DIR.split("/").map((_, i, parts) => join(cwd, ...parts.slice(0, i + 1)))];
+
 export class Atp {
   private project?: { cwd: string; watchers: Map<string, FSWatcher>; timer?: ReturnType<typeof setTimeout> };
   /** Plans an orchestrator paused (atp_pause): the runner claims no node of them. */
@@ -61,7 +65,7 @@ export class Atp {
 
   // ── Plans ──────────────────────────────────────────────────────────────────
 
-  /** The project's plans; they (and the project's root, where new plans go) are watched until another project is. */
+  /** The project's plans; they (and NEW_PLAN_DIR, where new plans go) are watched until another project is. */
   async watch(cwd: string | null): Promise<AtpProjectPlans | null> {
     this.unwatch();
     if (!cwd) return null;
@@ -72,16 +76,25 @@ export class Atp {
     return plans;
   }
 
-  /** Plans are replaced (the librarian writes a temp file and renames it), so their folders are watched, not the files. */
+  /**
+   * Plans are replaced (the librarian writes a temp file and renames it), so their folders are watched, not the files.
+   * So is NEW_PLAN_DIR, which the architect may create: each existing folder on the way to it rescans when the next
+   * one appears, and the rescan watches that one.
+   */
   private watchDirs(project: NonNullable<Atp["project"]>, plans: AtpProjectPlans): void {
-    for (const dir of [project.cwd, ...plans.plans.map((plan) => dirname(plan.path))]) {
-      if (project.watchers.has(dir)) continue;
+    const chain = newPlanDirs(project.cwd);
+    const next = new Map(chain.slice(0, -1).map((dir, i) => [dir, basename(chain[i + 1] as string)]));
+    for (const dir of [...chain, ...plans.plans.map((plan) => dirname(plan.path))]) {
+      if (project.watchers.has(dir) || !existsSync(dir)) continue;
       try {
         const watcher = watch(dir, (_event, name) => {
           const file = name?.toString() ?? "";
-          if (file.includes(".atp.json") && !file.endsWith(".lock")) this.changed(project);
+          if ((file.includes(".atp.json") && !file.endsWith(".lock")) || file === next.get(dir)) this.changed(project);
         });
-        watcher.on("error", () => watcher.close());
+        watcher.on("error", () => {
+          watcher.close();
+          project.watchers.delete(dir);
+        });
         project.watchers.set(dir, watcher);
       } catch (error) {
         log.warn("atp", `cannot watch ${dir}: ${(error as Error).message}`);

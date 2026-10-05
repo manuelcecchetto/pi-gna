@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, planName, planProgress } from "../../../shared/atp";
+import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, NEW_PLAN_DIR, planName, planProgress } from "../../../shared/atp";
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
@@ -1017,7 +1017,9 @@ function NewPlanIntro({ cwd, inset }: { cwd: string; inset: number }) {
       <Network size={28} className="text-faint" />
       <p className="max-w-lg text-[13px] leading-relaxed text-muted">
         Describe what to build in the composer below. The architect asks what it needs, then writes the plan to{" "}
-        <span className="font-mono text-[12px]">{baseName(cwd)}/&lt;name&gt;.atp.json</span> as a DRAFT. It shows up here; review it, then start it.
+        <span className="font-mono text-[12px]">
+          {baseName(cwd)}/{NEW_PLAN_DIR}/&lt;name&gt;.atp.json
+        </span> as a DRAFT. It shows up here; review it, then start it.
       </p>
     </div>
   );
