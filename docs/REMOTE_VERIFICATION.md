@@ -186,8 +186,12 @@ Automated before this gate: `pnpm typecheck`, `pnpm test`, `pnpm e2e:remote` (se
 
 ### Final sign-off (required for T44 to complete)
 
-- [ ] Every row above (and the S, D, N tables) is PASS or explicitly accepted below.
-- Tester / date: `____`
-- iOS versions / devices: `____`
-- Accepted deviations (row, reason): `____`
-- Failures and notes: `____`
+- [x] Every row above (and the S, D, N tables) is PASS or explicitly accepted below.
+- Tester / date: Manuel / 2026-10-05
+- iOS versions / devices: not reported
+- Accepted deviations (row, reason): individual rows were not recorded; the gate is accepted on the tester's overall confirmation (see below).
+- Failures and notes: none reported.
+
+## Human confirmation for T44
+
+On 2026-10-05 Manuel reported in the ATP orchestrator chat that the final real-device verification is done and "works very well", and asked to complete the plan. This is user-reported real-device evidence, not an agent-observed run. The per-row Result cells above stay blank rather than being filled with invented results; device and iOS versions were not reported.
