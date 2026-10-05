@@ -2,6 +2,7 @@
 // works), Queue as a follow-up, Stop with a confirmation, and the chat chrome the desktop composer has: model and
 // thinking sheets, tok/s, the context meter, the queue card, retry callouts and extension widgets.
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
+import { useStore } from "../renderer/src/lib/store";
 import { ArrowUp, Brain, ChevronDown, Cpu, ListEnd, Plus, RotateCw, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
@@ -34,7 +35,11 @@ interface MenuItem {
   insert: string;
 }
 
-export function MobileComposer({ client, session: reduced, initialText = "" }: { client: HostClient; session: SessionState; initialText?: string }) {
+export function MobileComposer({ client, session: reduced, initialText = "", cardId }: { client: HostClient; session: SessionState; initialText?: string; cardId?: string }) {
+  /** The card riding with the next message; gone once a message took it, or when taken off. */
+  const [card, setCard] = useState(cardId);
+  const board = useStore(client.store, (s) => s.global.board);
+  const cardTitle = card ? board?.cards.find((other) => other.id === card)?.title : undefined;
   const data = useComposerData(client, reduced);
   const session = data.session;
   const [menu, setMenu] = useState<MenuState>();
@@ -146,8 +151,9 @@ export function MobileComposer({ client, session: reduced, initialText = "" }: {
     const sentComments = sent.trim().startsWith("/") ? [] : comments;
     setBusy(true);
     try {
-      const result = await client.call("chat.send", { handle: session.handle, text: sent.trim(), mode, ...(sentRefs.length ? { attachments: sentRefs } : {}), ...(sentComments.length ? { annotations: sentComments } : {}) });
+      const result = await client.call("chat.send", { handle: session.handle, text: sent.trim(), mode, ...(card && !sent.trim().startsWith("/") ? { cardId: card } : {}), ...(sentRefs.length ? { attachments: sentRefs } : {}), ...(sentComments.length ? { annotations: sentComments } : {}) });
       if (result.accepted) {
+        if (card && !sent.trim().startsWith("/")) setCard(undefined);
         phoneAnnotations.drop(sentComments);
         edit((current) => (current === sent ? "" : current));
         setAttached((list) => list.filter((a) => a.state === "error" || !a.ref || !sentRefs.includes(a.ref)));
@@ -183,6 +189,14 @@ export function MobileComposer({ client, session: reduced, initialText = "" }: {
           </span>
           <button type="button" onClick={() => void client.call("chat.command", { handle: session.handle, command: { type: "abort_retry" } }).catch((e) => toast(`Could not cancel the retry: ${failure(e)}`, "error"))} className="shrink-0 rounded-lg border border-warn/40 px-3 py-1.5 text-[12.5px]">
             Give up
+          </button>
+        </div>
+      )}
+      {card && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2 text-[13px] text-muted" data-testid="card-chip">
+          <span className="min-w-0 flex-1 truncate">Card: <span className="text-fg">{cardTitle ?? card}</span></span>
+          <button type="button" aria-label="Leave the card out" onClick={() => setCard(undefined)} className="grid h-8 w-8 place-items-center text-faint">
+            ×
           </button>
         </div>
       )}

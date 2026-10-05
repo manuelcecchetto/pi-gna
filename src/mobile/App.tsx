@@ -8,6 +8,7 @@ import { createChatUi } from "./chat-ui";
 import { Lightbox } from "./Lightbox";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { useRoute } from "./nav";
+import { BoardScreen } from "./Board";
 import { LamentsScreen } from "./Laments";
 import { AtpScreen } from "./Atp";
 import { GithubScreen } from "./Github";
@@ -105,10 +106,11 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
         {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
         {route.screen === "browser" && <BrowserScreen client={client} back={back} />}
+        {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
         {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
-        {route.screen === "page" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
+        {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
         {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} />}
       </div>
       <Toasts />

@@ -160,7 +160,7 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
             </div>
           )}
           <ComputerPreview client={client} handle={session.handle} running={session.running} />
-          <MobileComposer client={client} session={session} initialText={route.prefill} />
+          <MobileComposer client={client} session={session} initialText={route.prefill} cardId={route.cardId} />
         </>
       )}
     </div>
