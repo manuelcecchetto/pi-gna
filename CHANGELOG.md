@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.5.1 - 2026-10-05
+
 - Settings > Remote access: Tailscale's status no longer fails with an "is not valid JSON" error when pi-gna is opened from the Dock or Finder and uses the Tailscale app's own CLI; a Tailscale answer that is not JSON now shows what Tailscale said.
 
 ## 0.5.0 - 2026-10-05
