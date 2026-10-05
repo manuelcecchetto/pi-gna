@@ -19,11 +19,11 @@ export async function showDocx(source: Source): Promise<void> {
   const head = await readBytes(source.rawUrl, 8);
   if (head.total === 0) return showMessage("This document is empty", source.name);
   if (head.total > PREVIEW_LIMITS.docx) {
-    return showMessage("This document is too large to preview", `${formatBytes(head.total)} is over the ${formatBytes(PREVIEW_LIMITS.docx)} limit. Use Open with default app in the toolbar.`);
+    return showMessage("This document is too large to preview", `${formatBytes(head.total)} is over the ${formatBytes(PREVIEW_LIMITS.docx)} limit. To open it elsewhere, right-click the tab and choose Open with default app.`);
   }
   const kind = container(head.data);
   if (kind === "ole") {
-    return showMessage("Can't preview this document", "It is a legacy Word file or a password-protected document. Use Open with default app in the toolbar.");
+    return showMessage("Can't preview this document", "It is a legacy Word file or a password-protected document. To open it elsewhere, right-click the tab and choose Open with default app.");
   }
   if (kind === "unknown") return showMessage("Can't show this file", "It is not a valid .docx document (it may be corrupt).", "error");
 

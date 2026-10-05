@@ -142,3 +142,31 @@ code.hl .line::before { color: var(--faint); }
 .stage.media { align-items: center; justify-content: center; }
 .stage.media video { max-width: 100%; max-height: 100%; }
 .stage.media audio { width: min(480px, 90%); }
+
+/* PDF: pdf.js pages (white paper) on the DOCX surround; our toolbar. pdf_viewer.css loads later, so overrides are scoped. */
+.pdf-bar { gap: 10px; }
+.pdf-group { display: flex; align-items: center; gap: 6px; }
+.pdf-bar button { min-width: 24px; }
+.pdf-bar button:disabled { opacity: 0.4; cursor: default; }
+.pdf-bar button:disabled:hover { color: var(--muted); }
+.pdf-bar input { font: inherit; color: var(--fg); background: var(--canvas); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 6px; outline: none; }
+.pdf-bar input:focus { border-color: var(--accent); }
+.pdf-page { width: 4.5ch; text-align: center; }
+/* Find card: Cmd/Ctrl+F only, floating over the pages' top-right corner. */
+.pdf-find { position: absolute; top: 10px; right: 18px; z-index: 10; display: flex; align-items: center; gap: 2px; padding: 4px 4px 4px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); box-shadow: 0 4px 16px rgb(0 0 0 / 0.25); font-size: 12px; }
+.pdf-find[hidden] { display: none; }
+.pdf-find input { width: 170px; font: inherit; color: var(--fg); background: transparent; border: 0; outline: none; padding: 2px 0; }
+.pdf-find input.missing { color: var(--bad); }
+.pdf-matches { padding: 0 6px; color: var(--faint); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pdf-matches:empty { display: none; }
+.pdf-icon { display: grid; place-items: center; width: 22px; height: 22px; min-width: 0; padding: 0; border: 0; border-radius: 5px; color: var(--muted); }
+.pdf-icon:hover:not(:disabled) { background: var(--raised); color: var(--fg); }
+.pdf-icon:disabled { opacity: 0.35; cursor: default; }
+.pdf-icon svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.pdf-size { color: var(--faint); }
+.pdf-stage { position: relative; flex: 1; min-height: 0; background: var(--raised); }
+.pdf-scroll { position: absolute; inset: 0; overflow: auto; outline: none; }
+.pdf-scroll .pdfViewer { padding: 16px 0 4px; }
+.pdf-scroll .pdfViewer .page { margin: 0 auto 16px; border: 0; box-shadow: 0 1px 4px rgb(0 0 0 / 0.3); background-color: #fff; }
+/* Find matches in the browser's colors (pdf.js defaults are pink and green). */
+@media not (forced-colors: active) { .pdf-scroll .textLayer .highlight { --highlight-bg-color: rgb(255 210 0 / 0.4); --highlight-selected-bg-color: rgb(255 140 0 / 0.55); } }

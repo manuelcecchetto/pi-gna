@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { escapeHtml, formatBytes, lineFromHash, looksLikeText, splitLines } from "./format";
+import { escapeHtml, formatBytes, lineFromHash, looksLikeText, pageFromHash, splitLines } from "./format";
 
 describe("viewer helpers", () => {
+  it("reads the PDF page from #page= or the line", () => {
+    expect(pageFromHash("#page=3")).toBe(3);
+    expect(pageFromHash("#zoom=100&page=7")).toBe(7);
+    expect(pageFromHash("", 4)).toBe(4);
+    expect(pageFromHash("#page=0")).toBeUndefined();
+    expect(pageFromHash("#nopage=2")).toBeUndefined();
+  });
+
   it("formats sizes", () => {
     expect(formatBytes(12)).toBe("12 B");
     expect(formatBytes(1536)).toBe("1.5 KB");

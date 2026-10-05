@@ -14,7 +14,8 @@ const VIEWER_PREFIX = "__viewer";
 
 const VIEWER_CSP = [
   "default-src 'none'",
-  "script-src 'self'",
+  // pdf.js decodes JPEG 2000, JBIG2 and ICC colors with bundled WebAssembly; this allows compiling wasm, not JS eval.
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",

@@ -34,6 +34,13 @@ export function lineFromHash(hash: string): number | undefined {
   return line && line > 0 ? line : undefined;
 }
 
+/** PDF page to open: `#page=3` (the PDF open-parameter convention), else the `#L3` line the preview was opened with. */
+export function pageFromHash(hash: string, line?: number): number | undefined {
+  const page = /^#(?:.*&)?page=(\d+)/.exec(hash)?.[1];
+  const value = page ? Number(page) : line;
+  return value && value > 0 ? value : undefined;
+}
+
 /** Lines of a text, without the empty one a trailing newline leaves. */
 export function splitLines(text: string): string[] {
   const lines = text.split(/\r\n|\n/);

@@ -43,8 +43,8 @@ describe("modes", () => {
     expect(modesFor("a.pdf")).toEqual(["rendered"]);
   });
 
-  it("serves pdf and rendered html raw, the rest through the viewer", () => {
-    expect(servedAs("pdf", "rendered")).toBe("raw");
+  it("serves rendered html raw, the rest (pdf too) through the viewer", () => {
+    expect(servedAs("pdf", "rendered")).toBe("viewer");
     expect(servedAs("html", "rendered")).toBe("raw");
     expect(servedAs("html", "raw")).toBe("viewer");
     expect(servedAs("markdown", "rendered")).toBe("viewer");

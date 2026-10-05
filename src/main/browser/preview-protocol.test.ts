@@ -93,16 +93,16 @@ describe("handlePreview", () => {
     handlePreview(registry, viewer, new Request(`pigna-file://${path}`, { method, headers }));
 
   it("serves raw bytes with type, no-store and Range", async () => {
-    const full = await get(`${token}/a.pdf`);
+    const full = await get(`${token}/a.pdf?raw=1`);
     expect(full.status).toBe(200);
     expect(full.headers.get("content-type")).toBe("application/pdf");
     expect(full.headers.get("cache-control")).toBe("no-store");
     expect(await full.text()).toBe("0123456789");
-    const part = await get(`${token}/a.pdf`, { range: "bytes=2-4" });
+    const part = await get(`${token}/a.pdf?raw=1`, { range: "bytes=2-4" });
     expect(part.status).toBe(206);
     expect(part.headers.get("content-range")).toBe("bytes 2-4/10");
     expect(await part.text()).toBe("234");
-    const bad = await get(`${token}/a.pdf`, { range: "bytes=20-" });
+    const bad = await get(`${token}/a.pdf?raw=1`, { range: "bytes=20-" });
     expect(bad.status).toBe(416);
     expect(bad.headers.get("content-range")).toBe("bytes */10");
   });
@@ -119,6 +119,12 @@ describe("handlePreview", () => {
     expect((await get(`${token}/a.md?raw=1`)).headers.get("content-security-policy")).toBeNull();
     expect(await (await get(`${token}/a.md?raw=1`)).text()).toBe("# hi");
     expect(await (await get(`${token}/__viewer/a.js`)).text()).toBe("1");
+  });
+  it("opens a PDF in the viewer (pdf.js), not Chromium's PDF plugin", async () => {
+    const page = await get(`${token}/a.pdf`);
+    expect(page.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(page.headers.get("content-security-policy")).toContain("script-src 'self' 'wasm-unsafe-eval'");
+    expect(await (await get(`${token}/a.pdf?raw=1`)).text()).toBe("0123456789");
   });
   it("serves bytes, not the viewer, to subresource requests of a page", async () => {
     const asset = await get(`${token}/a.md`, { accept: "text/css,*/*;q=0.1" });

@@ -1,4 +1,4 @@
-// File-preview viewer: one page served by main for the kinds Chromium does not render by itself. It reads which file
+// File-preview viewer: one page served by main for every kind except rendered HTML. It reads which file
 // and mode from its URL (`pigna-file://<token>/<path>?view=raw#L12`), fetches the bytes from the same origin with
 // `?raw=1` and dispatches by kind. File contents are untrusted: everything is rendered as text or `<img>`.
 // Design: docs/FILE_PREVIEW.md.
@@ -58,6 +58,10 @@ async function main(): Promise<void> {
         break;
       case "docx":
         await showDocx(source);
+        break;
+      case "pdf":
+        // pdf.js and its stylesheet load only for PDFs.
+        await (await import("./pdf")).showPdf(source);
         break;
       case "video":
       case "audio":
