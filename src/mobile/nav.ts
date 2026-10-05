@@ -10,7 +10,7 @@ export type Route =
   /** A project page (board, laments, GitHub, ATP) the phone shows as it gains them. */
   | { screen: "page"; page: "board" | "laments" | "github" | "atp"; cwd: string; cardId?: string }
   /** `handle`: a live chat to join; otherwise the session file is opened (or joined when already live). */
-  | { screen: "chat"; cwd: string; sessionPath?: string; handle?: string; title?: string };
+  | { screen: "chat"; cwd: string; sessionPath?: string; handle?: string; title?: string; orchestrator?: boolean; /** Typed into an empty composer (a new plan's architect skill). */ prefill?: string };
 
 const HOME: Route = { screen: "projects" };
 

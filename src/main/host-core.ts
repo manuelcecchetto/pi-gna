@@ -389,6 +389,8 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
 
     // python3, rg and git come from the login shell's PATH.
     "atp.watch": method<{ cwd: string | null }>("desktop", (raw) => ({ cwd: raw.cwd === null ? null : project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.watch(cwd))),
+    // A project's plans without watching it: the phone asks again while its ATP page is open (the desktop's watch is one project for all).
+    "atp.plans": method<{ cwd: string }>("remote", (raw) => ({ cwd: project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.scan(cwd))),
     "atp.read": any<{ plan: string }>("remote", (_ctx, { plan }) => atp.read(plan)),
     "atp.start": method<{ plan: string; cwd: string }>("remote", (raw) => ({ plan: planPath(raw.plan), cwd: project(raw.cwd) }), (_ctx, { plan, cwd }) => (atpRuns.start(plan, cwd), null)),
     "atp.stop": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), async (_ctx, { plan }) => (await atpRuns.stop(plan), null)),

@@ -32,7 +32,7 @@ interface MenuItem {
   insert: string;
 }
 
-export function MobileComposer({ client, session: reduced }: { client: HostClient; session: SessionState }) {
+export function MobileComposer({ client, session: reduced, initialText = "" }: { client: HostClient; session: SessionState; initialText?: string }) {
   const data = useComposerData(client, reduced);
   const session = data.session;
   const [menu, setMenu] = useState<MenuState>();
@@ -40,7 +40,7 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
   const [sheet, setSheet] = useState<"model" | "thinking" | "attach" | "host">();
   const [attached, setAttached] = useState<Attached[]>([]);
   const key = draftKey(reduced);
-  const [text, setText] = useState(() => loadDraft(key));
+  const [text, setText] = useState(() => loadDraft(key) || initialText);
   const [busy, setBusy] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);

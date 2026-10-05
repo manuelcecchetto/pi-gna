@@ -226,31 +226,63 @@ export const AtpGraph = forwardRef<
     return () => outer.removeEventListener("wheel", onWheel);
   }, [apply]);
 
-  // Drag anywhere pans; a press that does not move is a click (a node selects it, the background clears it).
+  // Drag anywhere pans, two fingers pinch (touch), and a press that does not move is a click (a node selects it, the
+  // background clears it). Pointer events cover the mouse, a pen and touch; the viewport has `touch-action: none`.
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  /** Takes the running gesture's start again from where the fingers are now (a finger joined or left). */
+  const rebaseGesture = useRef<() => void>(undefined);
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest("button, [data-minimap]")) return;
-    const start = { x: event.clientX, y: event.clientY, view: view.current };
-    let moved = false;
+    const outer = viewport.current;
+    if (!outer) return;
+    const active = pointers.current;
     const target = event.target as HTMLElement;
+    const first = active.size === 0;
+    active.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    // The gesture's start: the view and the fingers' positions, taken again whenever a finger joins or leaves.
+    let from = { view: view.current, points: [...active.values()] };
+    let moved = false;
+    const rebase = () => {
+      from = { view: view.current, points: [...active.values()] };
+    };
     const move = (e: PointerEvent) => {
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      if (!moved && Math.hypot(dx, dy) < 4) return;
+      if (!active.has(e.pointerId)) return;
+      active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const now = [...active.values()];
+      if (now.length !== from.points.length) return rebase();
+      const [a0, b0] = from.points;
+      const [a, b] = now;
+      if (!a0 || !a) return;
+      if (!moved && Math.hypot(a.x - a0.x, a.y - a0.y) < 4 && !b) return;
       moved = true;
       focus.current = undefined;
       untouched.current = false;
-      view.current = { ...start.view, x: start.view.x + dx, y: start.view.y + dy };
+      if (b0 && b) {
+        const rect = outer.getBoundingClientRect();
+        const ratio = Math.hypot(b.x - a.x, b.y - a.y) / Math.max(1, Math.hypot(b0.x - a0.x, b0.y - a0.y));
+        const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, from.view.k * ratio));
+        const [mx0, my0] = [(a0.x + b0.x) / 2 - rect.left, (a0.y + b0.y) / 2 - rect.top];
+        const [mx, my] = [(a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top];
+        view.current = { k, x: mx - ((mx0 - from.view.x) * k) / from.view.k, y: my - ((my0 - from.view.y) * k) / from.view.k };
+      } else view.current = { ...from.view, x: from.view.x + a.x - a0.x, y: from.view.y + a.y - a0.y };
       apply();
     };
-    const up = () => {
+    const up = (e: PointerEvent) => {
+      if (!active.delete(e.pointerId)) return;
+      if (active.size > 0) return rebase();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (moved) return;
+      window.removeEventListener("pointercancel", up);
+      if (moved || e.type === "pointercancel" || !first) return;
       const node = target.closest<HTMLElement>("[data-node]")?.dataset.node;
       onSelect(node === selected ? undefined : node);
     };
+    // The first finger's handlers run the whole gesture; a finger that joins only has it start again from here.
+    if (!first) return rebaseGesture.current?.();
+    rebaseGesture.current = rebase;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   const zoomBy = (factor: number) => {
@@ -293,7 +325,7 @@ export const AtpGraph = forwardRef<
   }, [layout, byId, related, stalled]);
 
   return (
-    <div ref={viewport} onPointerDown={onPointerDown} className="relative h-full min-h-0 cursor-grab overflow-hidden select-none active:cursor-grabbing">
+    <div ref={viewport} onPointerDown={onPointerDown} style={{ touchAction: "none" }} className="relative h-full min-h-0 cursor-grab overflow-hidden select-none active:cursor-grabbing">
       <div ref={layer} className="atp-layer absolute top-0 left-0 origin-top-left" style={{ width: layout.width, height: layout.height }}>
         <svg width={layout.width} height={layout.height} className="pointer-events-none absolute inset-0 overflow-visible" aria-hidden>
           {edges.map(({ edge, live, done, lit, dim }) => (
@@ -327,14 +359,14 @@ export const AtpGraph = forwardRef<
         })}
       </div>
       <div style={{ bottom: inset + 12 }} className="absolute left-3 flex items-center gap-0.5 rounded-lg border border-line bg-panel/90 p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)] backdrop-blur">
-        <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)} className="rounded-md p-1 hover:bg-raised hover:text-fg">
+        <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
           <Minus size={13} />
         </button>
         <span className="w-10 text-center font-mono text-[11px]">{Math.round(zoom * 100)}%</span>
-        <button type="button" title="Zoom in" onClick={() => zoomBy(1.25)} className="rounded-md p-1 hover:bg-raised hover:text-fg">
+        <button type="button" title="Zoom in" onClick={() => zoomBy(1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
           <Plus size={13} />
         </button>
-        <button type="button" title="Fit the plan" onClick={() => fit(true)} className="rounded-md p-1 hover:bg-raised hover:text-fg">
+        <button type="button" title="Fit the plan" onClick={() => fit(true)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
           <Maximize size={13} />
         </button>
       </div>

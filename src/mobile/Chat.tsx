@@ -30,6 +30,8 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
     const release = (h: string) => {
       void client.call("chat.viewing", { handle: h, viewing: false }).catch(() => undefined);
       void client.call("chat.detach", { handle: h }).catch(() => undefined);
+      // An orchestrator chat is a lease the ATP page took for this client: let the host stop it when nobody else is in it.
+      if (route.orchestrator) void client.call("atp.releaseOrchestrators", {}).catch(() => undefined);
     };
     setHandle(undefined);
     setError(undefined);
@@ -158,7 +160,7 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
             </div>
           )}
           <ComputerPreview client={client} handle={session.handle} running={session.running} />
-          <MobileComposer client={client} session={session} />
+          <MobileComposer client={client} session={session} initialText={route.prefill} />
         </>
       )}
     </div>

@@ -489,7 +489,8 @@ export interface HostMethods {
   "ui.importLegacy": { args: { ui: unknown }; result: null };
 
   // atp
-  "atp.plans": { args: { cwd: string | null }; result: Snapshot<AtpProjectPlans | null> };
+  /** One scan of the project, no watching: the phone asks again while its ATP page is open. */
+  "atp.plans": { args: { cwd: string }; result: AtpProjectPlans };
   "atp.read": { args: { plan: string }; result: AtpPlan };
   "atp.start": { args: { plan: string; cwd: string }; result: null };
   "atp.stop": { args: { plan: string }; result: null };
