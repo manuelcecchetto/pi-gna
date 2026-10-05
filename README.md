@@ -97,6 +97,40 @@ updates the `--pigna` flag.
   with an account or an API key. With [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge)
   installed, your Claude plan signs in through Claude Code's own login instead of pi's.
 
+## iPhone remote access
+
+Use the pi-gna running on your Mac from your iPhone, over [Tailscale](https://tailscale.com). It is a web app (Safari or
+the Home Screen), not a native one: pi, your repositories, the browser and Computer Use all stay on the Mac, and the phone
+shows and controls them. It is off by default and only reachable from your own tailnet (never the public internet).
+
+1. Install Tailscale on the Mac and on the iPhone and sign both in to the same tailnet.
+2. In the Tailscale admin console (DNS), turn on MagicDNS and **HTTPS certificates** for the tailnet.
+3. In pi-gna, open Settings > Remote access and turn it on.
+4. Click **Serve over Tailscale**. pi-gna runs `tailscale serve` for you (never Funnel) and shows the
+   `https://<mac>.<tailnet>.ts.net` address.
+5. On the iPhone open that address in Safari, then Share > **Add to Home Screen** and open pi-gna from its icon.
+   Pair from the Home Screen app: on the Mac click to get a one-time code (or scan the QR), enter it on the phone and
+   **Allow** the request on the Mac. Each phone can be revoked from Settings > Remote access, on the Mac or another phone.
+
+What works from the phone: projects and chats (send, steer, queue, stop, approve tool calls, attach photos and files),
+models and thinking, tool calls and diffs, the Kanban board, Laments, GitHub, ATP plans, the Mac's browser tabs
+(live view, tap, type, comment) and Settings, including signing in to providers. What stays on the Mac: operating Mac
+apps (the phone shows a view-only preview with approvals and Stop), pairing, turning remote access on, Shortcuts, update
+restarts and native file pickers.
+
+**Keep the Mac awake.** pi-gna only works while the Mac is on, awake and online. While remote access is on, closing the
+window keeps pi-gna running in the background, and Settings > Remote access can stop idle sleep (while a chat runs, or
+always). It cannot keep a MacBook awake with the lid closed (macOS sleeps it unless it is on power with an external
+display), and pi-gna uses no tricks to force that. For regular use an always-on Mac (a desktop or Mac mini with sleep
+off) is the better host. A phone that locks or switches app only disconnects: work on the Mac continues and the phone
+catches up when you return.
+
+**Notifications** (off by default, Home Screen app, iOS 16.4+): a push when pi needs an approval, a run finishes or fails,
+a plan stops or finishes, or pi-gna quits. They carry no chat text, are skipped while you are looking at the chat,
+and only arrive while the Mac is awake and online. A real-device pass of the phone app is still pending
+([docs/REMOTE_VERIFICATION.md](docs/REMOTE_VERIFICATION.md)); the design is in [docs/DESIGN.md](docs/DESIGN.md) and
+[docs/REMOTE.md](docs/REMOTE.md).
+
 ## Computer Use setup
 
 1. Open Settings > Computer Use (Cmd+Shift+U) and turn on **Let pi use apps on this Mac**.

@@ -38,9 +38,11 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     app-protocol   serves the built renderer on app://pigna with a strict CSP header
     visual-protocol / visual-frame   the pigna-visual:// scheme for inline-visual frames (own CSP), and the frame process kill (Visuals)
     shell-env      Finder/Dock launches: imports the login shell's environment (PATH for pi/node/rg, API keys)
+    remote         RemoteHost (server lifecycle, keep-awake, Tailscale), RemoteServer (paired-device HTTP/SSE), HostCore (one method table for IPC and remote), EventHub, PushService (see Remote access)
     updater        checks GitHub releases, downloads and stages a newer build, swaps it in when pi-gna quits
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
+  src/mobile       the phone's web app (PWA), served by RemoteServer from out/mobile
 resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
 resources/computer-extension.ts  the same for the computer_* tools, only while Computer Use is enabled
 resources/kanban-extension.ts    the same for the kanban_* tools
@@ -233,6 +235,7 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   - *Electron gotcha*: `Emulation.setDeviceMetricsOverride` on a view that never navigated crashes the main
     process (Electron 44.5.1, macOS), so `BrowserManager.emulate` loads `about:blank` first.
   - Verified end to end by `pnpm verify:responsive` (real built app, local fixture server).
+  - *Phone browser (T36)*: `src/mobile/Browser.tsx` streams a tab (`GET /api/browser/view/<tab>`, see docs/REMOTE.md) with the window hidden by holding its view in an invisible second window (`BrowserManager.hold`); a viewport-less tab is parked at 1280x800. Pop-out windows are host-only: the phone lists them as tabs marked "window".
 
 ## Computer Use
 
@@ -280,7 +283,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   Any other app asks once per chat with a card in the renderer: **Allow once** (until the run ends), **Always allow**
   (persisted, listed and revocable in Settings > Computer use) or **Deny** (remembered for the chat). A second chat
   asking for an app another chat is driving gets 409 without an approval card. Run end, chat close, Stop and Esc
-  release the chat's apps and its Allow once grants.
+  release the chat's apps and its Allow once grants. Phones answer the same cards (first answer wins) and get a
+  read-only `computer.preview` (one JPEG of an app the chat holds, 1/s per client; `ComputerAgent.preview`); operating
+  Mac apps from the phone is a non-goal (docs/REMOTE.md section 8).
 - **Overlay and Esc**: per driven app the helper shows a click-through cursor and a pill ("pi is using App · Esc to
   cancel") ordered just above the target window (not a screen-wide overlay, so whatever covers the window covers
   them). A global Esc monitor counts only when the user is evidently looking at that run (the app or pi-gna is
@@ -494,8 +499,10 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   folders; update them by copying again. The Codex-only Sol orchestrator skill is not bundled: pi-gna's runner
   replaces it. Never edit a `.atp.json` by hand or from pi-gna's code; `parsePlan` (`src/shared/atp.ts`) only reads.
 - **Plans** are found per project (`Atp.watch`, `src/main/atp.ts`): `rg --files` for `*.atp.json` (depth 5, skipping
-  `node_modules`, `.git` and build folders), then a non-recursive `fs.watch` on each folder holding a plan and on the
-  project root (debounced 150 ms), so a plan created in a new subfolder shows after Refresh. `Atp.activate` runs
+  `node_modules`, `.git` and build folders), then a non-recursive `fs.watch` on each folder holding a plan and on
+  `NEW_PLAN_DIR` (`docs/plans/draft`, where the orchestrator prompt tells the architect to write new plans, never the
+  root) and each existing folder above it, which rescan when the next one appears (debounced 150 ms); a plan created
+  anywhere else shows after Refresh. `Atp.activate` runs
   `atp-activate-project` and adds `*.atp.json.lock` to the repository's `.git/info/exclude`, so `git add -A` never
   commits the lock.
 - **The runner** (`AtpRuns`, `src/main/atp-runner.ts`) lives in main, so a plan keeps running with no window (a hidden
@@ -558,6 +565,96 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   a progress map when fitted. `--k` (the zoom) keeps outlines and glow screen-sized; selecting a node lights its
   lineage. A canvas minimap shows only when zoomed well past fit.
 
+## Remote access
+
+An iPhone (Safari or the Home Screen app) can use the pi-gna running on the Mac, over Tailscale. Agents, tools,
+repositories, the browser and Computer Use stay on the Mac; the phone is a second client of the same host. The contract
+of record (method table, SSE framing, error codes, limits) is `docs/REMOTE.md`; the threat model is
+`docs/REMOTE_THREAT_MODEL.md`; the real-device runbook is `docs/REMOTE_VERIFICATION.md`; iOS platform notes are
+`docs/REMOTE_IOS.md`.
+
+```
+iPhone (Safari / Home Screen PWA, src/mobile)
+  -- https, tailnet only --> tailscale serve :443 -> 127.0.0.1:<port>   (default 4517)
+Electron main
+  RemoteServer   static app (out/mobile), POST /api/call/<method>, GET /api/events (SSE), /api/browser/view, PUT /api/uploads
+  HostCore       one method table: name -> { scope, mutates, validate, run }
+     ^ IPC (desktop window)      ^ RemoteServer (paired devices; scope "remote" only)
+  EventHub       every push, one seq counter; the desktop window and each SSE stream are subscribers
+  SessionHost, BoardStore, LamentStore, SettingsStore, ComputerAgent, BrowserManager, Atp, AtpRuns, ChatTasks, ...
+AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, never reachable from the remote server
+```
+
+- **The desktop renderer was not rewritten.** It keeps IPC and reduces events locally. What changed is behind IPC: the
+  handlers are thin adapters over HostCore, and the orchestration that used to live in the renderer (the ATP runner,
+  card, lament and review chat setups, queue operations, composing a prompt from card, comments and file mentions)
+  moved to main, so a phone can start the same work with ids. Extensions stay for agent-facing tools only.
+- **HostCore** (`src/main/host-core.ts`, types in `src/shared/host-api.ts`): `name` is `<area>.<verb>`, args are one JSON
+  object, `validate` throws `bad_request`. `scope: "desktop"` methods (native pickers, `openExternal`, window focus,
+  `remote.*`, pairing, `revokeAll`, `update.restart`, `chat.rawCommand`, `fs.describePaths`) answer `403 scope_denied`
+  remotely. Mutating calls need an `Idempotency-Key` remotely (10 min cache; a retry after a host restart fails
+  `409 host_restarted`). `chat.command` takes only the RPC allowlist (`RPC_ALLOWLIST`); there is no raw RPC
+  passthrough. Areas (REMOTE.md section 1.1):
+
+| Area | Methods |
+|---|---|
+| `chat` | list, open, attach, detach, viewing, live, close, snapshot, send, command, interrupt, editQueue, respondDialog, startTask, files, compactionSettings |
+| stores | `board`, `laments`, `settings`, `computer`, `ui` (`get`/`apply`; every value carries `rev`, free-text edits `baseRev`) |
+| `atp` | plans, read, start, stop, releaseInterrupted, liftHold, threads, orchestrator, state |
+| `browser`, `fs`, `github`, `providers`, `update` | tabs, input and view stream; folder browsing and uploads; gh reads; provider sign-in; update state and download |
+| `devices`, `remote`, `push`, `app` | device list/revoke (pairing and enable are Mac-only), status, Web Push, hello/info |
+
+- **EventHub** (`src/main/event-hub.ts`): topics `global` and `chat:<handle>`; envelope `{ bootId, seq, topic, event }`
+  with one host-wide `seq`; snapshots are `{ seq, value }` taken atomically with the counter, and a client applies only
+  events past its snapshot. One ring (2000 events or 8 MiB). A reconnect sends `Last-Event-ID`; a gap, a new `bootId` or
+  backpressure (1 MiB queued, closed at 4 MiB after 10 s) ends in a `resync` and the client refetches snapshots. The
+  reducer runs in main (`src/shared/session-state.ts`), so `chat.snapshot` (last 40 turns, older ones paged) is always
+  authoritative. Browser frames and `computer.preview` never enter the ring.
+- **Leases.** `chat.open` and `chat.attach` take a lease `(handle, clientId)`; the desktop is `desktop`, a phone is its
+  stream id. A lease whose stream closed lives 60 s. pi stops only with no leases and a disposable chat (not prompted,
+  running, compacting, holding a dialog or unread), or on an explicit `chat.close`: closing or suspending a client never
+  cancels host work. Subscribing never leases. Background chats (triage, ATP workers) check presence, not "active".
+- **Many clients.** Prompts from two clients arrive in order (a send while running is a steer). Dialogs and approvals:
+  first answer wins, the rest get `already_answered` and drop the card on `dialog_resolved`. Store text edits conflict by
+  `baseRev` (`409 conflict`); structural ops are last-writer-wins.
+- **Auth** (REMOTE.md 11). Off by default: with `remote.enabled` off nothing listens. The server binds `127.0.0.1` only;
+  `tailscale serve` (never Funnel; refused when Funnel is on) is the only way in. A phone pairs inside the Home Screen
+  app with a one-time code (8 characters, 5 min, 5 tries) that the Mac approves (device name, user agent, Tailscale
+  login), and gets a 400-day `HttpOnly; Secure; SameSite=Strict` cookie; the host keeps only its sha256 in
+  `userData/remote-devices.json`. Every request checks `Host`, POSTs check `Origin` and `X-Pigna-Client`;
+  `Tailscale-User-Login` must match the pairing login (defense in depth, forgeable by a local process). Any device may
+  revoke any device (closing its streams at once); pairing, enabling remote and revoke-all are Mac-only. Credentials
+  (provider keys, gh tokens, browser cookies) never leave the Mac; the phone can send an API key but never read one.
+- **Host mode** (`RemoteHost`, `src/main/remote.ts`; settings `remote.*`): while on, closing the window hides it
+  (`window-all-closed` does not quit, the Dock `activate` shows it) so the BrowserManager keeps its window, and Quit asks
+  first when chats are running. `remote.keepAwake` (`off`, `while-working`, `always`) holds
+  `powerSaveBlocker('prevent-app-suspension')`: it stops idle sleep, never closed-lid sleep, and no privileged sleep
+  tricks are used. `openAtLogin` uses `app.setLoginItemSettings` (never from test instances).
+  Tailscale is read through its CLI (`src/main/tailscale.ts`, pure parsing in `src/shared/tailscale.ts`); reading
+  changes nothing, **Serve over Tailscale** runs `tailscale serve --bg --https=443 http://127.0.0.1:<port>` only on a
+  click and never replaces another service on :443. The pairing code and the approval prompt go to the window only,
+  never through the hub. Test instances: `PIGNA_REMOTE_LOOPBACK=1` also accepts `Host: 127.0.0.1:<port>`; curl then
+  needs `Origin: https://127.0.0.1:<port>`, `X-Pigna-Client: 1` and a `Tailscale-User-Login` header.
+- **Phone attachments** (`src/main/uploads.ts`, `src/main/browse.ts`, `src/shared/uploads.ts`): `PUT /api/uploads` streams a phone's file to `userData/remote-uploads/<device>/<uuid>/<sanitized name>` (25 MiB cap, 30-day prune at startup); `chat.send` takes `{ upload }` or `{ path }` refs and `ChatTasks.send` composes the file-mention block and image content host-side. See docs/REMOTE.md.
+- **Web Push** (off by default, per device; `docs/REMOTE.md` 13a): `src/main/push-service.ts` keeps the VAPID key and one subscription per device in `userData/remote-push.json` (0600), watches the hub's `global` events (attention summaries for approvals after a 10 s grace, runs that settle unread or failed, ATP runner notes, quit) and sends through `src/main/web-push.ts` (RFC 8291/8292 on `node:crypto`, vector-tested). Rules in `src/shared/push-rules.ts`. Payloads carry no chat text. Subscriptions go when a device leaves the device list. The phone's `sw.js` shows the notification and `notificationclick` opens `#/chat/<handle>`. Pushes need the Mac awake and online.
+- **The mobile app** (`src/mobile`, built by `vite build -c vite.mobile.config.ts` into `out/mobile` as the second half of
+  `pnpm build`, one `PIGNA_BUILD` id for both; `pnpm dev:mobile` rebuilds on change). It has feature parity, not the same
+  layout: projects and chats, composer (models, thinking, commands, mentions, queue, attachments), transcript with tool
+  sheets, lightbox and visuals, Kanban, Laments, GitHub, ATP, Browser, Settings (except Shortcuts). `src/mobile` may bundle
+  devDependencies through Vite; main and preload still import only Node and Electron. The service worker caches the app
+  shell by build id, never `/api`; a `buildId` mismatch in `hello` reloads. Shared renderer components take props
+  instead of forks (`ChatUiActions`, `ContextMeter`, `QueueCard`).
+- **Not on the phone:** operating Mac apps (Computer Use is a view-only preview with approvals and Stop), pop-out browser
+  windows, native pickers, `update.restart`, enabling remote access, pairing, Shortcuts, `pi --pigna`. No native iOS app.
+- **Verifying.** `pnpm typecheck` and `pnpm test` (HostCore, EventHub, RemoteServer, security, multi-client, push and the
+  mobile helpers have vitest tests). `pnpm e2e:remote` (`scripts/remote-slice-e2e.mjs`, about 4 minutes) launches a test
+  instance as 'Verifying the UI' describes (own `PIGNA_USER_DATA`, `PIGNA_BACKGROUND=1`, `scripts/fake-pi.mjs`) behind a
+  proxy that fakes an https origin, pairs a device, and drives the phone screens at the iPhone 15 preset; `--screens-only
+  --keep --shots <dir>` for screenshots (it always reports one known failure, the last-answer check, because the full
+  scenario is skipped). `scripts/remote-browser-check.mjs` covers the browser stream.
+  Everything a real iPhone adds (pinch, long-press, push, Home Screen behavior) is the runbook in
+  `docs/REMOTE_VERIFICATION.md`.
+
 ## Settings
 
 Codex-style: a Settings row is fixed at the foot of the sidebar (⌘, or pi-gna > Settings…). While the page is open the
@@ -566,29 +663,9 @@ sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appeara
 Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible chat rows everywhere else
 (`useCommandDigits`). ⌘⇧U opens the Computer use section.
 
-- **Host mode** (Settings > Remote access, `remote.enabled`, off by default; `docs/REMOTE.md`): while on, closing the
-  window hides it (`window-all-closed` does not quit; the Dock `activate` shows it), so the BrowserManager keeps its
-  window; Quit asks first when chats are running. `remote.keepAwake` (`off`, `while-working` = any chat running, `always`)
-  holds `powerSaveBlocker('prevent-app-suspension')` (`syncKeepAwake`, transitions logged); it prevents idle sleep only,
-  not closed-lid sleep. `openAtLogin` uses `app.setLoginItemSettings` (never from test instances). With remote off none
-  of this applies.
+- **Remote access** (Settings > Remote access, `remote.enabled`, off by default): see the Remote access section below.
 - **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
   `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
-- **Phone attachments** (`src/main/uploads.ts`, `src/main/browse.ts`, `src/shared/uploads.ts`): `PUT /api/uploads` streams a phone's file to `userData/remote-uploads/<device>/<uuid>/<sanitized name>` (25 MiB cap, 30-day prune at startup); `chat.send` takes `{ upload }` or `{ path }` refs and `ChatTasks.send` composes the file-mention block and image content host-side. See docs/REMOTE.md.
-- **Remote access** (Settings > Remote access; stub, grows with the remote nodes): `RemoteHost` (`src/main/remote.ts`) keeps the
-  `RemoteServer` listening on `127.0.0.1:<port>` exactly while `remote.enabled` (`sync()` from `applySettings`; a taken port
-  shows as an error row). Tailscale is read through the CLI on the login-shell PATH or `/Applications/Tailscale.app/Contents/MacOS/Tailscale`
-  (`src/main/tailscale.ts`; parsing and the exact commands are pure in `src/shared/tailscale.ts`). Reading status changes
-  nothing; **Serve over Tailscale** (`tailscale serve --bg --https=443 http://127.0.0.1:<port>`) and **Stop serving** run only
-  on a click, serve is refused while Funnel is on for :443 or another service holds :443 (it is never replaced), and no
-  Funnel command exists in the code. The page shows the status checks with fixes, the tailnet URL, the one-time code
-  (with a QR from the bundled MIT `qrcode-generator`, plus the URL and code as text), the approval prompt (device name,
-  user agent, Tailscale login; Allow/Deny; a pending request shows the window and opens this page), the devices
-  (revoke, revoke all) and the phones connected now. Pairing codes and the prompt go to the window only (never through
-  the hub); the device list and `RemoteStatus` also ride `global` (`devices`, `remote`). The Mac's methods (`remote.*`,
-  `devices.pairStart/pairing/pairDecide/revokeAll`) are desktop-scope. Test instances: `PIGNA_REMOTE_LOOPBACK=1` also
-  accepts `Host: 127.0.0.1:<port>`; curl needs `Origin: https://127.0.0.1:<port>`, `X-Pigna-Client: 1` and a
-  `Tailscale-User-Login` header.
   and the models of the chats pi-gna starts itself (card triage, ATP orchestrator and worker; `pickModel` tries the
   task's provider, then the chat's, then any provider with that model id). Computer Use keeps its `enabled` in
   `computer-use.json`, next to its policy.

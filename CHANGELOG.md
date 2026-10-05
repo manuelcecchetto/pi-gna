@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- iPhone remote access (off by default): use pi-gna from Safari or the Home Screen over Tailscale (`tailscale serve`, HTTPS, your tailnet only), with the same chats, approvals, board, laments, GitHub, ATP, browser and settings. Agents, repositories, the browser and Computer Use stay on the Mac. Pair each phone with a one-time code the Mac approves. The Mac must be awake and online (idle sleep can be prevented, a closed lid cannot). Setup: README, iPhone remote access.
 - Phone notifications (off by default, Settings > Remote access on the Home Screen app): a push when pi needs an approval, a run finishes or fails, a plan stops or finishes, or pi-gna quits. Pushes carry no chat text, are skipped while you are viewing the chat, can be switched off per kind, and are removed when you revoke the phone. They only arrive while the Mac is awake and online.
 - Phone: while pi drives a Mac app with Computer Use, the chat shows a view-only preview of it; approvals and Stop work from the phone as on the Mac.
 - Settings > Remote access (off by default): while on, closing the window hides it and pi-gna keeps running, Quit asks first when chats are running, and the Mac can be kept from idle-sleeping (never while the lid is closed on battery). Also: open at login. Serve it on your tailnet with one click (never Funnel), pair phones with a one-time code and a QR, and revoke them.
