@@ -86,3 +86,108 @@ Needs the Home Screen app, remote access on, and the Mac awake with internet acc
 - Tester / date: `____`
 - iOS version: `____`
 - Failures and notes: `____`
+
+## Human confirmation for T21
+
+Manuel confirmed in the iPhone remote chat that connection and chatting work, and,
+after being asked explicitly, confirmed testing approvals, Stop, lock/reopen
+recovery, Wi-Fi-to-cellular recovery, Mac sleep/wake recovery, and revocation
+removing access. This is user-reported real-device evidence, not an agent-observed
+run. T21 is accepted on that confirmation to unlock mobile parity implementation.
+
+The exact iOS/build versions, test durations, independent Safari/Home Screen
+pairing, airplane-mode case and display-only sleep were not separately reported.
+The blank detailed rows above are deliberately not filled with invented results;
+carry these details and the extended D-series checks into final gate T44. This
+acceptance does not claim full mobile parity or completion of the final gate.
+
+## Full final gate (T44): whole feature on real iPhones
+
+This is the release gate. Run it on a real iPhone (two phones for the F-series; iOS 16.4+ for push). Fill the Result column with PASS/FAIL plus a note; do not leave guesses. Release needs every row PASS or explicitly accepted below. Rows already covered in the S, D and N tables above are not repeated; run those too.
+
+Automated before this gate: `pnpm typecheck`, `pnpm test`, `pnpm e2e:remote` (see "Automated results"). The iOS Simulator is not available here (no Xcode), so nothing below was agent-run.
+
+### A. Feature inventory on the phone (plan section 2)
+
+| ID | Feature | Expected | Result |
+|---|---|---|---|
+| A1 | Projects → Chats → Chat; pins, attention marks (running/waiting/failed/unread), per-device unread | Navigation works; pins match the desktop |  |
+| A2 | Open existing session, new chat, Close chat (confirmed) | Close stops pi on the host; others unaffected |  |
+| A3 | Open a project via the host folder browser (directories only) | New project appears on desktop too |  |
+| A4 | Transcript: markdown, code highlight, work accordion, tool rows/sheets, diffs (horizontal scroll), thinking, images, time dividers | Matches the desktop transcript |  |
+| A5 | Streaming, tok/s, context meter (tap), compaction indicator, Compact now | Works |  |
+| A6 | Composer: Send, Queue/steer, Stop (confirm), queue card (steer now/edit/delete) | Same outcome as desktop |  |
+| A7 | `/` commands, `@` file mentions, model and thinking pickers | Sheets work; choices apply on the host |  |
+| A8 | Attachments: photo, file, host file via browser | Arrive as paths/images in the prompt |  |
+| A9 | Approval cards (select/confirm/input/editor), notify toasts, widgets, set_editor_text | First answer wins; others clear |  |
+| A10 | Turn rail / bookmarks jump list | Jumps and bookmarks persist on the host |  |
+| A11 | Inline visuals | Tap-to-render; stuck frame is removed |  |
+| A12 | Long-press action sheets (copy/save image, links, chats, cards, tabs) | Work; links open on the phone |  |
+| A13 | Kanban: columns pager, Move to…, reorder, add card (+screenshot), card dialog, tags, GitHub links, card actions (Investigate/Resolve/QA/Chat about it) | Board matches desktop; edit conflict shows a base-revision message |  |
+| A14 | Laments: list, reports, Fix (worktree chat), resolve/reopen/delete | Works |  |
+| A15 | GitHub: issues/PRs, account choice, New card, Link to card, Review a PR | Review opens a pr-review chat |  |
+| A16 | ATP: plans, node list/graph pan+pinch, node panel, Start/Stop/Resume, orchestrator chat, New plan | Runner continues on the host |  |
+| A17 | Integrated browser: tabs, address bar, back/forward/reload, viewport, tap/scroll/type, comment mode | Frames stream; input reaches the host tab |  |
+| A18 | Agent `browser_*` URL approvals | Card on the phone; answering works |  |
+| A19 | Computer Use: per-app approval, Stop, live preview | Works; permission grants stay on the Mac |  |
+| A20 | Settings: General, Appearance, Models, Agent, Beta, Features, Computer use | Same ops; Finder/System Settings buttons hidden |  |
+| A21 | Providers: API key, device-code login, manual-code fallback | Credentials go phone → host only |  |
+| A22 | Updates: status and Download; Restart hidden | Matches the desktop |  |
+| A23 | Toasts, lightbox, wallpaper | Fine |  |
+
+### B. Safari and Home Screen
+
+| ID | Step | Expected | Result |
+|---|---|---|---|
+| B1 | Repeat A1–A5 and A9 in a Safari tab | Works; push offered only as "add to Home Screen" |  |
+| B2 | Repeat A1–A5 and A9 in the Home Screen app | Works; own pairing (D1) |  |
+
+### C. Connectivity, sleep and host lifecycle
+
+| ID | Step | Expected | Result |
+|---|---|---|---|
+| C1 | Wi-Fi → cellular → Wi-Fi mid-run; Tailscale off/on on the phone | Stream resumes; no duplicate/missing events (S8, S9, D3) |  |
+| C2 | Phone suspended / app backgrounded 10 min | Resumes without re-pair (S7, D9) |  |
+| C3 | Mac display sleep only | Phone keeps working (S11) |  |
+| C4 | Mac system sleep | Unreachable banner; recovers on wake (S12) |  |
+| C5 | Lid closed, no external display, on battery | Unreachable banner; recovers on open |  |
+| C6 | Lid closed with an external display, on power, keep-awake on | Phone keeps working with the lid closed |  |
+| C7 | Lid closed with an external display, on power, keep-awake off | Record behavior (expected: Mac sleeps per macOS) |  |
+| C8 | Restart the Mac; pi-gna auto-starts or is launched | Phone reconnects without re-pair; running chats were ended by the restart, not by the phone |  |
+| C9 | Quit pi-gna while a run is active | Phone shows host offline; relaunch → reconnect without re-pair |  |
+
+### D2. Concurrency: two phones plus the desktop (F-series)
+
+| ID | Step | Expected | Result |
+|---|---|---|---|
+| F1 | Phones P1 and P2 and the desktop open the same chat; each sends a prompt | Prompts are queued/ordered; all three show the same transcript |  |
+| F2 | Raise an approval; answer on P1 and P2 at the same time | First answer wins; the others clear; no double action |  |
+| F3 | Edit the same Kanban card on P1, P2 and the desktop | Conflict is reported, no silent overwrite; board converges |  |
+| F4 | Start/Stop an ATP plan on P1 while P2 and the desktop watch | One state everywhere; Stop is not duplicated |  |
+| F5 | Close the chat on P1 while P2 views it | P2 is told, no crash |  |
+
+### E. Revocation and pairing limits
+
+| ID | Step | Expected | Result |
+|---|---|---|---|
+| E1 | Revoke P1 on the Mac while P1 streams a run | P1 drops to pairing; run keeps going; P2 unaffected |  |
+| E2 | Re-pair the revoked phone | Needs a new Allow |  |
+| E3 | Pairing limits: repeat pairing requests quickly; leave one unanswered | Rate limit / pending cap / expiry per REMOTE.md; the Mac is not flooded |  |
+| E4 | Turn remote access off in Settings | Both phones lose access; no listener remains |  |
+
+### G. Security spot checks (from the phone)
+
+| ID | Step | Expected | Result |
+|---|---|---|---|
+| G1 | Settings, Providers, GitHub, Agent pages | No API keys, tokens or secret values shown, only set/unset |  |
+| G2 | Open the https URL from a non-paired browser/device on the tailnet (private tab) | Pairing screen only; no data, no API results |  |
+| G3 | From that browser, request `/api` and event endpoints directly | 401/403; nothing served |  |
+| G4 | Off the tailnet (Tailscale off), open the URL | Unreachable |  |
+
+### Final sign-off (required for T44 to complete)
+
+- [ ] Every row above (and the S, D, N tables) is PASS or explicitly accepted below.
+- Tester / date: `____`
+- iOS versions / devices: `____`
+- Accepted deviations (row, reason): `____`
+- Failures and notes: `____`
