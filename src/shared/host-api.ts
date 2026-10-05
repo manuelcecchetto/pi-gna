@@ -537,6 +537,12 @@ export interface HostMethods {
   "devices.rename": { args: { id: string; name: string }; result: DeviceInfo[] };
   "devices.revoke": { args: { id: string }; result: DeviceInfo[] };
   "devices.revokeAll": { args: Record<string, never>; result: DeviceInfo[] };
+  // Web Push (docs/REMOTE.md section 13a); the device is the caller.
+  "push.vapidKey": { args: Record<string, never>; result: string };
+  "push.state": { args: Record<string, never>; result: { subscribed: boolean; prefs: Record<"approval" | "done" | "failed" | "plan" | "host_quit", boolean> } };
+  "push.subscribe": { args: { endpoint: string; p256dh: string; auth: string }; result: null };
+  "push.unsubscribe": { args: Record<string, never>; result: null };
+  "push.setPrefs": { args: { prefs: Partial<Record<"approval" | "done" | "failed" | "plan" | "host_quit", boolean>> }; result: Record<"approval" | "done" | "failed" | "plan" | "host_quit", boolean> };
   "devices.pairStart": { args: Record<string, never>; result: PairingStatus };
   "devices.pairing": { args: Record<string, never>; result: PairingStatus };
   "devices.pairDecide": { args: { request: string; allow: boolean }; result: PairingStatus };
@@ -651,6 +657,8 @@ export const READ_ONLY_METHODS = [
   "fs.describePaths",
   "devices.list",
   "devices.pairing",
+  "push.vapidKey",
+  "push.state",
   "remote.get",
   "app.hello",
   "app.info",

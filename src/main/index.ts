@@ -47,6 +47,7 @@ import { cardWorktree } from "./worktree";
 import { ChatTasks } from "./chat-tasks";
 import { IdempotencyCache } from "./command-layer";
 import { DeviceStore } from "./devices";
+import { PushService } from "./push-service";
 import { RemoteHost } from "./remote";
 import { RemoteServer } from "./remote-server";
 import { TailscaleCli } from "./tailscale";
@@ -147,10 +148,13 @@ hub.subscribe({
 // Remote access (docs/REMOTE.md): paired devices exist from launch; the server and Tailscale wiring come with the host core.
 let remoteServer: RemoteServer | undefined;
 let remoteHost: RemoteHost | undefined;
+// Web Push (REMOTE.md 13a); made once the session host exists, and a device that vanishes takes its subscription along.
+let push: PushService | undefined;
 const devices = new DeviceStore(
   join(app.getPath("userData"), "remote-devices.json"),
   (list) => {
     remoteServer?.devicesChanged(list);
+    push?.keepDevices(list.map((device) => device.id));
     publish({ kind: "devices", devices: list });
     void remoteHost?.announce();
   },
@@ -172,6 +176,9 @@ const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`,
   visuals: (await settings.get()).visuals,
 }));
 host.onGlobal(publish);
+const pushService = new PushService(join(app.getPath("userData"), "remote-push.json"), { viewing: (handle) => host.presence(handle).some((client) => client.viewing) });
+push = pushService;
+hub.subscribe({ topics: ["global"], deliver: (batch) => batch.forEach(({ event }) => pushService.onGlobal(event as { kind: string })) });
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 const uploads = new Uploads(join(app.getPath("userData"), "remote-uploads"));
@@ -367,6 +374,7 @@ function registerIpc(shellEnv: Promise<void>): void {
   const core = createHostCore({
     shellEnv,
     devices,
+    push: pushService,
     uploads,
     remote: remoteHost,
     host,
@@ -561,7 +569,9 @@ function init(): void {
     quitting = true;
     if (keepAwakeId !== undefined) powerSaveBlocker.stop(keepAwakeId);
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
-    void Promise.allSettled([remoteHost?.stop(), host.closeAll(), devices.flushed(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    // Phones learn the Mac is quitting (best effort, bounded) while the network is still up.
+    const quitPush = push && current.remote.enabled ? Promise.race([push.notifyQuit(), new Promise((resolve) => setTimeout(resolve, 3000))]) : undefined;
+    void Promise.allSettled([quitPush, remoteHost?.stop(), host.closeAll(), devices.flushed(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => {
     if (!hidesOnClose(current)) app.quit();

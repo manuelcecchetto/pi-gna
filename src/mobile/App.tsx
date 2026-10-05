@@ -1,5 +1,6 @@
 // The paired app: one HostClient for the page, the connection banner, and the Projects -> Chats -> Chat stack.
 import { useEffect, useMemo, useState } from "react";
+import { chatOfHash } from "./push";
 import { ChatUiProvider } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import { ChatScreen } from "./Chat";
@@ -63,6 +64,35 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
       const notice = noticeFor(event, session, seen);
       if (notice) toast(notice.text, notice.level);
     });
+  }, [client]);
+
+  // A tapped notification names a chat: `#/chat/<handle>` when it opened the app, a message when the app was running.
+  useEffect(() => {
+    let stop: (() => void) | undefined;
+    const summaryOf = (handle: string) => client.store.snapshot().global.attention[handle];
+    const open = (handle: string) => {
+      const summary = summaryOf(handle);
+      if (summary) push({ screen: "chat", cwd: summary.cwd, handle, title: summary.title });
+      return !!summary;
+    };
+    const fromHash = () => {
+      const handle = chatOfHash(location.hash);
+      if (!handle) return;
+      history.replaceState(history.state, "", location.pathname);
+      // The attention summaries arrive with the first sync: wait for the chat's once.
+      if (!open(handle)) stop = client.store.subscribe(() => summaryOf(handle) && (stop?.(), open(handle)));
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "open-chat" && typeof event.data.chat === "string") open(event.data.chat);
+    };
+    fromHash();
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => {
+      stop?.();
+      navigator.serviceWorker?.removeEventListener("message", onMessage);
+    };
+    // Mount only: `push` is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
   const ui = useMemo(() => createChatUi(client, homeDir), [client, homeDir]);

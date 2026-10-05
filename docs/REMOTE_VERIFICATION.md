@@ -59,8 +59,26 @@ Run each in the Home Screen app unless noted.
 | D7 | Uploads (row 17): Take Photo, Photo Library (HEIC), Files, a 10+ MB photo | Record the MIME/extension that arrives on the host (after attachments land) |  |
 | D8 | Clipboard (row 18): copy buttons first tap; paste an image | Works |  |
 | D9 | Memory (row 22): thousands of lines, 5+ inline visuals, browser view; background 10 min | Record whether a reload happened; state restored |  |
-| D10 | Push, if built (rows 20, 21) | Prompt from a button in the installed app; absent in Safari tab |  |
+| D10 | Push, if built (rows 20, 21) | Prompt from a button in the installed app; absent in Safari tab | see N1-N9 |
 | D11 | Standalone chrome (rows 13, 14): status bar, icon, name, every screen has a way back, external link return | Fine |  |
+
+## Notifications (Web Push, REMOTE.md section 13a), real device, iOS 16.4+
+
+Needs the Home Screen app, remote access on, and the Mac awake with internet access. Result column: PASS/FAIL + note (record the iOS version).
+
+| ID | Step | Expected | Result (PASS/FAIL + note) |
+|---|---|---|---|
+| N1 | Open pi-gna in a Safari tab, Settings > Remote access | Notifications card says to add the app to the Home Screen; the switch is off and disabled |  |
+| N2 | Open the Home Screen app, turn "Notify this phone" on | iOS permission prompt appears from that tap; after Allow the switch is on and the per-kind switches show |  |
+| N3 | Start a long run on the Mac, lock the phone, let it finish unread | One "Run finished" notification with no chat text; tapping opens that chat |  |
+| N4 | Make a run need an approval, do not answer for 10+ s with the phone locked | "Approval needed" arrives; tapping opens the chat with the card; answering on the Mac within 10 s sends none |  |
+| N5 | Keep the chat open on the phone while a run finishes | No notification (suppressed while viewed) |  |
+| N6 | Stop an ATP plan on a failed node (or let it finish) | "Plan stopped" notification |  |
+| N7 | Turn "Run finished" off, finish a run | No notification; the other kinds still arrive |  |
+| N8 | Quit pi-gna on the Mac with the phone locked | "pi-gna is quitting" arrives (best effort) |  |
+| N9 | Revoke the phone on the Mac, then finish a run | Nothing arrives; `remote-push.json` in the Mac's userData no longer lists the device |  |
+| N10 | Deny the permission prompt once | Card explains how to allow it in iOS Settings; no crash |  |
+| N11 | Over several days with the app unused: does a push still arrive (iOS may revoke subscriptions that show nothing)? | Record the behavior |  |
 
 ## Sign-off
 

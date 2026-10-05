@@ -29,6 +29,7 @@ import type { HostClient } from "./client/host-client";
 import { snapshotOf } from "./client/host-client";
 import { loadModels } from "./composer-data";
 import type { Route } from "./nav";
+import { disablePush, enablePush, browserPushEnv, pushAvailability, type PushAvailability } from "./push";
 import { Header } from "./Screens";
 import { canDownload, changeError, isMobileSection, MOBILE_SECTIONS, type MobileSection, SECTION_LABELS, TASK_INFO, updateSummary } from "./settings-data";
 import { ModelSheet, Sheet } from "./Sheets";
@@ -533,8 +534,57 @@ function RemoteSection({ client, signOut }: { client: HostClient; signOut: React
           </Row>
         ))}
       </Card>
+      <NotificationsCard client={client} />
       {signOut}
     </>
+  );
+}
+
+const PUSH_KIND_LABELS = {
+  approval: "Approval needed",
+  done: "Run finished",
+  failed: "Run failed",
+  plan: "Plan stopped or finished",
+  host_quit: "pi-gna quitting on the Mac",
+} as const;
+type PushPrefs = Record<keyof typeof PUSH_KIND_LABELS, boolean>;
+
+const PUSH_NOTES: Record<Exclude<PushAvailability, "ready">, string> = {
+  unsupported: "This browser cannot receive notifications.",
+  needs_install: "On iPhone, notifications work from the Home Screen app: Share, Add to Home Screen, then open pi-gna from there.",
+  denied: "Notifications are blocked for pi-gna. Allow them in the iPhone's Settings > Notifications.",
+};
+
+/** Web Push for this phone. Pushes carry no text from the chat, only what happened; they only arrive while the Mac is awake and online. */
+function NotificationsCard({ client }: { client: HostClient }) {
+  const [availability] = useState(() => pushAvailability(browserPushEnv()));
+  const [state, setState] = useState<{ subscribed: boolean; prefs: PushPrefs }>();
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void client.call("push.state", {}).then(setState, () => undefined);
+  }, [client]);
+  const fail = (error: unknown) => toast(error instanceof Error ? error.message : changeError(error).text, "error");
+  const toggle = (on: boolean) => {
+    setBusy(true);
+    // Permission must be requested inside this tap, so the call starts synchronously.
+    (on ? enablePush(client) : disablePush(client))
+      .then(() => client.call("push.state", {}))
+      .then(setState, fail)
+      .finally(() => setBusy(false));
+  };
+  const setPref = (kind: keyof PushPrefs, on: boolean) => void client.call("push.setPrefs", { prefs: { [kind]: on } }).then((prefs) => setState((current) => current && { ...current, prefs }), fail);
+  return (
+    <Card title="Notifications" note={availability === "ready" ? "Sent through your phone's push service when the Mac is awake and reachable. Nothing from the chat is included." : PUSH_NOTES[availability]}>
+      <Row title="Notify this phone" about={state?.subscribed ? "On" : "Off"} testId="push-row">
+        <Toggle on={!!state?.subscribed} onChange={toggle} label="Notify this phone" disabled={busy || availability !== "ready" || !state} />
+      </Row>
+      {state?.subscribed &&
+        (Object.keys(PUSH_KIND_LABELS) as (keyof PushPrefs)[]).map((kind) => (
+          <Row key={kind} title={PUSH_KIND_LABELS[kind]} testId={`push-pref-${kind}`}>
+            <Toggle on={state.prefs[kind]} onChange={(on) => setPref(kind, on)} label={PUSH_KIND_LABELS[kind]} />
+          </Row>
+        ))}
+    </Card>
   );
 }
 

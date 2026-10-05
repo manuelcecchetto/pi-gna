@@ -40,6 +40,7 @@ import type { UiStateStore } from "./ui-state";
 import type { Updater } from "./updater";
 import type { DeviceStore } from "./devices";
 import type { RemoteHost } from "./remote";
+import type { PushService } from "./push-service";
 
 /** Who is calling, and the side effects that belong to that client alone (never broadcast). */
 export interface HostContext {
@@ -83,6 +84,7 @@ export interface HostDeps {
   remoteBrowser(): RemoteBrowser | undefined;
   updater(): Updater | undefined;
   devices: DeviceStore;
+  push: PushService;
   /** Files a phone sent. */
   uploads: Uploads;
   remote: RemoteHost;
@@ -422,6 +424,12 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "devices.rename": method<{ id: string; name: string }>("remote", (raw) => ({ id: String(raw.id), name: String(raw.name) }), (_ctx, { id, name }) => deps.devices.rename(id, name)),
     "devices.revoke": method<{ id: string }>("remote", (raw) => ({ id: String(raw.id) }), (_ctx, { id }) => deps.devices.revoke(id)),
     "devices.revokeAll": any("desktop", () => deps.devices.revokeAll()),
+    // Notifications belong to the phone that asks (a subscription is per device); the desktop has none.
+    "push.vapidKey": any("remote", () => deps.push.vapidKey()),
+    "push.state": any("remote", (ctx) => deps.push.state(deviceOf(ctx))),
+    "push.subscribe": method<{ endpoint: unknown; p256dh: unknown; auth: unknown }>("remote", (raw) => ({ endpoint: raw.endpoint, p256dh: raw.p256dh, auth: raw.auth }), (ctx, args) => (deps.push.subscribe(deviceOf(ctx), args), null)),
+    "push.unsubscribe": any("remote", (ctx) => (deps.push.unsubscribe(deviceOf(ctx)), null)),
+    "push.setPrefs": method<{ prefs: unknown }>("remote", (raw) => ({ prefs: raw.prefs }), (ctx, { prefs }) => deps.push.setPrefs(deviceOf(ctx), prefs)),
     "devices.pairStart": any("desktop", () => deps.devices.startPairing()),
     "devices.pairing": any("desktop", () => deps.devices.pairingStatus()),
     "devices.pairDecide": method<{ request: string; allow: boolean }>("desktop", (raw) => ({ request: String(raw.request), allow: raw.allow === true }), (_ctx, { request, allow }) => deps.devices.decide(request, allow)),

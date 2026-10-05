@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Phone notifications (off by default, Settings > Remote access on the Home Screen app): a push when pi needs an approval, a run finishes or fails, a plan stops or finishes, or pi-gna quits. Pushes carry no chat text, are skipped while you are viewing the chat, can be switched off per kind, and are removed when you revoke the phone. They only arrive while the Mac is awake and online.
 - Phone: while pi drives a Mac app with Computer Use, the chat shows a view-only preview of it; approvals and Stop work from the phone as on the Mac.
 - Settings > Remote access (off by default): while on, closing the window hides it and pi-gna keeps running, Quit asks first when chats are running, and the Mac can be kept from idle-sleeping (never while the lid is closed on battery). Also: open at login. Serve it on your tailnet with one click (never Funnel), pair phones with a one-time code and a QR, and revoke them.
 - Phone: the Browser screen (globe on the Projects header): the Mac's browser tabs with agent and window badges and their viewport, an address bar with history suggestions, back/forward/reload, viewport presets, the live page as a stream you tap, drag to scroll and pinch to zoom, a text field and keys for the focused element, and comment mode: tap an element, write a comment, and it goes with your next message from the phone. Works with the Mac's window hidden.

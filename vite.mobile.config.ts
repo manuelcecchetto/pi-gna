@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
+import { PUSH_TEXT } from "./src/shared/push-rules";
 
 // Same id as main (scripts/build.mjs sets PIGNA_BUILD for both builds).
 const BUILD = process.env.PIGNA_BUILD ?? Date.now().toString(36);
@@ -33,6 +34,36 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
+});
+
+// Web Push (REMOTE.md 13a): the payload is only {kind, chat, t}; the text comes from here. iOS revokes a subscription whose pushes
+// show nothing, so a notification is always shown unless the app is visibly open (then the app already shows the state).
+const PUSH_TEXT = ${JSON.stringify(PUSH_TEXT)};
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch {}
+  const kind = typeof data.kind === "string" && PUSH_TEXT[data.kind] ? data.kind : "approval";
+  const chat = typeof data.chat === "string" ? data.chat : "";
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (windows.some((client) => client.visibilityState === "visible")) return;
+    await self.registration.showNotification("pi-gna", { body: PUSH_TEXT[kind], tag: kind + ":" + chat, data: { chat } });
+  })());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const chat = event.notification.data && event.notification.data.chat;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const open = windows[0];
+    if (open) {
+      await open.focus();
+      if (chat) open.postMessage({ type: "open-chat", chat });
+    } else {
+      await self.clients.openWindow(chat ? "/#/chat/" + chat : "/");
+    }
+  })());
 });
 
 // Only the app shell is cached; /api (and anything else) always goes to the network.

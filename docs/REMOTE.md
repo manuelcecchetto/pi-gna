@@ -413,6 +413,8 @@ Additional decisions made while writing the contract:
 
 ## 13a. Notifications (Web Push)
 
+**Implemented (T39).** Differences from the design below: there is no `client.visibility` method (suppression uses the session host's existing lease `viewing` flag, plus the service worker's visible-window check); the methods are `push.vapidKey`, `push.state`, `push.subscribe`, `push.unsubscribe`, `push.setPrefs` (remote scope, per calling device); an error runner note or the "Finished" note triggers `plan`; subscriptions are dropped whenever the device list no longer contains the device (revoke, revoke all); the opaque chat id is the chat handle. Code: `src/main/web-push.ts`, `src/main/push-service.ts`, `src/shared/push-rules.ts`, `src/mobile/push.ts`, the push handlers in `vite.mobile.config.ts`. Real-device checks: `docs/REMOTE_VERIFICATION.md` N1-N11.
+
 **Decision: GO, as an opt-in, off-by-default feature, built after the mobile parity nodes (not part of the v1 contract above).**
 Reasons: (1) a suspended Home Screen app has no connection (SSE stops within seconds of the lock screen), and Tailscale delivers nothing to a
 sleeping phone, so without a push the main phone use case, "approve the tool call that is blocking the agent", only works while the
