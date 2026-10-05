@@ -4,14 +4,17 @@
 @source "../renderer/src/components";
 @source "../renderer/src/lib";
 
-/* Fills the screen under the notch and home indicator (viewport-fit=cover). */
+/* Fills the screen under the notch and home indicator (viewport-fit=cover). On iOS `--app-height` is the visible
+   area (viewport.ts): keyboard up, the app ends at the keyboard and nothing scrolls the header away. */
 html,
 body,
 #root {
-  height: 100%;
+  height: var(--app-height, 100%);
   margin: 0;
   background: var(--canvas);
   color: var(--fg);
+  /* A pull past the top brings iOS's top-edge blur back. */
+  overscroll-behavior: none;
 }
 
 /* In the base layer so utilities (px-6) on the same element still win over the insets' shorthand. */
@@ -19,4 +22,18 @@ body,
   .safe-area {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
+  /* The keyboard covers the home indicator. */
+  html.keyboard .safe-area {
+    padding-bottom: 0;
+  }
+}
+
+/* iOS phones with rounded displays (viewport.ts): sheets near the screen corners are concentric with them (Apple's
+   Liquid Glass guidance: inner radius = outer radius - the gap). Unlayered, so these beat the Tailwind radius utilities. */
+/* Sheets float 8 px in from the edges, like iOS 26's, with all four corners following the display. */
+html.screen-corners .concentric-sheet {
+  margin: 0 0.5rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: max(1rem, calc(var(--device-radius) - 0.5rem));
+  padding-bottom: max(0.5rem, calc(env(safe-area-inset-bottom) - 0.5rem));
 }

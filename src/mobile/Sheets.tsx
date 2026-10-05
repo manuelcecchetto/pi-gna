@@ -10,7 +10,7 @@ export function Sheet({ title, onClose, children, testId }: { title: string; onC
       <div
         role="dialog"
         aria-label={title}
-        className="flex max-h-[80%] flex-col rounded-t-2xl border-t border-line-strong bg-panel pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
+        className="concentric-sheet flex max-h-[80%] flex-col rounded-t-2xl border-t border-line-strong bg-panel pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between px-4 pt-3 pb-2">

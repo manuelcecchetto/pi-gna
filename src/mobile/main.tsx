@@ -4,6 +4,7 @@ import { App } from "./App";
 import { helloBuild, registerServiceWorker, reloadIfStale } from "./boot";
 import { Pairing } from "./Pairing";
 import { signOutThisDevice } from "./pair-flow";
+import { installViewport } from "./viewport";
 import "./styles.css";
 
 type State = "connecting" | "unreachable" | "unpaired" | "paired";
@@ -50,8 +51,13 @@ function Shell() {
 }
 
 registerServiceWorker();
+installViewport();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    {/* The fixed element WebKit samples for the top edge (it hit-tests 4 px down and skips boxes 10 px or thinner):
+        with a solid one there iOS fills the status bar with its color instead of blurring the page. Sampling runs only
+        when the load commits or a fixed element comes or goes, so it lives for the whole page. REMOTE_IOS.md row 15. */}
+    <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 z-30 h-[max(12px,env(safe-area-inset-top))] bg-canvas" />
     <Shell />
   </StrictMode>,
 );

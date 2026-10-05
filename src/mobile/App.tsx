@@ -31,13 +31,16 @@ function ConnectionBanner({ client }: { client: HostClient }) {
   if (!text) return null;
   const bad = connection === "unreachable";
   return (
-    <div role="status" data-testid="connection-banner" className={`flex shrink-0 items-center gap-3 px-4 py-1.5 text-[12.5px] ${bad ? "bg-bad/15 text-bad" : "bg-warn/15 text-warn"}`}>
+    // Just under the screen's Header, over the content: the header owns the top edge (see Header).
+    <div className="absolute inset-x-0 top-[calc(env(safe-area-inset-top)+3rem+1px)] z-20 bg-canvas">
+    <div role="status" data-testid="connection-banner" className={`flex items-center gap-3 px-4 py-1.5 text-[12.5px] ${bad ? "bg-bad/15 text-bad" : "bg-warn/15 text-warn"}`}>
       <span className="min-w-0 flex-1">{text}</span>
       {(connection === "unreachable" || connection === "reconnecting") && (
         <button type="button" onClick={() => client.reconnectNow()} className="shrink-0 underline">
           Retry now
         </button>
       )}
+    </div>
     </div>
   );
 }
@@ -100,7 +103,8 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
 
   return (
     <ChatUiProvider ui={ui}>
-      <div className="safe-area flex h-full flex-col bg-canvas">
+      {/* No top padding: every screen's Header covers the status bar itself. */}
+      <div className="safe-area relative flex h-full flex-col bg-canvas pt-0">
         <ConnectionBanner client={client} />
         {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} footer={signOut} />}
         {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}

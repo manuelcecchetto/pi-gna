@@ -28,9 +28,11 @@ export function Mark({ level }: { level?: Attention }) {
   return <span role="img" aria-label={mark.label} title={mark.label} className={`h-2.5 w-2.5 shrink-0 rounded-full ${mark.pulse ? "animate-pulse" : ""}`} style={{ background: mark.color }} />;
 }
 
+// The header owns the top edge (the shell does not pad the top), solid and sticky so it also extends under a
+// translucent status bar. The blur fix itself is the fixed band in main.tsx. REMOTE_IOS.md row 15.
 export function Header({ title, subtitle, onBack, trailing }: { title: string; subtitle?: string; onBack?: () => void; trailing?: React.ReactNode }) {
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1 border-b border-line px-1">
+    <header className="sticky top-0 z-10 box-content flex h-12 shrink-0 items-center gap-1 border-b border-line bg-canvas px-1 pt-[env(safe-area-inset-top)]">
       {onBack ? (
         <button type="button" aria-label="Back" onClick={onBack} className="grid h-11 w-11 shrink-0 place-items-center text-muted active:text-fg">
           <ChevronLeft size={22} />

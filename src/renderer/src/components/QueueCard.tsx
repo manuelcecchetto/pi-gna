@@ -28,7 +28,7 @@ export function QueueCard({ session, onEdit, touch = false }: { session: Session
   };
 
   return (
-    <div className={`relative z-[1] -mb-6 rounded-t-2xl border border-line-strong bg-raised px-1.5 pt-1 pb-5 ${touch ? "mx-3" : "mx-4"}`} data-testid="queue-card">
+    <div className={touch ? "mb-2 rounded-2xl border border-line-strong bg-raised px-1.5 py-1" : "relative z-[1] mx-4 -mb-6 rounded-t-2xl border border-line-strong bg-raised px-1.5 pt-1 pb-5"} data-testid="queue-card">
       {items.map((item, index) => (
         <QueueRow
           key={`${item.kind}:${index}:${item.text}`}

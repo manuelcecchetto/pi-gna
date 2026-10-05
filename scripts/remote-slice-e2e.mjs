@@ -1779,7 +1779,7 @@ async function composerChecks({ phone, A, handle, shot, text, tap, exists, prese
   await until("the run", () => exists('[data-testid="stop"]'));
   for (const t of ["follow one", "follow two"]) {
     await type(t);
-    await until("Queue to enable", () => phone.eval(`!document.querySelector('[data-testid="queue"]').disabled`));
+    await until("Queue to enable", () => phone.eval(`document.querySelector('[data-testid="queue"]')?.disabled === false`));
     await click("queue");
     await until("the draft to clear", async () => (await value()) === "");
   }

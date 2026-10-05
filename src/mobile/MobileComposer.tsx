@@ -1,9 +1,10 @@
-// The phone's composer: text with / commands and @ file mentions as touch lists, Send (a steer while the agent
-// works), Queue as a follow-up, Stop with a confirmation, and the chat chrome the desktop composer has: model and
+// The phone's composer, shaped like iOS Messages: + for attachments, a capsule field with Send inside (a steer while
+// the agent works, plus Queue once there is text), and Stop beside it while pi runs, with a confirmation. Model,
+// thinking, tok/s and the context meter sit in a quiet row above. / commands and @ file mentions are touch lists, and the chat chrome the desktop composer has: model and
 // thinking sheets, tok/s, the context meter, the queue card, retry callouts and extension widgets.
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
 import { useStore } from "../renderer/src/lib/store";
-import { ArrowUp, Brain, ChevronDown, Cpu, ListEnd, Plus, RotateCw, Square } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, ListEnd, Plus, RotateCw, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";
@@ -176,8 +177,9 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
     }
   };
 
+  const circle = "grid h-11 w-11 shrink-0 place-items-center rounded-full";
   return (
-    <div className="shrink-0 px-3 pb-3 pt-1">
+    <div className="shrink-0 px-3 pb-2 pt-1">
       {Object.entries(session.widgets).filter(([, w]) => w.placement === "aboveEditor").map(([key, widget]) => (
         <div key={key} className="mb-2" data-testid="widget"><Widget lines={widget.lines} /></div>
       ))}
@@ -201,114 +203,114 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
         </div>
       )}
       <QueueCard touch session={session} onEdit={(queued) => edit((current) => withRestored(current, [queued]))} />
-      <div className="relative z-[2] rounded-2xl border border-line-strong bg-panel">
-        {confirmStop ? (
-          <div className="flex flex-col gap-3 p-3.5" role="alertdialog" aria-label="Stop the agent">
-            <div className="text-[14px] text-fg">Stop the agent?</div>
-            <div className="text-[12.5px] text-muted">The run ends. Messages still queued come back into the composer.</div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => void stop()} className="rounded-xl bg-bad px-5 py-2.5 text-[15px] font-medium text-white" data-testid="confirm-stop">
-                Stop
-              </button>
-              <button type="button" onClick={() => setConfirmStop(false)} className="rounded-xl border border-line px-5 py-2.5 text-[15px] text-muted">
-                Keep going
-              </button>
-            </div>
+      {menu && items.length > 0 && (
+        <div className="mb-2 max-h-56 overflow-y-auto rounded-2xl border border-line-strong bg-panel p-1" data-testid="menu-list" role="listbox">
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="option"
+              aria-selected={false}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => accept(item)}
+              className="flex min-h-11 w-full items-baseline gap-3 rounded-xl px-2.5 py-2 text-left"
+              data-testid="menu-item"
+            >
+              <span className="shrink-0 font-mono text-[13.5px] text-fg">{item.label}</span>
+              {item.detail && <span className="truncate text-[12.5px] text-faint">{item.detail}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* Session settings ride above the field, quiet; the field row holds only what a thumb needs. */}
+      <div className="flex h-9 items-center gap-0.5" data-testid="status-row">
+        <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("model")} data-testid="model-chip" className="flex h-9 min-w-0 items-center gap-1 rounded-full px-2 text-[12.5px] text-muted active:bg-raised disabled:opacity-50">
+          <span className="max-w-40 truncate">{session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model")}</span>
+          <ChevronDown size={12} className="shrink-0 text-faint" />
+        </button>
+        {hasLevels(data.levels) && (
+          <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("thinking")} data-testid="thinking-chip" className="flex h-9 shrink-0 items-center gap-1 rounded-full px-2 text-[12.5px] text-muted active:bg-raised disabled:opacity-50">
+            <Brain size={13} className="shrink-0 text-faint" />
+            {session.thinkingLevel ?? "thinking"}
+            <ChevronDown size={12} className="shrink-0 text-faint" />
+          </button>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {running && <TokenRate session={session} />}
+          <ContextMeter touch session={session} compaction={data.compaction} onCompact={() => void data.compactNow()} />
+        </div>
+      </div>
+      {confirmStop ? (
+        <div className="flex flex-col gap-3 rounded-3xl border border-line-strong bg-panel p-4" role="alertdialog" aria-label="Stop the agent">
+          <div className="text-[15px] text-fg">Stop the agent?</div>
+          <div className="text-[13px] text-muted">The run ends. Messages still queued come back into the composer.</div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => void stop()} className="h-11 flex-1 rounded-full bg-bad text-[15px] font-medium text-white" data-testid="confirm-stop">
+              Stop
+            </button>
+            <button type="button" onClick={() => setConfirmStop(false)} className="h-11 flex-1 rounded-full border border-line text-[15px] text-muted">
+              Keep going
+            </button>
           </div>
-        ) : (
-          <>
-            {menu && items.length > 0 && (
-              <div className="max-h-56 overflow-y-auto border-b border-line p-1" data-testid="menu-list" role="listbox">
-                {items.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    role="option"
-                    aria-selected={false}
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => accept(item)}
-                    className="flex min-h-11 w-full items-baseline gap-3 rounded-lg px-2.5 py-2 text-left"
-                    data-testid="menu-item"
-                  >
-                    <span className="shrink-0 font-mono text-[13.5px] text-fg">{item.label}</span>
-                    {item.detail && <span className="truncate text-[12.5px] text-faint">{item.detail}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
+        </div>
+      ) : (
+        <div className="flex items-end gap-2">
+          <button type="button" aria-label="Attach" disabled={ended} onClick={() => setSheet("attach")} data-testid="attach" className={`${circle} bg-raised text-muted active:text-fg disabled:opacity-50`}>
+            <Plus size={20} />
+          </button>
+          {/* A capsule that grows into a rounded rect; the 34 px buttons sit 4.5 px in, concentric with its 22 px ends. */}
+          <div className="flex min-h-11 min-w-0 flex-1 flex-col rounded-[22px] border border-line-strong bg-panel">
             <AnnotationChips />
             <AttachmentChips list={attached} onRemove={(key) => setAttached((list) => list.filter((a) => a.key !== key))} />
-            <textarea
-              ref={field}
-              value={text}
-              rows={1}
-              disabled={ended}
-              placeholder={ended ? "This chat has ended" : running ? "Steer the agent…" : "Message pi…"}
-              enterKeyHint="enter"
-              autoCapitalize="sentences"
-              onChange={(event) => {
-                edit(event.target.value);
-                setMenu(detectMenu(event.target.value, event.target.selectionStart));
-              }}
-              onPaste={(event) => {
-                // Where iOS hands over a pasted image as a file.
-                const images = [...event.clipboardData.files].filter((f) => f.type.startsWith("image/"));
-                if (!images.length) return;
-                event.preventDefault();
-                addFiles(images);
-              }}
-              onSelect={(event) => {
-                if (menu) setMenu(detectMenu(event.currentTarget.value, event.currentTarget.selectionStart));
-              }}
-              className="selectable block max-h-40 w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[16px] leading-snug text-fg outline-none placeholder:text-faint"
-            />
-            <div className="flex items-center gap-1 px-2" data-testid="status-row">
-              <button type="button" aria-label="Attach" disabled={ended} onClick={() => setSheet("attach")} data-testid="attach" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-muted disabled:opacity-50">
-                <Plus size={18} />
-              </button>
-              <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("model")} data-testid="model-chip" className="flex min-h-10 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted disabled:opacity-50">
-                <Cpu size={14} className="shrink-0" />
-                <span className="max-w-32 truncate">{session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model")}</span>
-                <ChevronDown size={11} className="shrink-0 text-faint" />
-              </button>
-              {hasLevels(data.levels) && (
-                <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("thinking")} data-testid="thinking-chip" className="flex min-h-10 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted disabled:opacity-50">
-                  <Brain size={14} className="shrink-0" />
-                  {session.thinkingLevel ?? "thinking"}
-                  <ChevronDown size={11} className="shrink-0 text-faint" />
-                </button>
-              )}
-              <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                <TokenRate session={session} />
-                <ContextMeter touch session={session} compaction={data.compaction} onCompact={() => void data.compactNow()} />
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 px-2 pb-2">
-              {running && (
-                <button type="button" aria-label="Stop" data-testid="stop" onClick={() => setConfirmStop(true)} className="mr-auto grid h-10 w-10 place-items-center rounded-full border border-bad/50 text-bad">
-                  <Square size={14} fill="currentColor" />
-                </button>
-              )}
-              {running && (
-                <button type="button" disabled={!typed || waiting || busy} onClick={() => void send("followUp")} data-testid="queue" className="flex h-10 items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] text-muted disabled:opacity-40">
-                  <ListEnd size={15} /> Queue
+            <div className="flex items-end">
+              <textarea
+                ref={field}
+                value={text}
+                rows={1}
+                disabled={ended}
+                placeholder={ended ? "This chat has ended" : running ? "Steer the agent…" : "Message pi…"}
+                enterKeyHint="enter"
+                autoCapitalize="sentences"
+                onChange={(event) => {
+                  edit(event.target.value);
+                  setMenu(detectMenu(event.target.value, event.target.selectionStart));
+                }}
+                onPaste={(event) => {
+                  // Where iOS hands over a pasted image as a file.
+                  const images = [...event.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+                  if (!images.length) return;
+                  event.preventDefault();
+                  addFiles(images);
+                }}
+                onSelect={(event) => {
+                  if (menu) setMenu(detectMenu(event.currentTarget.value, event.currentTarget.selectionStart));
+                }}
+                className="selectable block max-h-40 min-w-0 flex-1 resize-none bg-transparent py-[10px] pl-4 pr-1 text-[16px] leading-[22px] text-fg outline-none placeholder:text-faint"
+              />
+              {running && typed && (
+                <button type="button" aria-label="Queue after the run" disabled={waiting || busy} onClick={() => void send("followUp")} data-testid="queue" className="m-[4.5px] mr-0 grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full text-muted active:bg-raised disabled:opacity-40">
+                  <ListEnd size={18} />
                 </button>
               )}
               <button
                 type="button"
-                aria-label={running ? "Send now" : "Send"}
+                aria-label={running ? "Steer now" : "Send"}
                 data-testid="send"
                 disabled={!typed || waiting || busy || ended}
                 onClick={() => void send("send")}
-                className="flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full bg-accent px-3 text-[14px] font-medium text-white disabled:opacity-40"
+                className="m-[4.5px] grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full bg-accent text-white transition-opacity disabled:opacity-30"
               >
-                <ArrowUp size={18} />
-                {running && <span>Steer</span>}
+                <ArrowUp size={19} strokeWidth={2.5} />
               </button>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+          {running && (
+            <button type="button" aria-label="Stop" data-testid="stop" onClick={() => setConfirmStop(true)} className={`${circle} bg-bad/15 text-bad`}>
+              <Square size={14} fill="currentColor" />
+            </button>
+          )}
+        </div>
+      )}
       {sheet === "attach" && <AttachSheet onClose={() => setSheet(undefined)} onFiles={addFiles} onHost={() => setSheet("host")} />}
       {sheet === "host" && (
         <HostFilesSheet
