@@ -1,4 +1,4 @@
-// `pnpm build`: the desktop bundles (electron-vite) and the mobile bundle (out/mobile), stamped with one build id so
+// `pnpm build`: the desktop bundles (electron-vite), the mobile bundle (out/mobile) and the file-preview viewer (out/preview), stamped with one build id so
 // the phone's /api/hello comparison against main's id is meaningful.
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const env = { ...process.env, PIGNA_BUILD: process.env.PIGNA_BUILD ?? Date.now().toString(36) };
-for (const args of [["electron-vite", "build"], ["vite", "build", "-c", "vite.mobile.config.ts"]]) {
+for (const args of [["electron-vite", "build"], ["vite", "build", "-c", "vite.mobile.config.ts"], ["vite", "build", "-c", "vite.preview.config.ts"]]) {
   const run = spawnSync("pnpm", ["exec", ...args], { cwd: root, env, stdio: "inherit" });
   if (run.status !== 0) process.exit(run.status ?? 1);
 }

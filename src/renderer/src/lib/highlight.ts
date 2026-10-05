@@ -89,9 +89,9 @@ function highlighter(): Promise<HighlighterCore> {
 }
 
 /** Highlighted inner HTML for a <code> element, or undefined for unsupported languages. */
-export async function highlight(code: string, hint: string | undefined): Promise<string | undefined> {
+export async function highlight(code: string, hint: string | undefined, limit = 200_000): Promise<string | undefined> {
   const lang = resolveLang(hint);
-  if (!lang || code.length > 200_000) return undefined;
+  if (!lang || code.length > limit) return undefined;
   const cacheKey = `${lang}\0${code}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;

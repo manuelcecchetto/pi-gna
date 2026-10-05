@@ -198,6 +198,12 @@ Dev: `electron-vite dev` does not run it; `pnpm dev` must build the viewer once 
 Shared code (`renderMarkdown`, `highlight`) is imported from `src/renderer/src/lib/` by relative path only if it has no
 renderer-only imports (T03 checks); otherwise it moves to `src/shared/`.
 
+**As built (T04)**: `src/preview/` (`main.ts` dispatch, `text.ts`, `image.ts`, `table.ts`, `info.ts`, `shell.ts`, `style.css`).
+`pnpm dev` runs the viewer build once first, `pnpm dev:preview` rebuilds on change. The viewer reads `?view=` and a `#L12`
+line fragment from its URL (append `#L<n>` to a preview URL to jump to and highlight a line), reads text with a
+`Range: bytes=0-<cap-1>` request (total size from `Content-Range`), sniffs extensionless files itself, and shows
+markdown/html in the code view until the markdown renderer lands. Media and docx fall to the info card until their nodes.
+
 ## Size limits
 
 | Kind | Limit | Over the limit |

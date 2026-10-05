@@ -23,7 +23,8 @@
     "pi-gna": "./bin/pi-gna.mjs"
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "vite build -c vite.preview.config.ts && electron-vite dev",
+    "dev:preview": "vite build --watch -c vite.preview.config.ts",
     "build": "node scripts/build.mjs",
     "start": "node scripts/build.mjs && node bin/pi-gna.mjs",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
