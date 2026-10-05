@@ -37,3 +37,7 @@ html.screen-corners .concentric-sheet {
   border-radius: max(1rem, calc(var(--device-radius) - 0.5rem));
   padding-bottom: max(1rem, calc(env(safe-area-inset-bottom) - 0.25rem));
 }
+/* The keyboard covers the home indicator. */
+html.keyboard .sheet-panel {
+  padding-bottom: 0.75rem;
+}

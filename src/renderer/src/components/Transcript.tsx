@@ -192,7 +192,9 @@ function useTurnScroll(
   const following = useRef(false);
   /** Content height the view was last positioned for; only a change in it moves the view. */
   const measured = useRef(0);
-  const lastScroll = useRef({ top: 0, height: 0 });
+  /** View height last positioned for: a phone keyboard or a resized window changes it. */
+  const viewed = useRef(0);
+  const lastScroll = useRef({ top: 0, height: 0, view: 0 });
   const mounted = runs.length > 0;
 
   const settle = useCallback(
@@ -200,9 +202,13 @@ function useTurnScroll(
       const element = scroller.current;
       if (!element) return;
       const changed = element.scrollHeight !== measured.current;
+      // Only a shorter view hides the end; a taller one already clamps to it.
+      const resized = element.clientHeight < viewed.current;
       measured.current = element.scrollHeight;
-      if (pinned.current && changed) {
-        if (follow) element.scrollTop = element.scrollHeight;
+      viewed.current = element.clientHeight;
+      if (pinned.current && (changed || resized)) {
+        // A shorter view (the keyboard opening) keeps the end in sight, as at the end you meant to stay there.
+        if (follow || resized) element.scrollTop = element.scrollHeight;
         else pinned.current = distanceToEnd(element) <= END_SLACK; // e.g. you expanded a step at the end
       }
       setBelow(distanceToEnd(element) > 160);
@@ -213,11 +219,11 @@ function useTurnScroll(
   const onScroll = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
-    const { scrollTop: top, scrollHeight: height } = element;
-    // Moving up without the content shrinking is you scrolling up; shrinking content only clamps.
-    if (top < lastScroll.current.top && height >= lastScroll.current.height) pinned.current = false;
+    const { scrollTop: top, scrollHeight: height, clientHeight: view } = element;
+    // Moving up without the content shrinking or the view growing is you scrolling up; those only clamp.
+    if (top < lastScroll.current.top && height >= lastScroll.current.height && view <= lastScroll.current.view) pinned.current = false;
     else if (distanceToEnd(element) <= END_SLACK) pinned.current = true;
-    lastScroll.current = { top, height };
+    lastScroll.current = { top, height, view };
     setBelow(distanceToEnd(element) > 160);
   }, [scroller]);
 

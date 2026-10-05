@@ -6,11 +6,13 @@ import type { Model, ThinkingLevel } from "../shared/protocol";
 
 export function Sheet({ title, onClose, children, testId }: { title: string; onClose: () => void; children: ReactNode; testId?: string }) {
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/50" onClick={onClose} data-testid={testId}>
+    // As tall as the visible area (viewport.ts), not the screen: with the keyboard up the sheet sits on it instead of
+    // behind it. iOS would pan the page to the field, but viewport.ts holds the page still.
+    <div className="fixed inset-x-0 top-0 z-40 flex h-[var(--app-height,100%)] flex-col justify-end bg-black/50" onClick={onClose} data-testid={testId}>
       <div
         role="dialog"
         aria-label={title}
-        className="concentric-sheet flex max-h-[80%] flex-col overflow-hidden rounded-t-[28px] border-t border-line-strong bg-panel px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
+        className="sheet-panel concentric-sheet flex max-h-[80%] flex-col overflow-hidden rounded-t-[28px] border-t border-line-strong bg-panel px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
         onClick={(event) => event.stopPropagation()}
       >
         <div aria-hidden className="mx-auto mt-2 h-[5px] w-9 shrink-0 rounded-full bg-line-strong" />
