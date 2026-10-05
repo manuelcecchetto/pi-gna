@@ -27,7 +27,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     files          `rg --files` for @ mentions
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
-    browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions)
+    browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
     computer/      ComputerService (installs, launches and talks to the native helper), ComputerAgent (policy, approvals, per-app locks), ComputerStore (userData/computer-use.json)
     board, kanban  BoardStore (userData/board.json) and the kanban_* tools' route
     laments        LamentStore (userData/laments.json) and the lament tool's route; both stores are a JsonStore (store)
@@ -44,6 +44,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
   preload          typed contextBridge API (window.studio)
   renderer         React + Tailwind v4
   src/mobile       the phone's web app (PWA), served by RemoteServer from out/mobile
+  src/preview      the file-preview viewer (markdown, docx, code, csv, image chrome...), built to out/preview and served by pigna-file://
 resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna session: browser_* tools
 resources/computer-extension.ts  the same for the computer_* tools, only while Computer Use is enabled
 resources/kanban-extension.ts    the same for the kanban_* tools
@@ -237,6 +238,30 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
     process (Electron 44.5.1, macOS), so `BrowserManager.emulate` loads `about:blank` first.
   - Verified end to end by `pnpm verify:responsive` (real built app, local fixture server).
   - *Phone browser (T36)*: `src/mobile/Browser.tsx` streams a tab (`GET /api/browser/view/<tab>`, see docs/REMOTE.md) with the window hidden by holding its view in an invisible second window (`BrowserManager.hold`); a viewport-less tab is parked at 1280x800. Pop-out windows are host-only: the phone lists them as tabs marked "window".
+
+### File preview
+
+A file preview is an ordinary browser tab (same strip, activation, pop-out, agent tools, DevTools and phone stream) that
+loads `pigna-file://<token>/<path>`. Full decisions, spike evidence and limits: `docs/FILE_PREVIEW.md`.
+
+- **Scheme and tokens**: `pigna-file` is registered in the one `registerAppScheme()` call (`standard`, `secure`,
+  `supportFetchAPI`) and handled only on the `persist:pigna-browser` session (`servePreview`). Main mints a random
+  128-bit token per preview root (the project directory when the file is inside it, else the file's directory); the
+  token is the only capability, lives in memory, and is revoked when the last tab of the root closes.
+- **Kinds**: PDF, HTML and media bytes are served raw (Range supported; Chromium's own PDF viewer, no pdf.js). Everything
+  else (markdown, docx, code/text, json, csv, images, media wrapper, info card) loads the bundled viewer from `src/preview`
+  (separate Vite build, `vite.preview.config.ts` -> `out/preview`, `docx-preview` + `jszip` the only added libraries),
+  which fetches the bytes from the same origin with `?raw=1`. Rendered/Raw toggles per tab (`?view=raw`).
+- **Security**: file contents are untrusted. The viewer gets a strict CSP (`script-src 'self'`, no network), no preload
+  and no Node; markdown goes through DOMPurify; SVG is shown through `<img>`. The handler realpath-confines every request
+  to its root, denies dotfiles and directories, and `BrowserManager` cancels navigation and popups to the scheme from any
+  tab that is not itself a preview, because Chromium only blocks `fetch` reads, not img/iframe/navigation, from a web tab.
+  Rendered HTML runs like a web page and is never auto-opened.
+- **Live reload**: main watches the opened file and reloads the tab (150 ms debounce, scroll kept).
+- **Entry points**: file links and bare paths in chat and tool details, the address bar (paths and `file://`), Open
+  file... (start page), drag and drop onto the pane, and the agent's `browser_open` with a path, all through
+  `BrowserManager.openPreview` (`browser.preview` in `host-core.ts`). The tab's `preview` field carries the real path, kind and mode.
+- **Verified** end to end by `pnpm verify:preview` (after `pnpm build`).
 
 ## Computer Use
 

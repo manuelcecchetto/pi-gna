@@ -70,6 +70,11 @@ updates the `--pigna` flag.
   your dev server, clicks, types, reads the page and takes screenshots while you watch. Local URLs open without
   asking; other sites ask once per session. Comment on elements to hand pi notes with a crop of each. Test responsive layouts with the Dimensions bar
   (phone and laptop presets that change the User-Agent too); pi can set a viewport or open device-sized windows itself.
+- **File preview.** Click a file link in pi's answer or a path in a tool call, type a path in the browser's address bar,
+  use Open file... on its start page, drop a file on the pane, or ask pi to open it: the file opens as a tab in the browser
+  pane. PDF, images (including SVG), Word `.docx`, Markdown, HTML, source code, JSON, CSV, audio and video preview in place;
+  anything else gets an info card with Reveal in Finder and Open with default app. Markdown, HTML, JSON and CSV switch
+  between Rendered and Raw, and the tab reloads when the file changes on disk.
 - **Native Mac apps, in the background.** With Computer Use on (Cmd+Shift+U), pi can use your Mac's apps while you
   keep working: it reads an app's accessibility tree and window, clicks and types with a cursor of its own and
   never touches your mouse or focus. You approve each app (once, or always); terminals, pi-gna and system security

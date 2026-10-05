@@ -1,19 +1,21 @@
 # File preview
 
-Source of truth for the file-preview feature (plan: `docs/plans/draft/file-preview.atp.json`, nodes T02-T11). A preview
+Source of truth for the file-preview feature. A preview
 is a normal browser tab: one `WebContentsView` in `persist:pigna-browser` that loads a privileged custom scheme. It
-shares the tab strip, activation, pop-out, agent tools, DevTools and phone streaming with web tabs. Everything below
-marked **(spiked)** was observed in a throwaway Electron 44.5.1 script (not committed); the rest is a decision.
+shares the tab strip, activation, pop-out, agent tools, DevTools and phone streaming with web tabs. Sections marked
+**(spiked)** record behavior observed in Electron 44.5.1 while designing it; the rest is a decision. Code map: handler and
+token registry `src/main/browser/preview-protocol.ts`, tab wiring and live reload `preview-tabs.ts` + `manager.ts`
+(`openPreview`), target resolution `resolve-targets.ts`, shared model `src/shared/preview.ts`, viewer `src/preview/`.
 
 ## Decisions at a glance
 
 | Topic | Decision |
 |---|---|
 | Scheme | `pigna-file`, registered in the one `registerAppScheme()` call with `{ standard: true, secure: true, supportFetchAPI: true }`. No `stream`, no `bypassCSP`, no `corsEnabled`. |
-| URL | `pigna-file://<token>/<path relative to the root, percent-encoded>[?view=raw\|rendered\|source]` |
-| Handler | `session.fromPartition("persist:pigna-browser").protocol.handle("pigna-file", ...)` in `src/main/file-preview/` (T02). Only on that session, never on the default session. |
+| URL | `pigna-file://<token>/<path relative to the root, percent-encoded>[?view=raw]` (`rendered` is the default; `#L<n>` jumps to a line) |
+| Handler | `session.fromPartition("persist:pigna-browser").protocol.handle("pigna-file", ...)` in `src/main/browser/preview-protocol.ts` (`servePreview`, wired in `main/index.ts`). Only on that session, never on the default session. |
 | PDF | Served raw as `application/pdf`; Chromium's built-in viewer renders it. No pdf.js. |
-| HTML | Served raw; relative assets resolve under the same token. Source mode goes through the viewer. |
+| HTML | Served raw; relative assets resolve under the same token. Source mode (`?view=raw`) goes through the viewer. |
 | Media | Wrapped by the viewer (`<video>`/`<audio>` against the raw URL); handler supports Range. |
 | docx | `docx-preview` (Apache-2.0) + `jszip` in the viewer bundle. Not mammoth. |
 | Viewer build | Separate Vite entry `vite.preview.config.ts` -> `out/preview`, added to `scripts/build.mjs`. Not a static bundle under `resources/`. |
@@ -24,14 +26,14 @@ marked **(spiked)** was observed in a throwaway Electron 44.5.1 script (not comm
 - A **root** is an absolute directory, resolved with `realpath` at mint time. It is the nearest project root (the
   active chat's cwd) when the file lies inside it, otherwise the file's own directory. A **token** is 16 random bytes
   (`randomBytes(16)`), hex, lowercase (32 chars; hosts are case-folded, so no base64). It maps to `{ root, openedAt }`.
-- Tokens are minted by main only (the file-preview service called from the IPC/host method, the address bar, and the agent
+- Tokens are minted by main only (`PreviewRegistry` in `preview-protocol.ts`, reached from the `browser.preview` host method, the address bar, and the agent
   bridge). One token per root, reused for every file under that root, so relative links between files of one
   project work and Back/Forward stay on one origin. Lifetime: until app quit (in memory only, never persisted). The
   tokens are not written to `browser-history.json`: `remember()` already stores only `https?:` URLs, keep it so.
 - The file the user opened is `<root>/<rel>`; the tab URL is `pigna-file://<token>/<rel>`. A tab must **show the real
   path**, not the token: the manager reports `BrowserTab.url` as `pigna-file://...` (needed internally) plus a new
   optional `file?: { path, kind }`; the renderer address bar shows `path` and the tab title is the file name. The
-  agent's `browser_open` also accepts an absolute path and answers with the real path (T08).
+  agent's `browser_open` also accepts an absolute path and answers with the real path.
 - Reverse lookup (URL -> real path) lives next to the token table: `resolvePreviewUrl(url) -> { path, root } | undefined`.
   "Reveal in Finder", "Open with default app" and drag out use it.
 - Query `?view=` selects the mode (see table). The default is per kind. The viewer reads it from `location`.
@@ -39,7 +41,7 @@ marked **(spiked)** was observed in a throwaway Electron 44.5.1 script (not comm
 ## Kind detection
 
 Detection is by lowercase extension first; a file without a known extension is sniffed (first 4 KB: NUL byte => binary
-info card; valid UTF-8 => text). `kindOf(path)` lives in `src/shared/preview.ts` (T02) so main, renderer, phone and the
+info card; valid UTF-8 => text; done by the viewer). `kindOf(path)` lives in `src/shared/preview.ts` so main, renderer, phone and the
 agent extension share one table.
 
 | Extension | Kind | Modes (default first) | Served |
@@ -59,8 +61,8 @@ agent extension share one table.
 
 Raw kinds (pdf, html) are served as bytes by the handler. Every other kind loads `/__viewer/index.html?...` from
 `out/preview` and the viewer fetches the file bytes from `pigna-file://<token>/<rel>?raw=1` (same origin). The handler
-tells the two apart: for a rendered-by-viewer kind a navigation request (no `?raw=1`) returns the viewer HTML, a
-`?raw=1` request returns bytes. `?raw=1` for pdf/html is identical to the default, so "Open raw" is a free toggle.
+tells the two apart: for a viewer kind a navigation (`Accept` includes `text/html`, or is absent) returns the viewer HTML, anything else
+(`?raw=1`, or a subresource such as a raw HTML page's own css/js/images) returns bytes. `?raw=1` for pdf/html is identical to the default, so "Open raw" is a free toggle.
 
 ## Viewer architecture and theming
 
@@ -114,7 +116,7 @@ same-origin `fetch()` fails ("Failed to fetch") so the viewer could not load its
 is false. Both are needed.
 **Gotcha**: `loadURL()` of a bare media URL **rejects with `ERR_FAILED`** (after 85 ms) even though playback works;
 the same happens for an `http://localhost` served mp4, so this is not the scheme. `BrowserManager.load` only swallows
-`ERR_ABORTED`. Hence media goes through the viewer page (a normal HTML document), and T02 must not load bare media.
+`ERR_ABORTED`. Hence media goes through the viewer page (a normal HTML document), so the handler path must not load bare media.
 
 ### d. Confinement **(spiked)**
 
@@ -183,7 +185,7 @@ rendered in Electron with both libraries, screenshots compared.
 | Content controls ("Klick hier...") | Rendered as placeholders, like Word | Flattened to text |
 
 **Pick docx-preview** (with jszip as an explicit dependency, as its peer). It is a pure browser DOM renderer, so it
-runs in the viewer (T04) and needs no sanitization to be a script vector: it builds DOM nodes itself; still render it
+runs in the viewer and needs no sanitization to be a script vector: it builds DOM nodes itself; still render it
 into a container, never `innerHTML` of its own output string. Mammoth stays out.
 
 ## Viewer build **(decided)**
@@ -193,25 +195,23 @@ minify), appended to the list in `scripts/build.mjs` next to the mobile build. R
 packages (marked, DOMPurify, shiki, docx-preview) and needs the Vite pipeline, which `resources/visual` (hand-written
 static files, no imports) does not have; `out/**` is already packed by electron-builder (`files: out/**`), so packaging
 needs no change; `out/mobile` is the precedent for reading a built bundle from `import.meta.dirname` in main.
-Dev: `electron-vite dev` does not run it; `pnpm dev` must build the viewer once (`vite build -c vite.preview.config.ts`,
-`--watch` optional) before main starts, and main reports a clear 500 page "viewer not built" if `out/preview` is missing.
-Shared code (`renderMarkdown`, `highlight`) is imported from `src/renderer/src/lib/` by relative path only if it has no
-renderer-only imports (T03 checks); otherwise it moves to `src/shared/`.
+Dev: `electron-vite dev` does not run it; `pnpm dev` builds the viewer once first, `pnpm dev:preview` rebuilds on change, and main reports a clear 500 page "viewer not built" if `out/preview` is missing.
+The viewer imports `renderMarkdown` and `highlight` from `src/renderer/src/lib/` by relative path.
 
-**As built (T04)**: `src/preview/` (`main.ts` dispatch, `text.ts`, `image.ts`, `table.ts`, `info.ts`, `shell.ts`, `style.css`).
+**Viewer files**: `src/preview/` (`main.ts` dispatch, `text.ts`, `image.ts`, `table.ts`, `info.ts`, `shell.ts`, `style.css`).
 `pnpm dev` runs the viewer build once first, `pnpm dev:preview` rebuilds on change. The viewer reads `?view=` and a `#L12`
 line fragment from its URL (append `#L<n>` to a preview URL to jump to and highlight a line), reads text with a
 `Range: bytes=0-<cap-1>` request (total size from `Content-Range`), sniffs extensionless files itself, and shows
-html in the code view. Media and docx fall to the info card until their nodes.
+html in the code view.
 
-**As built (T05)**: `src/preview/markdown.ts` renders markdown with the app's `renderMarkdown` (marked GFM + DOMPurify, no
+**Markdown**: `src/preview/markdown.ts` renders markdown with the app's `renderMarkdown` (marked GFM + DOMPurify, no
 visual fences, so those stay plain code), shiki-highlights fences via `highlightWithin`, gives headings GitHub-style ids
 (`links.ts`), shows flat YAML front matter as a small table and a collapsible Contents list from 4 headings. Relative
 images get `?raw=1` (a plain URL would return the viewer page); remote images are not loaded (CSP `img-src 'self' data:
 blob:`) and show their alt text. Links: `#x` scrolls, same-token links navigate the tab, `http(s)` open in a new tab
 (`target=_blank`), everything else loses its `href`. The Source button reloads the page with `?view=raw`.
 
-**As built (T06)**: `src/preview/docx.ts` (lazy `import("docx-preview")`, `jszip` is its declared dependency). Pages render into a
+**docx**: `src/preview/docx.ts` (lazy `import("docx-preview")`, `jszip` is its declared dependency). Pages render into a
 detached container first, so a failure shows a message instead of a blank page; they stay white on the themed surround,
 `Fit` (default, scales with CSS `zoom` to the pane width, never above 100%) / `-` / `+` / ctrl-cmd-wheel / `0` zoom,
 footer shows page count and size. No raw mode: docx is rendered-only. Messages: empty file; over `PREVIEW_LIMITS.docx`
@@ -223,7 +223,7 @@ footer shows page count and size. No raw mode: docx is rendered-only. Messages: 
 file, a fake OLE `.docx` and `.doc`. Progressive rendering is not done: the 25 MB cap is the guard. Tracked changes are not
 shown (`renderChanges: false`: deletions hidden, insertions shown as plain text).
 
-**As built (T12)**: `src/preview/media.ts` is a bare `<video>`/`<audio controls>` over the raw URL. `node scripts/verify-file-preview.mjs`
+**Media and verification**: `src/preview/media.ts` is a bare `<video>`/`<audio controls>` over the raw URL. `node scripts/verify-file-preview.mjs`
 (`pnpm verify:preview`, after `pnpm build`) is the end-to-end check through a throwaway app: every kind, confinement from a web tab,
 handler containment, live reload, a chat file link. It found that the handler answered a raw HTML page's own stylesheet/script/image
 requests with the viewer page (they were viewer kinds without `?raw=1`); a request whose `Accept` lacks `text/html` is now a
@@ -256,7 +256,7 @@ Limits are constants in `src/shared/preview.ts`, enforced in the viewer (it know
 5. **Agent**: `browser_open` accepts an absolute path (the extension passes it as is; main mints the token). The
    policy in the extension treats a path like a loopback URL (no approval), because it is the user's own project;
    paths outside the active cwd ask once per session like any other origin.
-All entries go through one main method, `openFile(path) -> tabId` (in `host-core.ts`'s table so IPC and the phone share it).
+All entries go through one main method, `BrowserManager.openPreview(path, options) -> tab` (exposed as `browser.preview` in `host-core.ts`'s table, `window.studio.browser.preview` over IPC; `browser.previewMode`, `previewReveal` and `previewOpen` switch Rendered/Raw, reveal in Finder and open with the default app).
 
 ## Chat links
 
@@ -276,9 +276,9 @@ and streams without change. The tab label shows the file name (from `file`), the
 and the phone cannot type a path (no filesystem browsing there): it can open previews only through the agent or by
 tapping a tab. Pop-out and DevTools buttons stay as they are for web tabs.
 
-## What the spike disproved or corrected in the plan's context
+## Spike findings that overturned assumptions
 
-- The plan's wording "Chromium renders raw kinds natively" holds for PDF, HTML and images; **not for bare media**:
+- "Chromium renders raw kinds natively" holds for PDF, HTML and images; **not for bare media**:
   `loadURL` of a media URL rejects with `ERR_FAILED`. Media goes through the viewer.
 - "Chromium blocks cross-origin access to the scheme": only for `fetch` (CORS). img, script, iframe, navigation and popups
   from a web tab are **not** blocked, and `Cross-Origin-Resource-Policy` has no effect for custom schemes. The handler
