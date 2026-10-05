@@ -447,6 +447,8 @@ into its own folder under the temp dir (`electron-vite` + the mobile bundle, one
 `PI_CODING_AGENT_DIR`, a throwaway git project with a three-turn session) with remote access switched on in the profile's `settings.json`, and
 stops it by PID. Nothing touches a running pi-gna. Exit code 0 only when every check passed; a failed run keeps its folder (`app.log` inside).
 
+The multi-client rules (simultaneous prompts, steer vs. follow-up, one answer per dialog, abort against a steer, serialized queue edits, card edit conflicts and moves, leases and close broadcasts) are unit-tested in `src/main/multi-client.test.ts`; the script's "Two clients at once" section runs the prompt, queue-interrupt and card-edit cases through the real server.
+
 What it drives: two paired "phones" A and B (plain HTTP + SSE with the headers Tailscale serve and Safari would send: loopback `Host`, https
 `Origin`, `X-Pigna-Client`, `Tailscale-User-Login`, the device cookie), and the desktop window over CDP.
 
