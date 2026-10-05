@@ -44,7 +44,14 @@ export interface Tab {
   win?: BrowserWindow;
   /** The viewport was made up when popping out a tab that had none; returning to the pane drops it again. */
   autoViewport?: boolean;
+  /** Remote viewers watching this tab: while any, the view stays in the window tree (see `hold`). */
+  holds: number;
+  /** When the agent last drove the tab; shown to clients as "agent is using this". */
+  agentAt?: number;
 }
+
+/** Size a viewer-held tab without a viewport is laid out at while parked. */
+const PARK_SIZE = { width: 1280, height: 800 };
 
 export interface BrowserEvents {
   state(state: BrowserState): void;
@@ -62,6 +69,9 @@ export class BrowserManager {
   private paneId?: string;
   private layout: BrowserLayout = { visible: false, bounds: { x: 0, y: 0, width: 0, height: 0 } };
   private attached?: WebContentsView;
+  /** Views of tabs held for remote viewers that are not in the pane or a window; they sit in the keeper window. */
+  private readonly parked = new Set<WebContentsView>();
+  private keeper?: BrowserWindow;
   private annotating = false;
   private annotateGeneration = 0;
   private stateTimer?: ReturnType<typeof setTimeout>;
@@ -85,6 +95,7 @@ export class BrowserManager {
     });
     // Device windows belong to the app window.
     window.on("close", () => {
+      this.keeper?.destroy();
       for (const tab of [...this.tabs.values()]) if (tab.win) this.closeTab(tab.id);
     });
     void readFile(this.historyPath, "utf8")
@@ -115,6 +126,7 @@ export class BrowserManager {
             agent: tab.agent,
             viewport: tab.viewport,
             surface: tab.win ? ("window" as const) : ("pane" as const),
+            agentAt: tab.agentAt,
           },
         ];
       }),
@@ -137,7 +149,7 @@ export class BrowserManager {
       webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
     });
     view.setBackgroundColor("#ffffff");
-    const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent, surface: "pane" };
+    const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent, surface: "pane", holds: 0 };
     this.tabs.set(tab.id, tab);
     this.order.push(tab.id);
     this.wire(tab);
@@ -208,6 +220,7 @@ export class BrowserManager {
     this.tabs.delete(id);
     this.hintHeaders.delete(tab.view.webContents.id);
     if (this.attached === tab.view) this.detach();
+    this.unpark(tab);
     // The tab is already gone, so the window's "closed" handler finds nothing to do.
     if (tab.win && !tab.win.isDestroyed()) tab.win.close();
     tab.view.webContents.close();
@@ -425,7 +438,9 @@ export class BrowserManager {
   private fitFor(tab: Tab): ReturnType<typeof fitViewport> | undefined {
     if (!tab.viewport) return undefined;
     let pane: { width: number; height: number };
-    if (tab.win && !tab.win.isDestroyed()) {
+    if (this.parked.has(tab.view)) {
+      pane = { width: tab.viewport.width, height: tab.viewport.height };
+    } else if (tab.win && !tab.win.isDestroyed()) {
       const [width = 0, height = 0] = tab.win.getContentSize();
       pane = { width, height };
     } else {
@@ -484,6 +499,11 @@ export class BrowserManager {
   }
 
   private applyLayout(): void {
+    this.applyPane();
+    this.syncParked();
+  }
+
+  private applyPane(): void {
     // While the addressed tab lives in a window the pane shows a DOM placeholder, so no native view may cover it.
     const tab = this.paneId && (this.active()?.surface ?? "pane") === "pane" ? this.tabs.get(this.paneId) : undefined;
     if (!this.layout.visible || !tab || this.layout.bounds.width < 2) {
@@ -492,6 +512,7 @@ export class BrowserManager {
     }
     if (this.attached !== tab.view) {
       this.detach();
+      this.parked.delete(tab.view);
       this.window.contentView.addChildView(tab.view);
       this.attached = tab.view;
     }
@@ -515,6 +536,101 @@ export class BrowserManager {
   private detach(): void {
     if (this.attached) this.window.contentView.removeChildView(this.attached);
     this.attached = undefined;
+  }
+
+  // ── Remote viewers ─────────────────────────────────────────────────────────
+
+  /**
+   * Keep a tab rendering while a remote viewer watches it, whatever the desktop shows. A view outside any window
+   * stops rendering and answering touch (docs/REMOTE_BROWSER_SPIKE.md), and one added to the app window while that is
+   * hidden never starts (scripts/remote-browser-park.mjs), so a tab that is not in the pane or a window is parked in
+   * the keeper: an invisible, click-through, unfocusable window that counts as shown (opacity 0) and holds the view
+   * at its full size. Offscreen or 1x1 rects do not hit-test. The pane is never revealed for this; call `release`
+   * when the viewer leaves.
+   */
+  hold(id: string): Tab {
+    const tab = this.tabs.get(id);
+    if (!tab) throw new Error(`No browser tab ${id}`);
+    tab.holds++;
+    this.syncParked();
+    return tab;
+  }
+
+  release(id: string): void {
+    const tab = this.tabs.get(id);
+    if (!tab || tab.holds === 0) return;
+    tab.holds--;
+    this.syncParked();
+  }
+
+  /** The agent just acted on a tab. */
+  markAgent(tab: Tab): void {
+    tab.agentAt = Date.now();
+    this.emitState();
+  }
+
+  private syncParked(): void {
+    for (const tab of this.tabs.values()) {
+      if (tab.holds > 0 && !tab.win && this.attached !== tab.view) this.park(tab);
+      else this.unpark(tab);
+    }
+  }
+
+  private park(tab: Tab): void {
+    const size = tab.viewport ?? PARK_SIZE;
+    const keeper = this.keeperWindow(size);
+    if (!this.parked.has(tab.view)) {
+      keeper.contentView.addChildView(tab.view);
+      this.parked.add(tab.view);
+    }
+    tab.view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+    // Parked views are not scaled to a pane.
+    if (tab.viewport && tab.emulatedScale !== 1) {
+      tab.emulatedScale = 1;
+      void this.emulate(tab).catch((error) => log.warn("browser", `viewport apply failed: ${(error as Error).message}`));
+    }
+  }
+
+  private unpark(tab: Tab): void {
+    if (!this.parked.delete(tab.view)) return;
+    // The pane or a window may have taken the view over already.
+    if (this.keeper && !this.keeper.isDestroyed() && this.keeper.contentView.children.includes(tab.view)) this.keeper.contentView.removeChildView(tab.view);
+    // Back in the pane or a window the fit is recomputed there.
+    tab.emulatedScale = undefined;
+    if (!this.parked.size) {
+      this.keeper?.destroy();
+      this.keeper = undefined;
+    }
+  }
+
+  private keeperWindow(size: { width: number; height: number }): BrowserWindow {
+    if (this.keeper && !this.keeper.isDestroyed()) {
+      const [width = 0, height = 0] = this.keeper.getContentSize();
+      if (width < size.width || height < size.height) this.keeper.setContentSize(Math.max(width, size.width), Math.max(height, size.height));
+      return this.keeper;
+    }
+    const keeper = new BrowserWindow({
+      width: size.width,
+      height: size.height,
+      useContentSize: true,
+      show: false,
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      focusable: false,
+      skipTaskbar: true,
+      fullscreenable: false,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    keeper.setOpacity(0);
+    keeper.setIgnoreMouseEvents(true);
+    keeper.showInactive();
+    keeper.on("closed", () => {
+      if (this.keeper === keeper) this.keeper = undefined;
+      this.parked.clear();
+    });
+    this.keeper = keeper;
+    return keeper;
   }
 
   /** Make sure a tab is drawn before the agent screenshots or clicks it. */

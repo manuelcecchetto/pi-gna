@@ -22,6 +22,8 @@ import {
   type MethodScope,
   type Topic,
 } from "../shared/host-api";
+import { FrameGate, frameParams, parseViewer, type ViewerSpec } from "../shared/browser-view";
+import type { Frame, ViewHandle } from "./browser/remote-view";
 import type { HostContext } from "./host-core";
 import type { DeviceStore } from "./devices";
 import type { EventHub, HubEnvelope, Subscription } from "./event-hub";
@@ -39,6 +41,10 @@ export const STREAM_HARD_MS = 10_000;
 const PAIR_WINDOW_MS = 60_000;
 const PAIR_MAX_PER_WINDOW = 10;
 const PAIR_WAIT_MS = 25_000;
+/** Frame streams open at once (each costs a screencast and a socket). */
+export const VIEW_LIMIT = 6;
+const VIEW_BOUNDARY = "pigna-frame";
+const TAB_ID = /^[A-Za-z0-9-]{1,64}$/;
 const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const CHAT_HANDLE = /^[a-z0-9]{6,32}$/;
 
@@ -61,6 +67,8 @@ export interface RemoteServerOptions {
   log?(line: string): void;
   /** A stream opened or closed, so leases can start or end their grace. */
   onStream?(event: "open" | "close", clientId: string, deviceId: string): void;
+  /** Starts frames of a browser tab for one viewer (throws on an unknown tab); undefined while the browser is not ready. */
+  browserView?(tab: string, viewer: ViewerSpec, onFrame: (frame: Frame) => void): ViewHandle | undefined;
   /** Tests: do not demand Tailscale-User-Login. */
   requireLogin?: boolean;
   heartbeatMs?: number;
@@ -78,6 +86,12 @@ interface Stream {
   heartbeat: NodeJS.Timeout;
   paused: boolean;
   hardTimer?: NodeJS.Timeout;
+}
+
+interface ViewStream {
+  device: string;
+  res: ServerResponse;
+  close(): void;
 }
 
 interface Caller {
@@ -117,6 +131,7 @@ const header = (req: IncomingMessage, name: string): string | undefined => {
 export class RemoteServer {
   private server?: Server;
   private readonly streams = new Map<string, Stream>();
+  private readonly views = new Set<ViewStream>();
   private readonly pairHits = new Map<string, number[]>();
 
   constructor(private readonly o: RemoteServerOptions) {}
@@ -149,6 +164,7 @@ export class RemoteServer {
     const server = this.server;
     this.server = undefined;
     for (const stream of [...this.streams.values()]) this.closeStream(stream, "server_stopped");
+    for (const view of [...this.views]) view.close();
     if (!server) return;
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
@@ -160,6 +176,7 @@ export class RemoteServer {
   devicesChanged(devices: DeviceInfo[]): void {
     const live = new Set(devices.map((d) => d.id));
     for (const stream of [...this.streams.values()]) if (!live.has(stream.device)) this.closeStream(stream, "revoked");
+    for (const view of [...this.views]) if (!live.has(view.device)) view.close();
   }
 
   get streamCount(): number {
@@ -196,6 +213,8 @@ export class RemoteServer {
       const caller = await this.authenticate(req);
       if (path === "/api/events" && !post) return this.events(req, res, url, caller);
       if (path === "/api/subscribe" && post) return this.json(res, 200, this.subscribe(caller, await this.body(req)));
+      const view = /^\/api\/browser\/view\/([A-Za-z0-9-]{1,64})$/.exec(path);
+      if (view && !post) return this.browserView(req, res, url, caller, view[1]!);
       const call = /^\/api\/call\/([A-Za-z0-9_.-]{1,64})$/.exec(path);
       if (call && post) return await this.callMethod(req, res, caller, call[1]!);
       throw new HostError("not_found", "unknown route");
@@ -417,6 +436,59 @@ export class RemoteServer {
 
     req.on("close", () => stream.sub.close("client_closed"));
     res.on("drain", () => this.drained(stream));
+  }
+
+  /**
+   * `GET /api/browser/view/<tab>?w=&h=&dpr=`: JPEG frames as multipart/x-mixed-replace (an `<img>` shows it), each part
+   * carrying `X-Css-Width`/`X-Css-Height`, the page size input coordinates are in. Latest-only: while a part is still
+   * being written or the viewer's fps cap has not elapsed, newer frames replace the waiting one. The screencast runs only
+   * while this response is open.
+   */
+  private browserView(req: IncomingMessage, res: ServerResponse, url: URL, caller: Caller, tab: string) {
+    if (!this.o.browserView) throw new HostError("unavailable", "the browser is not available");
+    if (!TAB_ID.test(tab)) throw new HostError("bad_request", "invalid tab");
+    if (this.views.size >= VIEW_LIMIT) throw new HostError("unavailable", "too many browser streams");
+    const viewer = parseViewer(url.searchParams.get("w"), url.searchParams.get("h"), url.searchParams.get("dpr"));
+    const closed = new Promise<void>((resolve) => res.once("close", resolve));
+    // Headers go out once the source accepted the tab (or with its first frame), so an unknown tab still gets a normal error.
+    const head = () => {
+      if (res.headersSent) return;
+      res.writeHead(200, { "Content-Type": `multipart/x-mixed-replace; boundary=${VIEW_BOUNDARY}`, "Cache-Control": "no-store, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+      res.flushHeaders();
+    };
+    const gate = new FrameGate<Frame>(async (frame) => {
+      if (res.writableEnded || res.destroyed) return;
+      head();
+      res.write(`--${VIEW_BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.jpeg.length}\r\nX-Css-Width: ${frame.cssWidth}\r\nX-Css-Height: ${frame.cssHeight}\r\n\r\n`);
+      res.write(frame.jpeg);
+      res.write("\r\n");
+      if (res.writableNeedDrain) await Promise.race([new Promise<void>((resolve) => res.once("drain", resolve)), closed]);
+    }, frameParams(viewer).fps);
+    let handle: ViewHandle | undefined;
+    try {
+      handle = this.o.browserView(tab, viewer, (frame) => gate.offer(frame));
+    } catch (error) {
+      gate.close();
+      throw new HostError("not_found", (error as Error).message);
+    }
+    if (!handle) {
+      gate.close();
+      throw new HostError("unavailable", "the browser is not ready");
+    }
+    head();
+    const owned = handle;
+    const view: ViewStream = {
+      device: caller.device.id,
+      res,
+      close: () => {
+        if (!this.views.delete(view)) return;
+        gate.close();
+        owned.close();
+        if (!res.writableEnded) res.end();
+      },
+    };
+    this.views.add(view);
+    req.on("close", view.close);
   }
 
   private deliver(stream: Stream, batch: HubEnvelope[], cap: number) {

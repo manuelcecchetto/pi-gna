@@ -575,14 +575,16 @@ export type HostMethod = keyof HostMethods;
 export type HostArgs<M extends HostMethod> = HostMethods[M]["args"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
-/** Input sent to a host browser tab from the phone. Coordinates are page pixels of the streamed frame. */
+/** Input sent to a host browser tab from the phone. Coordinates are CSS px of the page viewport (the frame's `X-Css-Width` x `X-Css-Height`). */
 export type BrowserInput =
   | { type: "tap"; x: number; y: number }
+  | { type: "longPress"; x: number; y: number }
   | { type: "scroll"; x: number; y: number; dx: number; dy: number }
+  | { type: "drag"; x: number; y: number; toX: number; toY: number }
   | { type: "text"; text: string }
   | { type: "key"; key: string }
-  /** Comment mode: the element at the tapped point becomes an annotation. */
-  | { type: "pick"; x: number; y: number };
+  /** Comment mode: the element at the tapped point becomes an annotation with this comment (returned to the caller only). */
+  | { type: "pick"; x: number; y: number; comment: string };
 
 /** Methods that only the desktop window may call. Everything else in `HostMethods` is scope "remote". */
 export const DESKTOP_ONLY_METHODS = [

@@ -68,3 +68,12 @@ Notes and caveats:
 Limits: one run, synthetic page, no real sites; the CDP debugger is shared with the agent tools (one client per
 `webContents.debugger`, multiplex commands through BrowserManager); screencast resolution should follow the viewer's
 reported viewport, not a fixed 390x844.
+
+## Parking result (T35)
+
+`scripts/remote-browser-park.mjs` and a follow-up: a tab loaded detached and then added to the app window **while that
+window is hidden** never renders (rAF 0, `dispatchTouchEvent` hangs), at any bounds. A 1px edge rect renders at 60 fps
+only while the window is shown; an edge rect in a hidden window throttles to ~1 fps; 1x1 and far-offscreen rects do not
+hit-test. A second `BrowserWindow` (`frame:false`, `transparent`, `focusable:false`, `setOpacity(0)`,
+`setIgnoreMouseEvents(true)`, `showInactive()`) holding the view at full size rendered at 61 fps and took touches while the
+app window was hidden. T35 parks watched tabs there (`BrowserManager.hold`/`release`) and destroys it when the last viewer leaves.

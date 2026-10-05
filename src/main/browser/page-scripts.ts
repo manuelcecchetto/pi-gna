@@ -98,6 +98,49 @@ export function focusForTyping(ref: number, clear: boolean): string {
   })()`;
 }
 
+/** Element description shared by the desktop picker and the remote one: selector, label, trimmed HTML, rect. */
+const ELEMENT_HELPERS = String.raw`  const describe = (el) => {
+    const id = el.id ? "#" + el.id : "";
+    const cls = typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
+    return el.tagName.toLowerCase() + id + cls;
+  };
+  const selectorOf = (el) => {
+    const parts = [];
+    for (let node = el; node && node.nodeType === 1 && parts.length < 6; node = node.parentElement) {
+      if (node.id) { parts.unshift("#" + CSS.escape(node.id)); break; }
+      let part = node.tagName.toLowerCase();
+      const parent = node.parentElement;
+      if (parent) {
+        const same = Array.from(parent.children).filter((c) => c.tagName === node.tagName);
+        if (same.length > 1) part += ":nth-of-type(" + (same.indexOf(node) + 1) + ")";
+      }
+      parts.unshift(part);
+    }
+    return parts.join(" > ");
+  };
+  const infoOf = (target) => {
+    const rect = target.getBoundingClientRect();
+    const label = (target.getAttribute("aria-label") || target.innerText || target.getAttribute("placeholder") || target.getAttribute("alt") || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const clone = target.cloneNode(true);
+    clone.removeAttribute("data-pi-ref");
+    for (const el of clone.querySelectorAll("[data-pi-ref]")) el.removeAttribute("data-pi-ref");
+    return {
+      selector: selectorOf(target),
+      label: describe(target) + (label ? ' "' + label + '"' : ""),
+      html: clone.outerHTML.slice(0, 800),
+      rect: { x: Math.max(0, rect.left), y: Math.max(0, rect.top), width: rect.width, height: rect.height },
+      url: location.href,
+      title: document.title,
+    };
+  };`;
+
+/** The element under a point of the page (comment mode from a remote viewer), as `infoOf` describes it; null when none. */
+export const pickAt = (x: number, y: number) => String.raw`(() => {
+  ${ELEMENT_HELPERS}
+  const el = document.elementFromPoint(${JSON.stringify(x)}, ${JSON.stringify(y)});
+  return el && el !== document.documentElement && el !== document.body ? infoOf(el) : null;
+})()`;
+
 /**
  * Element picker. Resolves with the picked element and the user's comment, or undefined when
  * stopped (window.__piAnnotateStop). The overlay lives in a shadow root so page CSS cannot touch it.
@@ -123,25 +166,7 @@ export const ANNOTATE = String.raw`new Promise((resolve) => {
   let target = null;
   let card = null;
 
-  const describe = (el) => {
-    const id = el.id ? "#" + el.id : "";
-    const cls = typeof el.className === "string" && el.className.trim() ? "." + el.className.trim().split(/\s+/).slice(0, 2).join(".") : "";
-    return el.tagName.toLowerCase() + id + cls;
-  };
-  const selectorOf = (el) => {
-    const parts = [];
-    for (let node = el; node && node.nodeType === 1 && parts.length < 6; node = node.parentElement) {
-      if (node.id) { parts.unshift("#" + CSS.escape(node.id)); break; }
-      let part = node.tagName.toLowerCase();
-      const parent = node.parentElement;
-      if (parent) {
-        const same = Array.from(parent.children).filter((c) => c.tagName === node.tagName);
-        if (same.length > 1) part += ":nth-of-type(" + (same.indexOf(node) + 1) + ")";
-      }
-      parts.unshift(part);
-    }
-    return parts.join(" > ");
-  };
+  ${ELEMENT_HELPERS}
   const place = (el) => {
     const r = el.getBoundingClientRect();
     box.hidden = false;
@@ -185,22 +210,7 @@ export const ANNOTATE = String.raw`new Promise((resolve) => {
     const submit = () => {
       const comment = area.value.trim();
       if (!comment) return;
-      const rect = target.getBoundingClientRect();
-      const label = (target.getAttribute("aria-label") || target.innerText || target.getAttribute("placeholder") || target.getAttribute("alt") || "").replace(/\s+/g, " ").trim().slice(0, 80);
-      finish({
-        selector: selectorOf(target),
-        label: describe(target) + (label ? ' "' + label + '"' : ""),
-        html: (() => {
-          const clone = target.cloneNode(true);
-          clone.removeAttribute("data-pi-ref");
-          for (const el of clone.querySelectorAll("[data-pi-ref]")) el.removeAttribute("data-pi-ref");
-          return clone.outerHTML.slice(0, 800);
-        })(),
-        comment,
-        rect: { x: Math.max(0, rect.left), y: Math.max(0, rect.top), width: rect.width, height: rect.height },
-        url: location.href,
-        title: document.title,
-      });
+      finish({ ...infoOf(target), comment });
     };
     cancel.addEventListener("click", (e) => { e.stopPropagation(); card.remove(); card = null; });
     add.addEventListener("click", (e) => { e.stopPropagation(); submit(); });

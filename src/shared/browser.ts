@@ -15,7 +15,12 @@ export interface BrowserTab {
   viewport?: ViewportSpec;
   /** Where the tab is shown: the browser pane (default) or a standalone window. */
   surface?: "pane" | "window";
+  /** When the agent last drove this tab (ms since epoch); clients show "agent is using this" while it is recent. */
+  agentAt?: number;
 }
+
+/** How long after its last action a tab still counts as driven by the agent. */
+export const AGENT_ACTIVE_MS = 8000;
 
 export interface BrowserState {
   tabs: BrowserTab[];

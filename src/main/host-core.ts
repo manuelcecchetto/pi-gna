@@ -4,7 +4,7 @@ import type { BoardOp, Column } from "../shared/board";
 import type { BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
 import type { GithubFilter, GithubKind } from "../shared/github";
-import { type AppInfo, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
+import { type AppInfo, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
@@ -22,6 +22,7 @@ import type { AtpThreads } from "./atp-threads";
 import type { ChatTasks } from "./chat-tasks";
 import type { BoardStore } from "./board";
 import type { BrowserManager } from "./browser/manager";
+import type { RemoteBrowser } from "./browser/remote-view";
 import type { CardImages } from "./card-images";
 import type { ComputerService } from "./computer/service";
 import type { ComputerStore } from "./computer/store";
@@ -72,6 +73,8 @@ export interface HostDeps {
   atpThreads: AtpThreads;
   auth: PiAuth;
   browser(): BrowserManager | undefined;
+  /** Frames and input for phones; exists with the browser manager. */
+  remoteBrowser(): RemoteBrowser | undefined;
   updater(): Updater | undefined;
   devices: DeviceStore;
   remote: RemoteHost;
@@ -211,6 +214,24 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         if (!browser) throw new Error("Invalid browser tab");
         // Whatever the client sends, the user is the source.
         return (await browser.setViewport(id, request ? { ...request, source: "user" } : undefined)) ?? null;
+      },
+    ),
+    // The frames themselves ride GET /api/browser/view/<tab> (remote-server); this names the stream and checks the tab.
+    "browser.view": method<{ id: string; on: boolean }>(
+      "remote",
+      (raw) => ({ ...tabId(raw), on: raw.on === true }),
+      (_ctx, { id, on }) => (on && deps.browser()?.tabs.has(id) ? { stream: `/api/browser/view/${id}` } : null),
+    ),
+    "browser.input": method<{ id: string; input: BrowserInput }>(
+      "remote",
+      (raw) => {
+        if (!raw.input || typeof raw.input !== "object" || typeof raw.input.type !== "string") throw new Error("Invalid browser input");
+        return { ...tabId(raw), input: raw.input as BrowserInput };
+      },
+      (_ctx, { id, input }) => {
+        const remote = deps.remoteBrowser();
+        if (!remote) throw new HostError("unavailable", "The browser is not ready");
+        return remote.input(id, input);
       },
     ),
     "browser.popOut": method<{ id: string }>("desktop", tabId, async (_ctx, { id }) => {

@@ -21,6 +21,7 @@ import { AtpRuns } from "./atp-runner";
 import { AtpThreads } from "./atp-threads";
 import { BrowserAgent, browserRoute } from "./browser/agent";
 import { BrowserManager, PARTITION } from "./browser/manager";
+import { RemoteBrowser } from "./browser/remote-view";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { serveVisual } from "./visual-protocol";
@@ -100,6 +101,7 @@ let keepAwakeId: number | undefined;
 let quitting = false;
 let browser: BrowserManager | undefined;
 let agent: BrowserAgent | undefined;
+let remoteBrowser: RemoteBrowser | undefined;
 let updater: Updater | undefined;
 const bridge = new AgentBridge();
 const send = (channel: string, ...args: unknown[]) => {
@@ -277,6 +279,7 @@ function createWindow(): void {
     annotation: (annotation) => publish({ kind: "browser.annotation", annotation }),
   });
   agent = new BrowserAgent(browser);
+  remoteBrowser = new RemoteBrowser(browser);
   attachContextMenu(window.webContents, {
     page: false,
     openTab: (url) => {
@@ -335,6 +338,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     scopeOf: (name) => (Object.hasOwn(core, name) ? core[name]?.scope : undefined),
     context: remoteContext,
     allowedHosts: () => remoteHost?.allowedHosts() ?? [],
+    browserView: (tab, viewer, onFrame) => remoteBrowser?.open(tab, viewer, onFrame),
     buildId: __PIGNA_BUILD__,
     staticDir: join(import.meta.dirname, "../mobile"),
     log: (line) => log.info("remote", line),
@@ -369,6 +373,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     atpThreads,
     auth,
     browser: () => browser,
+    remoteBrowser: () => remoteBrowser,
     updater: () => updater,
     app: { homeDir: homedir(), launchCwd, version: app.getVersion(), buildId: __PIGNA_BUILD__ },
     native: {

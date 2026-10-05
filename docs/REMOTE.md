@@ -121,8 +121,8 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 |---|---|---|---|
 | `browser.state`, `browser.history` | remote | no | `browserGetState`, `browserHistory`. |
 | `browser.newTab`, `browser.closeTab`, `browser.activate`, `browser.navigate`, `browser.command`, `browser.annotate`, `browser.inspect`, `browser.viewport` | remote | yes | the same-named channels. |
-| `browser.view` | remote | no | new. Starts/stops a frame stream for a tab (latest-only frames; see section 4). |
-| `browser.input` | remote | yes | new. Tap, scroll, text, key on a tab; and `pick` for comment mode (element at the tapped point). |
+| `browser.view` | remote | no | new. `{ id, on }` → `{ stream: "/api/browser/view/<id>" }` (null when off or the tab is gone); the frames are the separate stream of section 4. |
+| `browser.input` | remote | yes | new. `BrowserInput`: `tap`, `longPress`, `scroll` (wheel delta), `drag`, `text`, `key`, and `pick { x, y, comment }` for comment mode. Coordinates are CSS px of the streamed page (`X-Css-Width` x `X-Css-Height` of the frame), clamped inside it. Touch-emulated tabs get touches, others mouse events; `pick` returns `{ annotation }` to the caller only (element selector/label/html plus a JPEG crop of the last frame), nothing is broadcast. Works with the desktop window hidden or the pane closed. Tab state carries `agentAt` (ms epoch of the agent's last action) for the "agent is using this" indicator; URL approvals stay chat cards. |
 | `browser.layout`, `browser.popOut`, `browser.returnToPane`, `browser.reveal` | desktop | yes | `browserLayout`, `browserPopOut`, `browserReturn`, `browserReveal` (window-bound; pop-out windows are host-only). |
 
 **fs and uploads**
@@ -238,8 +238,15 @@ Every push goes through one in-process EventHub in main. The desktop window is o
 - **Backpressure:** per stream, if `res.writableLength` exceeds 1 MiB the server stops writing; when it drains it
   sends `resync` (or closes the stream if still over 4 MiB after 10 s). It never buffers without bound. Browser
   frames (`browser.view`) are latest-only: a frame is dropped when the previous one has not drained.
-- **Frame transport:** `browser.view` frames are binary JPEG over a separate `GET /api/browser/view/<tab>` stream
-  (multipart/x-mixed-replace or length-prefixed chunks, decided by T02's measurement); never SSE.
+- **Frame transport:** `GET /api/browser/view/<tab>?w=<css px>&h=<css px>&dpr=<n>` (the area the phone draws the frame
+  in; same auth as `/api/events`, at most 6 at once) answers `multipart/x-mixed-replace; boundary=pigna-frame`, one JPEG per
+  part with `X-Css-Width`/`X-Css-Height` headers, so an `<img>` shows it; never SSE. The host runs a CDP screencast
+  (`Page.startScreencast`, JPEG, size/quality/fps from the viewer: at most dpr 3, 30 fps for small frames down to 12) only
+  while a response is open, acks every frame, and delivers latest-only: a frame waits for the previous part to drain and for
+  the viewer's fps cap, newer frames replace it. Closing the response, revoking the device or stopping remote access stops
+  the screencast. Several viewers of one tab share one screencast (largest ask), each throttled by its own gate.
+  A tab outside the pane or a window is parked in an invisible keeper window while watched (no pane reveal), because a view in
+  a hidden app window never renders; see `docs/REMOTE_BROWSER_SPIKE.md`. `scripts/remote-browser-check.mjs` verifies it.
 
 ## 5. Leases and the dispose rule
 

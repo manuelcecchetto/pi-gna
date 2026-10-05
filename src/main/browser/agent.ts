@@ -99,6 +99,7 @@ export class BrowserAgent {
     if (request.action === "window") return this.window(handle, request);
     const tab = this.tabFor(handle, request.tab);
     const wc = tab.view.webContents;
+    this.browser.markAgent(tab);
     log.info("browser", `${handle.slice(0, 4)} ${request.action}${"ref" in request ? ` [${request.ref}]` : ""}`);
     switch (request.action) {
       case "snapshot":
@@ -129,13 +130,13 @@ export class BrowserAgent {
         if (!ok) throw new Error(`No element [${request.ref}] on the page. Take a new browser_snapshot first.`);
         const before = wc.getURL();
         await cdp(wc, "Input.insertText", { text: request.text });
-        if (request.submit) await this.key(wc, "Enter");
+        if (request.submit) await pressKey(wc, "Enter");
         return this.afterAction(wc, `Typed into [${request.ref}]${request.submit ? " and pressed Enter" : ""}.`, before);
       }
       case "press": {
         await this.browser.ensureVisible(tab);
         const before = wc.getURL();
-        await this.key(wc, request.key);
+        await pressKey(wc, request.key);
         return this.afterAction(wc, `Pressed ${request.key}.`, before);
       }
       case "back": {
@@ -299,17 +300,18 @@ export class BrowserAgent {
     }
     return { ...this.where(wc), text: `${note} Use browser_snapshot to see the updated page.` };
   }
+}
 
-  private async key(wc: WebContents, spec: string): Promise<void> {
-    const parts = spec.split("+").map((part) => part.trim()).filter(Boolean);
-    const def = keyDef(parts.pop() ?? "");
-    const modifiers = parts.reduce((bits, part) => bits | (MODIFIER_BITS[part.toLowerCase()] ?? 0), 0);
-    // Text only without command modifiers, so Meta+A is a shortcut rather than typing "a".
-    const text = modifiers & ~8 ? undefined : def.text;
-    const base = { key: def.key, code: def.code, windowsVirtualKeyCode: def.keyCode, nativeVirtualKeyCode: def.keyCode, modifiers };
-    await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: text ? "keyDown" : "rawKeyDown", text, unmodifiedText: text });
-    await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: "keyUp" });
-  }
+/** Press a key or chord ("Enter", "Meta+A") in a tab over CDP. */
+export async function pressKey(wc: WebContents, spec: string): Promise<void> {
+  const parts = spec.split("+").map((part) => part.trim()).filter(Boolean);
+  const def = keyDef(parts.pop() ?? "");
+  const modifiers = parts.reduce((bits, part) => bits | (MODIFIER_BITS[part.toLowerCase()] ?? 0), 0);
+  // Text only without command modifiers, so Meta+A is a shortcut rather than typing "a".
+  const text = modifiers & ~8 ? undefined : def.text;
+  const base = { key: def.key, code: def.code, windowsVirtualKeyCode: def.keyCode, nativeVirtualKeyCode: def.keyCode, modifiers };
+  await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: text ? "keyDown" : "rawKeyDown", text, unmodifiedText: text });
+  await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: "keyUp" });
 }
 
 function waitForStop(wc: WebContents, timeoutMs: number): Promise<void> {

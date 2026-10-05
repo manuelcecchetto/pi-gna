@@ -267,6 +267,110 @@ describe("RemoteServer", () => {
     expect((await send("POST", "/api/pair", { body: { code: "ZZZZZZZZ" } })).status).toBe(429);
   });
 
+  describe("browser view", () => {
+    const jpeg = (n: number) => Buffer.from([0xff, 0xd8, n, 0xff, 0xd9]);
+    let push: (frame: { jpeg: Buffer; cssWidth: number; cssHeight: number }) => void;
+    let closed: string[];
+    let opened: Array<{ tab: string; viewer: unknown }>;
+
+    async function withView() {
+      await server.stop();
+      closed = [];
+      opened = [];
+      await start({
+        browserView: (tab, viewer, onFrame) => {
+          if (tab === "nosuch") throw new Error("No browser tab nosuch");
+          opened.push({ tab, viewer });
+          push = onFrame;
+          return { close: () => closed.push(tab) };
+        },
+      });
+    }
+
+    /** GET the frame stream and collect the raw body. */
+    function view(path: string, headers: Record<string, string> = { cookie }) {
+      let res!: IncomingMessage;
+      let body = Buffer.alloc(0);
+      const ready = new Promise<void>((resolve, reject) => {
+        const req = httpRequest({ port, host: "127.0.0.1", path, headers: { host: HOST, "tailscale-user-login": LOGIN, ...headers } }, (r) => {
+          res = r;
+          r.on("data", (chunk: Buffer) => (body = Buffer.concat([body, chunk])));
+          resolve();
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      return {
+        ready,
+        get res() {
+          return res;
+        },
+        get text() {
+          return body.toString("latin1");
+        },
+        close: () => res?.destroy(),
+      };
+    }
+    const until = async (test: () => boolean, ms = 3000) => {
+      const end = Date.now() + ms;
+      while (!test()) {
+        if (Date.now() > end) throw new Error("timed out");
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    it("streams multipart JPEG frames with the page size, and stops the source on disconnect", async () => {
+      await withView();
+      const v = view("/api/browser/view/tab1?w=390&h=844&dpr=3");
+      await v.ready;
+      expect(opened).toEqual([{ tab: "tab1", viewer: { width: 390, height: 844, dpr: 3 } }]);
+      push({ jpeg: jpeg(1), cssWidth: 390, cssHeight: 844 });
+      await until(() => v.text.includes("X-Css-Height: 844"));
+      expect(v.res.headers["content-type"]).toBe("multipart/x-mixed-replace; boundary=pigna-frame");
+      expect(v.text).toContain("Content-Type: image/jpeg");
+      expect(v.text).toContain("X-Css-Width: 390");
+      v.close();
+      await until(() => closed.length === 1);
+      expect(closed).toEqual(["tab1"]);
+    });
+
+    it("delivers only the newest of a burst", async () => {
+      await withView();
+      const v = view("/api/browser/view/tab1");
+      await v.ready;
+      for (let n = 1; n <= 20; n++) push({ jpeg: jpeg(n), cssWidth: 100, cssHeight: 100 });
+      await until(() => v.text.includes("--pigna-frame"));
+      await new Promise((r) => setTimeout(r, 150));
+      const parts = v.text.split("--pigna-frame").length - 1;
+      expect(parts).toBeLessThan(20);
+      expect(v.text).toContain("\xff\xd8\x14\xff\xd9"); // frame 20 arrived
+      v.close();
+    });
+
+    it("answers errors as JSON before any frame, and needs a paired device", async () => {
+      await withView();
+      const unknown = await send("GET", "/api/browser/view/nosuch", { cookie });
+      expect(unknown.status).toBe(404);
+      expect((await send("GET", "/api/browser/view/tab1")).status).toBe(401);
+      expect((await send("GET", "/api/browser/view/bad%20id", { cookie })).status).toBe(404);
+      expect(opened).toEqual([]);
+    });
+
+    it("closes the stream and its source when the device is revoked or the server stops", async () => {
+      await withView();
+      const v = view("/api/browser/view/tab1");
+      await v.ready;
+      push({ jpeg: jpeg(1), cssWidth: 1, cssHeight: 1 });
+      await until(() => v.text.includes("--pigna-frame"));
+      await devices.revoke(deviceId);
+      await until(() => closed.length === 1);
+      const w = view("/api/browser/view/tab2", { cookie: (await pairDevice()).cookie });
+      await w.ready;
+      await server.stop();
+      await until(() => closed.length === 2);
+    });
+  });
+
   describe("events", () => {
     it("says hello, replays after Last-Event-ID and heartbeats", async () => {
       hub.publish("global", { kind: "one" });
