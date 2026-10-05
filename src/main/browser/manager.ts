@@ -12,6 +12,7 @@ import {
   type HistoryEntry,
   normalizeAddress,
 } from "../../shared/browser";
+import { PREVIEW_SCHEME } from "../../shared/preview";
 import { fitViewport, resolveViewport, userAgentFor, type ViewportRequest, type ViewportSpec } from "../../shared/viewport";
 import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
@@ -190,12 +191,15 @@ export class BrowserManager {
       this.pushConsole(tab, details.level, details.message, `${details.sourceId.split("/").at(-1) ?? ""}:${details.lineNumber}`);
     });
     // Popups and target=_blank links open as tabs in the same pane.
+    // A web page must never reach local files through pigna-file: only a preview tab may open links on that scheme.
+    const previewGate = (url: string): boolean => url.startsWith(`${PREVIEW_SCHEME}:`) && !wc.getURL().startsWith(`${PREVIEW_SCHEME}:`);
     wc.setWindowOpenHandler(({ url }) => {
+      if (previewGate(url)) return { action: "deny" };
       this.createTab(url, tab.agent);
       return { action: "deny" };
     });
     wc.on("will-navigate", (event, url) => {
-      if (!/^(https?|file|about|data|blob):/i.test(url)) event.preventDefault();
+      if (previewGate(url) || !/^(https?|file|about|data|blob|pigna-file):/i.test(url)) event.preventDefault();
     });
     attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url) });
   }

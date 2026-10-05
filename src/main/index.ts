@@ -25,6 +25,7 @@ import { RemoteBrowser } from "./browser/remote-view";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { serveVisual } from "./visual-protocol";
+import { servePreview } from "./browser/preview-protocol";
 import { VISUAL_SCHEME, visualFrameToKill } from "./visual-frame";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
 import { Uploads } from "./uploads";
@@ -637,6 +638,7 @@ function init(): void {
     // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
     serveVisual();
+    servePreview(join(import.meta.dirname, "../preview"));
     if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));
     registerIpc(shellEnv);
     // Before the window, so it opens in its appearance (and with its background color).

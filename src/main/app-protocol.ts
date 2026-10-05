@@ -4,6 +4,7 @@
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { net, protocol } from "electron";
+import { PREVIEW_SCHEME } from "../shared/preview";
 import { VISUAL_SCHEME } from "./visual-frame";
 
 export const APP_ORIGIN = "app://pigna";
@@ -31,6 +32,9 @@ export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([
     { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } },
     { scheme: VISUAL_SCHEME, privileges: { standard: true, secure: true } },
+    // pigna-file (previews): `standard` for relative URLs inside a previewed page, `secure` for isSecureContext, `supportFetchAPI` so the
+    // viewer can fetch the file bytes (all measured, docs/FILE_PREVIEW.md). No `stream` (Range works without), no bypassCSP.
+    { scheme: PREVIEW_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
   ]);
 }
 
