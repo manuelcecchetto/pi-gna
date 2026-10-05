@@ -11,6 +11,11 @@ const escapeHtml = (text: string) =>
 export interface MarkdownOptions {
   /** Turn complete ```visual fences into placeholders for the sandboxed frame. */
   visuals?: boolean;
+  /**
+   * Local link targets become file chips for the chat to resolve (default). Off for the file viewer, whose links stay
+   * plain hrefs that it resolves against the previewed file and follows in its own tab.
+   */
+  fileLinks?: boolean;
 }
 
 /** Fragment cap, shared with the frame host (docs/DESIGN.md, Visuals). */
@@ -18,6 +23,7 @@ export const VISUAL_MAX_BYTES = 64 * 1024;
 
 // marked renderers have no per-call options, so markdownToHtml sets this around each synchronous parse.
 let visualsOn = false;
+let fileLinksOn = true;
 
 /** True when the fence's raw text ends with a closing fence line (false while streaming). */
 function isClosedFence(raw: string): boolean {
@@ -50,7 +56,7 @@ const marked = new Marked({
     },
     // Local file targets get no href (nothing can navigate); the component resolves and opens them.
     link({ href, tokens }) {
-      if (!isLocalLinkHref(href)) return false;
+      if (!fileLinksOn || !isLocalLinkHref(href)) return false;
       const kind = kindFor(parseLinkTarget(href, "/")?.path ?? href);
       return `<span class="file-link" role="link" tabindex="0" data-file="${escapeHtml(href.trim())}" data-kind="${kind}">${this.parser.parseInline(tokens)}</span>`;
     },
@@ -68,10 +74,12 @@ const marked = new Marked({
 /** Markdown -> HTML before sanitizing (exported for tests). */
 export function markdownToHtml(source: string, options: MarkdownOptions = {}): string {
   visualsOn = options.visuals === true;
+  fileLinksOn = options.fileLinks !== false;
   try {
     return marked.parse(source, { async: false }) as string;
   } finally {
     visualsOn = false;
+    fileLinksOn = true;
   }
 }
 

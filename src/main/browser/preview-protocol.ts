@@ -14,7 +14,9 @@ const VIEWER_PREFIX = "__viewer";
 
 const VIEWER_CSP = [
   "default-src 'none'",
-  "script-src 'self'",
+  // BetterOffice (docx, pptx, xlsx) compiles its wasm engines and runs the DOCX layout in a same-origin worker.
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "worker-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
@@ -36,6 +38,8 @@ const TYPES: Record<string, string> = {
   mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm",
   mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav", ogg: "audio/ogg", flac: "audio/flac", aac: "audio/aac", opus: "audio/ogg",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   csv: "text/csv; charset=utf-8", tsv: "text/tab-separated-values; charset=utf-8", md: "text/markdown; charset=utf-8", txt: "text/plain; charset=utf-8",
 };
 

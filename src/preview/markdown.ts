@@ -115,7 +115,7 @@ export async function showMarkdown(source: Source): Promise<void> {
 
   const article = document.createElement("article");
   article.className = "prose";
-  article.innerHTML = renderMarkdown(body);
+  article.innerHTML = renderMarkdown(body, { fileLinks: false });
   const headings = anchorHeadings(article);
   resolveAssets(article);
   if (entries.length) article.prepend(frontMatterTable(entries));

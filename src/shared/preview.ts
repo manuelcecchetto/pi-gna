@@ -1,7 +1,7 @@
 // File preview model shared by main, renderer, phone and the agent extension: kinds, modes, path parsing, URLs.
 // Design and security model: docs/FILE_PREVIEW.md.
 
-export type PreviewKind = "pdf" | "image" | "docx" | "markdown" | "html" | "json" | "table" | "video" | "audio" | "code" | "text" | "other";
+export type PreviewKind = "pdf" | "image" | "docx" | "pptx" | "xlsx" | "markdown" | "html" | "json" | "table" | "video" | "audio" | "code" | "text" | "other";
 
 /** rendered = the kind's rich view; raw = the source text. */
 export type PreviewMode = "rendered" | "raw";
@@ -37,7 +37,8 @@ export const PREVIEW_LIMITS = {
   text: 2_000_000,
   highlight: 512_000,
   highlightLines: 10_000,
-  docx: 25_000_000,
+  /** DOCX, PPTX and XLSX: the whole file is read into the viewer and opened by a wasm engine. */
+  office: 25_000_000,
   tableRows: 5_000,
 } as const;
 
@@ -48,6 +49,8 @@ function register(kind: PreviewKind, list: string): void {
 register("pdf", "pdf");
 register("image", "png jpg jpeg gif webp avif bmp ico svg");
 register("docx", "docx");
+register("pptx", "pptx");
+register("xlsx", "xlsx");
 register("markdown", "md markdown mdx");
 register("html", "html htm xhtml");
 register("json", "json jsonc");

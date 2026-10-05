@@ -4,7 +4,6 @@
 // Design: docs/FILE_PREVIEW.md.
 import { baseName, extensionOf, kindFor, parsePreviewUrl, type PreviewKind } from "../shared/preview";
 import { looksLikeText } from "./format";
-import { showDocx } from "./docx";
 import { showImage } from "./image";
 import { showInfo } from "./info";
 import { showMedia } from "./media";
@@ -56,8 +55,15 @@ async function main(): Promise<void> {
       case "html":
         await showText(source);
         break;
+      // The Office views load their engines (wasm, fonts, React for DOCX) only when such a file is opened.
       case "docx":
-        await showDocx(source);
+        await (await import("./docx")).showDocx(source);
+        break;
+      case "pptx":
+        await (await import("./pptx")).showPptx(source);
+        break;
+      case "xlsx":
+        await (await import("./xlsx")).showXlsx(source);
         break;
       case "video":
       case "audio":

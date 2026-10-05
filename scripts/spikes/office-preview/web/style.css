@@ -1,0 +1,9 @@
+html,body{margin:0;background:#e8e8e8;font-family:system-ui}
+#root{height:100vh}
+.stack{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px}
+.stack canvas{background:#fff;box-shadow:0 0 0 1px #ccc}
+table.x{border-collapse:collapse;background:#fff;font:12px system-ui}
+table.x td,table.x th{border:1px solid #ddd;padding:2px 6px;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+table.x th{background:#f3f3f3;color:#555;font-weight:500}
+.tabs{display:flex;gap:4px;padding:6px}
+.tabs span{padding:2px 8px;background:#fff;border:1px solid #ccc;font:12px system-ui}

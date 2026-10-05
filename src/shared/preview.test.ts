@@ -5,10 +5,10 @@ import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget, languageFor, 
 describe("kindFor", () => {
   it.each([
     ["a.pdf", "pdf"], ["a.png", "image"], ["a.jpeg", "image"], ["a.gif", "image"], ["a.webp", "image"], ["a.avif", "image"],
-    ["a.bmp", "image"], ["a.ico", "image"], ["a.svg", "image"], ["a.docx", "docx"], ["a.md", "markdown"], ["a.mdx", "markdown"],
+    ["a.bmp", "image"], ["a.ico", "image"], ["a.svg", "image"], ["a.docx", "docx"], ["a.pptx", "pptx"], ["a.xlsx", "xlsx"], ["a.md", "markdown"], ["a.mdx", "markdown"],
     ["a.html", "html"], ["a.htm", "html"], ["a.json", "json"], ["a.csv", "table"], ["a.tsv", "table"], ["a.mp4", "video"],
     ["a.webm", "video"], ["a.mp3", "audio"], ["a.flac", "audio"], ["a.ts", "code"], ["a.py", "code"], ["a.txt", "text"],
-    ["a.doc", "other"], ["a.xlsx", "other"], ["a.bin", "other"],
+    ["a.doc", "other"], ["a.xls", "other"], ["a.bin", "other"],
   ])("%s -> %s", (path, kind) => expect(kindFor(path)).toBe(kind));
 
   it("is case-insensitive", () => {

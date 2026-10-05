@@ -1,0 +1,22 @@
+{
+  "name": "office-preview-spike",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway harness for the BetterOffice / Walnut / docx-preview / Quick Look preview spike (docs/FILE_PREVIEW.md). Not part of the app build.",
+  "dependencies": {
+    "@betteroffice/docx": "0.4.3",
+    "@betteroffice/docx-react": "0.4.3",
+    "@betteroffice/pptx": "0.2.0",
+    "@betteroffice/xlsx": "0.3.0",
+    "@betteroffice/fonts": "0.4.0",
+    "docx-preview": "0.4.1",
+    "jszip": "3.10.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "vite": "7.3.6",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.5.1"
+  }
+}

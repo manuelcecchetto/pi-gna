@@ -3,10 +3,11 @@
 //   node scripts/verify-file-preview.mjs
 // Generates small fixtures in a temp dir, starts a throwaway app instance (fake pi, which hands its bridge token to this
 // script) and opens each file through the browser_open bridge the way the agent does. Checks the tab state, load, a
-// non-blank screenshot and kind-specific DOM facts; then confinement (a web tab and guessed tokens cannot reach local
-// files, traversal and symlinks 404, a closed tab's token dies), live reload and a chat file link. Prints a pass/fail
-// table; exit code 1 on any failure. Not covered: mp4 (no encoder here; video shares the audio path) and the eyeball pass
-// (themes, split/full pane, pop-out window) in docs/FILE_PREVIEW.md.
+// non-blank screenshot and kind-specific DOM facts (Office kinds: what the canvas painted and the hidden text layer);
+// reopening an open file (shown, not reloaded) and a Markdown link into a docx; then confinement (a web tab and guessed
+// tokens cannot reach local files, traversal and symlinks 404, a closed tab's token dies), live reload and chat file
+// links. Prints a pass/fail table; exit code 1 on any failure. Not covered: mp4 (no encoder here; video shares the audio
+// path) and the eyeball pass (themes, split/full pane, pop-out window) in docs/FILE_PREVIEW.md.
 import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import http from "node:http";
@@ -100,6 +101,42 @@ async function docx() {
   zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Hello from a docx</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body></w:document>`);
   return zip.generateAsync({ type: "nodebuffer" });
 }
+const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const rels = (list) => `${X}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${list.map(([id, type, target]) => `<Relationship Id="${id}" Type="${REL}/${type}" Target="${target}"/>`).join("")}</Relationships>`;
+const types = (overrides) => `${X}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${overrides.map(([part, type]) => `<Override PartName="${part}" ContentType="application/vnd.openxmlformats-officedocument.${type}"/>`).join("")}</Types>`;
+async function xlsx() {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", types([["/xl/workbook.xml", "spreadsheetml.sheet.main+xml"], ["/xl/worksheets/sheet1.xml", "spreadsheetml.worksheet+xml"], ["/xl/worksheets/sheet2.xml", "spreadsheetml.worksheet+xml"]]));
+  zip.file("_rels/.rels", rels([["rId1", "officeDocument", "xl/workbook.xml"]]));
+  zip.file("xl/workbook.xml", `${X}<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="${REL}"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/><sheet name="Second" sheetId="2" r:id="rId2"/></sheets></workbook>`);
+  zip.file("xl/_rels/workbook.xml.rels", rels([["rId1", "worksheet", "worksheets/sheet1.xml"], ["rId2", "worksheet", "worksheets/sheet2.xml"]]));
+  const cell = (r, v) => (typeof v === "number" ? `<c r="${r}"><v>${v}</v></c>` : `<c r="${r}" t="inlineStr"><is><t>${v}</t></is></c>`);
+  zip.file("xl/worksheets/sheet1.xml", `${X}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${cell("A1", "Hello from a sheet")}${cell("B1", 42)}</row><row r="2">${cell("A2", "second row")}${cell("B2", 7)}</row></sheetData></worksheet>`);
+  zip.file("xl/worksheets/sheet2.xml", `${X}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${cell("A1", "Other sheet")}</row></sheetData></worksheet>`);
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+async function pptx() {
+  const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+  const P = "http://schemas.openxmlformats.org/presentationml/2006/main";
+  const ns = `xmlns:a="${A}" xmlns:r="${REL}" xmlns:p="${P}"`;
+  const group = `<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>`;
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", types([["/ppt/presentation.xml", "presentationml.presentation.main+xml"], ["/ppt/slides/slide1.xml", "presentationml.slide+xml"], ["/ppt/slideLayouts/slideLayout1.xml", "presentationml.slideLayout+xml"], ["/ppt/slideMasters/slideMaster1.xml", "presentationml.slideMaster+xml"], ["/ppt/theme/theme1.xml", "theme+xml"]]));
+  zip.file("_rels/.rels", rels([["rId1", "officeDocument", "ppt/presentation.xml"]]));
+  zip.file("ppt/presentation.xml", `${X}<p:presentation ${ns}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst><p:sldSz cx="9144000" cy="5143500"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
+  zip.file("ppt/_rels/presentation.xml.rels", rels([["rId1", "slideMaster", "slideMasters/slideMaster1.xml"], ["rId2", "slide", "slides/slide1.xml"], ["rId3", "theme", "theme/theme1.xml"]]));
+  const colors = ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"];
+  const fill = `<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>`;
+  zip.file("ppt/theme/theme1.xml", `${X}<a:theme xmlns:a="${A}" name="T"><a:themeElements><a:clrScheme name="C">${colors.map((c, i) => `<a:${c}><a:srgbClr val="${i % 2 ? "FFFFFF" : "1F3864"}"/></a:${c}>`).join("")}</a:clrScheme><a:fontScheme name="F"><a:majorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="F"><a:fillStyleLst>${fill.repeat(3)}</a:fillStyleLst><a:lnStyleLst>${`<a:ln w="9525">${fill}</a:ln>`.repeat(3)}</a:lnStyleLst><a:effectStyleLst>${"<a:effectStyle><a:effectLst/></a:effectStyle>".repeat(3)}</a:effectStyleLst><a:bgFillStyleLst>${fill.repeat(3)}</a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`);
+  zip.file("ppt/slideMasters/slideMaster1.xml", `${X}<p:sldMaster ${ns}><p:cSld><p:spTree>${group}</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst></p:sldMaster>`);
+  zip.file("ppt/slideMasters/_rels/slideMaster1.xml.rels", rels([["rId1", "slideLayout", "../slideLayouts/slideLayout1.xml"], ["rId2", "theme", "../theme/theme1.xml"]]));
+  zip.file("ppt/slideLayouts/slideLayout1.xml", `${X}<p:sldLayout ${ns}><p:cSld><p:spTree>${group}</p:spTree></p:cSld></p:sldLayout>`);
+  zip.file("ppt/slideLayouts/_rels/slideLayout1.xml.rels", rels([["rId1", "slideMaster", "../slideMasters/slideMaster1.xml"]]));
+  zip.file("ppt/slides/slide1.xml", `${X}<p:sld ${ns}><p:cSld><p:spTree>${group}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="457200" y="457200"/><a:ext cx="8000000" cy="1000000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="2A7F62"/></a:solidFill></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="3200"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>Hello from a deck</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`);
+  zip.file("ppt/slides/_rels/slide1.xml.rels", rels([["rId1", "slideLayout", "../slideLayouts/slideLayout1.xml"]]));
+  return zip.generateAsync({ type: "nodebuffer" });
+}
 function wav() {
   const samples = 800;
   const out = Buffer.alloc(44 + samples * 2);
@@ -126,6 +163,9 @@ writeFileSync(join(files, "page.html"), `<!doctype html><link rel=stylesheet hre
 writeFileSync(join(files, "sub", "s.css"), "body { color: rgb(1, 2, 3); }");
 writeFileSync(join(files, "sub", "s.js"), `document.body.dataset.ran = "yes";`);
 writeFileSync(join(files, "doc.docx"), await docx());
+writeFileSync(join(files, "deck.pptx"), await pptx());
+writeFileSync(join(files, "sheet.xlsx"), await xlsx());
+writeFileSync(join(files, "index.md"), "# Index\n\n- [the document](doc.docx)\n");
 writeFileSync(join(files, "big.txt"), Array.from({ length: 60_000 }, (_, i) => `line ${i} of a big file`).join("\n"));
 writeFileSync(join(files, "data.json"), JSON.stringify({ name: "pi-gna", nested: { list: [1, 2, 3] } }));
 writeFileSync(join(files, "data.csv"), "a,b,c\n1,2,3\n4,5,6\n");
@@ -136,7 +176,7 @@ writeFileSync(join(files, "linked.md"), "# Linked from chat\n");
 writeFileSync(join(files, ".env"), "SECRET=1\n");
 writeFileSync(join(outside, "secret.txt"), "top secret\n");
 symlinkSync(join(outside, "secret.txt"), join(files, "escape.txt"));
-writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}) and [data](${join(files, "data.json")}:2).\n`);
+writeFileSync(join(work, "chat.md"), `Previewed [the linked file](${join(files, "linked.md")}), [data](${join(files, "data.json")}:2) and [the document](${join(files, "doc.docx")}).\n`);
 
 // A web page to attack the previews from.
 const server = http.createServer((_req, res) => {
@@ -217,6 +257,11 @@ const sessionStatus = (url) =>
 const colors = (image) =>
   main(`(() => { const { nativeImage } = process.mainModule.require("electron"); const img = nativeImage.createFromBuffer(Buffer.from(${JSON.stringify(image)}, "base64")); const b = img.toBitmap(); const seen = new Set(); for (let i = 0; i < b.length; i += 4 * 97) seen.add((b[i] >> 3) + "," + (b[i + 1] >> 3) + "," + (b[i + 2] >> 3)); return seen.size; })()`);
 
+// Office views paint on canvas: what they painted, the footer, and the hidden text layer the agent's snapshot reads.
+const OFFICE_DOM = `JSON.stringify({ pages: document.querySelectorAll(".canvas-page").length, status: document.querySelector(".office-status")?.textContent ?? "", slides: document.querySelectorAll(".pptx-slide.painted").length, sheet: performance.getEntriesByName("preview:first-page").length > 0 && !!document.querySelector(".xlsx-canvas"), tabs: document.querySelectorAll(".xlsx-tabs button").length, text: document.querySelector(".sr-only")?.textContent ?? "" })`;
+/** The page's load time: unchanged means the tab was shown again, not reloaded. */
+const LOADED = "String(performance.timeOrigin)";
+
 // One row per kind: file, expected kind, DOM facts through evaluate (evaluated in the preview tab).
 const kinds = [
   { file: "doc.pdf", kind: "pdf", dom: `document.contentType`, ok: (v) => v === "application/pdf", what: "PDF viewer document" },
@@ -224,7 +269,9 @@ const kinds = [
   { file: "vector.svg", kind: "image", dom: `(() => { const i = document.querySelector("img"); return i && i.complete ? i.naturalWidth + ":" + (window.__pwned ?? "inert") : "" })()`, ok: (v) => /^64:inert$/.test(v), what: "svg shown as <img>, script inert" },
   { file: "doc.md", kind: "markdown", dom: `JSON.stringify({ h: document.querySelector("h1")?.textContent, bold: !!document.querySelector("strong"), img: document.querySelector("img[src*='pic.png']")?.naturalWidth ?? 0, pwned: window.__pwned ?? null })`, ok: (v) => { const r = JSON.parse(v); return /Hello preview/.test(r.h) && r.bold && r.img === 40 && r.pwned === null; }, what: "heading + bold + relative image rendered, script inert" },
   { file: "page.html", kind: "html", dom: `JSON.stringify({ color: getComputedStyle(document.body).color, ran: document.body.dataset.ran, img: document.getElementById("i")?.naturalWidth })`, ok: (v) => { const r = JSON.parse(v); return r.color === "rgb(1, 2, 3)" && r.ran === "yes" && r.img === 40; }, what: "relative css, js and image applied" },
-  { file: "doc.docx", kind: "docx", dom: `JSON.stringify({ pages: document.querySelectorAll("section.docx, .docx-wrapper > section").length, text: document.body.innerText.includes("Hello from a docx") })`, ok: (v) => { const r = JSON.parse(v); return r.pages > 0 && r.text; }, what: "docx pages > 0 with its text" },
+  { file: "doc.docx", kind: "docx", dom: OFFICE_DOM, ok: (v) => { const r = JSON.parse(v); return r.pages === 1 && /^1 page/.test(r.status) && r.text.includes("Hello from a docx"); }, what: "docx canvas page, page count, text layer" },
+  { file: "deck.pptx", kind: "pptx", dom: OFFICE_DOM, ok: (v) => { const r = JSON.parse(v); return r.slides === 1 && r.text.includes("Hello from a deck"); }, what: "pptx slide painted, text layer" },
+  { file: "sheet.xlsx", kind: "xlsx", dom: OFFICE_DOM, ok: (v) => { const r = JSON.parse(v); return r.sheet && r.tabs === 2 && r.text.includes("Hello from a sheet"); }, what: "xlsx sheet painted, 2 tabs, text layer" },
   { file: "big.txt", kind: "text", dom: `document.body.innerText.length`, ok: (v) => Number(v) > 1000, what: "large text rendered (capped)" },
   { file: "code.ts", kind: "code", dom: `document.body.innerText.includes("answer")`, ok: (v) => v === "true", what: "code shown" },
   { file: "data.json", kind: "json", dom: `document.body.innerText.includes("pi-gna") && document.body.innerText.includes("nested")`, ok: (v) => v === "true", what: "json keys shown" },
@@ -256,7 +303,7 @@ try {
       check(`${k.file}: tab has preview kind ${k.kind}`, tab.preview.kind === k.kind && tab.preview.path === join(files, k.file) && tab.url.startsWith("pigna-file://"), `${tab.preview.kind} ${tab.url.slice(0, 40)}`);
       check(`${k.file}: bridge answers with the real path`, result.url === join(files, k.file), result.url);
       let value;
-      await until(k.what, async () => ((value = await evaluate(result.tab, k.dom)), k.ok(value)), 8000).catch(() => undefined);
+      await until(k.what, async () => ((value = await evaluate(result.tab, k.dom)), k.ok(value)), 15_000).catch(() => undefined);
       check(`${k.file}: ${k.what}`, k.ok(value), String(value).slice(0, 100));
       await sleep(400);
       const shot = await call({ action: "screenshot", tab: result.tab });
@@ -266,6 +313,24 @@ try {
       check(`${k.file}`, false, error.message);
     }
   }
+
+  // 1b. opening an open file again shows its tab as it is (a long document keeps its layout and scroll position)
+  const docxTab = tabs["doc.docx"];
+  const loadedAt = await evaluate(docxTab, LOADED);
+  const again = await open(join(files, "doc.docx"));
+  check("reopen: an open docx comes back in its tab", again.tab === docxTab, again.tab);
+  check("reopen: the docx page is not reloaded", (await evaluate(docxTab, LOADED)) === loadedAt);
+
+  // 1c. a link in a rendered Markdown preview opens the file in the same tab
+  const index = (await open(join(files, "index.md"), { newTab: true })).tab;
+  await until("the index link", async () => (await evaluate(index, `!!document.querySelector('a[href$="doc.docx"]')`)) === "true");
+  await evaluate(index, `document.querySelector('a[href$="doc.docx"]').click(); 1`);
+  const followed = await until("the linked docx", async () => {
+    const t = await tabOf(index);
+    return t?.preview?.kind === "docx" && JSON.parse(await evaluate(index, OFFICE_DOM)).pages > 0 ? t : undefined;
+  }, 15_000).catch(() => undefined);
+  check("markdown preview: a link to a docx follows in the tab", !!followed, followed ? followed.preview.name : "no docx");
+  tabs["index.md"] = index;
 
   // 2. confinement from a web tab
   await call({ action: "open", url: base, newTab: true });
@@ -335,6 +400,12 @@ try {
     await appWindow(`document.querySelector("[data-file$='linked.md']")?.click()`);
     const opened = await until("the preview tab", async () => (await state()).tabs.find((t) => t.preview?.path === join(files, "linked.md")), 8000).catch(() => undefined);
     check("chat: clicking the link opens a preview tab", !!opened, opened ? opened.preview.name : "no tab");
+    await appWindow(`document.querySelector("[data-file$='doc.docx']")?.click()`);
+    const docx = await until("the docx preview", async () => {
+      const t = (await state()).tabs.find((t) => t.preview?.path === join(files, "doc.docx"));
+      return t && JSON.parse(await evaluate(t.id, OFFICE_DOM)).pages > 0 ? t : undefined;
+    }, 15_000).catch(() => undefined);
+    check("chat: a docx link opens a painted canvas preview", !!docx, docx ? docx.preview.name : "no docx");
   }
 } catch (error) {
   check("run", false, error instanceof Error ? error.message : String(error));

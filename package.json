@@ -49,6 +49,7 @@
     "electron": "44.5.1",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
+    "jszip": "^3.10.2",
     "lucide-react": "1.49.0",
     "marked": "18.0.14",
     "qrcode-generator": "^2.0.4",
@@ -72,7 +73,10 @@
   },
   "packageManager": "pnpm@10.34.3",
   "dependencies": {
-    "docx-preview": "^0.4.1",
-    "jszip": "^3.10.2"
+    "@betteroffice/docx": "0.4.3",
+    "@betteroffice/docx-react": "0.4.3",
+    "@betteroffice/fonts": "0.4.0",
+    "@betteroffice/pptx": "0.2.0",
+    "@betteroffice/xlsx": "0.3.0"
   }
 }
