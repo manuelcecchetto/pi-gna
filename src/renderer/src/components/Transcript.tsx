@@ -19,6 +19,7 @@ import type { ImageContent, TextContent, UserMessage } from "../../../shared/pro
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { type RailItem, railItems } from "../lib/rail";
+import { distanceToEnd, END_SLACK, followsAfterScroll } from "../lib/turn-scroll";
 import type { SessionState } from "../../../shared/session-state";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
@@ -56,7 +57,7 @@ export function Transcript({ session, earlier, turns }: { session: SessionState;
 
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, jumpToLatest } = useTurnScroll(scroller, content, runs);
+  const { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, onTouchStart, onTouchMove, jumpToLatest } = useTurnScroll(scroller, content, runs);
   const [paging, setPaging] = useState(false);
 
   if (session.loading) return <div className="flex-1" />; // not the empty state: this chat has a history
@@ -115,6 +116,8 @@ export function Transcript({ session, earlier, turns }: { session: SessionState;
           if (hidden === 0 && earlier && earlier.count > 0 && (scroller.current?.scrollTop ?? Infinity) < 600) void loadEarlier();
         }}
         onWheel={onWheel}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
         className="relative min-h-0 flex-1 overflow-y-auto"
       >
         <div ref={content} className="mx-auto flex max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
@@ -172,17 +175,15 @@ export function Transcript({ session, earlier, turns }: { session: SessionState;
 
 const TOP_GAP = 24;
 const BOTTOM_GAP = 40;
-/** How close to the end still counts as "at the end" (absorbs fractional scroll offsets). */
-const END_SLACK = 1;
 
-const distanceToEnd = (element: HTMLElement) => element.scrollHeight - element.scrollTop - element.clientHeight;
+const geometry = (element: HTMLElement) => ({ top: element.scrollTop, height: element.scrollHeight, view: element.clientHeight });
 
 /**
  * Codex-style turn scrolling. Sending a message scrolls it to the top of the view and the answer
  * streams in below. Opening a session shows its end. While a run streams, the view follows it as
  * long as you are at the end (after sending, that is once the answer outgrows the view); scrolling
- * up stops that until you scroll back down or jump to the latest. A jump-to-latest button appears
- * when more content sits below the fold.
+ * up stops that until you scroll back down or jump to the latest. The jump-to-latest button shows
+ * exactly while the view is off the end and not following it: without it, output keeps you at the end.
  */
 function useTurnScroll(
   scroller: React.RefObject<HTMLDivElement | null>,
@@ -205,7 +206,11 @@ function useTurnScroll(
   /** View height last positioned for: a phone keyboard or a resized window changes it. */
   const viewed = useRef(0);
   const lastScroll = useRef({ top: 0, height: 0, view: 0 });
+  /** Where the finger was at the last touch event. */
+  const touchY = useRef<number | null>(null);
   const mounted = runs.length > 0;
+
+  const showBelow = useCallback((element: HTMLElement) => setBelow(!pinned.current && distanceToEnd(geometry(element)) > END_SLACK), []);
 
   const settle = useCallback(
     (follow: boolean) => {
@@ -219,28 +224,44 @@ function useTurnScroll(
       if (pinned.current && (changed || resized)) {
         // A shorter view (the keyboard opening) keeps the end in sight, as at the end you meant to stay there.
         if (follow || resized) element.scrollTop = element.scrollHeight;
-        else pinned.current = distanceToEnd(element) <= END_SLACK; // e.g. you expanded a step at the end
+        else pinned.current = distanceToEnd(geometry(element)) <= END_SLACK; // e.g. you expanded a step at the end
       }
-      setBelow(distanceToEnd(element) > 160);
+      showBelow(element);
     },
-    [scroller],
+    [scroller, showBelow],
   );
 
   const onScroll = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
-    const { scrollTop: top, scrollHeight: height, clientHeight: view } = element;
-    // Moving up without the content shrinking or the view growing is you scrolling up; those only clamp.
-    if (top < lastScroll.current.top && height >= lastScroll.current.height && view <= lastScroll.current.view) pinned.current = false;
-    else if (distanceToEnd(element) <= END_SLACK) pinned.current = true;
-    lastScroll.current = { top, height, view };
-    setBelow(distanceToEnd(element) > 160);
-  }, [scroller]);
+    const now = geometry(element);
+    pinned.current = followsAfterScroll(pinned.current, lastScroll.current, now);
+    lastScroll.current = now;
+    showBelow(element);
+  }, [scroller, showBelow]);
 
-  // Wheel input arrives before its scroll event, so streaming output cannot pull you back down first.
-  const onWheel = useCallback((event: React.WheelEvent) => {
-    if (event.deltaY < 0) pinned.current = false;
+  // Wheel and touch input arrive before their scroll event, so streaming output cannot pull you back down first.
+  // Only a view that can move up stops following: a short transcript has nothing to read above.
+  const onWheel = useCallback(
+    (event: React.WheelEvent) => {
+      if (event.deltaY < 0 && (scroller.current?.scrollTop ?? 0) > 0) pinned.current = false;
+    },
+    [scroller],
+  );
+
+  const onTouchStart = useCallback((event: React.TouchEvent) => {
+    touchY.current = event.touches.length === 1 ? (event.touches[0]?.clientY ?? null) : null;
   }, []);
+
+  // A finger moving down drags the content up into view: you are scrolling up.
+  const onTouchMove = useCallback(
+    (event: React.TouchEvent) => {
+      const y = event.touches.length === 1 ? (event.touches[0]?.clientY ?? null) : null;
+      if (y !== null && touchY.current !== null && y > touchY.current && (scroller.current?.scrollTop ?? 0) > 0) pinned.current = false;
+      touchY.current = y;
+    },
+    [scroller],
+  );
 
   const jumpToLatest = useCallback(() => {
     const element = scroller.current;
@@ -296,7 +317,7 @@ function useTurnScroll(
     following.current = live;
   });
 
-  return { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, jumpToLatest };
+  return { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, onTouchStart, onTouchMove, jumpToLatest };
 }
 
 /** Empty-state backdrop: the wallpaper picked in Settings (styles.css `.hero`), or nothing for none. While they loop,
