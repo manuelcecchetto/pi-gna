@@ -398,7 +398,7 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
 | 2 | **QR code:** bundle a small MIT QR encoder in the renderer (devDependency, Vite-bundled); the pairing dialog **always** shows the URL and the code as text too. | Main stays dependency-free; the QR is convenience, text is the fallback. |
 | 3 | **Cross-device revoke:** a paired device may revoke any single device (and itself) but not pair, enable remote access, or "revoke all". | Lost-phone case needs another device; the powerful actions stay Mac-only. |
 | 4 | **Keep-awake default:** *while a chat or plan runs* (`prevent-app-suspension` held only then), option *always while remote access is on*. | Least surprise for laptops; always-on hosts opt in. Copy states it cannot keep a closed-lid MacBook awake. |
-| 5 | **Web Push:** go/no-go deferred to T38. Not part of this contract. | Separate design (leaves the tailnet). |
+| 5 | **Web Push:** GO, opt-in and off by default, designed in section 13a (T38); implemented after mobile parity. | The only way to reach a suspended phone; the only feature that leaves the tailnet, so its egress is listed and minimal. |
 | 6 | **Update Restart:** host-only (`update.restart` desktop scope); the phone can see state and Download. | Restart drops the server and every chat; it should be a deliberate action at the Mac. |
 | 7 | **Scopes:** none in v1; every device is full-access. `DeviceRecord` reserves `scope: "full"` so read-only devices can be added without a migration. | Keeps v1 small; the field is the only forward hook. |
 
@@ -410,6 +410,102 @@ Additional decisions made while writing the contract:
 - **`chat.rawCommand`** stays desktop-only as a transition; removed once the desktop uses `chat.command` + `chat.send`.
 - **Subscriptions never lease**: only `chat.open`/`attach` lease, so a phone cannot keep a chat alive by streaming it.
 - **Text-edit conflicts are coarse first** (`baseRev` staleness), refined only if T09 finds it cheap.
+
+## 13a. Notifications (Web Push)
+
+**Decision: GO, as an opt-in, off-by-default feature, built after the mobile parity nodes (not part of the v1 contract above).**
+Reasons: (1) a suspended Home Screen app has no connection (SSE stops within seconds of the lock screen), and Tailscale delivers nothing to a
+sleeping phone, so without a push the main phone use case, "approve the tool call that is blocking the agent", only works while the
+app is open; (2) Web Push for installed Home Screen apps is supported on iOS 16.4+ and needs no native app; (3) the cost is bounded: ~300
+lines of `node:crypto` in main, no runtime dependency, and the privacy surface can be made small and explicit (below). Reasons to keep it
+optional: it is the only feature that sends anything off the tailnet, and it cannot work while the host is asleep or offline. If the
+payload or egress rules below are later judged unacceptable, the fallback is no-go: the app still works, notifications are just absent.
+
+### Triggers
+
+| Event | Condition | Kind |
+| --- | --- | --- |
+| Approval/dialog waiting | a `dialog_requested` that needs an answer (tool approval, confirm, select, input) and is still unanswered after a short grace (10 s, so desktop answers do not ping) | `approval` |
+| Run finished | a run ends (`agent_end`) and the chat is unread by every client | `done` |
+| Run failed | a run ends in error/abort-by-error and the chat is unread | `failed` |
+| ATP plan stopped / finished | the runner stops on a failed node, a human-needed stop, or the plan completes | `plan` |
+| Host going down | the user quits pi-gna while remote access is on and devices exist (sent once from the quit path, before the server stops) | `host_quit` |
+
+"Unread" reuses the unread state the app already keeps per chat; a chat the user is looking at never notifies. `host_quit` is best effort (a crash, power loss
+or sleep sends nothing) and is the only "host unavailable" signal the system can give.
+
+### Web Push mechanics (host side, `node:crypto` only)
+
+- **Phone:** inside the installed Home Screen app only (Safari tabs cannot subscribe on iOS), a "Notifications" switch in Settings calls
+  `Notification.requestPermission()` **from that tap** (a user gesture is required), then `registration.pushManager.subscribe({ userVisibleOnly: true,
+  applicationServerKey: <VAPID public key> })`, and sends the subscription (`endpoint`, `keys.p256dh`, `keys.auth`) with `push.subscribe`. Every push must show a
+  notification (iOS revokes subscriptions that show none), so the service worker's `push` handler always calls `showNotification`.
+  `notificationclick` focuses or opens the app at `/#/chat/<opaque id>`.
+- **VAPID key pair (RFC 8292):** an ECDSA P-256 pair generated on first enable with `crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' })`,
+  stored in `userData/remote-push.json` (mode 0600, private key never leaves the host and is never returned by any API; the public key is served to
+  paired devices). Regenerating the key invalidates every subscription (devices must re-subscribe), so it is only done by an explicit "Reset notifications".
+- **Subscriptions:** stored per device in the same file as `{ deviceId, endpoint, p256dh, auth, prefs, createdAt }`, one per device. They are
+  removed when the device is revoked (`devices.revoke`, `devices.revokeAll`), on `push.unsubscribe`, and on a `404/410` from the push service.
+  The `endpoint` must be `https:` and is otherwise treated as an opaque URL chosen by the push service; it is not an SSRF concern for the tailnet because
+  the host only POSTs a fixed encrypted body to it, but the host refuses endpoints that resolve to loopback, link-local or private addresses.
+- **Message encryption (RFC 8291, `aes128gcm` content coding of RFC 8188):** per message an ephemeral P-256 ECDH key (`crypto.createECDH('prime256v1')`), shared secret
+  with the subscription's `p256dh`, HKDF-SHA256 (`crypto.hkdfSync`) with the subscription `auth` secret and the `WebPush: info` context to derive the IKM, then a
+  16-byte random salt and HKDF for the CEK and nonce, AES-128-GCM (`crypto.createCipheriv('aes-128-gcm')`), a single record with padding delimiter `0x02`, header
+  `salt(16) | rs(4, 4096) | idlen(1) | ephemeral public key(65)`. Plaintext is capped far below the 4096-byte push limit (our payload is < 200 bytes).
+- **VAPID JWT:** ES256 over `{ aud: <push service origin>, exp: now + 12 h (max 24 h), sub: "mailto:..." }`; signature produced with `crypto.sign('sha256', ...,
+  { dsaEncoding: 'ieee-p1363' })` (raw r||s, as JWS requires). Request headers: `Authorization: vapid t=<jwt>, k=<base64url public key>`, `Content-Encoding: aes128gcm`,
+  `Content-Type: application/octet-stream`, `TTL`, `Urgency`, and `Topic` for collapsing. `sub` is a configurable contact, default a non-identifying
+  `mailto:` placeholder; it is visible to the push service.
+- **Delivery params:** `approval`: `Urgency: high`, `TTL: 3600`, `Topic` = chat id + kind (a newer one replaces the older). `done`/`failed`/`plan`: `Urgency: normal`,
+  `TTL: 86400`. `host_quit`: `Urgency: normal`, `TTL: 600`.
+- **Transport:** `node:https` POST from the host to the subscription's endpoint (Apple `web.push.apple.com`, FCM `fcm.googleapis.com` for Android Chrome, Mozilla `*.push.services.mozilla.com`). The
+  connection leaves the host over the public internet, not the tailnet, and does not depend on Tailscale. Timeout 10 s, no retries beyond one retry on `5xx`/`429`
+  honoring `Retry-After`; at most one in-flight send per subscription.
+
+### What leaves the host (complete list)
+
+1. To the push service of each subscribed device: the device's `endpoint` (which it already knows, being its own), the ECDH ephemeral public key and salt, the VAPID JWT with the
+   host's VAPID **public** key and `aud`/`sub`/`exp`, the `TTL`/`Urgency`/`Topic` headers, and the ciphertext. The push service also sees the host's public IP and timing/size of each push.
+2. Inside the ciphertext only (readable by the phone alone): `{ v: 1, kind, chat: <opaque id>, t: <ms> }`.
+3. Nothing else: **no transcript text, tool names or arguments, file paths, repository or chat titles, error messages, model output, hostname, tailnet name or device names.** The
+   `Topic` header is a hash (`sha256(chatId|kind)` truncated, base64url), not the chat id.
+
+The notification text is composed on the phone by the service worker from `kind` only ("Approval needed", "Run finished", "Run failed", "Plan stopped", "pi-gna is quitting").
+The opaque chat id is a handle the app resolves after the user opens it (authenticated); it is a random per-session id minted by the host, not the session file path. Titles
+are deliberately not shown on the lock screen in v1; a later, separate per-device opt-in "show chat titles" would require encrypting the title in the payload and is out of scope here.
+
+### Suppression and preferences
+
+- **Active viewing:** the host knows each client's SSE stream and its visibility reports (`client.visibility` sent by the app on `visibilitychange`). When any device (phone or desktop
+  window, focused) is viewing the chat, no push is sent for it. For `approval`, an answer from any client within the grace period cancels the pending push. The phone's service worker
+  additionally skips `showNotification` when a visible client window of the app exists (permitted, since iOS allows this only when a client is `visibilityState === 'visible'`); if a
+  push shows nothing otherwise, iOS may revoke the subscription, so the worker falls back to a notification when in doubt.
+- **Per-device preferences** (`push.setPrefs`, stored with the subscription): toggles for `approval`, `done`/`failed`, `plan`, `host_quit`; defaults: approval, failed, plan and
+  host_quit on; done on. "Mute this chat" is a later option. Sending to a device respects only its own prefs.
+- **Rate limits:** at most one push per device per chat per kind per 30 s; at most 20 pushes per device per hour (excess is dropped and counted in `main.log`).
+
+### Failure handling
+
+- `404`/`410 Gone`: subscription removed at once (and the device told to re-subscribe at its next visit). `400/401/403` from the push service: the VAPID header is wrong; log, do not
+  retry, surface "notifications broken" in the host settings. `413`: cannot happen with our payload. `429`/`5xx`: one retry, then drop. Network failure: drop (the next event notifies again;
+  there is no queue, since stale "approval needed" is worse than none).
+- `main.log` records `push <deviceId> <kind> <status>`, never payload or endpoint.
+- If the push service is unreachable for hours, nothing else degrades: the app, SSE and the remote server do not depend on it.
+
+### Impossible or out of scope
+
+- **Host asleep, powered off, lid closed, or pi-gna not running:** no event is produced, so no push is sent. Nothing a phone or a push service can do changes that (and the contract
+  forbids privileged sleep hacks). The phone only ever learns "the host is unreachable" when it is opened.
+- No push for events that happen while the host is unreachable, and no catch-up push after wake (the app's resync shows the state when opened).
+- No delivery guarantee: the push service may delay or drop (iOS low-power/Focus modes, force-quit app after user-initiated removal, revoked permission).
+- No actions inside the notification (approve/deny from the lock screen) in v1: an approval is authenticated state change and goes through the app.
+- No Funnel, no third-party relay, no analytics: the host talks to the browser vendors' push services directly and to no pi-gna server.
+
+### Build plan (for the later implementation node)
+
+Pure, vitest-tested helpers in `src/shared`: `buildPushPayload`/encryption (checked against the RFC 8291 Appendix A test vector), VAPID JWT, prefs/suppression/rate-limit decisions. Main: `push-service.ts`
+(key store, subscriptions, sender), hooked to EventHub events and the revoke paths; HostCore methods `push.vapidKey`, `push.subscribe`, `push.unsubscribe`, `push.setPrefs`, `client.visibility`. Mobile: Settings switch,
+service-worker `push`/`notificationclick`, doc updates in `docs/DESIGN.md`, a CHANGELOG line, and a real-device check on iOS 16.4+ in `docs/REMOTE_VERIFICATION.md`.
 
 ## 14. Node map
 
