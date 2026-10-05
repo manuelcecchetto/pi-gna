@@ -283,7 +283,7 @@ async function runFixture() {
   const serial = Date.now() - t0
   check('two actions on one app are serialized', serial >= 1900, `${serial} ms`)
 
-  // Overlay: cursor + pill windows are ordered directly above the target window, click-through and not capturable.
+  // Overlay: glow frame + cursor + pill windows are ordered directly above the target window, click-through and not capturable.
   execFileSync('swiftc', ['-O', '-o', join(work, 'wins'), join(src, 'wins.swift')])
   const stack = () => execFileSync(join(work, 'wins'), { encoding: 'utf8' }).trim().split(' ').map((x) => x.split(':').map(Number))
   const helperPid = (await call('hello', { token, protocol: 1 })).result?.pid ?? helperProc?.pid
@@ -295,10 +295,23 @@ async function runFixture() {
   const st1 = stack()
   const mine = st1.filter((w) => w[0] === helperPid)
   const ai = st1.findIndex((w) => w[1] === aWin)
-  check('overlay has a cursor and a pill window', mine.length === 2, JSON.stringify(mine))
-  check('overlay windows are directly above the target window', ai >= 2 && st1[ai - 1][0] === helperPid && st1[ai - 2][0] === helperPid, `target index ${ai}`)
+  check('overlay has a glow frame, a cursor and a pill window', mine.length === 3, JSON.stringify(mine))
+  check('overlay windows are directly above the target window', ai >= 3 && [1, 2, 3].every((k) => st1[ai - k][0] === helperPid), `target index ${ai}`)
   check('overlay windows are excluded from captures (sharingState 0)', mine.length > 0 && mine.every((w) => w[3] === 0))
   check('screenshot while overlay is shown is the target window only', !!(await state(A)).screenshot)
+  // The cursor follows every action: its window is centered on the point each click lands on (global points).
+  const win = (await state(A)).text.match(/frame=\((-?\d+),(-?\d+) \d+x\d+\) scale=([\d.]+)/)
+  const cursorAt = () => {
+    const c = stack().filter((w) => w[0] === helperPid && w[6] === w[7]).map((w) => [w[4] + w[6] / 2, w[5] + w[7] / 2])
+    return c.length === 1 ? c[0] : undefined
+  }
+  for (const [x, y] of [[300, 300], [60, 125], [520, 200]]) {
+    await call('click', { app: A.bundle, x, y, ...SETTLE })
+    await new Promise((r) => setTimeout(r, 400))
+    const want = [Number(win[1]) + x / Number(win[3]), Number(win[2]) + y / Number(win[3])]
+    const got = cursorAt()
+    check(`cursor moves to the click at ${x},${y}`, !!got && Math.hypot(got[0] - want[0], got[1] - want[1]) <= 2, JSON.stringify({ want, got }))
+  }
   console.log('overlay shown over the fixture for 3 s ...')
   await new Promise((r) => setTimeout(r, 3000))
   const hid = await call('overlay_hide', { app: A.bundle })
