@@ -33,6 +33,9 @@ export interface PushDeps {
   clearTimer?: (timer: unknown) => void;
 }
 
+// Apple answers 403 BadJwtToken to a `sub` it cannot accept (e.g. an `.invalid` domain), so this must look like a real address.
+const DEFAULT_SUBJECT = "mailto:pi-gna@example.com";
+
 export class PushService {
   private data: PushFile;
   private readonly ledgers = new Map<string, PushLedger>();
@@ -180,7 +183,7 @@ export class PushService {
       if (this.inflight.has(sub.deviceId) || !admitPush(ledger, sub.prefs, kind, chat, now)) return;
       this.inflight.add(sub.deviceId);
       try {
-        const request = buildPushRequest(vapid, this.deps.subject ?? "mailto:pi-gna@example.invalid", sub, payload, { ...delivery, topic: topicOf(chat ?? "", kind) }, now);
+        const request = buildPushRequest(vapid, this.deps.subject ?? DEFAULT_SUBJECT, sub, payload, { ...delivery, topic: topicOf(chat ?? "", kind) }, now);
         const result = await sendPush(this.transport, request);
         log.info("push", `${sub.deviceId} ${kind} ${result.status}`);
         if (!result.ok && result.gone) this.remove((s) => s.deviceId === sub.deviceId && s.endpoint === sub.endpoint);
