@@ -166,6 +166,13 @@ export class RemoteServer {
     return this.streams.size;
   }
 
+  /** Bytes waiting in the largest stream write queue: what a stalled consumer costs the host's memory. */
+  get streamQueuedBytes(): number {
+    let most = 0;
+    for (const stream of this.streams.values()) most = Math.max(most, stream.res.writableLength);
+    return most;
+  }
+
   // ── Request pipeline ───────────────────────────────────────────────────────
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {

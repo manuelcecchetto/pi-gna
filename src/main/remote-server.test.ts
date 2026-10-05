@@ -102,6 +102,7 @@ let calls: Array<{ method: string; args: unknown; client: unknown; clientId: str
 let log: string[];
 let cookie: string;
 let deviceId: string;
+let boot = "boot1";
 
 const names = new Set<string>(["board.get", "board.apply", "chat.command", "chat.list", "atp.state", "fs.pickFolder"]);
 
@@ -121,11 +122,11 @@ async function pairDevice(): Promise<{ cookie: string; id: string }> {
 }
 
 async function start(extra: Partial<RemoteServerOptions> = {}) {
-  hub = new EventHub(2000, 8 * 1024 * 1024, "boot1");
+  hub = new EventHub(2000, 8 * 1024 * 1024, boot);
   server = new RemoteServer({
     devices,
     hub,
-    cache: new IdempotencyCache("boot1"),
+    cache: new IdempotencyCache(boot),
     scopeOf: (m) => (names.has(m) ? methodScope(m as HostMethod) : undefined),
     call: (ctx, method, args) => {
       calls.push({ method, args, client: ctx.client, clientId: ctx.clientId });
@@ -151,6 +152,7 @@ beforeEach(async () => {
   mkdirSync(join(dir, "mobile", "assets"), { recursive: true });
   writeFileSync(join(dir, "mobile", "index.html"), "<!doctype html><title>app</title>");
   writeFileSync(join(dir, "mobile", "assets", "a.js"), "1");
+  boot = "boot1";
   calls = [];
   log = [];
   devices = new DeviceStore(join(dir, "devices.json"), (list) => server?.devicesChanged(list));
@@ -324,6 +326,49 @@ describe("RemoteServer", () => {
       await s.until(() => s.frames.some((f) => f.startsWith("event: resync")), 8000);
       const delivered = s.frames.filter((f) => f.includes('"fill"')).length;
       expect(delivered).toBeLessThan(80);
+      s.close();
+    });
+
+    it("never queues more than its cap for a stalled consumer, and goes live again after the resync", async () => {
+      await server.stop();
+      await start({ streamCap: 64 * 1024, streamHardMs: 60_000 });
+      ({ cookie } = await pairDevice());
+      const s = sse("/api/events?stream=stream-aaaa", cookie);
+      await s.ready;
+      s.res.pause();
+      const filler = "x".repeat(256 * 1024);
+      const total = 400;
+      for (let i = 0; i < total; i++) hub.publish("global", { kind: "fill", i, filler });
+      await new Promise((r) => setTimeout(r, 100));
+      // What the kernel and the client's socket hold is bounded by the cap plus a frame or two, not by the 100 MiB published.
+      const queued = server.streamQueuedBytes;
+      expect(queued).toBeLessThan(64 * 1024 + 2 * filler.length);
+      s.res.resume();
+      await s.until(() => s.frames.some((f) => f.startsWith("event: resync")), 8000);
+      const before = s.frames.length;
+      hub.publish("global", { kind: "after" });
+      await s.until(() => s.frames.slice(before).some((f) => f.includes('"after"')));
+      s.close();
+    });
+
+    it("tells clients of a restarted host to resync, and refuses their old keys", async () => {
+      const keyed = { "idempotency-key": "once", "x-pigna-boot": "boot1" };
+      expect((await send("POST", "/api/call/board.apply", { body: { op: 1 }, cookie, headers: keyed })).status).toBe(200);
+      hub.publish("global", { kind: "one" });
+      await server.stop();
+      boot = "boot2";
+      await start();
+      calls = [];
+      // The same cookie still works (devices persist); the key does not: its first run may or may not have happened.
+      const retry = await send("POST", "/api/call/board.apply", { body: { op: 1 }, cookie, headers: keyed });
+      expect(retry.status).toBe(409);
+      expect(retry.json.error.code).toBe("host_restarted");
+      expect(calls).toHaveLength(0);
+      const s = sse("/api/events?stream=stream-aaaa", cookie, { "last-event-id": "boot1:1" });
+      await s.ready;
+      await s.until(() => s.frames.some((f) => f.includes("new_boot")));
+      expect(s.frames.some((f) => f.includes("boot1:"))).toBe(false);
+      expect(s.frames.some((f) => f.startsWith("id: boot2:"))).toBe(false);
       s.close();
     });
 

@@ -325,4 +325,39 @@ describe("stream", () => {
     expect(b.client.store.get().connection).toBe("outdated");
     expect(b.outdated).toHaveBeenCalled();
   });
+
+  it("goes to unauthorized when the device is revoked while reconnecting, and stops retrying", async () => {
+    const t = setup((call) => (call.path === "hello" ? ok({ buildId: "x", authenticated: false }) : reads()(call)));
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    expect(t.client.store.get().connection).toBe("live");
+    t.src().readyState = 2;
+    t.src().onerror?.({}); // the host closed the stream of the revoked device
+    await flush();
+    expect(t.client.store.get().connection).toBe("unauthorized");
+    expect(t.unauthorized).toHaveBeenCalledTimes(1);
+    const streams = FakeSource.all.length;
+    for (const timer of t.timers) timer.fn();
+    expect(FakeSource.all).toHaveLength(streams);
+    expect(t.client.store.get().global.settings).toEqual(settings); // the last state stays for the sign-in screen
+  });
+
+  it("recovers on its own once the host answers again, with the state it had", async () => {
+    const t = setup(reads());
+    t.client.start();
+    t.src().hello();
+    await flush();
+    for (let i = 0; i < 3; i++) {
+      t.src().readyState = 2;
+      t.src().onerror?.({});
+      t.timers.filter((x) => x.ms !== 35_000).at(-1)?.fn();
+    }
+    expect(t.client.store.get().connection).toBe("unreachable");
+    t.src().hello(); // the resumed host
+    await flush();
+    expect(t.client.store.get().connection).toBe("live");
+  });
 });

@@ -462,3 +462,19 @@ Prompts steer fake-pi with `[lines=N]` and `[delay=N]` (ms). Flags: `--keep` (ke
 Lessons baked in: windows and browser tabs of a `PIGNA_BACKGROUND=1` instance draw no frames, so `Page.captureScreenshot` and `capturePage` of a tab never answer; the screens
 use an offscreen `BrowserWindow` created through the inspector (`--inspect`) instead. The test found that `chat.respondDialog` ignored its caller, so `dialog_resolved.by`
 named `"desktop"` for a phone's answer (fixed: `host-core.ts` passes the caller).
+
+### Resilience results (T41)
+
+Every recovery path has a test; none needed a production fix. Unit tests run in `pnpm test`; the process-level ones are in `pnpm e2e:remote` (sections 6, 8 and 9 of the script).
+
+| Case | Proof | Result |
+| --- | --- | --- |
+| Ring overflow → resync | `event-hub.test.ts` (count/bytes eviction, resync on a missing cursor); e2e: >2300 events while A is away, reconnect gets `resync`, no replay, snapshot + newer events leave no gap | pass |
+| Slow SSE consumer | `remote-server.test.ts`: a paused client with 100 MiB published queues at most the cap plus a frame or two (`RemoteServer.streamQueuedBytes`), gets `resync` after draining, then live frames again; the 4 MiB / 10 s hard cap closes the stream | pass |
+| Host restart (new `bootId`) | server test: an old key with the old `X-Pigna-Boot` is `409 host_restarted`, the call does not run, a stream with the old `Last-Event-ID` gets `resync(new_boot)` and no replay; client test: `host_restarted` is never retried and a boot change restarts seq counting; e2e: real restart of the instance, same cookie still works, stale `chat.send` starts no chat and adds no turn | pass |
+| Host paused (sleep) | e2e: `SIGSTOP` on the **test instance's** PID mid-run: calls get no answer, no events, the stream is not torn down; after `SIGCONT` the same stream carries every line once and calls answer again. Client unit tests: watchdog reconnect, `unreachable` after 3 failures with the last state kept, recovery to `live` on the next `hello` | pass |
+| Drafts while unreachable/restarted | `src/mobile/drafts.test.ts`: drafts live in `localStorage` keyed by session file, so a new handle after a restart finds the same draft | pass |
+| Build change → reload | client test: a `hello` with another `buildId` goes to `outdated` and calls `onOutdated` (the page reloads) | pass |
+| Revoked while reconnecting | server test: the revoked device's stream closes at once; client test: the next probe says unauthenticated → `unauthorized`, `onUnauthorized` once, no further reconnects | pass |
+
+The SIGSTOP case is not in vitest on purpose: it needs the real Electron process and must only ever target the PID the script itself started.

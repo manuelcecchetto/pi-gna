@@ -545,7 +545,59 @@ async function scenario(ctx) {
   const back = await A.ok("chat.attach", { handle });
   check(back && JSON.stringify(back).includes("Line 50 of the streamed"), "a phone attaching afterwards reads the finished answer");
 
+  // ── Host asleep: the process is paused (SIGSTOP on this test instance only), then resumed ──
+  log("pause the host process (simulated sleep), then resume");
+  const sleeper = A.events([handle]);
+  await until("the sleeper stream", () => sleeper.frames.some((f) => f.event === "hello"));
+  markB = sleeper.events.length;
+  await A.ok("chat.send", { handle, text: "sleep test [lines=40][delay=150]", mode: "send" });
+  await until("a few lines before the pause", () => deltas(sleeper.events.slice(markB), topic).length >= 5);
+  process.kill(instance.pid, "SIGSTOP");
+  let paused = true;
+  try {
+    const beforePause = sleeper.events.length;
+    const hung = await Promise.race([A.call("chat.live", {}).then(() => false, () => true), sleep(3000).then(() => true)]);
+    check(hung, "a call to the paused host gets no answer (the client's timeout/unreachable path)");
+    await sleep(1500);
+    check(sleeper.events.length - beforePause <= 1 && !sleeper.closed, "no events arrive while paused and the stream is not torn down by the host", sleeper.events.length - beforePause);
+  } finally {
+    process.kill(instance.pid, "SIGCONT");
+    paused = false;
+  }
+  check(paused === false, "the host process resumed");
+  await until("the run to finish after resume", () => agentEnds(sleeper.events.slice(markB), topic) === 1, 40_000, 100);
+  const slept = lineNumbers(sleeper.events.slice(markB), topic);
+  check(slept.length === 40 && contiguous(slept) && slept[0] === 1, "after resume the same stream carries lines 1..40 once each", slept.length);
+  check((await A.call("chat.live", {})).status === 200, "calls answer again after resume");
+  sleeper.drop();
+
   await screens(ctx, { handle, A });
+
+  // ── Host restart: new bootId, old idempotency keys, resync ──────────────
+  log("restart the host: new boot id");
+  const hello = (await A.json("GET", "/api/hello")).value;
+  const oldBoot = hello.bootId;
+  const bootCursor = `${oldBoot}:${(await A.ok("chat.snapshot", { handle })).seq}`;
+  const turnsBefore = JSON.stringify((await A.ok("chat.snapshot", { handle })).value).split("restart test").length - 1;
+  desktop.close();
+  await stopInstance();
+  instance = launch(ctx.ports);
+  await until("the remote server after restart", async () => (await request(ctx.ports.remote, { path: "/api/hello", headers: A.headers() }).catch(() => ({ status: 0 }))).status === 200, 40_000, 250);
+  const again = (await A.json("GET", "/api/hello")).value;
+  check(again.authenticated === true, "the paired device survives the restart (same cookie)");
+  check(again.bootId !== undefined && again.bootId !== oldBoot, "the host has a new boot id", { oldBoot, new: again.bootId });
+  const stale = await A.call("chat.send", { handle, text: "restart test", mode: "send" }, { key: "old-key", boot: oldBoot });
+  check(stale.status === 409 && stale.value?.error?.code === "host_restarted", "an old key sent with the old boot id fails host_restarted", stale);
+  const liveAfter = await A.ok("chat.live", {});
+  check(!liveAfter.some((c) => c.handle === handle), "no chat was started by the stale prompt");
+  const resyncStream = A.events([handle], bootCursor);
+  await until("the restarted stream", () => resyncStream.frames.length > 1);
+  const r = resyncStream.frames.find((f) => f.event === "resync");
+  check(r?.json.reason === "new_boot" && resyncStream.frames.indexOf(r) === 1 && resyncStream.frames[0].event === "hello", "a stream resuming an old boot gets resync(new_boot) right after hello, before any replay", resyncStream.frames.map((f) => f.event));
+  resyncStream.drop();
+  const reopened = await A.ok("chat.open", { request: { cwd: ctx.project, sessionPath: sessionFile } });
+  check(JSON.stringify(reopened).split("restart test").length - 1 === turnsBefore, "reopening after the restart shows the transcript without the stale prompt");
+  await A.call("chat.close", { handle: reopened.handle ?? handle });
 
   if (flag("--hold")) {
     log(`holding; debug port ${ctx.ports.debug}; Ctrl-C to stop`);
