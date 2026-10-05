@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 import type { AtpSession } from "../shared/atp";
 import { type Board, type BoardOp, type Card, freshId, LIMITS } from "../shared/board";
 import { type ClientPresence, HostError, type NewCardAttachment, type TaskNotice, type TaskStarted, type TaskTarget } from "../shared/host-api";
-import type { CardWorktree, OpenSessionRequest } from "../shared/ipc";
+import { formatFileMentions } from "../shared/file-mentions";
+import type { CardWorktree, OpenSessionRequest, PickedPath } from "../shared/ipc";
 import type { Lament } from "../shared/laments";
 import type { Model, RpcCommand, RpcResponse } from "../shared/protocol";
 import { type Settings, type TaskModel, taskModel } from "../shared/settings";
@@ -113,12 +114,14 @@ export class ChatTasks {
   }
 
   /** `chat.send` for what a client cannot compose itself: the card's details go before the message, and the chat joins the card. */
-  async send(handle: string, text: string, mode: "send" | "followUp", cardId?: string): Promise<{ accepted: boolean; error?: string }> {
+  async send(handle: string, text: string, mode: "send" | "followUp", cardId?: string, attachments: PickedPath[] = []): Promise<{ accepted: boolean; error?: string }> {
     const isCommand = text.startsWith("/");
     // A command is not a message about the card: the card waits for the next one.
     const card = cardId && !isCommand ? await this.card(cardId) : undefined;
-    const message = [card && cardBlock(card), text].filter(Boolean).join("\n\n");
-    const cmd: RpcCommand = { type: "prompt", message };
+    const mentions = isCommand ? [] : attachments;
+    const message = [card && cardBlock(card), text, formatFileMentions(mentions)].filter(Boolean).join("\n\n");
+    const images = mentions.flatMap((a) => (a.image ? [{ type: "image" as const, data: a.image.data, mimeType: a.image.mimeType }] : []));
+    const cmd: RpcCommand = { type: "prompt", message, images: images.length ? images : undefined };
     if (this.deps.host.stateOf(handle)?.running && !isCommand) cmd.streamingBehavior = mode === "followUp" ? "followUp" : "steer";
     const response = await this.deps.host.command(handle, cmd);
     if (!response.success) return { accepted: false, error: response.error };

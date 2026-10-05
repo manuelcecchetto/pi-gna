@@ -574,6 +574,7 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   of this applies.
 - **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
   `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
+- **Phone attachments** (`src/main/uploads.ts`, `src/main/browse.ts`, `src/shared/uploads.ts`): `PUT /api/uploads` streams a phone's file to `userData/remote-uploads/<device>/<uuid>/<sanitized name>` (25 MiB cap, 30-day prune at startup); `chat.send` takes `{ upload }` or `{ path }` refs and `ChatTasks.send` composes the file-mention block and image content host-side. See docs/REMOTE.md.
 - **Remote access** (Settings > Remote access; stub, grows with the remote nodes): `RemoteHost` (`src/main/remote.ts`) keeps the
   `RemoteServer` listening on `127.0.0.1:<port>` exactly while `remote.enabled` (`sync()` from `applySettings`; a taken port
   shows as an error row). Tailscale is read through the CLI on the login-shell PATH or `/Applications/Tailscale.app/Contents/MacOS/Tailscale`

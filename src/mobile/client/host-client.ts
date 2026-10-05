@@ -17,6 +17,7 @@ import {
   type HostEvent,
   type HostMethod,
   type HostResult,
+  type UploadResult,
 } from "../../shared/host-api";
 import { reduceHostEvent, type SessionState } from "../../shared/session-state";
 
@@ -232,6 +233,11 @@ export class HostClient {
       if (signal?.aborted) throw e;
       throw new HostError("unavailable", "host unreachable");
     }
+    return this.read(response);
+  }
+
+  /** The body of an answer, or the `HostError` it carries. */
+  private async read(response: Response): Promise<unknown> {
     const text = await response.text();
     let json: unknown;
     try {
@@ -244,6 +250,24 @@ export class HostClient {
     // A proxy answering for a host that is down (tailscale serve) has no JSON body.
     const code: HostErrorCode = err?.code ?? (response.status >= 500 ? "unavailable" : "internal");
     throw new HostError(code, err?.message ?? `HTTP ${response.status}`, err?.detail);
+  }
+
+  /** `PUT /api/uploads`: the file's bytes go as the raw body (no base64, no JSON cap); the host answers with where it stored them. */
+  async upload(file: Blob, name: string, signal?: AbortSignal): Promise<UploadResult> {
+    const type = file.type || "application/octet-stream";
+    let response: Response;
+    try {
+      response = await this.env.fetch(`/api/uploads?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`, {
+        method: "PUT",
+        headers: { "content-type": type, [HEADER_CLIENT]: "1" },
+        body: file,
+        signal,
+      });
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      throw new HostError("unavailable", "host unreachable");
+    }
+    return (await this.read(response)) as UploadResult;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────

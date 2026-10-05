@@ -1,6 +1,6 @@
 // Security boundaries of the remote surface, against a real RemoteServer, DeviceStore and the real HostCore method
 // table (its dependencies faked). Routes are enumerated from the table, so a new method is covered automatically.
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,7 @@ import { EventHub } from "./event-hub";
 import { scrub } from "./github";
 import { createHostCore, dispatch, type HostDeps } from "./host-core";
 import { RemoteServer } from "./remote-server";
+import { Uploads } from "./uploads";
 
 const HOST = "mac.tail.ts.net";
 const LOGIN = "me@example.com";
@@ -59,10 +60,14 @@ const send = (method: string, path: string, opts: { body?: unknown; headers?: Re
 
 const who = (deviceName = "x") => ({ deviceName, userAgent: "", tailnetLogin: LOGIN });
 const record = (value: unknown) => () => Promise.resolve(value);
+let store: Uploads;
+const sent: unknown[][] = [];
 const deps = {
   shellEnv: Promise.resolve(),
   host: {},
-  tasks: {},
+  tasks: { send: async (...args: unknown[]) => (sent.push(args), { accepted: true }) },
+  uploads: { resolve: (...args: Parameters<Uploads["resolve"]>) => store.resolve(...args), discard: (...args: Parameters<Uploads["discard"]>) => store.discard(...args) },
+  app: { homeDir: tmpdir() },
   board: { get: record({ rev: 1 }) },
   cardImages: {},
   settings: { get: record({ rev: 1, theme: "dark" }) },
@@ -108,6 +113,8 @@ beforeEach(async () => {
   mkdirSync(join(dir, "mobile"), { recursive: true });
   writeFileSync(join(dir, "mobile", "index.html"), "<!doctype html><title>app</title>");
   log = [];
+  sent.length = 0;
+  store = new Uploads(join(dir, "remote-uploads"));
   hub = new EventHub(2000, 8 * 1024 * 1024, "boot1");
   devices = new DeviceStore(join(dir, "devices.json"), (list) => server?.devicesChanged(list), undefined, { now: () => clock });
   server = new RemoteServer({
@@ -122,6 +129,7 @@ beforeEach(async () => {
     },
     context: (device, clientId) => ({ client: { device: device.id }, clientId, openExternal: () => undefined, authUpdate: () => undefined }),
     allowedHosts: () => [HOST],
+    upload: (device, name, type, body, declared) => store.put(device.id, name, type, body, declared),
     buildId: "b1",
     staticDir: join(dir, "mobile"),
     log: (line) => log.push(line),
@@ -366,7 +374,7 @@ describe("remote security: input limits and allowlists", () => {
     const reply = await call("fs.describePaths", { paths: [secret, "/etc/hosts"] });
     expect(reply.status).toBe(403);
     expect(reply.text).not.toContain("secret.png");
-    for (const method of ["fs.pickFolder", "fs.pickAttachments", "fs.browseFolders"]) expect([403, 404], method).toContain((await call(method)).status);
+    for (const method of ["fs.pickFolder", "fs.pickAttachments"]) expect([403, 404], method).toContain((await call(method)).status);
   });
 
   it("refuses desktop-only methods remotely, whatever the arguments", async () => {
@@ -391,5 +399,83 @@ describe("remote security: input limits and allowlists", () => {
 describe("HostCore error mapping", () => {
   it("turns validation failures into bad_request", () => {
     expect(() => dispatch(core, { client: { device: "d" }, clientId: "c", openExternal: () => undefined, authUpdate: () => undefined } as never, "github.project", { cwd: "relative" })).toThrow(HostError);
+  });
+});
+
+describe("remote security: uploads", () => {
+  const put = (query: string, body: Buffer | string, opts: { cookie?: string | null; csrf?: boolean; method?: string; path?: string; headers?: Record<string, string> } = {}) =>
+    new Promise<Reply>((resolve, reject) => {
+      const headers: Record<string, string> = { host: HOST, "tailscale-user-login": LOGIN, "content-length": String(Buffer.byteLength(body)), ...opts.headers };
+      if (opts.cookie !== null) headers.cookie = opts.cookie ?? cookie;
+      if (opts.csrf !== false) Object.assign(headers, { origin: `https://${HOST}`, "x-pigna-client": "1" }, opts.headers);
+      const req = httpRequest({ port, host: "127.0.0.1", method: opts.method ?? "PUT", path: `${opts.path ?? "/api/uploads"}${query}`, headers }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString();
+          let json: any;
+          try {
+            json = JSON.parse(text);
+          } catch {
+            // not json
+          }
+          resolve({ status: res.statusCode ?? 0, headers: res.headers, text, json });
+        });
+      });
+      req.on("error", (error: NodeJS.ErrnoException) => (error.code === "EPIPE" || error.code === "ECONNRESET" ? resolve({ status: 0, headers: {}, text: "", json: undefined }) : reject(error)));
+      req.end(body);
+    });
+  const stored = () => (existsSync(join(dir, "remote-uploads")) ? readdirSync(join(dir, "remote-uploads"), { recursive: true }).map(String) : []);
+
+  it("needs the device cookie, the CSRF headers and the one route", async () => {
+    expect((await put("?name=a.txt", "x", { cookie: null })).status).toBe(401);
+    expect((await put("?name=a.txt", "x", { cookie: "pigna_device=nope" })).status).toBe(401);
+    expect((await put("?name=a.txt", "x", { csrf: false })).status).toBe(403);
+    expect((await put("?name=a.txt", "x", { headers: { origin: "https://evil.example" } })).status).toBe(403);
+    expect((await put("?name=a.txt", "x", { path: "/api/events" })).status).toBe(400);
+    expect((await put("?name=a.txt", "x", { path: "/api/call/chat.list" })).status).toBe(400);
+    expect((await put("?name=a.txt", "x", { method: "DELETE" })).status).toBe(400);
+    expect(stored()).toEqual([]);
+  });
+
+  it("stores only under remote-uploads/<device>/<uuid>/ whatever the name says", async () => {
+    const reply = await put(`?name=${encodeURIComponent("../../../../evil/../x.txt")}`, "payload");
+    expect(reply.status).toBe(200);
+    expect(reply.json.path.startsWith(join(dir, "remote-uploads", deviceId) + "/")).toBe(true);
+    expect(reply.json.name).not.toContain("/");
+    expect(readFileSync(reply.json.path, "utf8")).toBe("payload");
+    expect(stored().filter((entry) => entry.endsWith(".txt"))).toHaveLength(1);
+    expect(existsSync(join(dir, "evil"))).toBe(false);
+  });
+
+  it("answers 413 over the cap and keeps nothing", async () => {
+    const reply = await put("?name=big.bin", "x", { headers: { "content-length": String(26 * 1024 * 1024) } });
+    expect([413, 0]).toContain(reply.status);
+    expect(stored()).toEqual([]);
+    const streamed = await put("?name=big.bin", Buffer.alloc(26 * 1024 * 1024));
+    expect([413, 0]).toContain(streamed.status);
+    expect(stored().filter((entry) => entry.endsWith("big.bin"))).toEqual([]);
+  });
+
+  it("resolves an upload for its own device only, and a send names uploads by id, never other paths", async () => {
+    const mine = (await put("?name=a.txt", "x")).json;
+    const attachments = [{ upload: mine.id }];
+    expect((await call("chat.send", { handle: "abcdef", text: "hi", attachments })).status).toBe(200);
+    expect(sent[0]![4]).toEqual([{ path: mine.path, name: "a.txt", isDir: false }]);
+    const other = await pairWith(devices);
+    const foreign = await send("POST", "/api/call/chat.send", { body: { handle: "abcdef", text: "hi", attachments }, cookie: other.cookie, headers: { "idempotency-key": "z" } });
+    expect(foreign.status).toBe(404);
+    for (const bad of [{ upload: "../../etc/passwd" }, { upload: mine.path }, { upload: 5 }]) {
+      expect((await call("chat.send", { handle: "abcdef", text: "hi", attachments: [bad] })).status, JSON.stringify(bad)).toBe(400);
+    }
+    expect((await call("chat.send", { handle: "abcdef", text: "hi", attachments: Array.from({ length: 11 }, () => ({ upload: mine.id })) })).status).toBe(400);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("browses below home only, with names and no contents", async () => {
+    const reply = await call("fs.browseFolders", { path: "/etc", files: true });
+    expect([403, 404]).toContain(reply.status);
+    expect((await call("fs.browseFolders", { path: "relative" })).status).toBe(400);
+    expect((await call("fs.browseFolders", {})).status).toBe(200);
   });
 });

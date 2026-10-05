@@ -406,6 +406,8 @@ export interface FolderListing {
   /** null at the root of what may be browsed. */
   parent: string | null;
   folders: PrettyFolder[];
+  /** File names (no contents), only when the listing asked for them (the attachment picker). */
+  files?: PrettyFolder[];
 }
 
 export interface UploadResult {
@@ -523,11 +525,10 @@ export interface HostMethods {
   "browser.reveal": { args: Record<string, never>; result: null };
 
   // fs, uploads
-  "fs.browseFolders": { args: { path?: string }; result: FolderListing };
+  "fs.browseFolders": { args: { path?: string; files?: boolean }; result: FolderListing };
   "fs.pickFolder": { args: Record<string, never>; result: string | null };
   "fs.pickAttachments": { args: { kind: "photos" | "files" }; result: PickedPath[] };
   "fs.describePaths": { args: { paths: string[] }; result: PickedPath[] };
-  "uploads.put": { args: { name: string; mimeType: string; data: string }; result: UploadResult };
   "uploads.discard": { args: { id: string }; result: null };
 
   // devices, remote, app

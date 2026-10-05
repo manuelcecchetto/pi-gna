@@ -1,6 +1,7 @@
 // Composer attachments. Like Codex's local agent, files and folders are sent as paths in a
 // "# Files mentioned by the user:" block (pi reads them with its own tools); images also travel as
 // image content so the model sees them. pi resizes images itself (images.autoResize).
+import { FILE_MENTIONS_HEADER, formatFileMentions } from "../../../shared/file-mentions";
 import type { PickedPath } from "../../../shared/ipc";
 import type { ImageContent } from "../../../shared/protocol";
 
@@ -8,7 +9,7 @@ export type Attachment =
   | { id: string; kind: "image"; name: string; mimeType: string; data: string; path?: string }
   | { id: string; kind: "file"; name: string; path: string; isDir: boolean };
 
-const HEADER = "# Files mentioned by the user:";
+const HEADER = FILE_MENTIONS_HEADER;
 let seq = 0;
 const nextId = () => `a${++seq}`;
 
@@ -31,15 +32,7 @@ export function attachmentImages(attachments: Attachment[]): ImageContent[] {
   return attachments.flatMap((a) => (a.kind === "image" ? [{ type: "image" as const, data: a.data, mimeType: a.mimeType }] : []));
 }
 
-/** Codex-style mention block for everything that has a path. Empty when nothing has one. */
-export function formatFileMentions(attachments: Attachment[]): string {
-  const lines = attachments.flatMap((a) => {
-    if (!a.path) return [];
-    if (a.kind === "file") return [`## ${a.name}${a.isDir ? "/" : ""}: ${a.path}${a.isDir && !a.path.endsWith("/") ? "/" : ""}`];
-    return [`## ${a.name}: ${a.path} (image attached)`];
-  });
-  return lines.length ? `${HEADER}\n\n${lines.join("\n")}` : "";
-}
+export { formatFileMentions };
 
 export interface FileMention {
   label: string;

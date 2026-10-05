@@ -27,6 +27,7 @@ import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { serveVisual } from "./visual-protocol";
 import { VISUAL_SCHEME, visualFrameToKill } from "./visual-frame";
 import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
+import { Uploads } from "./uploads";
 import { BoardStore } from "./board";
 import { CardImages } from "./card-images";
 import { AgentBridge } from "./bridge";
@@ -173,6 +174,8 @@ const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`,
 host.onGlobal(publish);
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
+const uploads = new Uploads(join(app.getPath("userData"), "remote-uploads"));
+void uploads.prune().catch((error: Error) => log.warn("remote", `could not prune old uploads: ${error.message}`));
 bridge.route("/browser", browserRoute(() => agent));
 const uiState = new UiStateStore(join(app.getPath("userData"), "ui-state.json"), (next) => publish({ kind: "ui", ui: next }));
 const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => publish({ kind: "computer", settings: next }));
@@ -339,6 +342,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     context: remoteContext,
     allowedHosts: () => remoteHost?.allowedHosts() ?? [],
     browserView: (tab, viewer, onFrame) => remoteBrowser?.open(tab, viewer, onFrame),
+    upload: (device, name, type, body, declared) => uploads.put(device.id, name, type, body, declared),
     buildId: __PIGNA_BUILD__,
     staticDir: join(import.meta.dirname, "../mobile"),
     log: (line) => log.info("remote", line),
@@ -357,6 +361,7 @@ function registerIpc(shellEnv: Promise<void>): void {
   const core = createHostCore({
     shellEnv,
     devices,
+    uploads,
     remote: remoteHost,
     host,
     tasks,

@@ -79,7 +79,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `chat.interrupt` | remote | yes | `interrupt` (`app.ts:560`): clear_queue then abort under the chat mutex; returns the restored queued texts (`string[]`). |
 | `chat.editQueue` | remote | yes | `editQueue` (`app.ts:549`): clear, `applyQueueOp`, re-queue under the mutex; true when the queue held the text. |
 | `chat.respondDialog` | remote | yes | `respondUi`. First response wins; a later one is answered `{ ok: false, code: "already_answered" }` (a `DialogAnswer`, not an HTTP error; section 8). |
-| `chat.startTask` | remote | yes | new; absorbs `startCardChat`, `discussCard`, `fixLament`, `reviewPullRequest`, `cardWorktree`, `lamentWorktree`, triage. Kinds: `triage`, `investigate`, `resolve`, `qa`, `discuss`, `fix`, `review` (review takes `cwd`, `repo` and `item` as GitHub lists them, and `login`). Host-side (`src/main/chat-tasks.ts`): worktree, link to the card/lament, model, prompt, name, under a host lease that ends when the first run settles; a triage that ends well and that nobody views closes. Returns `{ handle, snapshot, notices }` (`notices` are what the client toasts). `board.addCard` (cwd, column, description, attachments of image bytes or host paths) adds a card, saves its images and starts its triage. `chat.send` composes `cardId` host-side; attachments and annotations follow with the phone's uploads. Landed in T22. |
+| `chat.startTask` | remote | yes | new; absorbs `startCardChat`, `discussCard`, `fixLament`, `reviewPullRequest`, `cardWorktree`, `lamentWorktree`, triage. Kinds: `triage`, `investigate`, `resolve`, `qa`, `discuss`, `fix`, `review` (review takes `cwd`, `repo` and `item` as GitHub lists them, and `login`). Host-side (`src/main/chat-tasks.ts`): worktree, link to the card/lament, model, prompt, name, under a host lease that ends when the first run settles; a triage that ends well and that nobody views closes. Returns `{ handle, snapshot, notices }` (`notices` are what the client toasts). `board.addCard` (cwd, column, description, attachments of image bytes or host paths) adds a card, saves its images and starts its triage. `chat.send` composes `cardId` host-side; annotations follow with the phone's annotations. Landed in T22. |
 | `chat.files` | remote | no | `listFiles` (`@` mentions). |
 | `chat.compactionSettings` | remote | no | `compactionSettings`. |
 | `chat.rawCommand` | desktop | yes | `command` unrestricted. Kept only until the desktop uses `chat.command`/`chat.send`; then removed. |
@@ -129,12 +129,12 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 
 | Method | Scope | Mutates | Replaces / notes |
 |---|---|---|---|
-| `fs.browseFolders` | remote | no | new. Directories only, below `homeDir`; names and `isDirectory`; no file contents, never follows symlinks out. |
+| `fs.browseFolders` | remote | no | new. Args `{ path?, files? }`. Folders below `homeDir` (the real path must stay inside it; symlinks are followed only when the target does), hidden entries skipped, 500 entries at most; `files: true` adds `files` (names and paths, never contents) for the attachment picker. `parent` is null at `homeDir`. Landed in T27. |
 | `fs.pickFolder` | desktop | no | `pickFolder` (native). |
 | `fs.pickAttachments` | desktop | no | `pickAttachments` (native). |
 | `fs.describePaths` | desktop | no | `describePaths`: reads any absolute path (image bytes), so it is desktop-only; the phone sends uploads instead (security test: remote-server.security.test.ts). |
-| `uploads.put` | remote | yes | new. Bytes from the phone stored under `userData/uploads`; returns `{ id, path, name, image? }`. Size/type caps (section 12). |
-| `uploads.discard` | remote | yes | new. |
+| `PUT /api/uploads?name=&type=` | remote | yes | **a route, not a method**: the raw body is the file (no base64, no 1 MiB JSON cap). Same pipeline as POST (device cookie, Origin, `X-Pigna-Client`). Stored under `userData/remote-uploads/<device>/<uuid>/<sanitized name>` and nowhere else (`sanitizeUploadName` drops separators, control characters and leading dots); an image type (png/jpeg/gif/webp) gives the stored name its extension. 25 MiB per file, checked on `Content-Length` and while streaming (413, nothing kept). Answers `{ id, path, name, image?: { mimeType } }`. Uploads older than 30 days are deleted at startup. |
+| `uploads.discard` | remote | yes | `{ id }`; the caller's own upload only. |
 
 **devices, remote, hello**
 
@@ -376,9 +376,8 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
   Visual frames are served from a dedicated path with their own frame CSP and rendered with `sandbox="allow-scripts"`
   (opaque origin, `connect-src 'none'`). `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on API responses.
   (`style-src 'unsafe-inline'` is allowed for the mobile build's runtime styles; the visual frame CSP stays stricter.)
-- **Limits:** JSON bodies ≤ 1 MiB; `uploads.put` ≤ 25 MiB per file (images are also returned as image content,
-  downscaled by the client to ≤ 4096 px), at most 10 uploads per message; upload dir pruned with the chat/card it
-  belongs to or after 7 days orphaned.
+- **Limits:** JSON bodies ≤ 1 MiB; `PUT /api/uploads` ≤ 25 MiB per file, at most 10 attachments per message
+  (`chat.send` checks it); uploads are deleted after 30 days (at startup). An upload resolves only for the device that made it.
 - **Process model:** `RemoteServer` binds `127.0.0.1:<port>` only and starts only when enabled; `tailscale serve`
   fronts it on 443 (tailnet only, never Funnel; refuse when Funnel is on for that port). Window close hides the window while
   remote access is on; quit warns that devices lose access and chats stop.
@@ -435,7 +434,7 @@ Additional decisions made while writing the contract:
 - **Stack:** Projects (`chat.list`, ordered like the sidebar by `projectViews` with the host's pins) -> Chats (rows carry the live chat's attention mark, matched by `sessionPath`) -> Chat, on `history` so the back swipe works. A reload inside a chat lands on Projects.
 - **Joining a chat:** `chat.open { request: { cwd, sessionPath } }` (or `chat.attach` for a handle the list already knows), then `HostClient.setChats([handle])` subscribes the stream and reads `chat.snapshot`; `chat.viewing` marks it seen. Leaving sends `chat.viewing false` + `chat.detach` and drops the subscription; the host keeps a running chat going. When the stream is live again after a drop the screen attaches once more (the lease may have lapsed).
 - **Transcript:** the desktop's `Transcript`, `Activity`, `ToolDetails`, `Markdown`, `Dialogs` and `QueueCard`, unchanged but for `src/renderer/src/lib/chat-ui.tsx`: they read expansion state, board cards, wallpaper/visuals and actions (lightbox, open link, answer dialog, edit queue) from a `ChatUi` context. The desktop provides it from its store in `renderer/src/main.tsx`; the phone from `src/mobile/chat-ui.ts` (no visual frames or wallpaper, links open in the phone's browser). "Show earlier turns" pages `chat.snapshot { before }` through `HostClient.loadEarlier`, keeping the scroll position. Touch sizing uses the `touch:` Tailwind variant (`pointer: coarse`).
-- **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. Attachments, `@` mentions and slash-command pickers are later nodes.
+- **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. `@` mentions and slash-command pickers are later nodes.
 - **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". After a browser-side EventSource retry (same URL, so without the chats on screen) the client re-subscribes and rereads the chats on `hello`, so a reconnect cannot leave a transcript stale.
 - **App info:** `app.info` (`homeDir`, `launchCwd`, `version`, `buildId`) is in the table; the phone uses `homeDir` to shorten paths.
 
@@ -495,3 +494,4 @@ Every recovery path has a test; none needed a production fix. Unit tests run in 
 | Revoked while reconnecting | server test: the revoked device's stream closes at once; client test: the next probe says unauthenticated → `unauthorized`, `onUnauthorized` once, no further reconnects | pass |
 
 The SIGSTOP case is not in vitest on purpose: it needs the real Electron process and must only ever target the PID the script itself started.
+- **Attachments (T27):** the composer's `+` opens a sheet: Photos (`<input type=file accept="image/*" multiple>`, library or camera), Files (`<input type=file multiple>`) and "Files and folders on the Mac" (`fs.browseFolders { files: true }`, attach a file or the folder you are in). A photo or file uploads at once with `HostClient.upload` and shows as a chip (uploading, ready, or red on failure); Send waits for uploads. A pasted image (where iOS gives the paste as a file) uploads the same way. `chat.send { attachments: [{ upload: id } | { path }] }`: the host resolves uploads for the calling device, reads host paths like the desktop's `describePaths`, and `ChatTasks.send` composes the `# Files mentioned by the user:` block (`src/shared/file-mentions.ts`, shared with the desktop composer) and image content, none for a `/command`. Add-card screenshots from the phone use `board.addCard` image attachments / `board.saveImage` (base64, the phone downscales); the add-card screen itself arrives with the board nodes. Check with `scripts/fake-pi.mjs`: a prompt containing `echo-attach` is echoed with `[images=N]`.

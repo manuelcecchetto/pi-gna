@@ -87,7 +87,7 @@ function setup(hostOptions: Parameters<typeof fakeHost>[0] = {}, git: () => Prom
 }
 
 const types = (log: { command: RpcCommand }[]) => log.map((entry) => entry.command.type);
-const prompt = (log: { command: RpcCommand }[]) => log.map((entry) => entry.command).find((command) => command.type === "prompt") as { message: string } | undefined;
+const prompt = (log: { command: RpcCommand }[]) => log.map((entry) => entry.command).findLast((command) => command.type === "prompt") as { message: string } | undefined;
 
 describe("starting a task's chat on the host", () => {
   it("investigates a card: attached to it by its session file, prompted, then named", async () => {
@@ -277,6 +277,21 @@ describe("sending to a chat about a card", () => {
     expect(await s.tasks.send("chat1", "Why does it flash?", "send", "aaaaaa")).toEqual({ accepted: true });
     expect(s.log.map((entry) => entry.command).findLast((command) => command.type === "prompt")).toMatchObject({ message: expect.stringMatching(/^<kanban-card>\nCard aaaaaa[^]*<\/kanban-card>\n\nWhy does it flash\?$/) });
     expect(s.applied).toEqual([{ type: "attach", id: "aaaaaa", chat: { path: "/s/chat1.jsonl", cwd: "/repo" } }]);
+  });
+
+  it("composes the file mention block and image content from attachments, but not for a command", async () => {
+    const s = setup();
+    const attachments = [
+      { path: "/u/a/photo.jpg", name: "photo.jpg", isDir: false, image: { mimeType: "image/jpeg", data: "QUJD" } },
+      { path: "/u/a/notes.txt", name: "notes.txt", isDir: false },
+    ];
+    await s.tasks.send("chat1", "see these", "send", undefined, attachments);
+    expect(prompt(s.log)).toMatchObject({
+      message: "see these\n\n# Files mentioned by the user:\n\n## photo.jpg: /u/a/photo.jpg (image attached)\n## notes.txt: /u/a/notes.txt",
+      images: [{ type: "image", data: "QUJD", mimeType: "image/jpeg" }],
+    });
+    await s.tasks.send("chat1", "/compact", "send", undefined, attachments);
+    expect(prompt(s.log)).toEqual(expect.objectContaining({ message: "/compact", images: undefined }));
   });
 
   it("queues behind a running turn as asked", async () => {

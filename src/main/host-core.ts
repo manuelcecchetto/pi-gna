@@ -4,17 +4,20 @@ import type { BoardOp, Column } from "../shared/board";
 import type { BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
 import type { GithubFilter, GithubKind } from "../shared/github";
-import { type AppInfo, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
-import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
+import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
+import { type DialogAnswer, IPC, type OpenSessionRequest, type PickedPath } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
 import { listFiles } from "./files";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
 import { describePaths } from "./attachments";
+import { browse } from "./browse";
+import type { Uploads } from "./uploads";
 import { log } from "./log";
 import type { Atp } from "./atp";
 import type { AtpRuns } from "./atp-runner";
@@ -77,6 +80,8 @@ export interface HostDeps {
   remoteBrowser(): RemoteBrowser | undefined;
   updater(): Updater | undefined;
   devices: DeviceStore;
+  /** Files a phone sent. */
+  uploads: Uploads;
   remote: RemoteHost;
   native: HostNative;
   /** What a client needs to show paths and versions (the desktop reads it from its preload arguments). */
@@ -114,6 +119,12 @@ const planPath = (plan: unknown): string => {
   return plan;
 };
 
+/** Uploads belong to a device; the desktop never has one. */
+const deviceOf = (ctx: HostContext): string => {
+  if (ctx.client === "desktop") throw new HostError("scope_denied", "uploads belong to a phone");
+  return ctx.client.device;
+};
+
 export const project = (cwd: unknown): string => {
   if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");
   return cwd;
@@ -123,6 +134,20 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, laments, github, atp, atpRuns, atpThreads, auth, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
   const env = () => deps.shellEnv;
+  /** What a send names, as attachments: the caller's own uploads by id, or paths on the host (as the desktop picker gives them). */
+  const resolveAttachments = async (ctx: HostContext, refs: AttachmentRef[] | undefined): Promise<PickedPath[]> => {
+    if (refs === undefined) return [];
+    if (!Array.isArray(refs) || refs.length > MAX_ATTACHMENTS_PER_MESSAGE) throw new HostError("bad_request", `at most ${MAX_ATTACHMENTS_PER_MESSAGE} attachments per message`);
+    return Promise.all(
+      refs.map(async (ref) => {
+        if (ref && typeof ref === "object" && "upload" in ref) return deps.uploads.resolve(deviceOf(ctx), ref.upload);
+        const path = (ref as { path?: unknown } | undefined)?.path;
+        const [picked] = await describePaths(typeof path === "string" ? [path] : []);
+        if (!picked) throw new HostError("not_found", "no such file on the host");
+        return picked;
+      }),
+    );
+  };
   return {
     "app.info": any("remote", () => deps.app),
     "chat.list": any("remote", async () => (await env(), listSessions())),
@@ -173,13 +198,19 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       }
     }),
     "chat.startTask": any<{ target: TaskTarget }>("remote", async (ctx, { target }) => tasks.start(presence(ctx), target)),
-    "chat.send": any<{ handle: string; text: string; mode?: "send" | "followUp"; cardId?: string; attachments?: unknown[]; annotations?: unknown[] }>("remote", async (_ctx, args) => {
-      // Attachments and annotations are composed host-side once the host holds uploads and annotations (the phone's).
-      if (args.attachments?.length || args.annotations?.length) throw new HostError("bad_request", "attachments and annotations are not supported by chat.send yet");
-      return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId);
+    "chat.send": any<{ handle: string; text: string; mode?: "send" | "followUp"; cardId?: string; attachments?: AttachmentRef[]; annotations?: unknown[] }>("remote", async (ctx, args) => {
+      // Annotations are composed host-side once the host holds them (the phone's).
+      if (args.annotations?.length) throw new HostError("bad_request", "annotations are not supported by chat.send yet");
+      const attachments = await resolveAttachments(ctx, args.attachments);
+      return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId, attachments);
     }),
     "chat.files": any<{ cwd: string }>("remote", async (_ctx, { cwd }) => (await env(), listFiles(cwd))),
     "chat.compactionSettings": any("remote", async () => (await env(), readCompactionSettings())),
+    "fs.browseFolders": any<{ path?: string; files?: boolean }>("remote", (_ctx, { path, files }) => browse(deps.app.homeDir, path, files === true)),
+    "uploads.discard": any<{ id: string }>("remote", async (ctx, { id }) => {
+      await deps.uploads.discard(deviceOf(ctx), id);
+      return null;
+    }),
     "fs.pickFolder": any("desktop", () => native.pickFolder()),
     "fs.pickAttachments": any<{ kind: "photos" | "files" }>("desktop", (_ctx, { kind }) => native.pickAttachments(kind)),
     "fs.describePaths": any<{ paths: string[] }>("desktop", (_ctx, { paths }) => describePaths(Array.isArray(paths) ? paths : [])),

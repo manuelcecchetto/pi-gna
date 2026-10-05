@@ -122,8 +122,9 @@ describe("starting a chat for a task", () => {
     expect(() => dispatch(core, desktop(), "board.addCard", { cwd: "repo", column: "todo", description: "x" })).toThrow("absolute path");
   });
 
-  it("refuses attachments on chat.send until the host composes them", async () => {
-    await expect(dispatch(core, phone(), "chat.send", { handle: "h", text: "hi", attachments: [{ path: "/x" }] })).rejects.toThrow("not supported");
+  it("refuses annotations on chat.send until the host holds them, and a host path that does not exist", async () => {
+    await expect(dispatch(core, phone(), "chat.send", { handle: "h", text: "hi", annotations: [{}] })).rejects.toThrow("not supported");
+    await expect(dispatch(core, phone(), "chat.send", { handle: "h", text: "hi", attachments: [{ path: "/no/such/file" }] })).rejects.toThrow("no such file");
   });
 });
 

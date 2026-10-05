@@ -81,7 +81,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         queues[command.streamingBehavior === "followUp" ? "followUp" : "steering"].push(command.message);
         return out({ type: "queue_update", ...queues });
       }
-      return void run(command.message);
+      // A prompt containing "echo-attach" is echoed back with the number of images it carried (attachment checks).
+      return void run(command.message.includes("echo-attach") ? `${command.message}\n[images=${command.images?.length ?? 0}]` : command.message);
     case "steer":
     case "follow_up":
       queues[command.type === "steer" ? "steering" : "followUp"].push(command.message);

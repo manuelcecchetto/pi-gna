@@ -2,7 +2,7 @@
 // works), Queue as a follow-up, Stop with a confirmation, and the chat chrome the desktop composer has: model and
 // thinking sheets, tok/s, the context meter, the queue card, retry callouts and extension widgets.
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
-import { ArrowUp, Brain, ChevronDown, Cpu, ListEnd, RotateCw, Square } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, Cpu, ListEnd, Plus, RotateCw, Square } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";
@@ -14,6 +14,8 @@ import type { SlashCommand } from "../shared/protocol";
 import type { SessionState } from "../shared/session-state";
 import type { HostClient } from "./client/host-client";
 import { hasLevels, projectFiles, useComposerData } from "./composer-data";
+import { addHostPath, type Attached, nextKey, readyRefs, refusal, uploading } from "./attach-state";
+import { AttachmentChips, AttachSheet, HostFilesSheet } from "./Attachments";
 import { ModelSheet, ThinkingSheet } from "./Sheets";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 import { toast } from "./toasts";
@@ -35,7 +37,8 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
   const session = data.session;
   const [menu, setMenu] = useState<MenuState>();
   const [files, setFiles] = useState<string[]>([]);
-  const [sheet, setSheet] = useState<"model" | "thinking">();
+  const [sheet, setSheet] = useState<"model" | "thinking" | "attach" | "host">();
+  const [attached, setAttached] = useState<Attached[]>([]);
   const key = draftKey(reduced);
   const [text, setText] = useState(() => loadDraft(key));
   const [busy, setBusy] = useState(false);
@@ -106,15 +109,43 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
 
   const running = session.running || Boolean(session.compacting);
   const ended = session.phase === "exited";
-  const typed = text.trim().length > 0;
+  const refs = readyRefs(attached);
+  const typed = text.trim().length > 0 || refs.length > 0;
+  const waiting = uploading(attached);
+
+  /** Each file uploads at once, so Send only waits for the slowest; a failed one stays as a red chip to remove. */
+  const addFiles = (files: File[]) => {
+    let current = attached;
+    for (const file of files) {
+      const name = file.name || "image";
+      const why = refusal(current, file);
+      if (why) {
+        toast(why, "error");
+        continue;
+      }
+      const key = nextKey();
+      const image = file.type.startsWith("image/");
+      current = [...current, { key, name, source: "upload", image, state: "uploading" }];
+      const settle = (patch: Partial<Attached>) => setAttached((list) => list.map((a) => (a.key === key ? { ...a, ...patch } : a)));
+      void client
+        .upload(file, name)
+        .then((done) => settle({ state: "ready", ref: { upload: done.id }, name: done.name, image: Boolean(done.image) }))
+        .catch((error) => settle({ state: "error", error: failure(error) }));
+    }
+    setAttached(current);
+  };
 
   const send = async (mode: "send" | "followUp") => {
-    if (!typed || busy || ended) return;
+    if (!typed || waiting || busy || ended) return;
     const sent = text;
+    const sentRefs = refs;
     setBusy(true);
     try {
-      const result = await client.call("chat.send", { handle: session.handle, text: sent.trim(), mode });
-      if (result.accepted) edit((current) => (current === sent ? "" : current));
+      const result = await client.call("chat.send", { handle: session.handle, text: sent.trim(), mode, ...(sentRefs.length ? { attachments: sentRefs } : {}) });
+      if (result.accepted) {
+        edit((current) => (current === sent ? "" : current));
+        setAttached((list) => list.filter((a) => a.state === "error" || !a.ref || !sentRefs.includes(a.ref)));
+      }
       else toast(result.error ?? "pi did not take the message", "error");
     } catch (error) {
       toast(`Could not send: ${failure(error)}`, "error");
@@ -185,6 +216,7 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
                 ))}
               </div>
             )}
+            <AttachmentChips list={attached} onRemove={(key) => setAttached((list) => list.filter((a) => a.key !== key))} />
             <textarea
               ref={field}
               value={text}
@@ -197,12 +229,22 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
                 edit(event.target.value);
                 setMenu(detectMenu(event.target.value, event.target.selectionStart));
               }}
+              onPaste={(event) => {
+                // Where iOS hands over a pasted image as a file.
+                const images = [...event.clipboardData.files].filter((f) => f.type.startsWith("image/"));
+                if (!images.length) return;
+                event.preventDefault();
+                addFiles(images);
+              }}
               onSelect={(event) => {
                 if (menu) setMenu(detectMenu(event.currentTarget.value, event.currentTarget.selectionStart));
               }}
               className="selectable block max-h-40 w-full resize-none bg-transparent px-3.5 pt-3 pb-1 text-[16px] leading-snug text-fg outline-none placeholder:text-faint"
             />
             <div className="flex items-center gap-1 px-2" data-testid="status-row">
+              <button type="button" aria-label="Attach" disabled={ended} onClick={() => setSheet("attach")} data-testid="attach" className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-muted disabled:opacity-50">
+                <Plus size={18} />
+              </button>
               <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("model")} data-testid="model-chip" className="flex min-h-10 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-muted disabled:opacity-50">
                 <Cpu size={14} className="shrink-0" />
                 <span className="max-w-32 truncate">{session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model")}</span>
@@ -227,7 +269,7 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
                 </button>
               )}
               {running && (
-                <button type="button" disabled={!typed || busy} onClick={() => void send("followUp")} data-testid="queue" className="flex h-10 items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] text-muted disabled:opacity-40">
+                <button type="button" disabled={!typed || waiting || busy} onClick={() => void send("followUp")} data-testid="queue" className="flex h-10 items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] text-muted disabled:opacity-40">
                   <ListEnd size={15} /> Queue
                 </button>
               )}
@@ -235,7 +277,7 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
                 type="button"
                 aria-label={running ? "Send now" : "Send"}
                 data-testid="send"
-                disabled={!typed || busy || ended}
+                disabled={!typed || waiting || busy || ended}
                 onClick={() => void send("send")}
                 className="flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-full bg-accent px-3 text-[14px] font-medium text-white disabled:opacity-40"
               >
@@ -246,6 +288,17 @@ export function MobileComposer({ client, session: reduced }: { client: HostClien
           </>
         )}
       </div>
+      {sheet === "attach" && <AttachSheet onClose={() => setSheet(undefined)} onFiles={addFiles} onHost={() => setSheet("host")} />}
+      {sheet === "host" && (
+        <HostFilesSheet
+          client={client}
+          onClose={() => setSheet(undefined)}
+          onPick={(item) => {
+            setSheet(undefined);
+            setAttached((list) => addHostPath(list, item));
+          }}
+        />
+      )}
       {sheet === "model" && (
         <ModelSheet
           models={data.models}

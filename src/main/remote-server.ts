@@ -69,6 +69,8 @@ export interface RemoteServerOptions {
   onStream?(event: "open" | "close", clientId: string, deviceId: string): void;
   /** Starts frames of a browser tab for one viewer (throws on an unknown tab); undefined while the browser is not ready. */
   browserView?(tab: string, viewer: ViewerSpec, onFrame: (frame: Frame) => void): ViewHandle | undefined;
+  /** `PUT /api/uploads`: stores the request body for this device (cap enforced while streaming). */
+  upload?(device: DeviceInfo, name: string | null, type: string | null, body: IncomingMessage, declared: number | undefined): Promise<unknown>;
   /** Tests: do not demand Tailscale-User-Login. */
   requireLogin?: boolean;
   heartbeatMs?: number;
@@ -202,8 +204,10 @@ export class RemoteServer {
       if (!path.startsWith("/api/")) return await this.serveStatic(req, res, path);
       this.apiHeaders(res);
       const post = req.method === "POST";
-      if (!post && req.method !== "GET") throw new HostError("bad_request", "method not allowed");
-      if (post) this.csrf(req, host);
+      const put = req.method === "PUT";
+      if (!post && !put && req.method !== "GET") throw new HostError("bad_request", "method not allowed");
+      if (post || put) this.csrf(req, host);
+      if (put && path !== "/api/uploads") throw new HostError("bad_request", "method not allowed");
 
       if (path === "/api/hello" && !post) return this.json(res, 200, await this.hello(req));
       if (path === "/api/pair" && post) return this.json(res, 200, await this.pair(req, await this.body(req)));
@@ -213,6 +217,7 @@ export class RemoteServer {
       const caller = await this.authenticate(req);
       if (path === "/api/events" && !post) return this.events(req, res, url, caller);
       if (path === "/api/subscribe" && post) return this.json(res, 200, this.subscribe(caller, await this.body(req)));
+      if (put) return await this.putUpload(req, res, url, caller);
       const view = /^\/api\/browser\/view\/([A-Za-z0-9-]{1,64})$/.exec(path);
       if (view && !post) return this.browserView(req, res, url, caller, view[1]!);
       const call = /^\/api\/call\/([A-Za-z0-9_.-]{1,64})$/.exec(path);
@@ -385,6 +390,24 @@ export class RemoteServer {
       throw error;
     } finally {
       this.o.log?.(`remote ${deviceId} ${method} ${status}`);
+    }
+  }
+
+  /** `PUT /api/uploads?name=&type=`: the raw body is the file; the answer is the `UploadResult`. */
+  private async putUpload(req: IncomingMessage, res: ServerResponse, url: URL, caller: Caller) {
+    let status = 200;
+    try {
+      if (!this.o.upload) throw new HostError("unavailable", "uploads are not available");
+      const length = header(req, "content-length");
+      const declared = length === undefined ? undefined : Number(length);
+      if (declared !== undefined && !(Number.isInteger(declared) && declared >= 0)) throw new HostError("bad_request", "invalid Content-Length");
+      const result = await this.o.upload(caller.device, url.searchParams.get("name"), url.searchParams.get("type") ?? header(req, "content-type") ?? null, req, declared);
+      this.json(res, 200, result);
+    } catch (error) {
+      status = error instanceof HostError ? error.status : 500;
+      throw error;
+    } finally {
+      this.o.log?.(`remote ${caller.device.id} uploads.put ${status}`);
     }
   }
 
