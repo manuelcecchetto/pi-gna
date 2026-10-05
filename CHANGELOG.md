@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > Remote access: Tailscale's status no longer fails with an "is not valid JSON" error when pi-gna is opened from the Dock or Finder and uses the Tailscale app's own CLI; a Tailscale answer that is not JSON now shows what Tailscale said.
+
 ## 0.5.0 - 2026-10-05
 
 - iPhone remote access (off by default): use pi-gna from Safari or the Home Screen over Tailscale (`tailscale serve`, HTTPS, your tailnet only), with the same chats, approvals, board, laments, GitHub, ATP, browser and settings. Agents, repositories, the browser and Computer Use stay on the Mac. Pair each phone with a one-time code the Mac approves. The Mac must be awake and online (idle sleep can be prevented, a closed lid cannot). Setup: README, iPhone remote access.
