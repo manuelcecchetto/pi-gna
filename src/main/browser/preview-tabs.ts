@@ -1,12 +1,22 @@
 // Pure parts of preview tabs: which tab a file opens in, which root it is served from, and the file watcher.
 import { watch, type FSWatcher } from "node:fs";
 import { dirname, basename, sep } from "node:path";
+import type { PreviewMode } from "../../shared/preview";
 
 export const RELOAD_DEBOUNCE_MS = 150;
 
 /** The tab already previewing `path`, if any; a preview of the same file is reused unless a new tab is asked for. */
 export function reusableTab(tabs: { id: string; path?: string }[], path: string): string | undefined {
   return tabs.find((tab) => tab.path === path)?.id;
+}
+
+/**
+ * Whether opening a file again in the tab already previewing it has to load the page again: another view, a line to jump
+ * to (the viewer reads it from the URL when it starts), or a crashed page. Otherwise the tab is just shown, keeping its
+ * scroll position and, for a long document, a layout that took seconds.
+ */
+export function needsReload(shown: PreviewMode, wanted: PreviewMode, line?: number, crashed = false): boolean {
+  return crashed || shown !== wanted || (line !== undefined && Number.isInteger(line) && line > 0);
 }
 
 /** Root a file is served from: the project when the file lies inside it, otherwise the file's own directory. Both realpathed. */

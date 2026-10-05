@@ -17,7 +17,7 @@ token registry `src/main/browser/preview-protocol.ts`, tab wiring and live reloa
 | PDF | Served raw as `application/pdf`; Chromium's built-in viewer renders it. No pdf.js. |
 | HTML | Served raw; relative assets resolve under the same token. Source mode (`?view=raw`) goes through the viewer. |
 | Media | Wrapped by the viewer (`<video>`/`<audio>` against the raw URL); handler supports Range. |
-| docx | `docx-preview` (Apache-2.0) + `jszip` in the viewer bundle. Not mammoth. |
+| docx, pptx, xlsx | BetterOffice canvas engines (Apache-2.0) in the viewer bundle: `@betteroffice/docx-react` 0.4.3 for DOCX, the `pptx` 0.2.0 and `xlsx` 0.3.0 cores. Canvas only, no HTML rendering ("Office formats"). |
 | Viewer build | Separate Vite entry `vite.preview.config.ts` -> `out/preview`, added to `scripts/build.mjs`. Not a static bundle under `resources/`. |
 | Confinement | Token is the only capability. Handler enforces root containment (realpath) and a dotfile deny list; `BrowserManager` blocks navigation and popups from non-preview tabs to the scheme. |
 
@@ -49,7 +49,9 @@ agent extension share one table.
 | `pdf` | pdf | rendered | raw `application/pdf` (Chromium viewer) |
 | `png jpg jpeg gif webp avif bmp ico` | image | rendered | viewer page (`<img>`, fit/zoom/checkerboard) over raw bytes |
 | `svg` | image | rendered, source | viewer `<img src=raw>` (an `<img>` never runs SVG scripts); source = text viewer |
-| `docx` | docx | rendered | viewer + docx-preview; `.doc` and other Office formats get the info card |
+| `docx` | docx | rendered | viewer, BetterOffice `DocxEditor` (canvas pages); `.doc` and other legacy formats get the info card |
+| `pptx` | pptx | rendered | viewer, BetterOffice pptx core (one canvas per slide) |
+| `xlsx` | xlsx | rendered | viewer, BetterOffice xlsx core (one canvas, sheet tabs) |
 | `md markdown mdx` | markdown | rendered, raw | viewer; rendered goes through `renderMarkdown` (marked + DOMPurify) |
 | `html htm xhtml` | html | rendered, source | rendered: raw bytes (scripts run, like a web page); source: viewer |
 | `json jsonc` | json | tree/pretty, raw | viewer (highlighted, collapsible) |
@@ -66,15 +68,18 @@ tells the two apart: for a viewer kind a navigation (`Accept` includes `text/htm
 
 ## Viewer architecture and theming
 
-- One page, one bundle (`src/preview/`, React is not required; plain TS with small renderers per kind, lazy
-  `import()` per kind so a markdown file does not load docx-preview and shiki is loaded only for code/json/md fences).
+- One page, one bundle (`src/preview/`): plain TS with small renderers per kind, lazy `import()` per kind, so a markdown
+  file loads no Office engine and shiki is loaded only for code/json/md fences. React is used only by the DOCX view
+  (BetterOffice's `DocxEditor`) and is loaded only with it.
 - Output `out/preview/` is served under `pigna-file://<token>/__viewer/*`; the `__viewer` prefix is reserved and read
   from `join(import.meta.dirname, "../preview")` (inside app.asar when packaged; `fs` reads it, like `out/mobile` and the
   renderer today). Files named `__viewer` in a project are unreachable: acceptable.
-- The viewer response has a strict CSP: `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline';
-  img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self'; frame-src 'none';
-  object-src 'none'; base-uri 'none'; form-action 'none'`. (`'unsafe-inline'` styles are needed for docx-preview
-  output and shiki.) Plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. Viewer pages have no
+- The viewer response has a strict CSP: `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self';
+  style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:;
+  connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`.
+  `'wasm-unsafe-eval'` lets the BetterOffice engines compile their wasm (it allows no JS `eval`); `worker-src 'self'`
+  covers the DOCX layout worker and the text-export worker. (`'unsafe-inline'` styles are needed for BetterOffice's
+  React styles and shiki.) Plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. Viewer pages have no
   preload and no Node (the partition is already sandboxed, context-isolated).
 - **Raw HTML gets no CSP from us** (it must behave like a web page), only `Referrer-Policy: no-referrer` and `nosniff`.
 - Theming: the app theme is mirrored by `prefers-color-scheme` of the view (`nativeTheme` already follows the app);
@@ -167,7 +172,7 @@ not stop a web page from loading img/script/iframe or navigating to the scheme.*
 
 PDF search; HTML `<base>`; `Content-Disposition`; very large file memory behavior beyond the stream design; Windows/Linux.
 
-## docx library **(spiked)**
+## docx library **(spiked; superseded by "Office formats")**
 
 Three real contracts (`.docx`, 30-83 KB; one with tables and 88 list items, one with a header image and auto-numbered headings),
 rendered in Electron with both libraries, screenshots compared.
@@ -188,13 +193,13 @@ rendered in Electron with both libraries, screenshots compared.
 runs in the viewer and needs no sanitization to be a script vector: it builds DOM nodes itself; still render it
 into a container, never `innerHTML` of its own output string. Mammoth stays out.
 
-## Office formats: BetterOffice canvas **(spiked 2026-10-05, not implemented)**
+## Office formats: BetterOffice canvas **(decided and implemented 2026-10-05)**
 
 Question: can BetterOffice (`@betteroffice/*`, Apache-2.0, Rust/wasm engines painting to canvas) render DOCX, PPTX and XLSX
 read-only in the viewer at an acceptable cost, given that big DOCX were slow in casus-review? **Decision: canvas only, so
 BetterOffice for all three formats.** DOCX opens with `experimentalWorkerOpen` + `previewFirstPage` behind a loader.
 PPTX and XLSX use the framework-free cores. HTML renderers (docx-preview, Quick Look, a TS table) are rejected as targets.
-docx-preview stays only until the BetterOffice DOCX path ships. Nothing is implemented yet.
+Implemented as below ("Implementation"); docx-preview is removed.
 
 Harness: `scripts/spikes/office-preview/` (README there). Electron 44.5.1, one fresh window per run on an in-memory
 session, assets over a privileged custom scheme with this viewer's `no-store` and CSP headers, 3 runs per cell (cold = first
@@ -207,7 +212,7 @@ run). "Peak" is the renderer process working set, workers included. Files: d1 24
 - **Walnut + Granola**: the Codex app's own baseline, the .NET Open XML reader plus its JS layout worker, extracted from
   `/Applications/ChatGPT.app` `app.asar` (`webview/assets`) and driven through its worker protocol. Measurement only:
   it is proprietary and cannot be shipped.
-- **docx-preview**: the current viewer.
+- **docx-preview**: the viewer at the time of the spike.
 - **Quick Look**: `qlmanage -p -o`, which emits HTML.
 
 ### DOCX
@@ -281,29 +286,103 @@ HTML and is dropped by the canvas decision. BO PPTX and XLSX are cheap. Their wa
     layer, or the React viewers.
   - Granola renders no DOM text at all.
 - **Phone**: the stream is a screencast of the view, so canvas output streams like any page (not separately tested).
-- **Caching**: the viewer handler sends `no-store` for every asset. Hashed wasm could be served `immutable`, which would
-  let Chromium cache compiled code. Untested here.
+- **Caching**: the viewer handler sends `no-store` for every asset. Making it cacheable was measured in the app and
+  dropped (see "Implementation").
 
 ### Recommendation
 
 | Format | Use | Why |
 |---|---|---|
-| DOCX | BO `DocxEditor` `mode="viewing" readOnly`, `experimentalWorkerOpen` + `previewFirstPage`, loader until `onFirstPagePainted`, "laying out" state until `getTotalPages()` settles | ~0.6-1.0 s first page on 24-167 pages; b3 full layout ~7 s off the main thread; Word-faithful pagination; Walnut is 4-40x slower and unshippable |
+| DOCX | BO `DocxEditor` `mode="viewing" readOnly`, `experimentalWorkerOpen` + `previewFirstPage`, loader until `onFirstPagePainted`, "laying out" state until `whenLayoutComplete()` | ~0.6-1.0 s first page on 24-167 pages; b3 full layout ~7 s off the main thread; Word-faithful pagination; Walnut is 4-40x slower and unshippable |
 | PPTX | BO core: `openPresentation` + `paintSlide`, one canvas per slide | 0.2 s, 7.5 MB, renders the deck Walnut and Quick Look fail on |
 | XLSX | BO core or `XlsxEditor readOnly` | 0.15-0.33 s, 5.2 MB |
 
-**Next levers if the DOCX loader is not enough**, ordered by expected value:
+**Next levers if the DOCX loader is not enough**: take BO's worker-only viewer release (the edit wasm then compiles once),
+then the casus-review engine patches (mirror removal, wasm prewarm: `docs/research/2026-09-09-native-docx-startup-default.md`
+there). Cacheable assets were measured and give nothing (below).
 
-1. Serve viewer assets cacheable.
-2. Take BO's worker-only viewer release, so the edit wasm compiles once.
-3. The casus-review engine patches (mirror removal, wasm prewarm: `docs/research/2026-09-09-native-docx-startup-default.md`
-   there).
+**Why casus-review opens the same contracts in about 5 s**: it pins BO 0.1.0 (patched), which has neither
+`experimentalWorkerOpen` nor `previewFirstPage`, opens on the main thread, and its comment layer needs the full
+main-thread document (`onRenderedDomContextReady`, paragraph locate) before anything is useful. On 0.4.3 the worker path
+would paint page 1 fast there too, but paragraph-anchored features wait for the main-thread copy (`DocxReplicaNotReadyError`).
+
+### Implementation
+
+Files: `src/preview/docx.tsx`, `docx-text.ts` (worker), `pptx.ts`, `xlsx.ts`, `office.ts` (shared checks, loading state,
+fonts, text layer); kinds `docx`/`pptx`/`xlsx` in `src/shared/preview.ts`; CSP in `src/main/browser/preview-protocol.ts`.
+All three read the whole file (`PREVIEW_LIMITS.office`, 25 MB) after the same checks: empty, too large, OLE container
+(legacy or password-protected), not a zip; each check shows a message instead of a broken view.
+
+- **DOCX**: `DocxEditor mode="viewing" readOnly` with `experimentalWorkerOpen` + `previewFirstPage`, no toolbar, ruler,
+  zoom control or outline; `colorMode="system"`. A full-page spinner until `onFirstPagePainted`, then a footer
+  "Laying out…" until `whenLayoutComplete()` gives the page count. `onError` before the first page fails the view unless
+  it is about fonts (missing CJK faces are reported and harmless); after it, errors are logged. `Fit` (default) / `−` / `+`
+  / ctrl-cmd-wheel zoom through the ref's `setZoom`.
+  - BO 0.4.3 gives the page column an inline `min-width` of the page *at zoom 1*, so a page zoomed to fit a narrow pane
+    sat off-center in an 834 px column. `style.css` overrides it and uses `align-items: safe center`.
+  - BO gives the full open after the preview **10 s**, then replaces the view with "Failed to Load Document"; the limit
+    is not a prop. b3 takes 7-9 s idle and 24.5 s on a loaded machine (load average 14), so it failed there.
+    `vite.preview.config.ts` raises it to 2 minutes with a build-time rewrite that fails the build when the code changes.
+  - The comments and changes sidebar stays closed: it needs a column beside the page that a preview pane does not have
+    (tried: with it open the page shifts left out of view). Tracked changes show inline on the pages.
+  - **Agent text**: the DOM mirror is per glyph and only near the viewport, and `readParagraphs` (35 ms on b3) leaves out
+    table cells (d4: 283 of 10,515 chars). The ref's `exportStructuredWithPages` took 5.1 s and kept +570 MB; the core
+    `exportDocxMarkdown` on the page took 3.4 s of main thread and kept +400 MB (wasm memory never shrinks). So after
+    layout a short-lived worker (`docx-text.ts`) runs `exportDocxMarkdown` (accepted view, tables included) and is
+    terminated: b3 gets 342k chars about 3 s after layout, the page never blocks, the tab peaks at 1.68 GB during the
+    export and returns to 1.21 GB.
+- **PPTX**: font names from `inspectPresentation`, each Office family mapped to a bundled face (exact, metric-compatible,
+  last resort), registered with the engine and the page; one canvas per slide at the pane width (max 1280 px), laid out
+  and painted when near the viewport (`IntersectionObserver`), repainted on resize. Text layer: `exportPptxMarkdown`
+  (notes included).
+- **XLSX**: one canvas the size of the pane under a transparent scroller sized to the sheet (`contentWidth/Height`); each
+  scroll or resize paints `displayList(viewport)` in the next frame. Sheet tabs in the footer. The cells name Office
+  families (`"Calibri", sans-serif`); faces for families seen in painted cells are registered and the sheet repaints with
+  them. A hidden tab paints when first shown. Text layer: the workbook handle's `exportMarkdown` (BO's caps: 200 rows by 50
+  columns per sheet). Known BO 0.3.0 gaps: no row/column headers; gridlines cross text that overflows into empty cells.
+- **Text layer**: a visually hidden `<pre>` (`.sr-only`) with the export's Markdown minus its anchor comments; the agent's
+  `browser_snapshot` and screen readers read it.
+- **Reopen**: opening a file whose tab is already open used to reload it (`startPreview` on the reused tab): b3 lost its
+  scroll position and laid out again for 6.9 s. `needsReload` (`preview-tabs.ts`) now shows the tab as it is unless the
+  view changes, a line is asked for or the page crashed: 43 ms, same page, scroll kept. This covers chat links, the agent's
+  `browser_open` and Open file.
+- **Caching, measured and dropped**: `codeCache: true` on the scheme plus `immutable` on `__viewer/assets/*` filled the
+  JS code cache, but the HTTP cache stays empty for custom-protocol responses and the wasm code cache never filled. d3's
+  first page stayed at 0.54-0.64 s (0.57-0.62 s before). Fetching the 20 MB edit wasm takes about 25 ms and
+  `compileStreaming` about 20 ms (lazy compilation); the rest of the ~0.45 s is BO opening the document. Assets stay `no-store`.
+
+Measured in the app (Apple Silicon, idle machine unless noted), first page / all pages laid out:
+
+| File | Pages | First page | Laid out | Tab peak |
+|---|---|---|---|---|
+| d3 | 20 | 0.57-0.62 s | 1.3 s | |
+| b1 *SPA Müller mit Markup* | 44 | 0.89 s | 2.1 s | 0.70 GB |
+| b4 *SPA Müller* | 50 | 0.81 s | 2.1 s | 0.73 GB |
+| b2 *Framework Agreement* | 172 | 0.61 s | 2.2 s | 0.73 GB |
+| b3 *Refinancing Amendment* | 155 | 1.07 s | 7.1 s | 1.33 GB (1.68 GB during the text export) |
+| b3, load average 14 | 155 | 3.7 s | 24.5 s | |
+| PPTX p1-p4 | 5-14 slides | 0.20-0.27 s | | ~0.2 GB |
+| XLSX x1-x4 | 1-6 sheets | 0.14-0.35 s | | ~0.2 GB |
+
+Every open tab keeps its engine: a big contract holds about 0.7-1.3 GB while its tab is open (macOS compresses it while
+hidden). Closing the tab ends the renderer process and frees it.
+
+Real-app checks (a throwaway instance driven over the agent bridge and CDP; the repeatable part is in
+`scripts/verify-file-preview.mjs`):
+
+- **Chat links**: six chips (four DOCX, a deck, a workbook) clicked 150 ms apart open six tabs that all render; clicking
+  open documents again only switches tabs.
+- **Quick swaps**: ten opens 100 ms apart with repeats (no duplicate tabs, repeats not reloaded); 40 tab switches 50 ms
+  apart; live reload replacing a file twice while it was still laying out (ends on the last content); Markdown preview links
+  into DOCX/XLSX/PPTX followed and backed out quickly.
+- Closing all tabs leaves no preview renderer process (workers included).
 
 ## Viewer build **(decided)**
 
 Separate Vite entry, `vite.preview.config.ts` (`root: src/preview`, `outDir: out/preview`, `emptyOutDir`, `base: "./"`,
-minify), appended to the list in `scripts/build.mjs` next to the mobile build. Reasons: the viewer imports npm
-packages (marked, DOMPurify, shiki, docx-preview) and needs the Vite pipeline, which `resources/visual` (hand-written
+minify, React plugin, ES module workers), appended to the list in `scripts/build.mjs` next to the mobile build. Reasons:
+the viewer imports npm packages (marked, DOMPurify, shiki, BetterOffice with its wasm, workers and fonts) and needs the
+Vite pipeline, which `resources/visual` (hand-written
 static files, no imports) does not have; `out/**` is already packed by electron-builder (`files: out/**`), so packaging
 needs no change; `out/mobile` is the precedent for reading a built bundle from `import.meta.dirname` in main.
 Dev: `electron-vite dev` does not run it; `pnpm dev` builds the viewer once first, `pnpm dev:preview` rebuilds on change, and main reports a clear 500 page "viewer not built" if `out/preview` is missing.
@@ -320,23 +399,16 @@ visual fences, so those stay plain code), shiki-highlights fences via `highlight
 (`links.ts`), shows flat YAML front matter as a small table and a collapsible Contents list from 4 headings. Relative
 images get `?raw=1` (a plain URL would return the viewer page); remote images are not loaded (CSP `img-src 'self' data:
 blob:`) and show their alt text. Links: `#x` scrolls, same-token links navigate the tab, `http(s)` open in a new tab
-(`target=_blank`), everything else loses its `href`. The Source button reloads the page with `?view=raw`.
+(`target=_blank`), everything else loses its `href`. `renderMarkdown(body, { fileLinks: false })`: the chat's file chips
+(`span[data-file]`, wired up only in the chat) made every local link in a preview dead until 2026-10-05. The Source
+button reloads the page with `?view=raw`.
 
-**docx**: `src/preview/docx.ts` (lazy `import("docx-preview")`, `jszip` is its declared dependency). Pages render into a
-detached container first, so a failure shows a message instead of a blank page; they stay white on the themed surround,
-`Fit` (default, scales with CSS `zoom` to the pane width, never above 100%) / `-` / `+` / ctrl-cmd-wheel / `0` zoom,
-footer shows page count and size. No raw mode: docx is rendered-only. Messages: empty file; over `PREVIEW_LIMITS.docx`
-(25 MB) -> message pointing at Open with default app; OLE header (`D0 CF 11 E0`: legacy or password-protected, Word encrypts
-`.docx` into an OLE container) -> "Can't preview"; not a zip -> "not a valid .docx"; renderer throws -> "may be corrupt".
-`.doc` goes to the info card with a legacy-format title. **CSP unchanged**: docx-preview emits inline `style` attributes and
-`<style>` (covered by `style-src 'unsafe-inline'`) and with `useBase64URL: true` images are `data:` URIs (`img-src data:`);
-`script-src 'self'` is untouched. Checked in a throwaway Electron harness on real contracts (dark and light), a corrupt
-file, a fake OLE `.docx` and `.doc`. Progressive rendering is not done: the 25 MB cap is the guard. Tracked changes are not
-shown (`renderChanges: false`: deletions hidden, insertions shown as plain text).
+**docx, pptx, xlsx**: see "Office formats", Implementation. `.doc` goes to the info card with a legacy-format title.
 
 **Media and verification**: `src/preview/media.ts` is a bare `<video>`/`<audio controls>` over the raw URL. `node scripts/verify-file-preview.mjs`
-(`pnpm verify:preview`, after `pnpm build`) is the end-to-end check through a throwaway app: every kind, confinement from a web tab,
-handler containment, live reload, a chat file link. It found that the handler answered a raw HTML page's own stylesheet/script/image
+(`pnpm verify:preview`, after `pnpm build`) is the end-to-end check through a throwaway app: every kind (DOCX, PPTX and XLSX from
+generated files: what the canvas painted and the text layer), reopening an open file without a reload, a Markdown link into a
+docx, confinement from a web tab, handler containment, live reload, chat file links (a Markdown file and a docx). It found that the handler answered a raw HTML page's own stylesheet/script/image
 requests with the viewer page (they were viewer kinds without `?raw=1`); a request whose `Accept` lacks `text/html` is now a
 subresource and gets bytes. Reality vs the spike: `img` from a web tab with a known token still loads, which is why the script asserts
 fetch, iframe reads, navigation and `window.open` and not `img`. Not covered by the script: mp4 (no encoder; audio covers the
@@ -348,7 +420,7 @@ element), themes, split/full pane, pop-out window (eyeball).
 |---|---|---|
 | code / text / json / csv | 2 MB read into the viewer; highlighting capped at 512 KB or 10,000 lines | plain unhighlighted text for the rest; above 2 MB, first 2 MB + notice + "Open with default app" |
 | markdown | 2 MB | raw mode for the rest |
-| docx | 25 MB | info card |
+| docx, pptx, xlsx | 25 MB (`PREVIEW_LIMITS.office`) | message pointing at Open with default app |
 | image | no cap (Chromium decodes) | n/a |
 | pdf, video, audio | none (streamed with Range) | n/a |
 | any file read by the handler | stream with `createReadStream` (spiked path), never `readFile` of the whole file | n/a |
@@ -399,7 +471,7 @@ tapping a tab. Pop-out and DevTools buttons stay as they are for web tabs.
 - `registerSchemesAsPrivileged` is already called once in `registerAppScheme()`: the new scheme must be added to that
   array, not a second call.
 - A root must be `realpath`ed before comparison (macOS `/tmp` is a symlink).
-- mammoth is clearly worse (numbering, headers, images); docx-preview it is.
+- mammoth is clearly worse (numbering, headers, images); docx-preview it was, until the canvas decision ("Office formats").
 
 ## Open questions
 
@@ -408,6 +480,6 @@ tapping a tab. Pop-out and DevTools buttons stay as they are for web tabs.
 2. Should rendered HTML run with `connect-src` limited to its own origin and `localhost`? Prototypes call APIs; the dotfile
    deny list plus "never auto-open" was chosen instead. Revisit if an agent-fetched untrusted HTML flow appears.
 3. Live reload of an HTML preview when a sibling asset changes (watching a whole root is costly): not done, only the opened file.
-4. `.doc`: info card. `.xlsx`, `.pptx` (and replacing docx-preview): BetterOffice canvas, see "Office formats"; info card until it ships.
+4. `.doc`, `.xls`, `.ppt` (legacy binary formats): info card. BetterOffice reads only OOXML.
 5. Whether `browser_snapshot` (accessibility/DOM walk) gives useful output on the Chromium PDF viewer (it is a plugin/OOPIF); the
    screenshot works (spiked), the snapshot was not tried.

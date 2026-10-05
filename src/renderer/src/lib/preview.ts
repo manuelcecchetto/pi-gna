@@ -1,5 +1,5 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
-import { File, FileCode, FileImage, FileText, Film, Music, type LucideIcon } from "lucide-react";
+import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type LucideIcon } from "lucide-react";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
 import { setPane, store, toast } from "../state/app";
 import { resolveFilePath } from "./preview-path";
@@ -53,9 +53,13 @@ export function iconForKind(kind: PreviewKind): LucideIcon {
     case "markdown":
     case "text":
     case "docx":
-    case "table":
     case "pdf":
       return FileText;
+    case "table":
+    case "xlsx":
+      return FileSpreadsheet;
+    case "pptx":
+      return Presentation;
     case "video":
       return Film;
     case "audio":

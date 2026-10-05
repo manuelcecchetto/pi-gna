@@ -19,7 +19,7 @@ import { log } from "../log";
 import { cdp } from "./cdp";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 import { previews } from "./preview-protocol";
-import { isRunnable, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
+import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
 
 export const PARTITION = "persist:pigna-browser";
 const CONSOLE_LIMIT = 300;
@@ -304,10 +304,12 @@ export class BrowserManager {
     const project = options.root ? await realpath(options.root).catch(() => undefined) : undefined;
     const root = previewRoot(file, project);
     const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
-    const tab = (reuse ? this.tabs.get(reuse) : undefined) ?? this.makeTab(options.agent);
+    const reused = reuse ? this.tabs.get(reuse) : undefined;
+    const tab = reused ?? this.makeTab(options.agent);
     const defaults = previewFor(file);
     const mode = options.mode && defaults.modes.includes(options.mode) ? options.mode : defaults.mode;
-    this.startPreview(tab, file, root, mode, options.line);
+    const shown = reused?.preview?.info.mode;
+    if (!shown || needsReload(shown, mode, options.line, tab.view.webContents.isCrashed())) this.startPreview(tab, file, root, mode, options.line);
     this.activate(tab.id);
     if (!tab.win) this.events.reveal();
     return tab;

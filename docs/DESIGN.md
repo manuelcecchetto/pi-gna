@@ -249,10 +249,11 @@ loads `pigna-file://<token>/<path>`. Full decisions, spike evidence and limits: 
   128-bit token per preview root (the project directory when the file is inside it, else the file's directory); the
   token is the only capability, lives in memory, and is revoked when the last tab of the root closes.
 - **Kinds**: PDF, HTML and media bytes are served raw (Range supported; Chromium's own PDF viewer, no pdf.js). Everything
-  else (markdown, docx, code/text, json, csv, images, media wrapper, info card) loads the bundled viewer from `src/preview`
-  (separate Vite build, `vite.preview.config.ts` -> `out/preview`, `docx-preview` + `jszip` the only added libraries),
+  else (markdown, docx, pptx, xlsx, code/text, json, csv, images, media wrapper, info card) loads the bundled viewer from
+  `src/preview` (separate Vite build, `vite.preview.config.ts` -> `out/preview`; Office files paint on canvas with the
+  BetterOffice wasm engines, docs/FILE_PREVIEW.md "Office formats"),
   which fetches the bytes from the same origin with `?raw=1`. Rendered/Raw toggles per tab (`?view=raw`).
-- **Security**: file contents are untrusted. The viewer gets a strict CSP (`script-src 'self'`, no network), no preload
+- **Security**: file contents are untrusted. The viewer gets a strict CSP (`script-src 'self' 'wasm-unsafe-eval'`, no network), no preload
   and no Node; markdown goes through DOMPurify; SVG is shown through `<img>`. The handler realpath-confines every request
   to its root, denies dotfiles and directories, and `BrowserManager` cancels navigation and popups to the scheme from any
   tab that is not itself a preview, because Chromium only blocks `fetch` reads, not img/iframe/navigation, from a web tab.

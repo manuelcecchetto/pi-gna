@@ -2,13 +2,23 @@ import { mkdtempSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { debounced, isRunnable, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
+import { debounced, isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
 
 describe("reusableTab", () => {
   it("finds the tab previewing the same path", () => {
     const tabs = [{ id: "a" }, { id: "b", path: "/x/a.pdf" }, { id: "c", path: "/x/b.pdf" }];
     expect(reusableTab(tabs, "/x/b.pdf")).toBe("c");
     expect(reusableTab(tabs, "/x/c.pdf")).toBeUndefined();
+  });
+});
+
+describe("needsReload", () => {
+  it("shows an open preview as it is unless the view, a line or a crash asks for a load", () => {
+    expect(needsReload("rendered", "rendered")).toBe(false);
+    expect(needsReload("rendered", "rendered", 0)).toBe(false);
+    expect(needsReload("rendered", "raw")).toBe(true);
+    expect(needsReload("raw", "raw", 12)).toBe(true);
+    expect(needsReload("rendered", "rendered", undefined, true)).toBe(true);
   });
 });
 

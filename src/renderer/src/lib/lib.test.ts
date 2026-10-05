@@ -110,6 +110,14 @@ describe("markdown file links", () => {
     expect(html).toContain("manager.ts</span>");
   });
 
+  it("keeps plain hrefs for the file viewer", () => {
+    const html = markdownToHtml("[spec](docs/a.docx) and [b](../b.md)", { fileLinks: false });
+    expect(html).toContain('href="docs/a.docx"');
+    expect(html).toContain('href="../b.md"');
+    expect(html).not.toContain("data-file");
+    expect(markdownToHtml("[spec](docs/a.docx)")).toContain('data-file="docs/a.docx"');
+  });
+
   // DOMPurify needs a DOM, which the node test environment lacks: this checks the pre-sanitize HTML, where
   // script URLs are still ordinary hrefs for the sanitizer to strip, exactly as before.
   it("leaves web links alone", () => {
