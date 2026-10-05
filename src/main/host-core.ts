@@ -4,7 +4,7 @@ import type { BoardOp, Column } from "../shared/board";
 import type { BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
 import type { GithubFilter, GithubKind } from "../shared/github";
-import { type AppInfo, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
+import { type AppInfo, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
@@ -100,6 +100,8 @@ const tabId = (raw: { id: unknown }) => {
 };
 
 /** The caller as a lease holder on chats. */
+/** The caller as session-host's HostCtx, so an answer or event names who acted. */
+const callerOf = (ctx: HostContext): HostCtx => ({ caller: ctx.client === "desktop" ? "desktop" : { device: ctx.client.device }, clientId: ctx.clientId, bootId: "" });
 const presence = (ctx: HostContext) => ({ clientId: ctx.clientId, actor: ctx.client === "desktop" ? "desktop" : ctx.client.device });
 
 /** gh and git run on a project: an absolute folder. */
@@ -157,9 +159,9 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "chat.live": any("remote", () => host.attentionAll()),
     "chat.interrupt": any<{ handle: string }>("remote", (_ctx, { handle }) => host.interrupt(handle)),
     "chat.editQueue": any<{ handle: string; op: QueueEdit }>("remote", (_ctx, { handle, op }) => host.editQueue(handle, op)),
-    "chat.respondDialog": any<{ handle: string; response: ExtensionUiResponse }>("remote", (_ctx, { handle, response }): DialogAnswer => {
+    "chat.respondDialog": any<{ handle: string; response: ExtensionUiResponse }>("remote", (ctx, { handle, response }): DialogAnswer => {
       try {
-        host.respondDialog(handle, response);
+        host.respondDialog(handle, response, callerOf(ctx));
         return { ok: true };
       } catch (error) {
         // Answered elsewhere first (a phone), or the chat ended: the client drops the card; anything else keeps it.

@@ -431,3 +431,34 @@ Additional decisions made while writing the contract:
 - **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. Attachments, `@` mentions and slash-command pickers are later nodes.
 - **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". After a browser-side EventSource retry (same URL, so without the chats on screen) the client re-subscribes and rereads the chats on `hello`, so a reconnect cannot leave a transcript stale.
 - **App info:** `app.info` (`homeDir`, `launchCwd`, `version`, `buildId`) is in the table; the phone uses `homeDir` to shorten paths.
+
+### Automated end-to-end test (T20, `scripts/remote-slice-e2e.mjs`)
+
+`pnpm e2e:remote` (or `node scripts/remote-slice-e2e.mjs`) proves the vertical slice without a phone, in about 4 minutes. It builds the app
+into its own folder under the temp dir (`electron-vite` + the mobile bundle, one build id), starts a test instance there (own
+`PIGNA_USER_DATA`, free debugging/inspector/remote ports, `PIGNA_BACKGROUND=1`, `PIGNA_REMOTE_LOOPBACK=1`, `scripts/fake-pi.mjs` as pi, its own
+`PI_CODING_AGENT_DIR`, a throwaway git project with a three-turn session) with remote access switched on in the profile's `settings.json`, and
+stops it by PID. Nothing touches a running pi-gna. Exit code 0 only when every check passed; a failed run keeps its folder (`app.log` inside).
+
+What it drives: two paired "phones" A and B (plain HTTP + SSE with the headers Tailscale serve and Safari would send: loopback `Host`, https
+`Origin`, `X-Pigna-Client`, `Tailscale-User-Login`, the device cookie), and the desktop window over CDP.
+
+1. **Pairing:** the Mac issues a code through the window's `studio.remote`, each phone claims it, the Mac's Allow is `pairDecide` (no test hook in the app), the cookie comes
+   from the long-poll. An unpaired client gets 401.
+2. **Open:** A opens the session file (host handle, empty `entries`), B gets the same handle (`reused`), the desktop shows the same live chat (one pi process).
+3. **Prompt and approval:** a prompt containing `ask-confirm` makes fake-pi raise a `confirm` dialog. A answers; B and the desktop drop the card on `dialog_resolved`
+   (naming A's device); B's later answer is `already_answered`; pi saw one answer. Lines 1..40 arrive once each on A, B and in the desktop's DOM.
+4. **Cancel:** B interrupts a long run started by A; it ends `aborted` everywhere with identical partial text; the host reports idle.
+5. **Reconnect:** A's stream is dropped mid-run and reopened with `Last-Event-ID` (replay, no `resync`, `seq` contiguous, lines 1..250 once); the same prompt retried with the same
+   `Idempotency-Key` returns the first result and adds no turn; the same key with another body is `400`.
+6. **Ring overflow:** with A away, more than 2000 events pass; A's reconnect gets `resync` and no replay; the snapshot plus the events after its `seq` leave no gap.
+7. **Closing clients mid-run:** A and B detach and drop their streams; the run goes on and the desktop sees it finish.
+8. **Mobile screens:** the mobile app loads in an offscreen window of the instance itself (iPhone 15 size, mobile user agent, touch emulation) through a small Tailscale-header proxy; the script navigates
+   Projects, Chats, Chat, sends a prompt from the phone's composer, taps Allow, Stop (confirm) and saves PNGs (`--shots <dir>`, default inside the work folder).
+
+Prompts steer fake-pi with `[lines=N]` and `[delay=N]` (ms). Flags: `--keep` (keep the work folder), `--no-build` with `SLICE_E2E_APP=<folder of an earlier build>`, `--shots <dir>`,
+`--screens-only` (pairing and screens, skipping the scenarios) and `--hold` (stay up at the end for manual poking).
+
+Lessons baked in: windows and browser tabs of a `PIGNA_BACKGROUND=1` instance draw no frames, so `Page.captureScreenshot` and `capturePage` of a tab never answer; the screens
+use an offscreen `BrowserWindow` created through the inspector (`--inspect`) instead. The test found that `chat.respondDialog` ignored its caller, so `dialog_resolved.by`
+named `"desktop"` for a phone's answer (fixed: `host-core.ts` passes the caller).

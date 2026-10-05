@@ -10,7 +10,7 @@ const calls: unknown[][] = [];
 const record = (name: string) => (...args: unknown[]) => (calls.push([name, ...args]), Promise.resolve({ name }));
 const deps = {
   shellEnv: Promise.resolve(),
-  host: {},
+  host: { respondDialog: (...args: unknown[]) => calls.push(["respondDialog", ...args]) },
   tasks: { start: record("tasks.start"), addCard: record("tasks.addCard"), send: record("tasks.send") },
   board: {},
   cardImages: {},
@@ -153,5 +153,13 @@ describe("chat reads for a phone", () => {
 
   it("tells a phone the home folder", () => {
     expect(dispatch(chats, phone(), "app.info", {})).toMatchObject({ homeDir: "/Users/me" });
+  });
+
+  it("passes the caller to a dialog answer, so dialog_resolved names the device that answered", () => {
+    calls.length = 0;
+    const response = { type: "extension_ui_response", id: "d1", confirmed: true };
+    dispatch(core, phone(), "chat.respondDialog", { handle: "abc123", response });
+    dispatch(core, desktop(), "chat.respondDialog", { handle: "abc123", response });
+    expect(calls.map((c) => (c[3] as { caller: unknown }).caller)).toEqual([{ device: "d1" }, "desktop"]);
   });
 });

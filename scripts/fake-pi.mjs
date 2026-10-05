@@ -20,6 +20,8 @@ const model = { id: "fake", name: "Fake", api: "fake", provider: "fake", reasoni
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
+// A prompt may carry `[lines=N]` and `[delay=N]` to override FAKE_LINES / FAKE_DELAY for that answer (scripts/remote-slice-e2e.mjs).
+const directive = (text, name, fallback) => Number(text.match(new RegExp(`\\[${name}=(\\d+)\\]`))?.[1] ?? fallback);
 let streaming = false;
 let aborted = false;
 // Queued messages (steer / follow_up while streaming) so clear_queue and queue edits behave like pi's.
@@ -92,9 +94,10 @@ async function run(text) {
   let body = "";
   const fixture = process.env.FAKE_FIXTURE ? fixtureText(process.env.FAKE_FIXTURE) : undefined;
   const chunk = Number(process.env.FAKE_CHUNK || 40);
-  const count = fixture ? Math.ceil(fixture.length / chunk) : LINES;
+  const count = fixture ? Math.ceil(fixture.length / chunk) : directive(text, "lines", LINES);
+  const delay = directive(text, "delay", DELAY);
   for (let i = 1; i <= count && !aborted; i++) {
-    await new Promise((resolve) => setTimeout(resolve, DELAY));
+    await new Promise((resolve) => setTimeout(resolve, delay));
     const delta = fixture ? fixture.slice((i - 1) * chunk, i * chunk) : `Line ${i} of the streamed answer, long enough to read.\n\n`;
     body += delta;
     out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta } });
