@@ -69,5 +69,9 @@
       "./resources/pigna-flag.ts"
     ]
   },
-  "packageManager": "pnpm@10.34.3"
+  "packageManager": "pnpm@10.34.3",
+  "dependencies": {
+    "docx-preview": "^0.4.1",
+    "jszip": "^3.10.2"
+  }
 }

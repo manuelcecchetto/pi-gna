@@ -211,6 +211,18 @@ images get `?raw=1` (a plain URL would return the viewer page); remote images ar
 blob:`) and show their alt text. Links: `#x` scrolls, same-token links navigate the tab, `http(s)` open in a new tab
 (`target=_blank`), everything else loses its `href`. The Source button reloads the page with `?view=raw`.
 
+**As built (T06)**: `src/preview/docx.ts` (lazy `import("docx-preview")`, `jszip` is its declared dependency). Pages render into a
+detached container first, so a failure shows a message instead of a blank page; they stay white on the themed surround,
+`Fit` (default, scales with CSS `zoom` to the pane width, never above 100%) / `-` / `+` / ctrl-cmd-wheel / `0` zoom,
+footer shows page count and size. No raw mode: docx is rendered-only. Messages: empty file; over `PREVIEW_LIMITS.docx`
+(25 MB) -> message pointing at Open with default app; OLE header (`D0 CF 11 E0`: legacy or password-protected, Word encrypts
+`.docx` into an OLE container) -> "Can't preview"; not a zip -> "not a valid .docx"; renderer throws -> "may be corrupt".
+`.doc` goes to the info card with a legacy-format title. **CSP unchanged**: docx-preview emits inline `style` attributes and
+`<style>` (covered by `style-src 'unsafe-inline'`) and with `useBase64URL: true` images are `data:` URIs (`img-src data:`);
+`script-src 'self'` is untouched. Checked in a throwaway Electron harness on real contracts (dark and light), a corrupt
+file, a fake OLE `.docx` and `.doc`. Progressive rendering is not done: the 25 MB cap is the guard. Tracked changes are not
+shown (`renderChanges: false`: deletions hidden, insertions shown as plain text).
+
 ## Size limits
 
 | Kind | Limit | Over the limit |

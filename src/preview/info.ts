@@ -15,7 +15,7 @@ export async function showInfo(source: Source): Promise<void> {
   card.className = "card";
   const title = document.createElement("div");
   title.className = "card-title";
-  title.textContent = "No preview for this file type";
+  title.textContent = ext === "doc" ? "Legacy Word files (.doc) can't be previewed" : "No preview for this file type";
   const list = document.createElement("dl");
   for (const [key, value] of rows) {
     const term = document.createElement("dt");
