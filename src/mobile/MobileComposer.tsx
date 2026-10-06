@@ -4,7 +4,7 @@
 // thinking sheets, tok/s, the context meter, the queue card, retry callouts and extension widgets.
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
 import { useStore } from "../renderer/src/lib/store";
-import { ArrowUp, Brain, ChevronDown, ListEnd, Plus, RotateCw, Square } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, ListEnd, Plus, RotateCw, Square } from "../renderer/src/components/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";

@@ -3,7 +3,7 @@
 // layout only reruns when the graph's shape changes, pan and zoom never re-render React, and zoomed out the cards
 // lose their text and become status-colored blocks (data-lod), so a whole plan reads as a map of its progress.
 // Running nodes glow and the edges into them march; a minimap shows where you are in a plan that does not fit.
-import { Ban, CircleCheck, CircleDashed, CircleX, Layers, LoaderCircle, Lock, Maximize, Minus, Plus, TriangleAlert } from "lucide-react";
+import { Ban, CircleCheck, CircleDashed, CircleX, Layers, LoaderCircle, Lock, Maximize, Minus, Plus, TriangleAlert } from "./icons";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AtpNode, AtpPlan } from "../../../shared/atp";
 import { type LaidEdge, type PlanLayout, layoutPlan, lineage, NODE_H, NODE_W } from "../lib/atp-layout";

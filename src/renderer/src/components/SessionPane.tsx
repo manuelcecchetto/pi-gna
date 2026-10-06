@@ -1,4 +1,4 @@
-import { Globe, ListChevronsDownUp, ListChevronsUpDown, Paperclip, SquareKanban } from "lucide-react";
+import { Globe, ListChevronsDownUp, ListChevronsUpDown, Paperclip, SquareKanban } from "./icons";
 import { useRef, useState } from "react";
 import { cardsOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../../../shared/session-state";

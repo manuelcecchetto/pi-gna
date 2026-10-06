@@ -8,13 +8,13 @@ import {
   FileText,
   Globe,
   MousePointer2,
-  type LucideIcon,
+  type IconComponent,
   Search,
   Sparkles,
   SquareKanban,
   SquareTerminal,
   Wrench,
-} from "lucide-react";
+} from "./icons";
 import { memo, type ReactNode, useMemo, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
@@ -29,7 +29,7 @@ import { PiSpinner } from "./PiLogo";
 import { Elapsed, useNow } from "./primitives";
 import { resultImages, resultText, ToolDetails } from "./ToolDetails";
 
-const ICONS: Record<ToolCategory, LucideIcon> = {
+const ICONS: Record<ToolCategory, IconComponent> = {
   read: FileText,
   edit: FilePen,
   bash: SquareTerminal,

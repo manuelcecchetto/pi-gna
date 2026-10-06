@@ -51,7 +51,6 @@
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "jszip": "^3.10.2",
-    "lucide-react": "1.49.0",
     "marked": "18.0.14",
     "qrcode-generator": "^2.0.4",
     "react": "19.3.0",

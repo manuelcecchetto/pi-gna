@@ -1,5 +1,5 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
-import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type LucideIcon } from "lucide-react";
+import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type IconComponent } from "../components/icons";
 import type { Board } from "../../../shared/board";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
 import { showBrowser, store, toast } from "../state/app";
@@ -61,7 +61,7 @@ export function shortenHome(path: string, home: string): string {
   return home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path;
 }
 
-export function iconForKind(kind: PreviewKind): LucideIcon {
+export function iconForKind(kind: PreviewKind): IconComponent {
   switch (kind) {
     case "image":
       return FileImage;

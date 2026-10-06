@@ -1,6 +1,6 @@
 // The phone's project and chat menus: folder browser for opening a project, and the long-press sheets that mirror the
 // desktop sidebar's context menus (actions.ts decides which rows).
-import { Check, ChevronLeft, Copy, Eye, EyeOff, Folder, MessagesSquare, Pin, PinOff, SquareKanban, SquarePen, X, Angry, GitPullRequest, Network } from "lucide-react";
+import { Check, ChevronLeft, Copy, Eye, EyeOff, Folder, MessagesSquare, Pin, PinOff, SquareKanban, SquarePen, X, Angry, GitPullRequest, Network } from "../renderer/src/components/icons";
 import { useEffect, useState } from "react";
 import type { FolderListing } from "../shared/host-api";
 import type { ChatAction, ProjectAction } from "./actions";

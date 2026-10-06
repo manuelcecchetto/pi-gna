@@ -1,5 +1,5 @@
 // Extension dialogs (select / confirm / input / editor) as approval cards above the composer.
-import { ShieldQuestion } from "lucide-react";
+import { ShieldQuestion } from "./icons";
 import { useEffect, useRef, useState } from "react";
 import type { ExtensionUiDialog } from "../../../shared/protocol";
 import { useChatActions } from "../lib/chat-ui";

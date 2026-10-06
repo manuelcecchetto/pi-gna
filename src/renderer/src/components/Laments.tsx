@@ -2,7 +2,7 @@
 // needed was missing, unavailable or failing. Worst first, each with the emoji of its severity; open one to read its
 // reports, open the chat that filed it, have a new chat fix it in a git worktree (Fix), and mark it resolved once
 // the fix is in (a repeat reopens it).
-import { Angry, ChevronRight, CircleCheck, MessagesSquare, RotateCcw, Trash2, Wrench } from "lucide-react";
+import { Angry, ChevronRight, CircleCheck, MessagesSquare, RotateCcw, Trash2, Wrench } from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Lament, type LamentFix, type LamentReport, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
 import { findSummary } from "../lib/board";

@@ -2,7 +2,7 @@
 // a short line per message you sent, left of the transcript. Hover magnifies the neighbours and shows
 // the message with a preview of its answer; click jumps there, dragging scrubs through the chat, and
 // ⌥↑/⌥↓ step between messages. Lines of turns on screen are brighter, bookmarked ones stay lit.
-import { Bookmark } from "lucide-react";
+import { Bookmark } from "./icons";
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toggleBookmark, useBookmarks } from "../lib/bookmarks";
 import { renderMarkdown } from "../lib/markdown";

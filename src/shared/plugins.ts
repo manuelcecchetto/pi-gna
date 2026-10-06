@@ -26,7 +26,7 @@ interface CatalogBase {
   description: string;
   homepage: string;
   logo?: CatalogLogo;
-  /** A lucide icon the renderer draws when there is no logo. */
+  /** An icon (components/icons.tsx) the renderer draws when there is no logo. */
   icon?: CatalogIcon;
 }
 

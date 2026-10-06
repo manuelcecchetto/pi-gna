@@ -1,4 +1,4 @@
-import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageSquare, Paperclip, Plus, Square, SquareKanban, X } from "lucide-react";
+import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageSquare, Paperclip, Plus, Square, SquareKanban, X } from "./icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";

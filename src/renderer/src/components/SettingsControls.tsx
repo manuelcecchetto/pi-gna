@@ -1,5 +1,5 @@
 // The controls of the Settings page's sections.
-import { ChevronDown, RotateCcw, TriangleAlert } from "lucide-react";
+import { ChevronDown, RotateCcw, TriangleAlert } from "./icons";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import type { Model } from "../../../shared/protocol";
 import { fuzzyFilter } from "../lib/fuzzy";

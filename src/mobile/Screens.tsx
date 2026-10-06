@@ -1,5 +1,5 @@
 // Projects and Chats: the two list screens above a chat.
-import { ChevronLeft, ChevronRight, FolderOpen, Pin, Search, Settings, SquarePen } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderOpen, Pin, Search, Settings, SquarePen } from "../renderer/src/components/icons";
 import { useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import { relativeTime, tildify } from "../renderer/src/lib/format";

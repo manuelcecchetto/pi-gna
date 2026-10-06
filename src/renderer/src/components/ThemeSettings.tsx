@@ -1,7 +1,7 @@
 // Settings > Appearance's custom theme (src/shared/themes.ts): fonts and colors for every project, and for the project
 // on screen also its own mode, wallpaper and logo. Each control sends a one-field patch; agents send the same ones with
 // set_theme.
-import { RotateCcw } from "lucide-react";
+import { RotateCcw } from "./icons";
 import { useEffect, useRef, useState } from "react";
 import { projectOf } from "../../../shared/board";
 import { THEMES, type Theme, WALLPAPERS } from "../../../shared/settings";

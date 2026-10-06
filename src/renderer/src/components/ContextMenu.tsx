@@ -1,5 +1,5 @@
 // A menu at a point (right click, or under a "…" button). Sections are separated by a hairline.
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "./icons";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setOverlay } from "../state/app";
 

@@ -1,5 +1,5 @@
 // The input at a Kanban column's foot: describe a task, and paste, drop or pick screenshots (and files) to go with it.
-import { FileText, Folder, ImagePlus, Plus, X } from "lucide-react";
+import { FileText, Folder, ImagePlus, Plus, X } from "./icons";
 import { useRef, useState } from "react";
 import { type Column, LIMITS } from "../../../shared/board";
 import { type Attachment, mergeAttachments } from "../lib/attachments";

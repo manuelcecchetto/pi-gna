@@ -31,8 +31,8 @@ import {
   LayoutGrid,
   MousePointerClick,
   Settings,
-  type LucideIcon,
-} from "lucide-react";
+  type IconComponent,
+} from "./icons";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/preview";
@@ -457,7 +457,7 @@ function Keys({ keys }: { keys: string }) {
   return <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 font-medium text-[11px] text-muted tracking-wider">{keys}</span>;
 }
 
-function Tool({ icon: Icon, label, keys, onClick, children }: { icon: LucideIcon; label: string; keys?: string; onClick: () => void; children?: React.ReactNode }) {
+function Tool({ icon: Icon, label, keys, onClick, children }: { icon: IconComponent; label: string; keys?: string; onClick: () => void; children?: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick} className="flex h-11 min-w-0 items-center gap-3 rounded-xl bg-raised/50 px-3.5 text-left text-[13px] text-fg hover:bg-raised">
       <Icon size={16} className="shrink-0 text-muted" />

@@ -2,7 +2,7 @@
 // turn pi's packages and resources on and off for you or for this project (Installed), and pi's built-in extensions
 // (Built-in). pi-gna keeps no plugin list: main writes pi's settings.json and mcp.json with pi's own code
 // (src/main/plugins.ts), so `pi config` in the terminal shows the same, and chats started afterwards load it.
-import { Blocks, Check, ChevronRight, ExternalLink, Globe, Image, LoaderCircle, type LucideIcon, Package, Plug, RotateCcw, Search, TriangleAlert, X } from "lucide-react";
+import { Blocks, Check, ChevronRight, ExternalLink, Globe, Image, LoaderCircle, type IconComponent, Package, Plug, RotateCcw, Search, TriangleAlert, X } from "./icons";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type CatalogConnection,
@@ -841,7 +841,7 @@ function BuiltIn({ plugins, view }: { plugins: Plugins; view: PluginView }) {
 
 // ── Pieces ───────────────────────────────────────────────────────────────────
 
-const ICONS: Record<CatalogIcon, LucideIcon> = { globe: Globe, image: Image, package: Package };
+const ICONS: Record<CatalogIcon, IconComponent> = { globe: Globe, image: Image, package: Package };
 
 /** A catalog logo on its brand tile; else an icon, a folder of your own, or the name's initial. */
 function PluginLogo({ logo, icon, name, size, folder }: { logo?: CatalogLogo; icon?: CatalogIcon | "plug"; name: string; size: number; folder?: boolean }) {

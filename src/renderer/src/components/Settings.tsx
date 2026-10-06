@@ -1,7 +1,7 @@
 // The Settings page (⌘,): pi-gna's own settings (main's settings.json: features, appearance, the models of the chats
 // pi-gna starts), the pi settings it edits in pi's settings.json (pi reads them when a chat starts, so they apply to
 // new chats) and Computer Use. While it is open, the sidebar lists its sections instead of the chats (SettingsNav).
-import { ArrowLeft, Blocks, BookOpen, Bug, Code, Globe, Info, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Blocks, BookOpen, Bug, Code, Globe, Info, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type IconComponent, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
@@ -26,7 +26,7 @@ type Group = "pi-gna" | "pi" | "Integrations";
 interface SectionInfo {
   id: SettingsSection;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   group: Group;
   about: string;
   /** What the search finds it by, besides its label. */
@@ -108,15 +108,15 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
   return (
     <>
       <div className="px-2 pb-1">
-        <button type="button" onClick={closeSettings} className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-fg/90 hover:bg-raised/60">
-          <ArrowLeft size={14} className="shrink-0 text-muted" />
+        <button type="button" onClick={closeSettings} className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] text-fg/90 hover:bg-raised/60">
+          <ArrowLeft size={16} className="shrink-0 text-muted" />
           <span className="flex-1">Back to app</span>
           <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">esc</span>
         </button>
       </div>
       <div className="px-2 pb-2">
-        <label className="flex items-center gap-2 rounded-lg bg-sunken px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-line-strong">
-          <Search size={13} className="shrink-0 text-faint" />
+        <label className="flex items-center gap-2.5 rounded-lg bg-sunken px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-line-strong">
+          <Search size={16} className="shrink-0 text-faint" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -129,7 +129,7 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
             }}
             placeholder="Search settings"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg outline-none placeholder:text-faint"
+            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-fg outline-none placeholder:text-faint"
           />
         </label>
       </div>
@@ -139,7 +139,7 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
           if (!sections.length) return null;
           return (
             <div key={group} className="mb-3">
-              <div className="px-2.5 pt-1 pb-1 text-[12px] font-medium text-faint">{group}</div>
+              <div className="px-2.5 pt-1 pb-1 text-[13px] font-medium text-faint">{group}</div>
               {sections.map((section) => {
                 const Icon = section.icon;
                 const digit = shown.indexOf(section) + 1;
@@ -148,9 +148,9 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
                     key={section.id}
                     type="button"
                     onClick={() => openSettings(section.id)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${current === section.id ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${current === section.id ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
                   >
-                    <Icon size={14} className="shrink-0 text-muted" />
+                    <Icon size={16} className="shrink-0 text-muted" />
                     <span className="min-w-0 flex-1 truncate">{section.label}</span>
                     {hints && digit <= 9 && <DigitHint digit={digit} />}
                   </button>
@@ -159,7 +159,7 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
             </div>
           );
         })}
-        {!shown.length && <p className="px-2.5 py-2 text-[12.5px] text-faint">No settings match “{query}”.</p>}
+        {!shown.length && <p className="px-2.5 py-2 text-[13.5px] text-faint">No settings match “{query}”.</p>}
       </nav>
     </>
   );
@@ -315,7 +315,7 @@ function GeneralSection({ pi }: { pi: Pi }) {
 const REPO = homepage.replace(/\/$/, "");
 
 /** A link out of the app, opened in your browser. */
-function LinkButton({ url, icon: Icon, children }: { url: string; icon: LucideIcon; children: string }) {
+function LinkButton({ url, icon: Icon, children }: { url: string; icon: IconComponent; children: string }) {
   return (
     <Button title={url} onClick={() => window.studio.openExternal(url)}>
       <Icon size={12} /> {children}

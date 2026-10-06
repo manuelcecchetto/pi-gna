@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X } from "../renderer/src/components/icons";
 import { createStore, useStore } from "../renderer/src/lib/store";
 
 interface Toast {

@@ -1,6 +1,6 @@
 // The phone's Laments page: one project's laments as on the desktop (Laments.tsx), worst first. A row opens to its
 // reports and the chats that filed them; the actions sheet starts a Fix chat on the Mac, marks resolved/reopens, deletes.
-import { ChevronRight, CircleCheck, MessagesSquare, MoreHorizontal, RotateCcw, Trash2, Wrench } from "lucide-react";
+import { ChevronRight, CircleCheck, MessagesSquare, MoreHorizontal, RotateCcw, Trash2, Wrench } from "../renderer/src/components/icons";
 import { useMemo, useState } from "react";
 import { Markdown } from "../renderer/src/components/Markdown";
 import { baseName, formatStamp, relativeTime } from "../renderer/src/lib/format";
