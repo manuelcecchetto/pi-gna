@@ -344,7 +344,7 @@ function ProjectSection({
         </button>
         <button
           type="button"
-          title="New session here"
+          title="New chat here"
           onClick={() => newSession(group.cwd)}
           className="rounded-md p-1 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover:opacity-100"
         >
@@ -423,7 +423,7 @@ function openRow(row: ProjectRow): void {
 
 function SessionRow({ row, active, kanban, digit, onMenu }: { row: ProjectRow; active: boolean; kanban: boolean; digit?: number; onMenu: OpenMenu }) {
   const live = row.live;
-  const title = live ? sessionTitle(live) : (row.summary?.title ?? "New session");
+  const title = live ? sessionTitle(live) : (row.summary?.title ?? "New chat");
   const level = live ? attention(live) : undefined;
   const needsYou = level === "waiting" || level === "failed" || level === "unread";
   const onClick = () => openRow(row);

@@ -99,7 +99,7 @@ export function App() {
           ) : (
             <div className="drag relative flex h-full flex-col items-center justify-end overflow-hidden pb-[16vh]">
               <HeroBackdrop />
-              <div className="relative text-[13px] text-faint">Pick a session or start a new one (⌘N)</div>
+              <div className="relative text-[13px] text-faint">Pick a chat or start a new one (⌘N)</div>
             </div>
           )}
           <Toasts />

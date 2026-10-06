@@ -70,7 +70,7 @@ async function summarize(path: string): Promise<SessionSummary | undefined> {
       path,
       id: file.header.id,
       cwd: file.header.cwd,
-      title: file.name || file.title || "New session",
+      title: file.name || file.title || "New chat",
       named: Boolean(file.name),
       createdAt: Date.parse(file.header.timestamp) || info.birthtimeMs,
       modifiedAt: info.mtimeMs,

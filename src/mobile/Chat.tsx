@@ -127,7 +127,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
   const entry = useStore(client.store, (s) => (handle ? s.chats[handle] : undefined));
   const session = entry?.session;
   const failure = error ?? entry?.error;
-  const title = session?.name ?? session?.title ?? route.title ?? "Chat";
+  const title = session?.name ?? session?.title ?? route.title ?? "New chat";
   const level = session ? attention(session) : undefined;
   const ui = useChatUiHandle();
   const expandAll = useChatUi((s) => s.expandAll);

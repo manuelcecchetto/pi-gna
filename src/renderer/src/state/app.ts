@@ -1074,7 +1074,7 @@ async function resume(): Promise<void> {
   else newSession(cwd);
 }
 
-/** Name, else the sidebar's title while loading, else first user message, else "New session". */
+/** Name, else the sidebar's title while loading, else first user message, else "New chat". */
 export function sessionTitle(session: SessionState): string {
   if (session.name) return session.name;
   if (session.loading) return session.loading.title;
@@ -1085,5 +1085,5 @@ export function sessionTitle(session: SessionState): string {
     const clean = text ? stripStudioBlocks(text) : "";
     if (clean) return clean.replace(/\s+/g, " ").slice(0, 120);
   }
-  return "New session";
+  return "New chat";
 }
