@@ -6,7 +6,7 @@ const release: UpdateRelease = { version: "1.2.0", notes: "", url: "https://exam
 
 describe("settings sections", () => {
   it("leaves out the keyboard shortcuts and the plugins, keeps the rest", () => {
-    expect(HOST_ONLY_SECTIONS).toEqual(["shortcuts", "plugins"]);
+    expect(HOST_ONLY_SECTIONS).toEqual(["shortcuts", "plugins", "about"]);
     expect(new Set(MOBILE_SECTIONS).size).toBe(MOBILE_SECTIONS.length);
   });
 });
