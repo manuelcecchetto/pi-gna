@@ -162,3 +162,33 @@ export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey
   if (!path) return toast("Could not resolve the file path", "error");
   void openPreviewPath(path, { line: target?.line, newTab: event.metaKey || event.ctrlKey });
 }
+
+/** Card links of a rendered answer (`[card x](q6ip3j)`): the card's title and column as tooltip; unknown ids read as missing. */
+export function resolveCardLinks(root: HTMLElement | null): void {
+  if (!root) return;
+  const { cards } = store.get().board;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-card]:not([data-checked])")) {
+    const id = el.dataset.card;
+    const card = cards.find((entry) => entry.id === id);
+    if (!card) {
+      el.removeAttribute("data-card");
+      el.removeAttribute("role");
+      el.removeAttribute("tabindex");
+      el.classList.remove("card-link");
+      el.classList.add("file-missing");
+      el.title = `Card not found: ${id}`;
+      continue;
+    }
+    el.dataset.checked = "1";
+    el.title = `${card.title} · ${card.column.replace("_", " ")}`;
+  }
+}
+
+/** Click or Enter on a `[data-card]` element: that card's details in a tab of the browser pane, beside the chat. */
+export function openCardLink(el: HTMLElement): void {
+  if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
+  const card = store.get().board.cards.find((entry) => entry.id === el.dataset.card);
+  if (!card) return toast("Card not found", "error");
+  showBrowser();
+  void window.studio.browser.card(card.id).catch(() => toast("Could not open the card", "error"));
+}

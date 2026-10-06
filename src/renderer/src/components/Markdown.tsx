@@ -4,7 +4,7 @@ import { ChatUiProvider, useChatActions, useChatUiHandle, useChatUi } from "../l
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
-import { loadChatImages, openFileLink, resolveFileLinks } from "../lib/preview";
+import { loadChatImages, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
 
 function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void, openLightbox: (src: string) => void): void {
   const target = event.target as HTMLElement;
@@ -22,6 +22,12 @@ function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string
   const image = target.closest<HTMLElement>("[data-image]")?.querySelector("img");
   if (image) {
     openLightbox(image.src);
+    return;
+  }
+  const card = target.closest<HTMLElement>("[data-card]");
+  if (card) {
+    event.preventDefault();
+    openCardLink(card);
     return;
   }
   const file = target.closest<HTMLElement>("[data-file]");
@@ -62,6 +68,7 @@ export const Markdown = memo(function Markdown({
   }, [html, streaming]);
   // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
+    if (!streaming) resolveCardLinks(ref.current);
     if (!streaming) void resolveFileLinks(ref.current).then(() => loadChatImages(ref.current));
   }, [html, streaming]);
   useEffect(() => {
@@ -101,6 +108,8 @@ export const Markdown = memo(function Markdown({
   return (
     <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal, openLightbox)}
       onKeyDown={(event) => {
+        const card = (event.target as HTMLElement).closest<HTMLElement>("[data-card]");
+        if (card && event.key === "Enter") return openCardLink(card);
         const file = (event.target as HTMLElement).closest<HTMLElement>("[data-file]");
         if (file && event.key === "Enter") openFileLink(file, event);
       }}

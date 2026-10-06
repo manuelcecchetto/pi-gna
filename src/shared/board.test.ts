@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp, type Board, BoardError, type BoardOp, boardConflict, type Column, cardOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
+import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, type Column, cardOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
 
 const run = (ops: BoardOp[], board = emptyBoard()) => ops.reduce((current, op, index) => applyOp(current, op, 1000 + index), board);
 const add = (id: string, column: Column = "todo"): Extract<BoardOp, { type: "add" }> => ({
@@ -197,5 +197,13 @@ describe("boardConflict", () => {
     expect(boardConflict(undefined, now, { type: "attach", id: "aaaaaa", chat: { path: "/s", cwd: "/repo" } })).toBe(false);
     expect(boardConflict(undefined, now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(true);
     expect(boardConflict(board(), now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(false);
+  });
+});
+
+describe("cardLinkId", () => {
+  it("reads card ids from chat link targets", () => {
+    expect(cardLinkId("q6ip3j")).toBe("q6ip3j");
+    expect(cardLinkId(" card:Q6IP3J ")).toBe("q6ip3j");
+    for (const href of ["src/a.ts", "README.md", "card:", "q6ip3", "https://x.dev", "./q6ip3j"]) expect(cardLinkId(href), href).toBeUndefined();
   });
 });

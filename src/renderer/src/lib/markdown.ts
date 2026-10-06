@@ -4,6 +4,7 @@
 // become `data-image` placeholders it loads through main (docs/FILE_PREVIEW.md, Chat links).
 import DOMPurify from "dompurify";
 import { Marked } from "marked";
+import { cardLinkId } from "../../../shared/board";
 import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget } from "../../../shared/preview";
 
 const escapeHtml = (text: string) =>
@@ -60,6 +61,9 @@ const marked = new Marked({
     },
     // Local file targets get no href (nothing can navigate); the component resolves and opens them.
     link({ href, tokens }) {
+      // A card id is not a file: the component opens that card on the board.
+      const card = fileLinksOn ? cardLinkId(href) : undefined;
+      if (card) return `<span class="card-link" role="link" tabindex="0" data-card="${card}">${this.parser.parseInline(tokens)}</span>`;
       if (!fileLinksOn || !isLocalLinkHref(href)) return false;
       const kind = kindFor(parseLinkTarget(href, "/")?.path ?? href);
       return `<span class="file-link" role="link" tabindex="0" data-file="${escapeHtml(href.trim())}" data-kind="${kind}">${this.parser.parseInline(tokens)}</span>`;
@@ -100,5 +104,5 @@ export function markdownToHtml(source: string, options: MarkdownOptions = {}): s
 }
 
 export function renderMarkdown(source: string, options: MarkdownOptions = {}): string {
-  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-kind", "data-path", "data-image"], FORBID_TAGS: ["style", "form", "input"] });
+  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-card", "data-kind", "data-path", "data-image"], FORBID_TAGS: ["style", "form", "input"] });
 }
