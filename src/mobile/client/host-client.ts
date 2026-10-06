@@ -305,6 +305,16 @@ export class HostClient {
     this.env.clearTimeout(this.reconnectTimer);
   }
 
+  /** Re-reads the session index: the host publishes no event when a chat's file appears, so lists ask again. */
+  async refreshProjects(): Promise<void> {
+    try {
+      const projects = await this.call("chat.list", {});
+      this.store.set((s) => ({ ...s, global: { ...s.global, projects } }));
+    } catch {
+      // Keep the list we have; the next ask retries.
+    }
+  }
+
   /** The chats on screen: subscribed on the stream and kept as reduced sessions. */
   async setChats(handles: string[]): Promise<void> {
     const added = handles.filter((h) => !this.chatsOnScreen.includes(h));
