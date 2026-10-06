@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
-import { parseLocalTarget, type TabPreview } from "../../../shared/preview";
+import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
@@ -55,8 +55,8 @@ export function BrowserPane() {
   const showDimensions = Boolean(active) && (dimensionsOpen || Boolean(active?.viewport));
   // Native views draw above the DOM, so hide the page while a DOM overlay must cover it.
   const inWindow = active?.surface === "window";
-  // A card tab is drawn by the renderer: its page stays hidden.
-  const visible = pane.open && Boolean(active) && !active?.card && !inWindow && !lightbox && !suggesting && !overlay;
+  // Card and start tabs are drawn by the renderer: their page stays hidden.
+  const visible = pane.open && Boolean(active) && !active?.card && !active?.start && !inWindow && !lightbox && !suggesting && !overlay;
 
   useLayoutEffect(() => {
     const element = viewport.current;
@@ -112,7 +112,7 @@ export function BrowserPane() {
             />
           ))}
           <IconButton
-            title="New tab (right-click: Open file…)"
+            title="New tab: an address, a file or a recent dev server (right-click: Open file…)"
             onClick={() => browser().newTab()}
             onContextMenu={(event) => openMenu(event, [[{ label: "New tab", onSelect: () => browser().newTab() }, { label: "Open file…", icon: <FolderOpen size={13} />, onSelect: () => void openFileDialog() }]])}
           >
@@ -140,6 +140,7 @@ export function BrowserPane() {
             {active.loading ? <X size={15} /> : <RotateCw size={14} />}
           </IconButton>
           <AddressBar tab={active} onSuggesting={setSuggesting} />
+          {!active.start && <>
           <IconButton
             title={state.annotating ? "Stop commenting (Esc in page)" : "Comment on elements"}
             active={state.annotating}
@@ -169,16 +170,17 @@ export function BrowserPane() {
           <IconButton title="Open in default browser" onClick={() => window.studio.openExternal(active.url)}>
             <SquareArrowOutUpRight size={14} />
           </IconButton>
+          </>}
         </div>
       )}
 
-      {active && !active.preview && !active.card && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
+      {active && !active.preview && !active.card && !active.start && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
 
       <div ref={viewport} className="relative min-h-0 flex-1 bg-sunken">
-        {!active && <StartPage />}
+        {(!active || active.start) && <StartPage key={active?.id} tab={active} />}
         {active && inWindow && <WindowPlaceholder tab={active} />}
         {active?.card && <CardView tab={active} card={active.card} />}
-        {active && !active.card && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
+        {active && !active.card && !active.start && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
         {active?.viewport && visible && <DeviceFrame spec={active.viewport} stage={stage} />}
       </div>
       {state.annotating && (
@@ -237,6 +239,14 @@ function WindowPlaceholder({ tab }: { tab: BrowserTab }) {
 
 function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
   const preview = tab.preview;
+  const close = [
+    { label: "Close tab", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) },
+    ...(tabs.length > 1
+      ? [{ label: "Close other tabs", onSelect: () => tabs.forEach((other) => other.id !== tab.id && browser().closeTab(other.id)) }]
+      : []),
+  ];
+  // A start tab has no page yet: nothing to reload, copy or pop out.
+  if (tab.start) return [close];
   return [
     preview
       ? [
@@ -263,12 +273,7 @@ function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
       // Web tabs have Inspect in their toolbar; previews have no toolbar row.
       ...(preview ? [{ label: "Inspect", icon: <Code2 size={13} />, onSelect: () => browser().inspect(tab.id) }] : []),
     ],
-    [
-      { label: "Close tab", icon: <X size={13} />, onSelect: () => browser().closeTab(tab.id) },
-      ...(tabs.length > 1
-        ? [{ label: "Close other tabs", onSelect: () => tabs.forEach((other) => other.id !== tab.id && browser().closeTab(other.id)) }]
-        : []),
-    ],
+    close,
   ];
 }
 
@@ -284,7 +289,7 @@ function TabPill({
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const card = useApp((s) => (tab.card ? s.board.cards.find((entry) => entry.id === tab.card) : undefined));
-  const label = tab.card ? (card?.title ?? tab.card) : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
+  const label = tab.card ? (card?.title ?? tab.card) : tab.start ? "New tab" : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
   const FileIcon = tab.preview ? iconForKind(tab.preview.kind) : undefined;
   return (
     <div
@@ -296,6 +301,8 @@ function TabPill({
           <AppWindow size={12} className="shrink-0 text-accent" />
         ) : tab.card ? (
           <SquareKanban size={12} className="shrink-0 text-faint" />
+        ) : tab.start ? (
+          <Plus size={12} className="shrink-0 text-faint" />
         ) : tab.agent && (agentRunning || !tab.favicon) ? (
           <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
         ) : FileIcon ? (
@@ -327,6 +334,12 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   const [focused, setFocused] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [selected, setSelected] = useState(-1);
+  const input = useRef<HTMLInputElement>(null);
+
+  // A new tab starts with the cursor in the address bar.
+  useEffect(() => {
+    if (tab.start) input.current?.focus();
+  }, [tab.id, tab.start]);
 
   useEffect(() => {
     if (!focused) setValue(tab.url === "about:blank" ? "" : tab.url);
@@ -341,7 +354,7 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
 
   const go = (input: string) => {
     const target = parseLocalTarget(input, store.get().sessions[store.get().active ?? ""]?.cwd, window.studio.homeDir);
-    if (target) void openPreviewPath(target.path, { line: target.line });
+    if (target) void openPreviewPath(target.path, { line: target.line, into: tab.start ? tab.id : undefined });
     else browser().navigate(tab.id, input);
     (document.activeElement as HTMLElement | null)?.blur();
   };
@@ -349,9 +362,10 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   return (
     <div className="relative mx-1 min-w-0 flex-1">
       <input
+        ref={input}
         value={value}
         spellCheck={false}
-        placeholder="Search or enter address"
+        placeholder={tab.start ? "Enter an address or a file path" : "Search or enter address"}
         onChange={(event) => {
           setValue(event.target.value);
           setSelected(-1);
@@ -402,33 +416,80 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   );
 }
 
-function StartPage() {
+/**
+ * The launcher of a start tab (`tab`), or of an empty pane (no tab): open a file, find one in the chat's project, or
+ * go back to a recent dev server. From a start tab every choice fills that tab; from the empty pane it opens one.
+ */
+function StartPage({ tab }: { tab?: BrowserTab }) {
+  const cwd = useApp((s) => (s.active ? s.sessions[s.active]?.cwd : undefined));
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [files, setFiles] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
   useEffect(() => {
     void browser()
       .history()
       .then(setHistory);
   }, []);
+  useEffect(() => {
+    setFiles([]);
+    if (cwd) void window.studio.listFiles(cwd).then(setFiles, () => setFiles([]));
+  }, [cwd]);
   const local = history.filter((h) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(h.url)).slice(0, 6);
+  const matches = useMemo(() => (query.trim() ? fuzzyFilter(files, query.trim(), (file) => file, 8) : []), [files, query]);
+  const into = tab?.id;
+  const openUrl = (url: string) => (tab ? browser().navigate(tab.id, url) : browser().newTab(url));
+  const openFile = (relative: string) => cwd && void openPreviewPath(`${cwd}/${relative}`, { into });
+  const action = "flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised";
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
-      <Globe size={22} className="text-faint" />
-      <div className="text-[13px] text-muted">Open a tab, or ask pi to open your dev server.</div>
-      <button type="button" onClick={() => browser().newTab()} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised">
-        New tab
-      </button>
-      <button type="button" onClick={() => void openFileDialog()} className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised">
-        Open file…
-      </button>
-      {local.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {local.map((entry) => (
-            <button key={entry.url} type="button" onClick={() => browser().newTab(entry.url)} className="font-mono text-[12px] text-accent hover:underline">
-              {entry.url}
-            </button>
-          ))}
+    <div className="flex h-full flex-col items-center overflow-y-auto p-8">
+      <div className="my-auto flex w-full max-w-md flex-col gap-5">
+        <div className="text-center text-[13px] text-muted">
+          {tab ? "Enter an address or a file path above, or pick something below." : "Open a tab, or ask pi to open your dev server."}
         </div>
-      )}
+        <div className="flex justify-center gap-2">
+          {!tab && (
+            <button type="button" onClick={() => browser().newTab()} className={action}>
+              <Plus size={13} /> New tab
+            </button>
+          )}
+          <button type="button" onClick={() => void openFileDialog(into)} className={action}>
+            <FolderOpen size={13} /> Open file…
+          </button>
+        </div>
+        {cwd && files.length > 0 && (
+          <section className="flex flex-col gap-1">
+            <div className="text-[11px] tracking-wide text-faint uppercase">Project files</div>
+            <input
+              value={query}
+              spellCheck={false}
+              placeholder="Find a file to preview"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && matches[0] && openFile(matches[0])}
+              className="selectable h-7 w-full rounded-lg bg-sunken px-3 font-mono text-[12px] text-fg outline-none ring-1 ring-line placeholder:text-faint focus:ring-accent/50"
+            />
+            {matches.map((file) => {
+              const Icon = iconForKind(kindFor(file));
+              return (
+                <button key={file} type="button" onClick={() => openFile(file)} title={file} className="flex items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-raised">
+                  <Icon size={12} className="shrink-0 text-faint" />
+                  <span className="truncate font-mono text-[12px] text-fg">{file}</span>
+                </button>
+              );
+            })}
+          </section>
+        )}
+        {local.length > 0 && (
+          <section className="flex flex-col gap-1">
+            <div className="text-[11px] tracking-wide text-faint uppercase">Recent dev servers</div>
+            {local.map((entry) => (
+              <button key={entry.url} type="button" onClick={() => openUrl(entry.url)} className="flex items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-raised">
+                <Globe size={12} className="shrink-0 text-faint" />
+                <span className="truncate font-mono text-[12px] text-accent">{entry.url}</span>
+              </button>
+            ))}
+          </section>
+        )}
+      </div>
     </div>
   );
 }

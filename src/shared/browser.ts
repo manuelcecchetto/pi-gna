@@ -22,6 +22,9 @@ export interface BrowserTab {
   preview?: TabPreview;
   /** Set when the tab shows a Kanban card (its id): the renderer draws the card from the board, the native view stays hidden. */
   card?: string;
+  /** Set on a new tab that has not been given anything to show: the renderer draws the start page (open a URL, a file,
+   * a recent dev server) and the native view stays hidden. Loading anything into the tab clears it. */
+  start?: boolean;
   /** The page's icon as a data URL (web tabs only, once known). */
   favicon?: string;
 }

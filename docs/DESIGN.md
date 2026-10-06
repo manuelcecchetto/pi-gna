@@ -276,6 +276,11 @@ loads `pigna-file://<token>/<path>`. Full decisions, spike evidence and limits: 
 - **Entry points**: file links and bare paths in chat and tool details, the address bar (paths and `file://`), Open
   file... (start page), drag and drop onto the pane, and the agent's `browser_open` with a path, all through
   `BrowserManager.openPreview` (`browser.preview` in `host-core.ts`). The tab's `preview` field carries the real path, kind and mode.
+- **Start tabs**: `+` (and `browser.newTab` without a URL) opens a start tab (`BrowserTab.start`), not a blank web page:
+  like a card tab, its native view stays hidden and the renderer draws `StartPage` (address bar focused, Open file...,
+  a fuzzy finder over the chat's project files via `listFiles`, recent localhost URLs). Whatever is picked fills that
+  tab: a URL goes through `navigate` (`BrowserManager.load` clears `start`), a file through `openPreview` with
+  `into: <tab id>`, which only accepts a start tab. The empty pane (no tabs) shows the same page and opens new tabs.
 - **Verified** end to end by `pnpm verify:preview` (after `pnpm build`).
 
 ## Computer Use

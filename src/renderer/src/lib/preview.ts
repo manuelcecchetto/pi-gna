@@ -31,10 +31,10 @@ export function previewClick(path: string, line?: number) {
   };
 }
 
-/** The native file dialog, then a preview of the choice. */
-export async function openFileDialog(): Promise<void> {
+/** The native file dialog, then a preview of the choice (in the start tab `into`, when given). */
+export async function openFileDialog(into?: string): Promise<void> {
   const picked = (await window.studio.pickAttachments("files")).find((entry) => !entry.isDir);
-  if (picked) await openPreviewPath(picked.path);
+  if (picked) await openPreviewPath(picked.path, { into });
 }
 
 /** `/Users/me/x` -> `~/x`. */

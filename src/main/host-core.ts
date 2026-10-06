@@ -348,6 +348,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         const o = raw.options && typeof raw.options === "object" ? raw.options : {};
         const options: PreviewOpenOptions = {
           newTab: o.newTab === true,
+          into: typeof o.into === "string" ? o.into : undefined,
           line: Number.isInteger(o.line) && o.line > 0 ? o.line : undefined,
           mode: o.mode === "rendered" || o.mode === "raw" ? o.mode : undefined,
           root: typeof o.root === "string" && isAbsolute(o.root) ? o.root : undefined,
