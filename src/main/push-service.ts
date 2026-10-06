@@ -1,9 +1,9 @@
 // Web Push delivery (docs/REMOTE.md section 13a): the VAPID key and the per-device subscriptions in one 0600 file,
 // the triggers from attention summaries, dialogs and the ATP runner, suppression while a client views the chat, and the
-// send with rate limits. What leaves the host is `{v, kind, chat, t}` and nothing else.
+// send with rate limits. What leaves the host is `{v, kind, chat, t}` plus, for chat pushes, the chat title and a response excerpt.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { admitPush, APPROVAL_GRACE_MS, attentionTrigger, deliveryOf, newLedger, parsePrefs, type PushKind, type PushLedger, type PushPayload, type PushPrefs, DEFAULT_PUSH_PREFS } from "../shared/push-rules";
+import { admitPush, APPROVAL_GRACE_MS, attentionTrigger, clipText, deliveryOf, newLedger, parsePrefs, PUSH_TITLE_MAX, type PushKind, type PushLedger, type PushPayload, type PushPrefs, DEFAULT_PUSH_PREFS } from "../shared/push-rules";
 import type { AttentionSummary, GlobalEvent } from "../shared/host-api";
 import { log } from "./log";
 import { buildPushRequest, endpointAllowed, generateVapidKeys, httpsTransport, sendPush, topicOf, type PushTransport, type VapidKeys } from "./web-push";
@@ -25,6 +25,8 @@ interface PushFile {
 export interface PushDeps {
   /** True while any client is looking at the chat (a lease with `viewing`). */
   viewing(handle: string): boolean;
+  /** The start of the chat's last reply, for the notification body. */
+  preview?(handle: string): string | undefined;
   transport?: PushTransport;
   now?: () => number;
   /** The `sub` claim: visible to the push service, so non-identifying by default. */
@@ -175,7 +177,9 @@ export class PushService {
     if (!this.data.vapid || this.data.subscriptions.length === 0) return;
     const vapid = this.data.vapid;
     const now = this.now();
-    const payload: PushPayload = { v: 1, kind, ...(chat ? { chat } : {}), t: now };
+    const title = chat ? clipText(this.attention.get(chat)?.title ?? "", PUSH_TITLE_MAX) : undefined;
+    const preview = chat && kind === "done" ? this.deps.preview?.(chat) : undefined;
+    const payload: PushPayload = { v: 1, kind, ...(chat ? { chat } : {}), t: now, ...(title ? { title } : {}), ...(preview ? { preview } : {}) };
     const delivery = deliveryOf(kind);
     await Promise.all(this.data.subscriptions.map(async (sub) => {
       const ledger = this.ledgers.get(sub.deviceId) ?? newLedger();

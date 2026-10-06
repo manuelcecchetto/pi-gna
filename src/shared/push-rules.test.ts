@@ -48,3 +48,19 @@ describe("parsePrefs", () => {
     expect(parsePrefs(null)).toEqual(DEFAULT_PUSH_PREFS);
   });
 });
+
+describe("push excerpts", () => {
+  it("clips and flattens text", async () => {
+    const { clipText, responsePreview } = await import("./push-rules");
+    expect(clipText("  a \n\n b  ", 10)).toBe("a b");
+    expect(clipText("abcdefghij", 5)).toBe("abcd…");
+    expect(clipText("   ", 5)).toBeUndefined();
+    const items = [
+      { kind: "assistant", message: { content: [{ type: "text", text: "old" }] } },
+      { kind: "assistant", message: { content: [{ type: "thinking", text: "hmm" }, { type: "text", text: "Hello\nworld" }, { type: "toolCall" }] } },
+      { kind: "notice" },
+    ];
+    expect(responsePreview(items)).toBe("Hello world");
+    expect(responsePreview([])).toBeUndefined();
+  });
+});

@@ -5,12 +5,32 @@ import type { AttentionSummary } from "./host-api";
 export const PUSH_KINDS = ["approval", "done", "failed", "plan", "host_quit"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
 
-/** What the phone's service worker reads: nothing but the kind, an opaque chat handle and the time. */
+/** What the phone's service worker reads: the kind, an opaque chat handle, the time, and the chat title and a response excerpt when there are any. */
 export interface PushPayload {
   v: 1;
   kind: PushKind;
   chat?: string;
   t: number;
+  title?: string;
+  preview?: string;
+}
+
+export const PUSH_TITLE_MAX = 80;
+export const PUSH_PREVIEW_MAX = 140;
+
+/** Whitespace collapsed and cut to `max` characters (with an ellipsis); undefined when nothing is left. */
+export function clipText(text: string, max: number): string | undefined {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (!flat) return undefined;
+  const chars = [...flat];
+  return chars.length > max ? `${chars.slice(0, max - 1).join("").trimEnd()}…` : flat;
+}
+
+/** The start of the last assistant reply in a chat's items: its text blocks only, no tool calls or thinking. */
+export function responsePreview(items: readonly { kind: string; message?: { content?: readonly { type: string; text?: string }[] } }[]): string | undefined {
+  const last = items.findLast((item) => item.kind === "assistant");
+  const text = (last?.message?.content ?? []).flatMap((block) => (block.type === "text" && typeof block.text === "string" ? [block.text] : [])).join(" ");
+  return clipText(text, PUSH_PREVIEW_MAX);
 }
 
 export type PushPrefs = Record<PushKind, boolean>;
