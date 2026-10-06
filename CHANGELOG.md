@@ -5,6 +5,11 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Web links in chats show the site's icon at their left (a globe until it loads, so text never shifts); localhost and private addresses are never looked up. Browser tabs show the page's own favicon, on the Mac and in the phone's tab list.
+- A chat can work on several Kanban cards: `kanban_claim` no longer takes the chat off its other cards, `kanban_update` takes an optional card (required only when the chat is on several) and a `leave` flag, and the chat header shows the latest card plus "+N".
+- Sidebar: a project's chat list now shows 10 more at a time behind "Show more", with "Show less" beside it once expanded, instead of revealing every chat at once.
+- Phone: back and the iOS swipe from a freshly launched new chat now go to the project's chat list, then to Projects.
+
 ## 0.6.0 - 2026-10-06
 
 - Setup: a guided first run that opens by itself when pi is missing, or on first launch when no provider is signed in. Choose the nerd or the cool pigna (technical or plain wording), let Setup check Node, npm, pi and its SDK and install pi with npm while it shows the output, sign in to a provider, then pick plugins and MCP servers. To open it again, go to Settings > General > Run setup. If you close Setup while pi is installing, the install keeps running. Known gap: with Node.js from the nodejs.org installer, the global npm install can fail with EACCES; Setup shows the error but cannot fix it for you.
