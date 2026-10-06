@@ -436,47 +436,115 @@ body,
   color: var(--fg);
 }
 .visual {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--sunken);
-  overflow: hidden;
   margin: 0.8em 0;
 }
-.visual.pending {
-  padding: 10px 12px;
-  font-size: 12px;
-  color: var(--faint);
-}
-.visual > header {
+.visual-drawing {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px 4px 12px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--faint);
-  border-bottom: 1px solid var(--line);
+  flex-direction: column;
+  gap: 10px;
+  animation: visual-pulse 1.6s ease-in-out infinite;
 }
-.visual > header button {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  color: var(--muted);
-  padding: 2px 8px;
+.visual-drawing i {
+  display: block;
+  height: 10px;
+  border-radius: 4px;
+  background: var(--raised);
+}
+.visual-drawing .sk-row {
+  display: flex;
+  gap: 16px;
+}
+.visual-drawing .sk-row i {
+  flex: 1;
+  height: 34px;
+}
+.visual-drawing .sk-chart {
+  height: 160px;
   border-radius: 6px;
 }
-.visual > header button:hover {
-  background: var(--raised);
-  color: var(--fg);
+.visual-drawing .sk-line.short {
+  width: 60%;
+}
+@keyframes visual-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visual-drawing {
+    animation: none;
+  }
 }
 .visual-frame {
   display: block;
   width: 100%;
   border: 0;
   background: transparent;
-  color-scheme: normal;
+  /* Inherit the app's scheme: an iframe whose scheme differs from the frame document's gets an opaque canvas. */
+}
+/* A clamped frame scrolls inside; the fade says there is more below. */
+.visual-frame.clamped {
+  mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
+}
+.visual-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 22px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.visual:hover .visual-actions,
+.visual:focus-within .visual-actions,
+.visual-actions:has(.visual-more) {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .visual-actions {
+    opacity: 1;
+  }
+}
+.visual-actions button {
+  font-size: 11px;
+  color: var(--faint);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.visual-actions button:hover {
+  background: var(--raised);
+  color: var(--fg);
+}
+.visual-actions .visual-more {
+  margin-right: auto;
+  color: var(--muted);
+}
+/* Expand: the frame fills the window above a backdrop; Esc, Close or a click outside returns it. */
+.visual-box.full {
+  position: fixed;
+  inset: 40px 48px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--canvas);
+}
+.visual-box.full .visual-frame {
+  flex: 1;
+  min-height: 0;
+}
+.visual-box.full .visual-actions {
+  opacity: 1;
+}
+.visual-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+  background: rgb(0 0 0 / 0.5);
 }
 .visual-error {
-  padding: 8px 12px;
+  padding: 8px 0;
   font-size: 12px;
   color: var(--bad);
 }
@@ -486,13 +554,16 @@ body,
   padding: 18px 12px;
   font-size: 13px;
   color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
 }
 .visual-note {
   font-size: 12px;
   color: var(--faint);
 }
 .visual pre.code {
-  border-top: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .code-block pre,

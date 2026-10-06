@@ -58,8 +58,8 @@ export const Markdown = memo(function Markdown({
   const ui = useChatUiHandle(); // the frames mount in roots of their own, which carry it along
   const enabled = useChatUi((s) => s.settings.visuals) && visuals;
   const html = useMemo(() => {
-    // An unfinished visual fence streams as a placeholder instead of raw source.
-    const src = enabled && streaming ? text.replace(OPEN_VISUAL, "$1*Drawing visual…*\n") : text;
+    // An unfinished visual fence streams as an empty visual, which the effect below shows as a skeleton, not raw source.
+    const src = enabled && streaming ? text.replace(OPEN_VISUAL, "$1```visual\n```\n") : text;
     return renderMarkdown(src, { visuals: enabled, localImages: true });
   }, [text, enabled, streaming]);
   const ref = useRef<HTMLDivElement>(null);
@@ -83,9 +83,12 @@ export const Markdown = memo(function Markdown({
         // Keep the hidden source: the effect runs again when streaming ends and the html (so this element) is unchanged.
         el.classList.add("pending");
         if (!el.querySelector(".visual-drawing")) {
-          const note = document.createElement("span");
+          // A skeleton in the rough shape of a visual (headline numbers, a chart, a few rows); the text is for screen readers.
+          const note = document.createElement("div");
           note.className = "visual-drawing";
-          note.textContent = "Drawing visual…";
+          note.setAttribute("role", "status");
+          note.innerHTML =
+            '<span class="sr-only">Drawing visual…</span><div class="sk-row"><i></i><i></i><i></i></div><i class="sk-chart"></i><i class="sk-line"></i><i class="sk-line short"></i>';
           el.append(note);
         }
         continue;

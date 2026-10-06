@@ -9,6 +9,25 @@
   <body>
     <!-- Open directly (follows the OS theme) or add ?theme=light / ?theme=dark to force one. -->
     <div id="visual" style="max-height:none">
+      <h2>Stats row, head, tabs</h2>
+      <div class="stats">
+        <div class="stat"><span class="stat-value">1.36M</span><span class="stat-label">lines of code</span></div>
+        <div class="stat"><span class="stat-value">4,695</span><span class="stat-label">files</span></div>
+        <div class="stat"><span class="stat-value">41%</span><span class="stat-label">of lines are tests</span></div>
+      </div>
+      <div class="head"><span>Churn is highest in the transcript</span><div class="tabs"><button data-show="g-a">Churn</button><button data-show="g-b">Size</button></div></div>
+      <p id="g-a" class="hint">Churn panel (tabs switch it; kit.js wires data-show).</p>
+      <p id="g-b" class="hint">Size panel.</p>
+      <h2>Ranked bars, scale, tooltips</h2>
+      <div class="bars">
+        <span>web/ChatView.tsx</span><div class="bar" data-tip="68 edits" style="--v:100%;--c:var(--heat-4)"><span></span></div><span>68</span>
+        <span>server/ws.ts</span><div class="bar" data-tip="45 edits" style="--v:66%;--c:var(--heat-3)"><span></span></div><span>45</span>
+        <span>web/Sidebar.tsx</span><div class="bar" data-tip="21 edits" style="--v:31%;--c:var(--heat-1)"><span></span></div><span>21</span>
+      </div>
+      <p><span class="scale"><span>0</span><span>68 edits</span></span></p>
+      <h2>Palette and split</h2>
+      <div class="legend"><span style="--c:var(--c1)">c1</span><span style="--c:var(--c2)">c2</span><span style="--c:var(--c3)">c3</span><span style="--c:var(--c4)">c4</span><span style="--c:var(--c5)">c5</span><span style="--c:var(--c6)">c6</span><span style="--c:var(--c7)">c7</span><span style="--c:var(--c8)">c8</span></div>
+      <div class="split" style="margin-top:6px"><span style="--v:23%;--c:var(--c1)">23%</span><span style="--v:55%;--c:var(--c6)">55%</span><span style="--v:22%;--c:var(--c5)">22%</span></div>
       <h2>Stats, grid, card</h2>
       <div class="grid">
         <div class="card stat"><span class="stat-value">128</span><span class="stat-label">requests</span></div>
@@ -18,9 +37,9 @@
       <h2>Row, badges, muted, mono</h2>
       <div class="row"><span class="badge">neutral</span><span class="badge ok">ok</span><span class="badge bad">bad</span><span class="badge warn">warn</span><span class="badge accent">accent</span><span class="muted">muted text</span><span class="mono">mono_text()</span></div>
       <h2>Table</h2>
-      <table class="table"><tr><th>File</th><th>Lines</th><th>Status</th></tr>
-        <tr><td class="mono">src/main/index.ts</td><td>412</td><td><span class="badge ok">ok</span></td></tr>
-        <tr><td class="mono">src/main/session-host.ts</td><td>980</td><td><span class="badge warn">large</span></td></tr></table>
+      <table class="table"><tr><th>File</th><th class="num">Lines</th><th>Status</th></tr>
+        <tr><td class="mono">src/main/index.ts</td><td class="num">412</td><td><span class="badge ok">ok</span></td></tr>
+        <tr><td class="mono">src/main/session-host.ts</td><td class="num">980</td><td><span class="badge warn">large</span></td></tr></table>
       <h2>Callout</h2>
       <div class="callout">Default callout.</div>
       <div class="callout warn" style="margin-top:6px">Warn callout.</div>
@@ -40,6 +59,7 @@
       <h2>SVG</h2>
       <svg viewBox="0 0 240 60" width="240" height="60"><rect x="4" y="10" width="80" height="40" rx="4"/><text x="44" y="35" text-anchor="middle">client</text><path d="M84 30h70"/><rect x="154" y="10" width="80" height="40" rx="4"/><text x="194" y="35" text-anchor="middle">server</text></svg>
     </div>
+    <script src="kit.js"></script>
     <script>
       var t = new URLSearchParams(location.search).get("theme");
       if (t === "light" || t === "dark") document.documentElement.style.colorScheme = t;
@@ -47,6 +67,8 @@
         var l = {"--canvas":"#fcfcfb","--panel":"#f4f4f3","--raised":"#ebebea","--sunken":"#f7f7f6","--line":"rgb(0 0 0 / 0.08)","--fg":"#1d1d20","--muted":"#63636b","--faint":"#9a9aa2","--accent":"#2f6fe4","--accent-soft":"rgb(47 111 228 / 0.1)","--ok":"#1f9d55","--bad":"#d93b3b","--warn":"#a86b00"};
         for (var k in l) document.documentElement.style.setProperty(k, l[k]);
       }
+      // kit.js only wires tabs after a render message; the gallery has its markup inline.
+      document.querySelector(".tabs > button").click();
     </script>
   </body>
 </html>

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Inline visuals look and work more like T3 Code's in-thread visualizations: no box around them, actions on hover, Expand to the full window (Esc closes), and taller visuals (720 px before Show all). Agents get a richer kit that follows your theme: headline stats, text tabs, ranked bars, stacked split bars, a heat scale, tooltips, a category palette and helpers for scripted charts such as treemaps and heat maps. While a visual streams, a skeleton shows instead of text. The visual instructions now reach the agent beside your AGENTS.md files, only in pi-gna chats while the setting is on. Fixed: a visual whose script declared top-level `const`s failed with "already declared".
+
 ## 0.6.1 - 2026-10-06
 
 - Web links in chats show the site's icon at their left (a globe until it loads, so text never shifts); localhost and private addresses are never looked up. Browser tabs show the page's own favicon, on the Mac and in the phone's tab list.

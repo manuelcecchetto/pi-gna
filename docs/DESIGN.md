@@ -53,7 +53,8 @@ resources/atp-extension.ts       ATP orchestrator chats only: atp_pause, atp_res
 resources/atp/                   the ATP roles' system prompts and the vendored ATP skills (architects, librarian CLI)
 resources/pi-auth.mts            login helper run by the PATH `node` with pi's SDK (see Settings, Providers)
 native/computer-use/            Swift source of the helper app `pi-gna Computer Use.app` (built by `pnpm build:computer-use`)
-resources/pigna-visual-prompt.md  system-prompt addendum for inline visuals, appended only while the setting is on
+resources/pigna-visual-prompt.md  the agent's instructions for inline visuals (kit vocabulary, when to draw one)
+resources/visual-extension.ts    loaded only while Inline visuals is on: adds that prompt to the project context (AGENTS.md block)
 resources/visual/                doc.html (frame shell), kit.css, kit.js (bundled visual kit), gallery.html (every component, for eyeballing)
 resources/pigna-flag.ts         pi package extension (`pi install <repo>`): `pi --pigna` launches pi-gna
 ```
@@ -729,9 +730,9 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
 - **Features** (Kanban, Laments, GitHub, ATP, Computer use): off hides the page, its sidebar row and its menu items, and
   new chats start without its extension (`SessionFeatures`). Chats already open keep their tools, so the bridge route
   is gated too (`SettingsStore.gate`: 403 "… is turned off in pi-gna's Settings"). ATP stays on while a plan runs.
-- **Inline visuals** (Agent > Beta, `visuals`, off by default): read when a chat starts, like the features. It appends
-  `resources/pigna-visual-prompt.md` to that chat's `--append-system-prompt` (`SessionFeatures.visuals`); the renderer
-  reads the same setting live, so flipping it renders or hides visuals in existing transcripts at once. See Visuals.
+- **Inline visuals** (Agent > Beta, `visuals`, off by default): read when a chat starts, like the features. It loads
+  `resources/visual-extension.ts` into that chat (`SessionFeatures.visuals`), which adds `resources/pigna-visual-prompt.md`
+  to the prompt's project context beside the AGENTS.md files; the renderer reads the same setting live, so flipping it renders or hides visuals in existing transcripts at once. See Visuals.
 - **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global
   `settings.json` (`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). `writePiSettings` changes only those keys, refuses a
   file that is not a JSON object, takes pi's own proper-lockfile lock (a `<file>.lock` folder) and writes through a
@@ -1049,10 +1050,14 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
 - Cap **64 KB** (`VISUAL_MAX_BYTES`, `lib/markdown.ts`): larger blocks stay a code block with a "too large" note.
 - `markdown.ts` pulls a complete fence out before DOMPurify and leaves `<div class="visual" data-visual>` holding the source in
   a hidden `.visual-src`; `Markdown.tsx` hydrates it into `VisualFrame`. Setting off, or a fence still open while streaming:
-  a plain code block (streaming shows "Drawing visual…" instead of partial source).
-- The prompt (`resources/pigna-visual-prompt.md`) lists the kit classes, when exactly one visual is warranted and when not,
-  and SVG token rules. `src/main/visual-kit.test.ts` fails if a class it lists is missing from `kit.css`. Prompt quality was
-  tuned against real models with `docs/visual-evals.md`.
+  a plain code block (streaming shows a skeleton, with "Drawing visual…" for screen readers, instead of partial source).
+- The prompt (`resources/pigna-visual-prompt.md`) lists the kit classes, tokens and helpers, when exactly one visual is
+  warranted and when not, and SVG rules. It reaches the agent as a context file, not `--append-system-prompt`:
+  `visual-extension.ts` pushes it onto `systemPromptOptions.contextFiles` in `before_agent_start`, so it renders as a
+  `<project_instructions>` entry right after the AGENTS.md files pi found (verified with a probe extension reading
+  `event.systemPrompt`). Nothing is written to disk, so a terminal `pi` never sees it. `src/main/visual-kit.test.ts` fails if
+  a class, token or `kit.*` helper it names is missing from the kit, and checks the extension. Prompt quality was tuned
+  against real models with `docs/visual-evals.md`.
 
 ### Scheme, CSP and frame document
 
@@ -1093,10 +1098,20 @@ Frame to parent: `ready`, `rendered`, `height { px }` (ResizeObserver, per anima
 ### Lifecycle, size and freeze mitigation
 
 - The frame is created once per `VisualFrame` and memoised by source: streaming prose around it does not reload it.
-- Height follows `height` messages from 40 px; the shell scrolls inside 480 px, and the parent shows at most 560 px with an
-  expand control. Width is the message column. The footer has copy-source and show-source.
-- The kit (`kit.css`, `kit.js`) is bundled: pi-gna's theme tokens plus the component vocabulary (`stack row grid card stat
-  badge callout table steps timeline bar legend controls muted mono`), so the agent writes structure, not styling.
+- Presentation follows T3 Code's in-thread visualizations: no box, header or label around the frame, so a visual reads as
+  part of the reply. The iframe inherits the app's `color-scheme` (with `normal` it painted an opaque canvas, because an
+  iframe whose scheme differs from its document's gets one). Under it, a row of actions appears on hover (always on touch):
+  Show all / Collapse, Expand, Source, Copy.
+- Height follows `height` messages from 40 px (sent right after a render too: the observer waits for a frame, which a
+  hidden window never draws). No inner scroll in the shell; the parent clamps at **720 px** (`MAX_H`) with a fade and Show
+  all. Expand restyles the same iframe to fill the window over a backdrop (Esc, Close or a click outside returns it);
+  moving the iframe would reload it and lose its state. Width is the message column.
+- The kit (`kit.css`, `kit.js`) is bundled: pi-gna's theme tokens, a categorical palette (`--c1`…`--c8`) and a heat ramp
+  (`--heat-0`…`--heat-4`), both with light variants, and the component vocabulary (`stack row grid card stats stat head tabs
+  bars bar split scale legend badge callout table num steps timeline controls hint muted mono`), so the agent writes
+  structure, not styling. `kit.js` wires `.tabs` (`.on`, `data-show` panels, a `tab` event), `data-tip` tooltips, and
+  `window.kit` (`color(i)`, `heat(t)`, `fmt(n)`, `tip(html, x, y)`) for scripted charts. It renders a fragment once: the
+  parent re-sends `render` until acked, and a second run would redeclare the fragment's top-level `const`s and throw.
   `resources/visual/gallery.html` shows every component.
 - A runaway fragment (`for(;;){}`) cannot freeze the transcript (the frame has its own process), but it keeps burning a core
   and survives removal of the iframe. Each frame has its own host so it is its own site and process. **Watchdog**: no message
@@ -1181,7 +1196,8 @@ it and restore it afterwards.
 ### Verifying inline visuals
 
 `FAKE_FIXTURE=<name>` makes `scripts/fake-pi.mjs` reply with a fixed text from `scripts/fake-pi-visuals.mjs`, `FAKE_CHUNK`
-characters per delta every `FAKE_DELAY` ms: `architecture`, `comparison`, `slider`, `two` (two visuals), `stream` (use a small
+characters per delta every `FAKE_DELAY` ms: `architecture`, `comparison`, `dashboard` (the richer kit: stats, tabs, a scripted
+treemap and heat grid with tooltips, bars, split, table; over 720 px, so it clamps), `slider`, `two` (two visuals), `stream` (use a small
 `FAKE_CHUNK`, 25, to watch the placeholder), `oversized` (70 KB, use `FAKE_CHUNK=2000`), `hostile` (nine fences: fetch, `<img>`,
 `top.location`, `window.open`, form submit, `alert`, `parent.studio`, a `javascript:` link, an http link; they point at
 `http://127.0.0.1:$FAKE_HOSTILE_PORT`) and `loop` (`while(true){}`). Start a test instance as above, with fresh
@@ -1190,8 +1206,10 @@ characters per delta every `FAKE_DELAY` ms: `architecture`, `comparison`, `slide
 (`CDP_PORT=<p> CDP_MAIN=<q>`), after `node scripts/cdp.mjs type "go" --enter`:
 - **Renders and sizes**: `eval "[...document.querySelectorAll('iframe.visual-frame')].map(f=>f.style.height)"` (above 40px once
   the frame reported its height); `nativeTheme.themeSource='light'|'dark'` through `main`, then `capture` for both themes.
-- **Streaming**: poll `document.body.innerText.includes('Drawing visual')` while a small-chunk `stream` runs; it turns into an
-  iframe when the reply ends.
+- **Streaming**: poll `document.body.innerText.includes('Drawing visual')` (the skeleton's screen-reader text) while a
+  small-chunk `stream` runs; it turns into an iframe when the reply ends.
+- A fresh `PIGNA_USER_DATA` opens Setup over the chat, and it comes back on a delay: click `[aria-label="Close setup"]`
+  right before each `capture`.
 - **Frame contents**: `node scripts/cdp-frame.mjs "<expr>" [n]` evaluates inside the nth frame (the slider: set `#w`, dispatch
   `input`, read `#out`; hostile: `window.__parentAccess` is `blocked`).
 - **Containment**: the counting server saw no request; `location.href` is unchanged; `main "webContents.getAllWebContents()"`
