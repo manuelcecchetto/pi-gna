@@ -22,6 +22,16 @@ import {
   Smartphone,
   X,
   SquareKanban,
+  ChevronDown,
+  FileText,
+  Files,
+  Angry,
+  GitPullRequest,
+  Network,
+  LayoutGrid,
+  MousePointerClick,
+  Settings,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
@@ -29,7 +39,7 @@ import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/prev
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
-import { setPane, store, toast, useApp } from "../state/app";
+import { openSettings, setPane, showBrowser, showPage, store, toast, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { CardTab } from "./CardDialog";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -289,7 +299,7 @@ function TabPill({
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const card = useApp((s) => (tab.card ? s.board.cards.find((entry) => entry.id === tab.card) : undefined));
-  const label = tab.card ? (card?.title ?? tab.card) : tab.start ? "New tab" : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
+  const label = tab.card ? (card?.title ?? tab.card) : tab.start ? "New tab" : tab.url === "about:blank" && (!tab.title || tab.title === tab.url) ? "New page" : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
   const FileIcon = tab.preview ? iconForKind(tab.preview.kind) : undefined;
   return (
     <div
@@ -336,9 +346,9 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   const [selected, setSelected] = useState(-1);
   const input = useRef<HTMLInputElement>(null);
 
-  // A new tab starts with the cursor in the address bar.
+  // A new tab starts with the cursor in the address bar, unless its file finder (⌘P) already took it.
   useEffect(() => {
-    if (tab.start) input.current?.focus();
+    if ((tab.start || !tab.url || tab.url === "about:blank") && !document.activeElement?.closest("[data-finder]")) input.current?.focus();
   }, [tab.id, tab.start]);
 
   useEffect(() => {
@@ -392,7 +402,7 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
             event.currentTarget.blur();
           }
         }}
-        className="selectable h-7 w-full rounded-lg bg-sunken px-3 font-mono text-[12px] text-fg outline-none placeholder:text-faint focus:ring-1 focus:ring-accent/50"
+        className="selectable h-7 w-full rounded-full bg-sunken px-3.5 font-mono text-[12px] text-fg outline-none placeholder:text-faint focus:ring-1 focus:ring-accent/50"
       />
       {open && (
         <div className="absolute inset-x-0 top-full z-30 mt-1 rounded-xl border border-line-strong bg-panel p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
@@ -416,79 +426,175 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   );
 }
 
+/** Set by ⌘P while the start tab that should show the file finder is still being opened. */
+let filesPending = false;
+const FILES_EVENT = "pigna:start-files";
+
+/** ⌘P: the file finder of the active start tab, or of a new one. */
+export function showFileFinder(): void {
+  const { browser: state, pane, active } = store.get();
+  if (!active) return;
+  const tab = state.tabs.find((entry) => entry.id === state.activeId);
+  filesPending = true;
+  if (tab?.start && pane.open) window.dispatchEvent(new Event(FILES_EVENT));
+  else if (!tab?.start) browser().newTab();
+  showBrowser();
+}
+
+/** A shortcut as the menu shows it, in a pill. */
+function Keys({ keys }: { keys: string }) {
+  return <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 font-medium text-[11px] text-muted tracking-wider">{keys}</span>;
+}
+
+function Tool({ icon: Icon, label, keys, onClick, children }: { icon: LucideIcon; label: string; keys?: string; onClick: () => void; children?: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="flex h-11 min-w-0 items-center gap-3 rounded-xl bg-raised/50 px-3.5 text-left text-[13px] text-fg hover:bg-raised">
+      <Icon size={16} className="shrink-0 text-muted" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {keys && <Keys keys={keys} />}
+      {children}
+    </button>
+  );
+}
+
 /**
- * The launcher of a start tab (`tab`), or of an empty pane (no tab): open a file, find one in the chat's project, or
- * go back to a recent dev server. From a start tab every choice fills that tab; from the empty pane it opens one.
+ * The launcher of a start tab (`tab`), or of an empty pane (no tab), after the Codex app's new tab: a grid of tools
+ * (find a project file, open a file, a blank page, the app's pages) and suggestions (recent dev servers). From a start
+ * tab every choice fills that tab; from the empty pane it opens one.
  */
 function StartPage({ tab }: { tab?: BrowserTab }) {
-  const cwd = useApp((s) => (s.active ? s.sessions[s.active]?.cwd : undefined));
+  const [files, setFiles] = useState(() => {
+    const pending = filesPending;
+    filesPending = false;
+    return pending;
+  });
+  useEffect(() => {
+    const show = () => {
+      filesPending = false;
+      setFiles(true);
+    };
+    window.addEventListener(FILES_EVENT, show);
+    return () => window.removeEventListener(FILES_EVENT, show);
+  }, []);
+  return files ? <FileFinder tab={tab} onBack={() => setFiles(false)} /> : <Tools tab={tab} onFiles={() => setFiles(true)} />;
+}
+
+function Tools({ tab, onFiles }: { tab?: BrowserTab; onFiles: () => void }) {
+  const features = useApp((s) => s.settings.features);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [files, setFiles] = useState<string[]>([]);
-  const [query, setQuery] = useState("");
+  const [more, setMore] = useState(false);
   useEffect(() => {
     void browser()
       .history()
       .then(setHistory);
   }, []);
-  useEffect(() => {
-    setFiles([]);
-    if (cwd) void window.studio.listFiles(cwd).then(setFiles, () => setFiles([]));
-  }, [cwd]);
   const local = history.filter((h) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])/.test(h.url)).slice(0, 6);
-  const matches = useMemo(() => (query.trim() ? fuzzyFilter(files, query.trim(), (file) => file, 8) : []), [files, query]);
-  const into = tab?.id;
   const openUrl = (url: string) => (tab ? browser().navigate(tab.id, url) : browser().newTab(url));
-  const openFile = (relative: string) => cwd && void openPreviewPath(`${cwd}/${relative}`, { into });
-  const action = "flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-fg hover:bg-raised";
+  const pages = [
+    features.kanban && { icon: SquareKanban, label: "Kanban", keys: "⇧⌘K", onClick: () => showPage("kanban") },
+    features.github && { icon: GitPullRequest, label: "GitHub", keys: "⇧⌘G", onClick: () => showPage("github") },
+    features.laments && { icon: Angry, label: "Laments", keys: "⇧⌘L", onClick: () => showPage("laments") },
+    features.atp && { icon: Network, label: "ATP", keys: "⇧⌘A", onClick: () => showPage("atp") },
+    { icon: MousePointerClick, label: "Computer Use", keys: "⇧⌘U", onClick: () => openSettings("computer") },
+    { icon: Settings, label: "Settings", keys: "⌘,", onClick: () => openSettings() },
+  ].filter((page) => page !== false);
+  // Two pages fill the first rows beside the file tools; the rest wait behind More tools.
+  const [first, rest] = [pages.slice(0, 2), pages.slice(2)];
   return (
-    <div className="flex h-full flex-col items-center overflow-y-auto p-8">
-      <div className="my-auto flex w-full max-w-md flex-col gap-5">
-        <div className="text-center text-[13px] text-muted">
-          {tab ? "Enter an address or a file path above, or pick something below." : "Open a tab, or ask pi to open your dev server."}
-        </div>
-        <div className="flex justify-center gap-2">
-          {!tab && (
-            <button type="button" onClick={() => browser().newTab()} className={action}>
-              <Plus size={13} /> New tab
-            </button>
-          )}
-          <button type="button" onClick={() => void openFileDialog(into)} className={action}>
-            <FolderOpen size={13} /> Open file…
-          </button>
-        </div>
-        {cwd && files.length > 0 && (
-          <section className="flex flex-col gap-1">
-            <div className="text-[11px] tracking-wide text-faint uppercase">Project files</div>
-            <input
-              value={query}
-              spellCheck={false}
-              placeholder="Find a file to preview"
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && matches[0] && openFile(matches[0])}
-              className="selectable h-7 w-full rounded-lg bg-sunken px-3 font-mono text-[12px] text-fg outline-none ring-1 ring-line placeholder:text-faint focus:ring-accent/50"
-            />
-            {matches.map((file) => {
-              const Icon = iconForKind(kindFor(file));
-              return (
-                <button key={file} type="button" onClick={() => openFile(file)} title={file} className="flex items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-raised">
-                  <Icon size={12} className="shrink-0 text-faint" />
-                  <span className="truncate font-mono text-[12px] text-fg">{file}</span>
-                </button>
-              );
-            })}
-          </section>
-        )}
+    <div className="h-full overflow-y-auto px-6 py-7">
+      <div className="flex max-w-3xl flex-col gap-7">
+        <section className="flex flex-col gap-3">
+          <h2 className="text-[13.5px] font-medium text-fg">Tools</h2>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
+            <Tool icon={Files} label="Files" keys="⌘P" onClick={onFiles} />
+            {first.map((page) => <Tool key={page.label} {...page} />)}
+            <Tool icon={FolderOpen} label="Open file…" keys="⌘O" onClick={() => void openFileDialog(tab?.id)} />
+            <Tool icon={FileText} label="New page" onClick={() => openUrl("about:blank")} />
+            {rest.length > 0 && (
+              <Tool icon={LayoutGrid} label="More tools…" onClick={() => setMore((open) => !open)}>
+                <ChevronDown size={15} className={`shrink-0 text-muted transition-transform ${more ? "rotate-180" : ""}`} />
+              </Tool>
+            )}
+            {more && rest.map((page) => <Tool key={page.label} {...page} />)}
+          </div>
+        </section>
         {local.length > 0 && (
           <section className="flex flex-col gap-1">
-            <div className="text-[11px] tracking-wide text-faint uppercase">Recent dev servers</div>
+            <h2 className="mb-2 text-[13.5px] font-medium text-fg">Suggested</h2>
             {local.map((entry) => (
-              <button key={entry.url} type="button" onClick={() => openUrl(entry.url)} className="flex items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-raised">
-                <Globe size={12} className="shrink-0 text-faint" />
-                <span className="truncate font-mono text-[12px] text-accent">{entry.url}</span>
+              <button key={entry.url} type="button" onClick={() => openUrl(entry.url)} className="flex h-9 items-center gap-3 rounded-lg px-3 text-left hover:bg-raised/60">
+                <Globe size={15} className="shrink-0 text-muted" />
+                <span className="truncate text-[13px] text-fg">{entry.title || entry.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+                {entry.title && <span className="ml-auto shrink-0 font-mono text-[11.5px] text-faint">{entry.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>}
               </button>
             ))}
           </section>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** The project files of the chat, filtered as you type; Enter or a click previews one. */
+function FileFinder({ tab, onBack }: { tab?: BrowserTab; onBack: () => void }) {
+  const cwd = useApp((s) => (s.active ? s.sessions[s.active]?.cwd : undefined));
+  const [all, setAll] = useState<string[] | undefined>();
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(0);
+  useEffect(() => {
+    setAll(undefined);
+    if (cwd) void window.studio.listFiles(cwd).then(setAll, () => setAll([]));
+  }, [cwd]);
+  const matches = useMemo(() => fuzzyFilter(all ?? [], query.trim(), (file) => file, 50), [all, query]);
+  useEffect(() => setSelected(0), [query]);
+  const open = (relative: string) => cwd && void openPreviewPath(`${cwd}/${relative}`, { into: tab?.id });
+  return (
+    <div data-finder className="flex h-full flex-col px-6 py-5">
+      <div className="flex shrink-0 items-center gap-2 rounded-xl bg-raised/50 px-2 ring-1 ring-line focus-within:ring-accent/50">
+        <button type="button" title="Back to tools" onClick={onBack} className="rounded-md p-1 text-muted hover:bg-raised hover:text-fg">
+          <ArrowLeft size={15} />
+        </button>
+        <input
+          autoFocus
+          value={query}
+          spellCheck={false}
+          placeholder={cwd ? "Search files" : "Open a chat in a project to search its files"}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setSelected((i) => Math.min(matches.length - 1, i + 1));
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setSelected((i) => Math.max(0, i - 1));
+            } else if (event.key === "Enter" && matches[selected]) open(matches[selected]);
+            else if (event.key === "Escape") onBack();
+          }}
+          className="selectable h-10 min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-faint"
+        />
+        <Keys keys="⌘P" />
+      </div>
+      <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+        {all === undefined && cwd && <div className="px-3 py-2 text-[12.5px] text-faint">Listing files…</div>}
+        {all && matches.length === 0 && <div className="px-3 py-2 text-[12.5px] text-faint">No files match.</div>}
+        {matches.map((file, index) => {
+          const Icon = iconForKind(kindFor(file));
+          const slash = file.lastIndexOf("/");
+          return (
+            <button
+              key={file}
+              type="button"
+              title={file}
+              onClick={() => open(file)}
+              onMouseMove={() => setSelected(index)}
+              className={`flex h-8 w-full items-center gap-3 rounded-lg px-3 text-left ${index === selected ? "bg-raised" : ""}`}
+            >
+              <Icon size={14} className="shrink-0 text-muted" />
+              <span className="shrink-0 text-[13px] text-fg">{file.slice(slash + 1)}</span>
+              <span className="truncate text-[12px] text-faint">{slash > 0 ? file.slice(0, slash) : ""}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

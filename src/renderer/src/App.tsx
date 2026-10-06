@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AtpPage } from "./components/Atp";
-import { BrowserPane } from "./components/BrowserPane";
+import { BrowserPane, showFileFinder } from "./components/BrowserPane";
 import { GithubPage } from "./components/GitHub";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
@@ -27,6 +27,9 @@ export function App() {
         event.preventDefault();
         showBrowser();
         void openFileDialog();
+      } else if (event.metaKey && !event.shiftKey && key === "p") {
+        event.preventDefault();
+        showFileFinder();
       } else if (event.metaKey && key === "n") {
         event.preventDefault();
         newChat();
