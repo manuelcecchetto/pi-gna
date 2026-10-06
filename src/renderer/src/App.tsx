@@ -13,6 +13,7 @@ import { ThemeRoot } from "./components/ThemeRoot";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
+import { BROWSER_MIN, CHAT_BESIDE_BROWSER } from "./lib/layout";
 import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, showBrowser, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
@@ -83,7 +84,7 @@ export function App() {
       <ThemeRoot />
       <Sidebar />
       <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
-        <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>
+        <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`} style={pane.open && !pane.full ? CHAT_BESIDE_BROWSER : undefined}>
           {page?.kind === "settings" ? (
             <SettingsPage page={page} />
           ) : page?.kind === "laments" ? (
@@ -109,7 +110,7 @@ export function App() {
             {!pane.full && (
               <div onPointerDown={startDrag} className="w-1 shrink-0 cursor-col-resize border-l border-line hover:bg-accent/40" title="Drag to resize" />
             )}
-            <section className="min-w-0 shrink-0" style={{ width: pane.full ? "100%" : `${pane.split * 100}%` }}>
+            <section className="min-w-0" style={pane.full ? { width: "100%", flexShrink: 0 } : { width: `${pane.split * 100}%`, minWidth: BROWSER_MIN }}>
               <BrowserPane />
             </section>
           </>
