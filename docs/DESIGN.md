@@ -1087,7 +1087,9 @@ style: 24-unit grid, 2px round strokes and joins, 3-4 unit corner radii, the few
 12-16px. Exports keep the names of the lucide-react icons they replaced (`X`, `SquareKanban`, `Settings`), each
 renders `<svg class="icon icon-<name>">`, and props pass through, so `fill="currentColor"` fills a Square or Play
 and `strokeWidth` thickens one. A new icon is a new `icon()` entry drawn in that style, not a dependency. The
-markdown link icons in `styles.css` (`--file-icon` data URIs) reuse the same paths.
+markdown link icons in `styles.css` (`--file-icon` data URIs) reuse the same paths. That class is what scripts select
+an icon by (`svg.icon-pin` in the remote e2e): renaming an icon means grepping `scripts/` too, which typecheck does not
+cover (the pin check still looked for `svg.lucide-pin` after the switch).
 
 ## Visuals
 
