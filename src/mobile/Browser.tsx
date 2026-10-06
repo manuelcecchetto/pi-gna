@@ -128,7 +128,7 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
       </div>
       {tab ? <>
           <AddressBar key={tab.id} client={client} tab={tab} call={call} />
-          <Frame key={`frame:${tab.id}`} client={client} tab={tab} commenting={commenting} />
+          <Frame key={`frame:${tab.id}`} client={client} tab={tab} chat={handle ?? tab.agent} commenting={commenting} />
         </> : <div className="p-6 text-center text-[13.5px] text-faint">No tabs open. Tap + for a new one.</div>}
       {tab && (
         <div className="shrink-0 border-t border-line pb-[env(safe-area-inset-bottom)]">
@@ -282,7 +282,8 @@ interface One {
 }
 
 /** The stream and its gestures. */
-function Frame({ client, tab, commenting }: { client: HostClient; tab: BrowserTab; commenting: boolean }) {
+/** `chat`: where Send now in the comment sheet sends (the chat this browser opened from, else the tab's owner). */
+function Frame({ client, tab, chat, commenting }: { client: HostClient; tab: BrowserTab; chat?: string; commenting: boolean }) {
   const area = useRef<HTMLDivElement>(null);
   const img = useRef<HTMLImageElement>(null);
   const [room, setRoom] = useState({ width: 0, height: 0 });
@@ -473,19 +474,18 @@ function Frame({ client, tab, commenting }: { client: HostClient; tab: BrowserTa
         </button>
       )}
       {commenting && <div className="pointer-events-none absolute inset-x-0 top-0 bg-accent/90 px-3 py-1 text-center text-[12px] text-white">Tap an element to comment on it</div>}
-      {pick && <CommentSheet client={client} tab={tab} point={pick} onClose={() => setPick(undefined)} />}
+      {pick && <CommentSheet client={client} tab={tab} chat={chat} point={pick} onClose={() => setPick(undefined)} />}
     </div>
   );
 }
 
 /**
- * Add keeps the comment for this phone's next message; Send sends it, with the other waiting comments, to the chat that
- * owns the tab at once (a tab no chat owns can only Add).
+ * Add keeps the comment for this phone's next message; Send now sends it, with the other waiting comments, to `chat` at
+ * once: the chat whose header opened the browser (where Back returns), else the tab's owner. Without either, only Add.
  */
-function CommentSheet({ client, tab, point, onClose }: { client: HostClient; tab: BrowserTab; point: { x: number; y: number }; onClose: () => void }) {
+function CommentSheet({ client, tab, chat, point, onClose }: { client: HostClient; tab: BrowserTab; chat?: string; point: { x: number; y: number }; onClose: () => void }) {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
-  const chat = tab.agent;
   const submit = async (now: boolean) => {
     if (!comment.trim() || busy) return;
     setBusy(true);

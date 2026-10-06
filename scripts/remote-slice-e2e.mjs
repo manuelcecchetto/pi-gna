@@ -1122,7 +1122,6 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     await sleep(300);
     await tapPage(180, 240);
     await until("the comment sheet", () => exists('[data-testid="comment-sheet"]'));
-    check(await phone.eval(`!!document.querySelector('[data-testid="comment-send"]')?.disabled && document.body.innerText.includes("belongs to no chat")`), "Send now is off on a tab no chat owns");
     await typeInto("comment-text", "make this bigger");
     await click("comment-add");
     await until("the annotation chip", () => exists('[data-testid="annotation-chip"]'), 20_000, 100);
@@ -1142,6 +1141,29 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     const echoed = await text();
     check((() => { const tail = echoed.slice(echoed.indexOf("zzcomment")); return tail.includes("Browser comments (1)") && tail.includes("[images=1]"); })(), "the host composed the comment and its crop into the prompt", echoed.slice(-300));
     check(!(await exists('[data-testid="annotation-chip"]')), "the chip is gone once the prompt was taken");
+
+    // Send now in the comment sheet: the comment goes to the chat the browser opened from at once, with its crop.
+    await until("the chat to be idle", async () => !(await exists('[data-testid="stop"]')), 60_000, 250);
+    check(await click("open-browser"), "the chat header opens the browser again");
+    await until("the browser screen", () => exists('[data-testid="all-tabs"]'));
+    await click("all-tabs");
+    await until("the frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
+    await click("comment-mode");
+    await sleep(300);
+    await tapPage(180, 240);
+    await until("the comment sheet", () => exists('[data-testid="comment-sheet"]'));
+    await typeInto("comment-text", "echo-attach zzsendnow");
+    check(await phone.eval(`!document.querySelector('[data-testid="comment-send"]').disabled`), "the comment sheet offers Send now in a chat's browser");
+    await shot("browser-4-send-now");
+    await click("comment-send");
+    await until("the sheet to close", async () => !(await exists('[data-testid="comment-sheet"]')), 20_000, 100);
+    check(!(await exists('[data-testid="annotation-chip"]')), "Send now leaves no comment waiting");
+    await click("comment-mode");
+    await phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
+    // The comment lives in the block (rendered as the "Browser comments" disclosure); fake pi echoes the crop count.
+    const count = (pattern) => text().then((t) => (t.match(pattern) ?? []).length);
+    await until("the chat's echo of the sent comment", async () => (await count(/\[images=1\]/g)) >= 2, 30_000, 200);
+    check((await count(/Browser comments \(1\)/g)) >= 2, "the chat shows the comment block Send now sent, with its crop");
   } finally {
     fixture.close();
   }
