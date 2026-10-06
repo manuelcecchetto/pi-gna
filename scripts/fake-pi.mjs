@@ -24,6 +24,7 @@ const model = { id: "fake", name: "Fake", api: "fake", provider: "fake", reasoni
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
+// A prompt containing `say:` is answered with the text after it, as Markdown (the phone's chat-link checks).
 // A prompt may carry `[lines=N]` and `[delay=N]` to override FAKE_LINES / FAKE_DELAY for that answer (scripts/remote-slice-e2e.mjs).
 const directive = (text, name, fallback) => Number(text.match(new RegExp(`\\[${name}=(\\d+)\\]`))?.[1] ?? fallback);
 let current = model;
@@ -137,7 +138,8 @@ async function run(text) {
   out({ type: "message_start", message: base });
   out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
   let body = "";
-  const fixture = process.env.FAKE_TEXT_FILE ? readFileSync(process.env.FAKE_TEXT_FILE, "utf8") : process.env.FAKE_FIXTURE ? fixtureText(process.env.FAKE_FIXTURE) : undefined;
+  const said = text.match(/\bsay:\s*([\s\S]*)$/)?.[1];
+  const fixture = said ?? (process.env.FAKE_TEXT_FILE ? readFileSync(process.env.FAKE_TEXT_FILE, "utf8") : process.env.FAKE_FIXTURE ? fixtureText(process.env.FAKE_FIXTURE) : undefined);
   const chunk = Number(process.env.FAKE_CHUNK || 40);
   const count = fixture ? Math.ceil(fixture.length / chunk) : directive(text, "lines", LINES);
   const delay = directive(text, "delay", DELAY);

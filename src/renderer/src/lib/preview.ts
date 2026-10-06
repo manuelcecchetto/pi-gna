@@ -1,7 +1,9 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
 import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type LucideIcon } from "lucide-react";
+import type { Board } from "../../../shared/board";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
 import { showBrowser, store, toast } from "../state/app";
+import type { ChatLinks } from "./chat-ui";
 import { resolveFilePath } from "./preview-path";
 
 /** Opens a local file in a preview tab; the active chat's project is the root so relative links work. */
@@ -18,16 +20,33 @@ export async function openPreviewPath(path: string, options: PreviewOpenOptions 
   }
 }
 
+/** The desktop window's chat links: previews and cards in the browser pane beside the chat. */
+export const desktopLinks: ChatLinks = {
+  cwd: () => activeCwd(),
+  resolve(targets) {
+    const cwd = activeCwd();
+    return cwd ? window.studio.browser.resolvePreviewTargets(cwd, targets) : Promise.resolve(targets.map(() => null));
+  },
+  image(target) {
+    const cwd = activeCwd();
+    return cwd ? window.studio.browser.readPreviewImage(cwd, target) : Promise.resolve(null);
+  },
+  openFile: (path, options) => void openPreviewPath(path, options),
+  openCard(card) {
+    showBrowser();
+    void window.studio.browser.card(card.id).catch(() => toast("Could not open the card", "error"));
+  },
+};
+
 /**
  * Click handler for a file path in the transcript: plain click previews, cmd/ctrl-click opens a new tab.
- * Ignored while text is being selected so the path stays copyable.
+ * Ignored while text is being selected so the path stays copyable, and where links cannot open.
  */
-export function previewClick(path: string, line?: number) {
+export function previewClick(links: ChatLinks | undefined, path: string, line?: number) {
   return (event: { metaKey: boolean; ctrlKey: boolean; stopPropagation: () => void }): void => {
-    // The phone shares the transcript but has no preview tabs.
-    if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
+    if (!links || window.getSelection()?.toString()) return;
     event.stopPropagation();
-    void openPreviewPath(path, { line, newTab: event.metaKey || event.ctrlKey });
+    links.openFile(path, { line, newTab: event.metaKey || event.ctrlKey });
   };
 }
 
@@ -76,15 +95,14 @@ const activeCwd = () => {
 
 /**
  * Settles the file links of a rendered answer (docs/FILE_PREVIEW.md, Chat links): links to missing files
- * become plain text with a tooltip, path-like inline code that exists becomes a link. Where there is no
- * preview (the phone) every file link becomes plain text.
+ * become plain text with a tooltip, path-like inline code that exists becomes a link. Where links cannot
+ * open (`api` absent) every file link becomes plain text.
  */
-export async function resolveFileLinks(root: HTMLElement | null): Promise<void> {
+export async function resolveFileLinks(root: HTMLElement | null, api: ChatLinks | undefined, homeDir: string): Promise<void> {
   if (!root) return;
   const links = [...root.querySelectorAll<HTMLElement>("[data-file]:not([data-checked])")];
   const codes = [...root.querySelectorAll<HTMLElement>("code[data-path]:not([data-checked])")].filter((el) => !el.closest("[data-file], a"));
-  const api = window.studio?.browser;
-  const cwd = activeCwd();
+  const cwd = api?.cwd();
   const downgrade = (el: HTMLElement, reason: string) => {
     el.removeAttribute("data-file");
     el.removeAttribute("role");
@@ -92,7 +110,7 @@ export async function resolveFileLinks(root: HTMLElement | null): Promise<void> 
     el.classList.add("file-missing");
     el.title = reason;
   };
-  if (!api?.resolvePreviewTargets) {
+  if (!api) {
     for (const el of links) downgrade(el, el.dataset.file ?? "");
     return;
   }
@@ -101,7 +119,7 @@ export async function resolveFileLinks(root: HTMLElement | null): Promise<void> 
   const targets = [...new Set([...links, ...codes].map(raw))];
   let resolved: (string | null)[];
   try {
-    resolved = await api.resolvePreviewTargets(cwd, targets);
+    resolved = await api.resolve(targets);
   } catch {
     return;
   }
@@ -114,9 +132,9 @@ export async function resolveFileLinks(root: HTMLElement | null): Promise<void> 
       if (el.dataset.file) downgrade(el, `File not found: ${raw(el)}`);
       continue;
     }
-    const line = parseLinkTarget(raw(el), cwd, window.studio.homeDir)?.line;
+    const line = parseLinkTarget(raw(el), cwd, homeDir)?.line;
     el.dataset.resolved = path;
-    el.title = `${shortenHome(path, window.studio.homeDir)}${line ? `:${line}` : ""} (⌘-click: new tab)`;
+    el.title = `${shortenHome(path, homeDir)}${line ? `:${line}` : ""}${window.studio ? " (⌘-click: new tab)" : ""}`;
     if (!el.dataset.file) {
       el.dataset.file = raw(el);
       el.dataset.kind = kindFor(path);
@@ -131,15 +149,13 @@ export async function resolveFileLinks(root: HTMLElement | null): Promise<void> 
  * Swaps the embedded images of a rendered answer (`![alt](path)`, after resolveFileLinks kept the ones that exist) for
  * the image itself. One that cannot be read (too large, not an image) stays a file link.
  */
-export async function loadChatImages(root: HTMLElement | null): Promise<void> {
-  const api = window.studio?.browser;
-  const cwd = activeCwd();
-  if (!root || !cwd || !api?.readPreviewImage) return;
+export async function loadChatImages(root: HTMLElement | null, api: ChatLinks | undefined): Promise<void> {
+  if (!root || !api?.cwd()) return;
   const pending = [...root.querySelectorAll<HTMLElement>("[data-image][data-resolved]:not([data-loaded])")];
   await Promise.all(
     pending.map(async (el) => {
       el.dataset.loaded = "1";
-      const image = await api.readPreviewImage(cwd, el.dataset.image ?? "").catch(() => null);
+      const image = await api.image(el.dataset.image ?? "").catch(() => null);
       if (!image || !el.isConnected) return;
       const img = document.createElement("img");
       img.alt = el.textContent ?? "";
@@ -199,19 +215,18 @@ export function decorateWebLinks(root: HTMLElement | null, fetch: boolean): void
 }
 
 /** Click or Enter on a `[data-file]` element of a rendered answer: preview it (cmd/ctrl: new tab). */
-export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey: boolean }): void {
-  if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
+export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey: boolean }, links: ChatLinks | undefined, homeDir: string): void {
+  if (!links || window.getSelection()?.toString()) return;
   const raw = el.dataset.file ?? "";
-  const target = parseLinkTarget(raw, activeCwd(), window.studio.homeDir);
+  const target = parseLinkTarget(raw, links.cwd(), homeDir);
   const path = el.dataset.resolved ?? target?.path;
   if (!path) return toast("Could not resolve the file path", "error");
-  void openPreviewPath(path, { line: target?.line, newTab: event.metaKey || event.ctrlKey });
+  links.openFile(path, { line: target?.line, newTab: event.metaKey || event.ctrlKey });
 }
 
 /** Card links of a rendered answer (`[card x](q6ip3j)`): the card's title and column as tooltip; unknown ids read as missing. */
-export function resolveCardLinks(root: HTMLElement | null): void {
+export function resolveCardLinks(root: HTMLElement | null, { cards }: Board): void {
   if (!root) return;
-  const { cards } = store.get().board;
   for (const el of root.querySelectorAll<HTMLElement>("[data-card]:not([data-checked])")) {
     const id = el.dataset.card;
     const card = cards.find((entry) => entry.id === id);
@@ -229,11 +244,10 @@ export function resolveCardLinks(root: HTMLElement | null): void {
   }
 }
 
-/** Click or Enter on a `[data-card]` element: that card's details in a tab of the browser pane, beside the chat. */
-export function openCardLink(el: HTMLElement): void {
-  if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
-  const card = store.get().board.cards.find((entry) => entry.id === el.dataset.card);
+/** Click or Enter on a `[data-card]` element: that card's details (on the desktop, a tab of the browser pane). */
+export function openCardLink(el: HTMLElement, links: ChatLinks | undefined, { cards }: Board): void {
+  if (!links || window.getSelection()?.toString()) return;
+  const card = cards.find((entry) => entry.id === el.dataset.card);
   if (!card) return toast("Card not found", "error");
-  showBrowser();
-  void window.studio.browser.card(card.id).catch(() => toast("Could not open the card", "error"));
+  links.openCard(card);
 }

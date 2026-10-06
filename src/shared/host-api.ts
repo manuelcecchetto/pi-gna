@@ -523,7 +523,7 @@ export interface HostMethods {
   // browser
   "browser.state": { args: Record<string, never>; result: Snapshot<BrowserState> };
   "browser.history": { args: Record<string, never>; result: HistoryEntry[] };
-  "browser.newTab": { args: { url?: string }; result: null };
+  "browser.newTab": { args: { url?: string; agent?: string }; result: { id: string } | null };
   "browser.closeTab": { args: { id: string }; result: null };
   "browser.activate": { args: { id: string }; result: null };
   "browser.navigate": { args: { id: string; input: string }; result: null };
@@ -546,6 +546,11 @@ export interface HostMethods {
   "browser.readImage": { args: { cwd: string; target: string }; result: { mimeType: string; data: string } | null };
   "browser.siteIcon": { args: { url: string }; result: { mimeType: string; data: string } | null };
   "browser.reveal": { args: Record<string, never>; result: null };
+  /** A chat's links on a phone, confined to the chat's directory and project (the desktop uses browser.resolveTargets and friends). */
+  "chat.resolveLinks": { args: { handle: string; targets: string[] }; result: (string | null)[] };
+  "chat.linkImage": { args: { handle: string; target: string }; result: { mimeType: string; data: string } | null };
+  /** Preview a file of the chat's folders in a tab the chat owns; the tab's id. */
+  "chat.openFile": { args: { handle: string; path: string; line?: number }; result: { id: string } };
 
   // fs, uploads
   "fs.browseFolders": { args: { path?: string; files?: boolean; hidden?: boolean }; result: FolderListing };
@@ -704,6 +709,8 @@ export const READ_ONLY_METHODS = [
   "chat.attach",
   "chat.snapshot",
   "chat.files",
+  "chat.resolveLinks",
+  "chat.linkImage",
   "chat.compactionSettings",
   "setup.status",
   "board.get",

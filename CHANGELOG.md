@@ -5,6 +5,10 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Phone: chat links open what the Mac would. A file link, a mention or a tool's file path opens the Mac's preview in a tab of that chat, at the phone's size; a card link opens the card; a localhost link opens in the Mac's browser (other web links still open in Safari); images an answer embeds show inline. Only files inside the chat's folder and project open from the phone; others read as plain text.
+- Phone browser: a page that is not moving (a file preview, a page that finished loading) now shows; before, it stayed blank until it repainted, and the picture lagged one frame behind. Leaving the Browser screen now closes its stream, so the phone no longer stalls after viewing a few tabs.
+- Phone: the browser now opens from a chat's header, not the Projects header. It shows that chat's tabs, as the Mac does, with their count on the globe, which pulses while the agent drives one; "All tabs" shows the rest. A new tab opened there belongs to the chat, and Back returns to it with your comments in the composer.
+
 ## 0.6.3 - 2026-10-06
 
 - Ten curated light/dark theme presets, selectable per project or globally and through `set_theme`. pi-gna Original remains the unchanged default; switching palettes preserves wallpapers and logos.

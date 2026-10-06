@@ -112,7 +112,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
-  const ui = useMemo(() => createChatUi(client, homeDir), [client, homeDir]);
+  const ui = useMemo(() => createChatUi(client, homeDir, push), [client, homeDir, push]);
 
   return (
     <ChatUiProvider ui={ui}>
@@ -123,13 +123,13 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
         {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} footer={signOut} />}
         {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
-        {route.screen === "browser" && <BrowserScreen client={client} back={back} />}
+        {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} back={back} />}
         {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
         {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
-        {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} replace={replace} />}
+        {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} push={push} replace={replace} />}
       </div>
       <Toasts />
       <Lightbox />

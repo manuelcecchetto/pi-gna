@@ -464,6 +464,9 @@ try {
   // 6. a chat file link, clicked in the app window
   const key = (type, extra) => windowCdp.send("Input.dispatchKeyEvent", { type, ...extra });
   await until("the composer", () => appWindow(`!!document.querySelector("textarea")`), 15_000);
+  // A throwaway instance has no provider signed in, so first-run Setup covers the chat and Send stays disabled.
+  await appWindow(`document.querySelector('[aria-label="Close setup"]')?.click()`);
+  await sleep(300);
   await appWindow(`document.querySelector("textarea").focus()`);
   await windowCdp.send("Input.insertText", { text: "show me the files" });
   await key("keyDown", { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });

@@ -46,6 +46,8 @@ const PAIR_WAIT_MS = 25_000;
 /** Frame streams open at once (each costs a screencast and a socket). */
 export const VIEW_LIMIT = 6;
 const VIEW_BOUNDARY = "pigna-frame";
+/** Quiet time after which a view's last frame is sent again (see browserView). */
+const VIEW_REPEAT_MS = 250;
 const TAB_ID = /^[A-Za-z0-9-]{1,64}$/;
 const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const CHAT_HANDLE = /^[a-z0-9]{6,32}$/;
@@ -476,7 +478,9 @@ export class RemoteServer {
    * `GET /api/browser/view/<tab>?w=&h=&dpr=`: JPEG frames as multipart/x-mixed-replace (an `<img>` shows it), each part
    * carrying `X-Css-Width`/`X-Css-Height`, the page size input coordinates are in. Latest-only: while a part is still
    * being written or the viewer's fps cap has not elapsed, newer frames replace the waiting one. The screencast runs only
-   * while this response is open.
+   * while this response is open. An `<img>` shows a part only once the next part arrives, so once the page stops painting
+   * its last frame is sent once more: otherwise the phone would stay a frame behind, and a page that paints only once (a
+   * file preview) would never show.
    */
   private browserView(req: IncomingMessage, res: ServerResponse, url: URL, caller: Caller, tab: string) {
     if (!this.o.browserView) throw new HostError("unavailable", "the browser is not available");
@@ -490,14 +494,22 @@ export class RemoteServer {
       res.writeHead(200, { "Content-Type": `multipart/x-mixed-replace; boundary=${VIEW_BOUNDARY}`, "Cache-Control": "no-store, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
       res.flushHeaders();
     };
-    const gate = new FrameGate<Frame>(async (frame) => {
-      if (res.writableEnded || res.destroyed) return;
+    let repeat: ReturnType<typeof setTimeout> | undefined;
+    const write = (frame: Frame): boolean => {
+      if (res.writableEnded || res.destroyed) return false;
       head();
       res.write(`--${VIEW_BOUNDARY}\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.jpeg.length}\r\nX-Css-Width: ${frame.cssWidth}\r\nX-Css-Height: ${frame.cssHeight}\r\n\r\n`);
       res.write(frame.jpeg);
       res.write("\r\n");
+      return true;
+    };
+    const gate = new FrameGate<Frame>(async (frame) => {
+      clearTimeout(repeat);
+      if (!write(frame)) return;
+      repeat = setTimeout(() => write(frame), VIEW_REPEAT_MS);
       if (res.writableNeedDrain) await Promise.race([new Promise<void>((resolve) => res.once("drain", resolve)), closed]);
     }, frameParams(viewer).fps);
+    void closed.then(() => clearTimeout(repeat));
     let handle: ViewHandle | undefined;
     try {
       handle = this.o.browserView(tab, viewer, (frame) => gate.offer(frame));

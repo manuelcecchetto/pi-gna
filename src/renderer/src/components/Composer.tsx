@@ -5,7 +5,7 @@ import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protoco
 import type { Annotation } from "../../../shared/browser";
 import type { Attachment } from "../lib/attachments";
 import { fuzzyFilter } from "../lib/fuzzy";
-import { previewClick } from "../lib/preview";
+import { desktopLinks, previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
 import type { SessionState } from "../../../shared/session-state";
 import {
@@ -469,7 +469,7 @@ function AttachmentChips({ handle, attachments, card }: { handle: string; attach
             </button>
           ) : (
             <div
-              onClick={attachment.path && !attachment.isDir ? previewClick(attachment.path) : undefined}
+              onClick={attachment.path && !attachment.isDir ? previewClick(desktopLinks, attachment.path) : undefined}
               className={`flex h-14 max-w-56 items-center gap-2 rounded-lg border border-line bg-sunken px-3 ${attachment.path && !attachment.isDir ? "cursor-pointer hover:bg-raised" : ""}`}
             >
               {attachment.isDir ? <Folder size={15} className="shrink-0 text-muted" /> : <FileText size={15} className="shrink-0 text-muted" />}

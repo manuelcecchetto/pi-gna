@@ -1,13 +1,15 @@
 // One chat: join it on the host (open, or attach to a live one), show its transcript and approvals, and let go on leave.
 // Leaving detaches only: the host keeps the run going (docs/REMOTE.md section 5).
-import { useEffect, useState } from "react";
-import { ListChevronsDownUp, ListChevronsUpDown } from "lucide-react";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { Globe, ListChevronsDownUp, ListChevronsUpDown } from "lucide-react";
 import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
 import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import { attention } from "../shared/session-state";
-import { toggleExpandAll } from "./chat-ui";
+import { agentActive } from "./browser-data";
+import { useNow } from "./Browser";
+import { showChat, toggleExpandAll } from "./chat-ui";
 import type { HostClient } from "./client/host-client";
 import { projectOf } from "../shared/board";
 import { FolderPicker } from "./ProjectSheets";
@@ -104,7 +106,21 @@ function ComputerPreview({ client, handle, running }: { client: HostClient; hand
   );
 }
 
-export function ChatScreen({ client, route, back, replace }: { client: HostClient; route: ChatRoute; back: () => void; replace: (route: Route) => void }) {
+/** The chat's browser tabs on the Mac: how many, accented while the agent drives one. */
+function BrowserButton({ client, handle, onOpen }: { client: HostClient; handle: string; onOpen: () => void }) {
+  const tabs = useStore(client.store, (s) => s.global.browser?.tabs)?.filter((t) => t.agent === handle) ?? [];
+  const now = useNow(tabs.some((t) => t.agentAt !== undefined));
+  const busy = tabs.some((t) => agentActive(t, now));
+  const label = tabs.length ? `Browser, ${tabs.length} tab${tabs.length === 1 ? "" : "s"}` : "Browser";
+  return (
+    <button type="button" aria-label={label} data-testid="open-browser" onClick={onOpen} className={`relative grid h-11 w-11 shrink-0 place-items-center ${busy ? "text-accent" : "text-muted"}`}>
+      <Globe size={18} className={busy ? "animate-pulse" : undefined} />
+      {tabs.length > 0 && <span className="absolute right-1.5 top-2 min-w-4 rounded-full bg-raised px-1 text-center text-[10px] leading-4 text-fg">{tabs.length}</span>}
+    </button>
+  );
+}
+
+export function ChatScreen({ client, route, back, push, replace }: { client: HostClient; route: ChatRoute; back: () => void; push: (route: Route) => void; replace: (route: Route) => void }) {
   const [attempt, setAttempt] = useState(0);
   const [picking, setPicking] = useState(false);
   const { handle, error } = useJoinedChat(client, route, attempt);
@@ -115,12 +131,20 @@ export function ChatScreen({ client, route, back, replace }: { client: HostClien
   const level = session ? attention(session) : undefined;
   const ui = useChatUiHandle();
   const expandAll = useChatUi((s) => s.expandAll);
+  // Before the transcript's effects settle its links (layout effects run before every passive effect).
+  const chatHandle = session?.handle;
+  const chatCwd = session?.cwd;
+  useLayoutEffect(() => {
+    showChat(chatHandle && chatCwd ? { handle: chatHandle, cwd: chatCwd } : undefined);
+    return () => showChat(undefined);
+  }, [chatHandle, chatCwd]);
   const earlier = entry?.turns && entry.turns.from > 0 && handle ? { count: entry.turns.from, load: () => client.loadEarlier(handle) } : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Header title={title} onBack={back} trailing={
           <>
+            {session && <BrowserButton client={client} handle={session.handle} onOpen={() => push({ screen: "browser", handle: session.handle })} />}
             {session && (
               <button
                 type="button"

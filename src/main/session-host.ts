@@ -424,6 +424,11 @@ export class SessionHost {
     if (chat && !chat.clients.size && !chat.holds.size && chat.state.phase !== "exited" && isDisposable(chat.state)) void this.close(handle, "host");
   }
 
+  /** The directory a live chat runs in (its worktree for worktree chats). */
+  cwdOf(handle: string): string | undefined {
+    return this.live.get(handle)?.cwd;
+  }
+
   /**
    * The chat behind a bridge request: its project and pi's current session file (asked live, since /new, /resume
    * and forks switch files). pi answers commands while one of its tools waits on the bridge.

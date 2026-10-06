@@ -5,6 +5,7 @@ import type { ToolRun } from "../../../shared/session-state";
 import { Ansi } from "./primitives";
 import { CodeView } from "./Markdown";
 import { previewClick } from "../lib/preview";
+import { useChatActions } from "../lib/chat-ui";
 
 const MAX_LINES = 400;
 
@@ -97,8 +98,9 @@ export function DiffView({ diff }: { diff: string }) {
 
 /** A file path that previews the file on click (cmd-click: new tab). */
 export function FileLink({ path, children, className = "" }: { path: string; children?: React.ReactNode; className?: string }) {
+  const { links } = useChatActions();
   return (
-    <span role="link" onClick={previewClick(path)} title="Preview (⌘-click: new tab)" className={`cursor-pointer hover:text-fg hover:underline ${className}`}>
+    <span role="link" onClick={previewClick(links, path)} title="Preview (⌘-click: new tab)" className={`cursor-pointer hover:text-fg hover:underline ${className}`}>
       {children ?? path}
     </span>
   );

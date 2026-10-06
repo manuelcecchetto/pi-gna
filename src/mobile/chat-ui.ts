@@ -1,8 +1,12 @@
 // The phone's side of the shared transcript components (renderer/src/lib/chat-ui.tsx): expansion state, the board
-// cards a message can name, and the actions that go to the host.
+// cards a message can name, and the actions that go to the host. Chat links open what the Mac would: a file in a
+// preview tab the chat owns, streamed on the Browser screen; a card on the board; a localhost page in the Mac's
+// browser (the phone cannot reach the Mac's localhost); any other web page in Safari.
 import { createStore, useStore } from "../renderer/src/lib/store";
-import type { ChatUi, ChatUiState } from "../renderer/src/lib/chat-ui";
+import type { ChatLinks, ChatUi, ChatUiState } from "../renderer/src/lib/chat-ui";
 import { emptyBoard } from "../shared/board";
+import { type BrowserTab, isLocalUrl } from "../shared/browser";
+import type { Route } from "./nav";
 import type { QueueOp } from "../shared/queue";
 import type { HostClient } from "./client/host-client";
 import { Sheet } from "./Sheets";
@@ -13,7 +17,63 @@ export const useLightbox = (): string | undefined => useStore(lightbox, (src) =>
 export const toggleExpandAll = (ui: ChatUi): void => ui.store.set((state) => ({ ...state, expandAll: !state.expandAll, expanded: {} }));
 export const closeLightbox = (): void => lightbox.set(() => undefined);
 
-export function createChatUi(client: HostClient, homeDir: string): ChatUi {
+/** The chat on screen, whose folders its links open from; ChatScreen sets it before the transcript's effects run. */
+let showing: { handle: string; cwd: string } | undefined;
+export const showChat = (chat: { handle: string; cwd: string } | undefined): void => {
+  showing = chat;
+};
+
+/**
+ * The tab once its first page has loaded (the host's browser state says so), or undefined after 10 s or once it is
+ * gone. Sizing a tab before that would replace the page with about:blank (BrowserManager.emulate guards a crash).
+ */
+function loaded(client: HostClient, id: string): Promise<BrowserTab | undefined> {
+  const find = () => client.store.get().global.browser?.tabs.find((t) => t.id === id);
+  const ready = (tab: BrowserTab | undefined) => !!tab && !tab.loading && !!tab.url && tab.url !== "about:blank";
+  if (ready(find())) return Promise.resolve(find());
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      stop();
+      const tab = find();
+      resolve(ready(tab) ? tab : undefined);
+    };
+    const timer = setTimeout(finish, 10_000);
+    const stop = client.store.subscribe(() => ready(find()) && finish());
+  });
+}
+
+/**
+ * Show a tab a link opened on the Browser screen. A tab without a viewport is laid out at this phone's size: the Mac's
+ * Responsive layout is 1280 px wide, a strip of tiny text on a phone.
+ */
+async function showTab(client: HostClient, push: (route: Route) => void, handle: string, id: string): Promise<void> {
+  push({ screen: "browser", handle, tab: id });
+  const tab = await loaded(client, id);
+  if (!tab || tab.viewport) return;
+  // Size and density only: a new User-Agent would reload the page.
+  const request = { width: Math.round(window.innerWidth), height: Math.round(window.innerHeight), dpr: Math.min(3, Math.round(window.devicePixelRatio)), source: "user" as const };
+  await client.call("browser.viewport", { id, request }).catch(() => undefined);
+}
+
+function chatLinks(client: HostClient, push: (route: Route) => void, failed: (what: string, error: unknown) => void): ChatLinks {
+  return {
+    cwd: () => showing?.cwd,
+    resolve: (targets) => (showing ? client.call("chat.resolveLinks", { handle: showing.handle, targets }) : Promise.resolve(targets.map(() => null))),
+    image: (target) => (showing ? client.call("chat.linkImage", { handle: showing.handle, target }) : Promise.resolve(null)),
+    openFile(path, { line }) {
+      const chat = showing;
+      if (!chat) return;
+      client.call("chat.openFile", { handle: chat.handle, path, line }).then(
+        ({ id }) => showTab(client, push, chat.handle, id),
+        (error) => failed("Could not open the file", error),
+      );
+    },
+    openCard: (card) => push({ screen: "page", page: "board", cwd: card.cwd, cardId: card.id }),
+  };
+}
+
+export function createChatUi(client: HostClient, homeDir: string, push: (route: Route) => void): ChatUi {
   const store = createStore<ChatUiState>({
     expandAll: false,
     expanded: {},
@@ -43,7 +103,15 @@ export function createChatUi(client: HostClient, homeDir: string): ChatUi {
       visualFrames: { src: (frameId) => `/visual/${frameId}/doc`, tapToRender: true },
       setExpanded: (key, open) => store.set((state) => ({ ...state, expanded: { ...state.expanded, [key]: open } })),
       openLightbox: (src) => lightbox.set(() => src),
-      openExternal: (url) => void window.open(url, "_blank", "noopener,noreferrer"),
+      openExternal(url) {
+        const chat = showing;
+        if (!chat || !/^https?:/i.test(url) || !isLocalUrl(url)) return void window.open(url, "_blank", "noopener,noreferrer");
+        client.call("browser.newTab", { url, agent: chat.handle }).then(
+          (tab) => (tab ? showTab(client, push, chat.handle, tab.id) : push({ screen: "browser", handle: chat.handle })),
+          (error) => failed("Could not open the page", error),
+        );
+      },
+      links: chatLinks(client, push, (what, error) => failed(what, error)),
       async respondDialog(handle, response) {
         try {
           const answer = await client.call("chat.respondDialog", { handle, response });

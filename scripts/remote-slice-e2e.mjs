@@ -955,6 +955,7 @@ async function screens({ desktop, ports }, { handle, A, project }) {
   await settingsChecks({ phone, A, shot, text, exists, present });
   await transcriptChecks({ phone, A, shot, text, tap, exists, present });
   await browserChecks({ phone, A, shot, text, tap, exists, present });
+  await linkChecks({ phone, A, shot, text, exists });
   if (flag("--hold")) {
     log(`holding on the mobile page; debug port ${ports.debug}`);
     await new Promise(() => undefined);
@@ -1045,10 +1046,18 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
   };
 
   try {
-    await phone.eval("location.href = '/'");
-    await until("the projects screen", () => exists('[data-testid="open-browser"]'), 30_000, 250);
+    // The browser opens from a chat's header; the tab belongs to the Mac's chat, so "All tabs" shows it.
+    await phone.eval("localStorage.removeItem('pigna:mobile-last-project'); location.href = '/'");
+    await until("the projects screen", () => exists('[data-testid="open-folder"]'), 30_000, 250);
+    check(!(await exists('[data-testid="open-browser"]')), "the projects header has no browser button");
     await A.ok("browser.newTab", { url });
-    check(await click("open-browser"), "the projects screen opens the browser");
+    check(await tap("project"), "the projects list");
+    await until("the chats screen", present("Earlier question 1"));
+    await tap("Earlier question 1");
+    await until("the chat's browser button", () => exists('[data-testid="open-browser"]'), 30_000, 250);
+    check(await click("open-browser"), "the chat header opens the browser");
+    await until("the browser screen", () => exists('[data-testid="all-tabs"]'));
+    check(await click("all-tabs"), "All tabs shows tabs other chats own");
     await until("the tab", async () => (await text()).includes("Dev page"), 20_000, 100);
     check(!(await exists('[data-testid="window-badge"]')), "a pane tab is not marked as a window");
     await click("viewport-open");
@@ -1122,10 +1131,6 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
 
     // The chip rides with this phone's next prompt.
     await phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
-    await until("the projects screen", () => exists('[data-testid="open-browser"]'));
-    check(await tap("project"), "back on the projects list");
-    await until("the chats screen", present("Earlier question 1"));
-    await tap("Earlier question 1");
     await until("the composer", () => exists('[data-testid="send"]'));
     check(await exists('[data-testid="annotation-chip"]'), "the composer shows the comment chip");
     await phone.eval("document.querySelector('textarea').focus()");
@@ -1136,6 +1141,61 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     const echoed = await text();
     check((() => { const tail = echoed.slice(echoed.indexOf("zzcomment")); return tail.includes("Browser comments (1)") && tail.includes("[images=1]"); })(), "the host composed the comment and its crop into the prompt", echoed.slice(-300));
     check(!(await exists('[data-testid="annotation-chip"]')), "the chip is gone once the prompt was taken");
+  } finally {
+    fixture.close();
+  }
+}
+
+/** Chat links on the phone: a project file opens the Mac's preview, a card the board, a localhost page the Mac's browser; a file outside the chat's folders stays text. Starts in a chat. */
+async function linkChecks({ phone, A, shot, text, exists }) {
+  log("mobile chat links");
+  const click = (selector) => phone.eval(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true; })()`);
+  const tapBack = () => phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
+  const fixture = http.createServer((_req, res) => res.end("<!doctype html><title>Local page</title><h1>Local page</h1>"));
+  await new Promise((resolve) => fixture.listen(0, "127.0.0.1", resolve));
+  const url = `http://127.0.0.1:${fixture.address().port}/`;
+  writeFileSync(join(project, "notes.md"), "# Notes from the project\n\nA second line.\n");
+  const board = await A.ok("board.get");
+  await A.ok("board.apply", { op: { type: "add", id: "lk7q2p", title: "Linked card", cwd: project, column: "todo" }, baseRev: board.rev });
+  try {
+    await until("the composer", () => exists('[data-testid="send"]'), 30_000, 200);
+    // A prompt sent while the chat runs is queued; the answer must be the next one.
+    await until("the chat to be idle", async () => !(await exists('[data-testid="stop"]')), 60_000, 250);
+    await phone.eval("document.querySelector('textarea').focus()");
+    await phone.send("Input.insertText", { text: `say: See [the notes](notes.md:2), [the hosts file](/etc/hosts), [the card](lk7q2p) and [the dev page](${url}).` });
+    await until("Send to enable", () => phone.eval(`!document.querySelector('[data-testid="send"]').disabled`));
+    await click('[data-testid="send"]');
+    await until("the project file link", () => exists(".prose [data-file][data-resolved]"), 30_000, 200);
+    await until("the card link", () => exists(".prose [data-card][data-checked]"), 10_000, 200);
+    check(await phone.eval(`[...document.querySelectorAll(".prose .file-missing")].some((e) => e.textContent.includes("the hosts file"))`), "a file outside the chat's folders stays plain text");
+    await shot("links-1-answer");
+
+    check(await click(".prose [data-file][data-resolved]"), "the project file link is tappable");
+    await until("the preview on the browser screen", () => exists('[data-testid="browser-screen"] [data-testid="preview-icon"]'), 20_000, 200);
+    const tabs = (await A.ok("browser.state")).tabs.filter((t) => t.preview?.path?.endsWith("notes.md"));
+    check(tabs.length === 1 && !!tabs[0].agent, "the host opened the file in a preview tab the chat owns", tabs);
+    await until("the phone-sized preview", async () => (await A.ok("browser.state")).tabs.some((t) => t.preview?.path?.endsWith("notes.md") && t.viewport?.width === 393), 10_000, 200);
+    check(true, "the preview is laid out at the phone's size");
+    await until("the preview frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
+    check(true, "the phone streams the Mac's preview");
+    await shot("links-2-preview");
+    await tapBack();
+    await until("the chat again", () => exists(".prose [data-card]"), 20_000, 200);
+
+    check(await click(".prose [data-card]"), "the card link is tappable");
+    await until("the card on the board", () => exists('[data-testid="card-page"]'), 20_000, 200);
+    check((await text()).includes("Linked card"), "the card link opens that card");
+    await shot("links-3-card");
+    await tapBack();
+    await until("the chat again", () => exists(`.prose a[href="${url}"]`), 20_000, 200);
+
+    check(await click(`.prose a[href="${url}"]`), "the localhost link is tappable");
+    await until("the page in the Mac's browser", async () => (await exists('[data-testid="browser-screen"]')) && (await text()).includes("Local page"), 20_000, 200);
+    check(true, "a localhost link opens in the Mac's browser, not Safari");
+    await shot("links-4-localhost");
+    await tapBack();
+    // Three Browser screens in a row: each closed its frame stream, or the phone would run out of connections here.
+    await until("the chat again", () => exists('[data-testid="send"]'), 20_000, 200);
   } finally {
     fixture.close();
   }

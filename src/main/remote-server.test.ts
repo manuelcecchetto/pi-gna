@@ -347,6 +347,10 @@ describe("RemoteServer", () => {
       expect(v.res.headers["content-type"]).toBe("multipart/x-mixed-replace; boundary=pigna-frame");
       expect(v.text).toContain("Content-Type: image/jpeg");
       expect(v.text).toContain("X-Css-Width: 390");
+      // An <img> shows a part only once the next arrives: the last frame goes again when the page stops painting.
+      await until(() => v.text.split("--pigna-frame").length - 1 === 2);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(v.text.split("--pigna-frame").length - 1).toBe(2);
       v.close();
       await until(() => closed.length === 1);
       expect(closed).toEqual(["tab1"]);

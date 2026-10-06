@@ -23,7 +23,7 @@ type Call = (method: string, args: unknown) => Promise<unknown>;
 const chip = "flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px]";
 
 /** Re-renders every second while `active`, so "agent is using this" fades without an event. */
-function useNow(active: boolean): number {
+export function useNow(active: boolean): number {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!active) return;
@@ -51,24 +51,33 @@ export function AnnotationChips({ onRemove }: { onRemove?: (id: string) => void 
   );
 }
 
-export function BrowserScreen({ client, back }: { client: HostClient; back: () => void }) {
+export function BrowserScreen({ client, handle, initialTab, back }: { client: HostClient; handle?: string; initialTab?: string; back: () => void }) {
   const state = useStore(client.store, (s) => s.global.browser);
-  const tabs = state?.tabs ?? [];
-  const tab = tabs.find((t) => t.id === state?.activeId) ?? tabs[0];
+  const [all, setAll] = useState(!handle);
+  const allTabs = state?.tabs ?? [];
+  const tabs = all ? allTabs : allTabs.filter((t) => t.agent === handle);
+  const now = useNow(allTabs.some((t) => t.agentAt !== undefined));
+  // The phone keeps its own selection: the Mac ignores activating a tab of a chat it is not showing.
+  const [picked, setPicked] = useState(initialTab);
+  const tab = tabs.find((t) => t.id === picked) ?? tabs.find((t) => t.id === state?.activeId) ?? tabs.find((t) => agentActive(t, now)) ?? tabs[0];
   const [commenting, setCommenting] = useState(false);
   const [sheet, setSheet] = useState<"viewport" | "keys">();
-  const now = useNow(tabs.some((t) => t.agentAt !== undefined));
 
   const call: Call = (method, args) => (client.call as (m: string, a: unknown) => Promise<unknown>)(method, args).catch((e) => toast(failure(e), "error"));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="browser-screen">
       <Header
-        title="Browser"
+        title={all ? "Browser" : "This chat's tabs"}
         subtitle={tab ? viewportLabel(tab) : undefined}
         onBack={back}
         trailing={
           <>
+            {handle && (
+              <button type="button" aria-pressed={all} data-testid="all-tabs" onClick={() => setAll((on) => !on)} className={`h-11 shrink-0 px-2 text-[13px] ${all ? "text-accent" : "text-muted"}`}>
+                All tabs
+              </button>
+            )}
             <button type="button" aria-label="Comment mode" aria-pressed={commenting} data-testid="comment-mode" disabled={!tab} onClick={() => setCommenting((on) => !on)} className={`grid h-11 w-11 shrink-0 place-items-center disabled:opacity-40 ${commenting ? "text-accent" : "text-muted"}`}>
               <MessageSquarePlus size={20} />
             </button>
@@ -83,7 +92,14 @@ export function BrowserScreen({ client, back }: { client: HostClient; back: () =
           const active = t.id === tab?.id;
           return (
             <div key={t.id} className={`${chip} ${active ? "border-accent/60 text-fg" : "border-line text-muted"}`} data-testid="browser-tab" data-active={active}>
-              <button type="button" onClick={() => void call("browser.activate", { id: t.id })} className="flex min-h-9 max-w-40 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setPicked(t.id);
+                  void call("browser.activate", { id: t.id });
+                }}
+                className="flex min-h-9 max-w-40 items-center gap-1.5"
+              >
                 {t.preview && <File size={13} className="shrink-0 text-faint" data-testid="preview-icon" />}
                 {!t.preview && t.favicon && <img src={t.favicon} alt="" className="size-3.5 shrink-0 rounded-[3px] object-contain" />}
                 <span className="truncate">{tabTitle(t)}</span>
@@ -106,7 +122,7 @@ export function BrowserScreen({ client, back }: { client: HostClient; back: () =
             </div>
           );
         })}
-        <button type="button" aria-label="New tab" data-testid="new-tab" onClick={() => void call("browser.newTab", {})} className={`${chip} border-line text-muted`}>
+        <button type="button" aria-label="New tab" data-testid="new-tab" onClick={() => void call("browser.newTab", handle ? { agent: handle } : {}).then((tab) => tab && setPicked((tab as { id: string }).id))} className={`${chip} border-line text-muted`}>
           <Plus size={15} />
         </button>
       </div>
@@ -420,6 +436,12 @@ function Frame({ client, tab, commenting }: { client: HostClient; tab: BrowserTa
   };
 
   const src = stream && drawn.width ? `${stream}?w=${asked.w}&h=${asked.h}&dpr=${Math.min(3, window.devicePixelRatio || 2)}&r=${retry}` : undefined;
+  // Removing an <img> does not end its download: a stream left open holds one of the page's few connections to the
+  // Mac, and a handful of them stall every later call. Clearing the src of the picture that goes away ends it.
+  useEffect(() => {
+    const el = img.current;
+    return () => el?.removeAttribute("src");
+  }, [src, lost]);
   return (
     <div className="relative min-h-0 flex-1 bg-black" data-testid="frame-area">
       <div ref={area} className="absolute inset-0 touch-none select-none overflow-hidden" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onContextMenu={(event) => event.preventDefault()}>
@@ -430,7 +452,7 @@ function Frame({ client, tab, commenting }: { client: HostClient; tab: BrowserTa
             src={src}
             alt={`${tabTitle(tab)} on the Mac`}
             draggable={false}
-            onError={() => setLost(true)}
+            onError={(event) => event.currentTarget.isConnected && setLost(true)}
             data-testid="frame"
             className={`pointer-events-none absolute bg-white ${commenting ? "outline outline-2 outline-accent" : ""}`}
             style={{ width: drawn.width, height: drawn.height, left: (room.width - drawn.width) / 2, top: (room.height - drawn.height) / 2, transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}

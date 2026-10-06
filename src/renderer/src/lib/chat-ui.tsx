@@ -2,6 +2,7 @@
 // provides it from its store and `window.studio`; the mobile app provides it from its HostClient (src/mobile), so
 // those components stay shared and never import a client's state module.
 import { type ComponentType, createContext, type ReactNode, useContext } from "react";
+import type { Card } from "../../../shared/board";
 import type { QueueOp } from "../../../shared/queue";
 import type { ExtensionUiResponse } from "../../../shared/protocol";
 import type { AppState } from "../state/app";
@@ -20,6 +21,19 @@ export interface VisualFrames {
   tapToRender: boolean;
 }
 
+/** What a chat's links open (docs/FILE_PREVIEW.md, Chat links): file previews and cards. */
+export interface ChatLinks {
+  /** Directory of the chat on screen; relative links resolve against it. */
+  cwd(): string | undefined;
+  /** Link targets -> absolute file paths; null where missing (on a phone, also outside the chat's folders). */
+  resolve(targets: string[]): Promise<(string | null)[]>;
+  /** The image an answer embeds (`![alt](target)`), found as `resolve` finds it; null when it cannot be shown. */
+  image(target: string): Promise<{ mimeType: string; data: string } | null>;
+  /** Preview a file; `newTab` keeps the current preview open beside it. */
+  openFile(path: string, options: { line?: number; newTab?: boolean }): void;
+  openCard(card: Card): void;
+}
+
 export interface ChatUiActions {
   homeDir: string;
   /** Bottom sheet of the phone; where present, a tool call opens its details in one instead of inline. */
@@ -30,6 +44,8 @@ export interface ChatUiActions {
   /** Open a card on the board; absent where there is no board view. */
   showBoard?(cwd: string, card: string): void;
   openExternal(url: string): void;
+  /** Absent where links cannot open: file links then read as plain text. */
+  links?: ChatLinks;
   respondDialog(handle: string, response: ExtensionUiResponse): Promise<void>;
   /** False when the queue no longer holds the text (the run moved on). */
   editQueue(handle: string, op: QueueOp): Promise<boolean>;

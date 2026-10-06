@@ -8,8 +8,8 @@ export type Route =
   | { screen: "chats"; cwd: string }
   /** Settings: the sections list, or one section. */
   | { screen: "settings"; section?: MobileSection }
-  /** The Mac's browser tabs. */
-  | { screen: "browser" }
+  /** The Mac's browser tabs: those of the chat `handle` (opened from its header or a link), or all of them; `tab` is shown first. */
+  | { screen: "browser"; handle?: string; tab?: string }
   /** A project page (board, laments, GitHub, ATP) the phone shows as it gains them. */
   | { screen: "page"; page: "board" | "laments" | "github" | "atp"; cwd: string; cardId?: string }
   /** `handle`: a live chat to join; otherwise the session file is opened (or joined when already live). */

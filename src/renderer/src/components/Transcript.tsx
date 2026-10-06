@@ -424,7 +424,7 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
  * divider marks the first message and messages after a long break.
  */
 function UserMessageView({ message, divider }: { message: UserMessage; divider: boolean }) {
-  const { openLightbox, homeDir } = useChatActions();
+  const { openLightbox, homeDir, links } = useChatActions();
   const parts = userParts(message);
   const [withoutFiles, mentions] = splitFileMentions(parts.text);
   const [withoutCard, card] = splitCardBlock(withoutFiles);
@@ -487,7 +487,7 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
               <span
                 key={mention.path}
                 title={mention.path}
-                onClick={mention.isDir ? undefined : previewClick(mention.path)}
+                onClick={mention.isDir ? undefined : previewClick(links, mention.path)}
                 className={`flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 font-mono text-[11.5px] text-muted ${mention.isDir ? "" : "cursor-pointer hover:bg-raised hover:text-fg"}`}
               >
                 <Icon size={12} className="shrink-0 text-faint" />

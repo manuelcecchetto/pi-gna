@@ -181,3 +181,42 @@ describe("chat reads for a phone", () => {
     expect(calls.map((c) => (c[3] as { caller: unknown }).caller)).toEqual([{ device: "d1" }, "desktop"]);
   });
 });
+
+describe("a phone's chat links", () => {
+  it("open only the files of the chat's directory and project, symlinks followed", async () => {
+    const { mkdtemp, mkdir, writeFile, symlink, realpath } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const base = await realpath(await mkdtemp(join(tmpdir(), "pigna-links-")));
+    const project = join(base, "project");
+    const { worktreeCwd } = await import("../shared/board");
+    const worktree = worktreeCwd(join(base, "home"), "abc123", project);
+    const outside = join(base, "secret.txt");
+    await mkdir(worktree, { recursive: true });
+    await mkdir(project, { recursive: true });
+    await writeFile(join(project, "README.md"), "# hi");
+    await writeFile(join(worktree, "notes.md"), "notes");
+    await writeFile(join(worktree, "shot.png"), "png");
+    await writeFile(outside, "secret");
+    await symlink(outside, join(worktree, "escape.txt"));
+
+    const opened: unknown[] = [];
+    const links = createHostCore({
+      ...deps,
+      host: { cwdOf: (handle: string) => (handle === "h1" ? worktree : undefined) },
+      browser: () => ({ openPreview: async (path: string, options: unknown) => (opened.push([path, options]), { id: "tab1" }) }),
+    } as unknown as HostDeps);
+
+    const resolved = await dispatch(links, phone(), "chat.resolveLinks", { handle: "h1", targets: ["notes.md", join(project, "README.md"), outside, "escape.txt", "/etc/hosts", "missing.md"] });
+    expect(resolved).toEqual([join(worktree, "notes.md"), join(project, "README.md"), null, null, null, null]);
+    await expect(dispatch(links, phone(), "chat.linkImage", { handle: "h1", target: "shot.png" })).resolves.toMatchObject({ mimeType: "image/png" });
+    await expect(dispatch(links, phone(), "chat.linkImage", { handle: "h1", target: outside })).resolves.toBeNull();
+
+    await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: join(worktree, "notes.md"), line: 3 })).resolves.toEqual({ id: "tab1" });
+    expect(opened).toEqual([[join(worktree, "notes.md"), { agent: "h1", root: worktree, line: 3 }]]);
+    await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: join(worktree, "escape.txt") })).rejects.toMatchObject({ code: "scope_denied" });
+    await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: outside })).rejects.toMatchObject({ code: "scope_denied" });
+    expect(opened).toHaveLength(1);
+    await expect(dispatch(links, phone(), "chat.resolveLinks", { handle: "gone", targets: [] })).rejects.toMatchObject({ code: "not_found" });
+  });
+});

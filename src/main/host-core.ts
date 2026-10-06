@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
-import type { BoardOp, Column } from "../shared/board";
+import { type BoardOp, type Column, projectOf } from "../shared/board";
 import { parseAnnotations } from "../shared/annotations";
 import type { Annotation, BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
@@ -17,7 +17,7 @@ import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
-import { readPreviewImage, resolvePreviewTargets } from "./browser/resolve-targets";
+import { readPreviewImage, resolvePreviewTargets, within } from "./browser/resolve-targets";
 import { listFiles } from "./files";
 import { siteIcon } from "./site-icons";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
@@ -148,6 +148,11 @@ const deviceOf = (ctx: HostContext): string => {
   return ctx.client.device;
 };
 
+const chatHandle = (handle: unknown): string => {
+  if (typeof handle !== "string" || !handle) throw new Error("Invalid chat");
+  return handle;
+};
+
 export const project = (cwd: unknown): string => {
   if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");
   return cwd;
@@ -190,6 +195,12 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   const env = () => deps.shellEnv;
   /** clientId -> when it last asked for a Computer Use preview. */
   const previews = new Map<string, number>();
+  /** A live chat's directory and the folders whose files it may open on a phone: the directory and its project. */
+  const chatRoots = (handle: string): { cwd: string; roots: string[] } => {
+    const cwd = host.cwdOf(handle);
+    if (!cwd) throw new HostError("not_found", "session is not running");
+    return { cwd, roots: [...new Set([cwd, projectOf(cwd)])] };
+  };
   /** What a send names, as attachments: the caller's own uploads by id, or paths on the host (as the desktop picker gives them). */
   const resolveAttachments = async (ctx: HostContext, refs: AttachmentRef[] | undefined): Promise<PickedPath[]> => {
     if (refs === undefined) return [];
@@ -288,7 +299,11 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
 
     "browser.layout": any<{ layout: Parameters<BrowserManager["setLayout"]>[0] }>("desktop", (_ctx, { layout }) => deps.browser()?.setLayout(layout)),
     "browser.focus": any<{ chat?: string }>("desktop", (_ctx, { chat }) => deps.browser()?.focus(typeof chat === "string" ? chat : undefined)),
-    "browser.newTab": any<{ url?: string }>("remote", (_ctx, { url }) => deps.browser()?.createTab(url)),
+    // `agent`: the chat the tab belongs to (a phone opens tabs from a chat's browser); otherwise the chat on the Mac's screen.
+    "browser.newTab": any<{ url?: string; agent?: string }>("remote", (_ctx, { url, agent }) => {
+      const tab = deps.browser()?.createTab(url, typeof agent === "string" ? agent : undefined);
+      return tab ? { id: tab.id } : null;
+    }),
     "browser.closeTab": any<{ id: string }>("remote", (_ctx, { id }) => deps.browser()?.closeTab(id)),
     "browser.activate": any<{ id: string }>("remote", (ctx, { id }) => {
       deps.browser()?.activate(id);
@@ -413,6 +428,43 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         return { url: raw.url };
       },
       (_ctx, { url }) => siteIcon(url),
+    ),
+    // What a chat links to, for a phone: confined to the chat's folders (`chatRoots`), unlike the desktop methods above.
+    "chat.resolveLinks": method<{ handle: string; targets: string[] }>(
+      "remote",
+      (raw) => {
+        if (!Array.isArray(raw.targets) || (raw.targets as unknown[]).some((t) => typeof t !== "string" || t.length > 4096 || t.includes("\0"))) throw new Error("Invalid targets");
+        return { handle: chatHandle(raw.handle), targets: raw.targets as string[] };
+      },
+      async (_ctx, { handle, targets }) => {
+        const { cwd, roots } = chatRoots(handle);
+        return Promise.all((await resolvePreviewTargets(cwd, targets)).map((path) => within(path, roots)));
+      },
+    ),
+    "chat.linkImage": method<{ handle: string; target: string }>(
+      "remote",
+      (raw) => {
+        if (typeof raw.target !== "string" || raw.target.length > 4096 || raw.target.includes("\0")) throw new Error("Invalid target");
+        return { handle: chatHandle(raw.handle), target: raw.target };
+      },
+      (_ctx, { handle, target }) => {
+        const { cwd, roots } = chatRoots(handle);
+        return readPreviewImage(cwd, target, roots);
+      },
+    ),
+    "chat.openFile": method<{ handle: string; path: string; line?: number }>(
+      "remote",
+      (raw) => {
+        if (typeof raw.path !== "string" || !isAbsolute(raw.path) || raw.path.length > 4096 || raw.path.includes("\0")) throw new Error("Invalid file path");
+        return { handle: chatHandle(raw.handle), path: raw.path, line: Number.isInteger(raw.line) && (raw.line as number) > 0 ? (raw.line as number) : undefined };
+      },
+      async (_ctx, { handle, path, line }) => {
+        const { cwd, roots } = chatRoots(handle);
+        const browser = deps.browser();
+        if (!browser) throw new Error("The browser is not ready");
+        if (!(await within(path, roots))) throw new HostError("scope_denied", "the file is outside this chat's folders");
+        return { id: (await browser.openPreview(path, { agent: handle, root: cwd, line })).id };
+      },
     ),
     "browser.history": any("remote", () => deps.browser()?.getHistory() ?? []),
     "browser.state": any("remote", () => deps.browser()?.snapshot()),

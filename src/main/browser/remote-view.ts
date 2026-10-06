@@ -101,10 +101,7 @@ export class RemoteBrowser {
         const wc = tab.view.webContents;
         // Ack at once, so Chromium keeps producing; delivery is throttled per viewer downstream.
         void cdp(wc, "Page.screencastFrameAck", { sessionId: params.sessionId }).catch(() => undefined);
-        const size = pageSize(tab);
-        const frame: Frame = { jpeg: Buffer.from(params.data, "base64"), cssWidth: size.width, cssHeight: size.height };
-        cast.last = frame;
-        for (const viewer of cast.viewers) viewer.onFrame(frame);
+        deliver(cast, params.data);
       },
       // The user can cancel debugging from the DevTools banner, which ends the screencast with it.
       onDetach: () => {
@@ -153,6 +150,12 @@ export class RemoteBrowser {
       }
       cast.params = want;
       await cdp(wc, "Page.startScreencast", { format: "jpeg", quality: want.quality, maxWidth: want.maxWidth, maxHeight: want.maxHeight, everyNthFrame: want.everyNthFrame });
+      // A screencast sends frames only as the page repaints, so a static page that painted before it started (a file
+      // preview) would show nothing: its first picture is a screenshot, unless a screencast frame comes first.
+      if (!cast.last) {
+        const shot = (await cdp(wc, "Page.captureScreenshot", { format: "jpeg", quality: want.quality }).catch(() => undefined)) as { data: string } | undefined;
+        if (shot && !cast.last && cast.params === want) deliver(cast, shot.data);
+      }
     } catch (error) {
       cast.params = undefined;
       log.warn("browser", `remote screencast: ${(error as Error).message}`);
@@ -257,6 +260,14 @@ export class RemoteBrowser {
 }
 
 /** The page viewport a tab shows, in CSS px: its emulated size, or the view's own size. */
+/** A frame of the tab's page to every viewer, kept for viewers who join later. */
+function deliver(cast: Cast, base64: string): void {
+  const size = pageSize(cast.tab);
+  const frame: Frame = { jpeg: Buffer.from(base64, "base64"), cssWidth: size.width, cssHeight: size.height };
+  cast.last = frame;
+  for (const viewer of cast.viewers) viewer.onFrame(frame);
+}
+
 function pageSize(tab: Tab): { width: number; height: number } {
   if (tab.viewport) return { width: tab.viewport.width, height: tab.viewport.height };
   const { width, height } = tab.view.getBounds();

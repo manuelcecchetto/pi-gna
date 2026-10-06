@@ -1,12 +1,20 @@
 import { memo, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ChatUiProvider, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
+import { type ChatLinks, ChatUiProvider, type ChatUiState, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
 import { decorateWebLinks, loadChatImages, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
 
-function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void, openLightbox: (src: string) => void): void {
+interface ProseActions {
+  openExternal(url: string): void;
+  openLightbox(src: string): void;
+  links?: ChatLinks;
+  homeDir: string;
+  board: ChatUiState["board"];
+}
+
+function onProseClick(event: MouseEvent<HTMLElement>, { openExternal, openLightbox, links, homeDir, board }: ProseActions): void {
   const target = event.target as HTMLElement;
   const copy = target.closest<HTMLButtonElement>("[data-copy]");
   if (copy) {
@@ -27,13 +35,13 @@ function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string
   const card = target.closest<HTMLElement>("[data-card]");
   if (card) {
     event.preventDefault();
-    openCardLink(card);
+    openCardLink(card, links, board);
     return;
   }
   const file = target.closest<HTMLElement>("[data-file]");
   if (file) {
     event.preventDefault();
-    openFileLink(file, event);
+    openFileLink(file, event, links, homeDir);
     return;
   }
   const link = target.closest<HTMLAnchorElement>("a[href]");
@@ -54,7 +62,8 @@ export const Markdown = memo(function Markdown({
   streaming?: boolean;
   visuals?: boolean;
 }) {
-  const { openExternal, openLightbox } = useChatActions();
+  const { openExternal, openLightbox, links, homeDir } = useChatActions();
+  const board = useChatUi((s) => s.board);
   const ui = useChatUiHandle(); // the frames mount in roots of their own, which carry it along
   const enabled = useChatUi((s) => s.settings.visuals) && visuals;
   const html = useMemo(() => {
@@ -70,9 +79,14 @@ export const Markdown = memo(function Markdown({
   useLayoutEffect(() => decorateWebLinks(ref.current, !streaming), [html, streaming]);
   // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
-    if (!streaming) resolveCardLinks(ref.current);
-    if (!streaming) void resolveFileLinks(ref.current).then(() => loadChatImages(ref.current));
-  }, [html, streaming]);
+    if (!streaming) void resolveFileLinks(ref.current, links, homeDir).then(() => loadChatImages(ref.current, links));
+  }, [html, streaming, links, homeDir]);
+  // Card links settle once the board has cards (a phone's arrives with its first sync), not on every board change.
+  const hasCards = board.cards.length > 0;
+  useEffect(() => {
+    if (!streaming && hasCards) resolveCardLinks(ref.current, board);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html, streaming, hasCards]);
   useEffect(() => {
     const root = ref.current;
     if (!root || !enabled) return;
@@ -111,12 +125,12 @@ export const Markdown = memo(function Markdown({
     };
   }, [html, streaming, enabled, ui]);
   return (
-    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, openExternal, openLightbox)}
+    <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, { openExternal, openLightbox, links, homeDir, board })}
       onKeyDown={(event) => {
         const card = (event.target as HTMLElement).closest<HTMLElement>("[data-card]");
-        if (card && event.key === "Enter") return openCardLink(card);
+        if (card && event.key === "Enter") return openCardLink(card, links, board);
         const file = (event.target as HTMLElement).closest<HTMLElement>("[data-file]");
-        if (file && event.key === "Enter") openFileLink(file, event);
+        if (file && event.key === "Enter") openFileLink(file, event, links, homeDir);
       }}
       dangerouslySetInnerHTML={{ __html: html }} />
   );
