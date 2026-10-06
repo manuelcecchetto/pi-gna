@@ -3,6 +3,7 @@
 // New cards are added on the board (AddCard), with their screenshots.
 import { Check, ChevronDown, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { type Card, COLUMN_LABELS, COLUMNS, githubKey, LIMITS } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";
 import type { PickedPath } from "../../../shared/ipc";
@@ -51,7 +52,7 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
 export function CardTab({ card, chat, onClose }: { card: Card; chat?: string; onClose: () => void }) {
   const [zoom, setZoom] = useState<string>();
   return (
-    <div className="h-full overflow-hidden bg-panel text-fg [contain:paint] [&>div]:h-full">
+    <div className="h-full overflow-hidden bg-panel text-fg">
       <CardDetails card={card} chat={chat} onClose={onClose} zoom={zoom} onZoom={setZoom} />
     </div>
   );
@@ -130,8 +131,17 @@ export function CardDetails({
 
   return (
     <>
-      {elsewhere && <ContextMenu at={elsewhere.at} sections={[[{ label: "On another chat", icon: <MessagesSquare size={13} />, hint: "A new chat takes it, in its own git worktree for Resolve", onSelect: elsewhere.run }]]} onClose={() => setElsewhere(undefined)} />}
-      <div className="flex max-h-[inherit] flex-col">
+      {/* On the body: the tab or dialog around the details would clip and offset a fixed menu. */}
+      {elsewhere &&
+        createPortal(
+          <ContextMenu
+            at={elsewhere.at}
+            sections={[[{ label: "On another chat", icon: <MessagesSquare size={13} />, hint: "A new chat takes it, in its own git worktree for Resolve", onSelect: elsewhere.run }]]}
+            onClose={() => setElsewhere(undefined)}
+          />,
+          document.body,
+        )}
+      <div className="flex h-full max-h-[inherit] flex-col">
         <div className="flex items-center gap-1 px-4 pt-3.5">
           {COLUMNS.map((option) => {
             const current = card.column === option;

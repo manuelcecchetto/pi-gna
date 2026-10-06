@@ -168,14 +168,15 @@ export function resolveCardLinks(root: HTMLElement | null): void {
   if (!root) return;
   const { cards } = store.get().board;
   for (const el of root.querySelectorAll<HTMLElement>("[data-card]:not([data-checked])")) {
-    const card = cards.find((entry) => entry.id === el.dataset.card);
+    const id = el.dataset.card;
+    const card = cards.find((entry) => entry.id === id);
     if (!card) {
       el.removeAttribute("data-card");
       el.removeAttribute("role");
       el.removeAttribute("tabindex");
       el.classList.remove("card-link");
       el.classList.add("file-missing");
-      el.title = `Card not found: ${el.dataset.card}`;
+      el.title = `Card not found: ${id}`;
       continue;
     }
     el.dataset.checked = "1";

@@ -294,10 +294,10 @@ function TabPill({
       <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.card ? `Card ${tab.card}` : (tab.preview?.path ?? tab.url)}>
         {tab.surface === "window" ? (
           <AppWindow size={12} className="shrink-0 text-accent" />
-        ) : tab.agent ? (
-          <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
         ) : tab.card ? (
           <SquareKanban size={12} className="shrink-0 text-faint" />
+        ) : tab.agent ? (
+          <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
         ) : FileIcon ? (
           <FileIcon size={12} className="shrink-0 text-faint" />
         ) : (
