@@ -61,7 +61,7 @@ dmg:
   artifactName: ${name}-${arch}.${ext}
   format: ULFO
   # build/dmg-background.png (+ @2x) is drawn by `pnpm dmg-background`: the pigna hand mid-drag between the two icons.
-  # Window and icon positions must match scripts/make-dmg-background.mjs (it is 540x380, icons at x 140 and 400).
+  # Window and icon positions must match scripts/make-dmg-background.mjs (it is 540x380, icons at x 140 and 400, y 140).
   background: build/dmg-background.png
   iconSize: 100
   window:
@@ -69,9 +69,9 @@ dmg:
     height: 380
   contents:
     - x: 140
-      y: 190
+      y: 140
     - x: 400
-      y: 190
+      y: 140
       type: link
       path: /Applications
   # pi-gna's updater downloads the whole dmg, so no .blockmap files.

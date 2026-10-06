@@ -15,15 +15,15 @@ const icon = readFileSync(join(root, "resources", "icon.svg"), "utf8");
 const hand = /<svg x="[^"]+" y="[^"]+" width="540" height="540" viewBox="0 0 36 36">.*?<\/svg>/s.exec(icon)?.[0];
 if (!hand) throw new Error("resources/icon.svg no longer has the hand <svg> this script lifts out");
 
-const dots = [0, 1, 2, 3, 4, 5].map((i) => `<circle cx="${196 + i * 9}" cy="${196 - Math.sin(i / 5 * Math.PI) * 10}" r="${2 + i * 0.6}" fill="#F09082" opacity="${0.25 + i * 0.13}"/>`).join("");
+const dots = [0, 1, 2, 3, 4, 5].map((i) => `<circle cx="${196 + i * 9}" cy="${146 - Math.sin(i / 5 * Math.PI) * 10}" r="${2 + i * 0.6}" fill="#E0614F" opacity="${0.25 + i * 0.13}"/>`).join("");
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
   <defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="55"/></filter></defs>
-  <rect width="${WIDTH}" height="${HEIGHT}" fill="#0e0e12"/>
-  <g filter="url(#glow)"><circle cx="40" cy="30" r="110" fill="#F09082" opacity="0.5"/><circle cx="520" cy="360" r="130" fill="#4D9ABF" opacity="0.55"/><circle cx="60" cy="380" r="70" fill="#F1BE58" opacity="0.3"/></g>
+  <rect width="${WIDTH}" height="${HEIGHT}" fill="#f6f3ef"/>
+  <g filter="url(#glow)"><circle cx="40" cy="30" r="110" fill="#F09082" opacity="0.35"/><circle cx="520" cy="340" r="130" fill="#4D9ABF" opacity="0.3"/><circle cx="60" cy="360" r="70" fill="#F1BE58" opacity="0.3"/></g>
   ${dots}
-  <g transform="translate(251 144) scale(0.16)"><g transform="translate(-180 -243.5)">${hand}</g></g>
-  <text x="${WIDTH / 2}" y="${HEIGHT - 44}" text-anchor="middle" fill="#f3f1ee" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="17" font-weight="600">Pinch pi-gna into Applications</text>
-  <text x="${WIDTH / 2}" y="${HEIGHT - 22}" text-anchor="middle" fill="#f3f1ee" opacity="0.55" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="12">Drag the icon on the left onto the folder on the right</text>
+  <g transform="translate(251 94) scale(0.16)"><g transform="translate(-180 -243.5)">${hand}</g></g>
+  <text x="${WIDTH / 2}" y="${HEIGHT - 110}" text-anchor="middle" fill="#1d1d22" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="17" font-weight="600">Pinch pi-gna into Applications</text>
+  <text x="${WIDTH / 2}" y="${HEIGHT - 88}" text-anchor="middle" fill="#1d1d22" opacity="0.55" font-family="-apple-system, Helvetica Neue, sans-serif" font-size="12">Drag the icon on the left onto the folder on the right</text>
 </svg>`;
 
 app.dock?.hide();
