@@ -18,15 +18,16 @@ export function createChatUi(client: HostClient, homeDir: string): ChatUi {
     expandAll: false,
     expanded: {},
     board: { ...emptyBoard(), rev: 0 },
-    // No wallpaper on the phone; visuals follow the Mac's setting.
+    // Visuals and the wallpaper follow the Mac's settings (syncBoard below).
     settings: { visuals: false, wallpaper: "none", wallpaperLoop: false },
   });
   const syncBoard = () => {
     const { board, settings } = client.store.get().global;
     store.set((state) => {
-      const visuals = settings?.visuals ?? state.settings.visuals;
-      if (state.board === (board ?? state.board) && state.settings.visuals === visuals) return state;
-      return { ...state, board: board ?? state.board, settings: { ...state.settings, visuals } };
+      const { visuals, wallpaper, wallpaperLoop } = { ...state.settings, ...settings };
+      const same = state.settings.visuals === visuals && state.settings.wallpaper === wallpaper && state.settings.wallpaperLoop === wallpaperLoop;
+      if (state.board === (board ?? state.board) && same) return state;
+      return { ...state, board: board ?? state.board, settings: { visuals, wallpaper, wallpaperLoop } };
     });
   };
   client.store.subscribe(syncBoard);
