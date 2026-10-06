@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Computer Use: the agent cursor now travels along hand-tuned curves instead of a straight 0.2 s slide, and leans into its direction of travel. Pick one of six motions (Signature arc, Spring settle, Magnetic, Comet swoop, Adaptive, Classic; ported from Cua Driver) in Settings > Computer use. Moves are timed by distance and target size, and with Reduce Motion on the cursor still jumps.
+
 ## 0.6.5 - 2026-10-06
 
 - New browser tab: + now opens a start tab instead of a blank web page, with the address bar focused, Open file…, a Tools grid, a ⌘P finder over the chat's project files and suggested dev servers. Whatever you pick opens in that tab.

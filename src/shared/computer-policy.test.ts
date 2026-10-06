@@ -84,4 +84,17 @@ describe("parseComputerSettings", () => {
     expect(dropped).toBe(3);
     expect(() => parseComputerSettings([])).toThrow();
   });
+  it("keeps a known cursor motion and falls back to the default for anything else", () => {
+    expect(parseComputerSettings({ cursorMotion: "magnetic" }).settings.cursorMotion).toBe("magnetic");
+    expect(parseComputerSettings({ cursorMotion: "zigzag" }).settings.cursorMotion).toBe("signature_arc");
+  });
+});
+
+describe("cursor motion op", () => {
+  it("sets a known motion, keeps identity when unchanged and rejects unknown ones", () => {
+    const next = applyComputerOp(start, { type: "cursor-motion", motion: "comet_swoop" }, 1);
+    expect(next.cursorMotion).toBe("comet_swoop");
+    expect(applyComputerOp(next, { type: "cursor-motion", motion: "comet_swoop" }, 1)).toBe(next);
+    expect(() => applyComputerOp(start, { type: "cursor-motion", motion: "zigzag" as never }, 1)).toThrow(ComputerPolicyError);
+  });
 });

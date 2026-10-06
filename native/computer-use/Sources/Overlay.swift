@@ -1,7 +1,7 @@
 import AppKit
 import QuartzCore
 
-// Virtual cursor + "pi is using <App> · Esc to cancel" pill (docs/DESIGN.md, "Computer Use").
+// Virtual cursor + "pi is using <App> · Esc to cancel" pill (docs/DESIGN.md, "Computer Use"). Cursor paths: Motion.swift.
 //
 // One entry (glow frame window + cursor window + pill window) per app being driven. The cursor is the pigna hand of the
 // pi-gna mark glowing yellow; the frame around the target window and the pill glow in pi's coral, yellow and blue.
@@ -44,6 +44,8 @@ private final class OverlayWindow: NSWindow {
 private final class HandView: NSView {
     private static let width: CGFloat = 38
     private static let tip = CGPoint(x: 0.985, y: 0.215)   // the fingertips in the artwork, fractions from its top-left
+    /// Lean from rest in degrees, clockwise on screen, around the fingertips.
+    var lean: CGFloat = 0 { didSet { if abs(lean - oldValue) > 0.05 { needsDisplay = true } } }
 
     init(size: CGFloat, reduceMotion: Bool) {
         super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
@@ -66,7 +68,7 @@ private final class HandView: NSView {
         let w = Self.width, h = w * img.size.height / img.size.width
         let t = NSAffineTransform()
         t.translateX(by: bounds.midX, yBy: bounds.midY)
-        t.rotate(byDegrees: 40)
+        t.rotate(byDegrees: 40 + lean)
         t.scaleX(by: -1, yBy: 1)
         t.concat()
         let r = NSRect(x: -Self.tip.x * w, y: -Self.tip.y * h, width: w, height: h)
@@ -75,14 +77,21 @@ private final class HandView: NSView {
 }
 
 private final class CursorView: NSView {
+    private let hand: HandView
+
     init(reduceMotion: Bool) {
+        hand = HandView(size: cursorSize, reduceMotion: reduceMotion)
         super.init(frame: NSRect(x: 0, y: 0, width: cursorSize, height: cursorSize))
         wantsLayer = true
-        addSubview(HandView(size: cursorSize, reduceMotion: reduceMotion))
+        addSubview(hand)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override var isFlipped: Bool { true }
+
+    /// Leans the hand into its direction of travel: radians from rest, clockwise on screen. Drawn around the
+    /// fingertips (frameCenterRotation drifts the tip off the hotspot in this flipped, layer-backed view).
+    func setHeading(_ radians: Double) { hand.lean = radians * 180 / .pi }
 
     /// Click feedback under the hand: yellow, coral and blue glowing rings one after another.
     func ripple(reduceMotion: Bool) {
@@ -177,13 +186,16 @@ private final class Entry {
     var windowId: Int
     let glow: OverlayWindow, cursor: OverlayWindow, pill: OverlayWindow
     let cursorView: CursorView
-    var point: CGPoint?          // last cursor tip, global top-left points
+    var point: CGPoint?          // last requested cursor tip, global top-left points
+    var tip = CGPoint.zero       // the tip as shown, mid-glide included
+    let motion: MotionStyle
+    var glide: Timer?
     var pillFrame = NSRect.zero  // the visible pill (its window adds pillMargin for the glow), AppKit coordinates
     var windowFrame = NSRect.zero
     var visible = false
 
-    init(bundleId: String, pid: pid_t, name: String, session: String?, windowId: Int, escAvailable: Bool, reduceMotion: Bool) {
-        self.bundleId = bundleId; self.pid = pid; self.name = name; self.session = session; self.windowId = windowId
+    init(bundleId: String, pid: pid_t, name: String, session: String?, windowId: Int, motion: MotionStyle, escAvailable: Bool, reduceMotion: Bool) {
+        self.bundleId = bundleId; self.pid = pid; self.name = name; self.session = session; self.windowId = windowId; self.motion = motion
         glow = OverlayWindow(size: NSSize(width: 2 * frameMargin, height: 2 * frameMargin))
         glow.contentView = PiGlowView(frame: NSRect(origin: .zero, size: glow.frame.size), inset: frameMargin - 1, radius: 14,
                                       lineWidth: 3, glow: 22, reduceMotion: reduceMotion)
@@ -256,18 +268,18 @@ final class Overlay {
 
     // MARK: show / hide
 
-    func show(_ t: InputTarget, session: String?, windowId: Int?) -> JSON {
+    func show(_ t: InputTarget, session: String?, windowId: Int?, motion: MotionStyle) -> JSON {
         onMain {
             let trusted = AXIsProcessTrusted()
             parentPid = argument("--parent").flatMap { pid_t($0) } ?? 0
             if let e = entries[t.bundleId] { hideEntry(e); entries[t.bundleId] = nil }
             guard let wid = windowId ?? frontWindow(pid: t.pid) else { return ["shown": false, "reason": "no_window"] }
-            let e = Entry(bundleId: t.bundleId, pid: t.pid, name: t.name, session: session, windowId: wid, escAvailable: trusted,
-                          reduceMotion: reduceMotion)
+            let e = Entry(bundleId: t.bundleId, pid: t.pid, name: t.name, session: session, windowId: wid, motion: motion,
+                          escAvailable: trusted, reduceMotion: reduceMotion)
             entries[t.bundleId] = e
             startMonitoring()
             refresh(e)
-            return ["shown": true, "escAvailable": trusted, "windowId": wid, "reducedMotion": reduceMotion]
+            return ["shown": true, "escAvailable": trusted, "windowId": wid, "reducedMotion": reduceMotion, "motion": motion.rawValue]
         }
     }
 
@@ -278,37 +290,57 @@ final class Overlay {
         }
     }
 
-    private func hideEntry(_ e: Entry) { e.glow.orderOut(nil); e.cursor.orderOut(nil); e.pill.orderOut(nil); e.visible = false }
+    private func hideEntry(_ e: Entry) {
+        e.glide?.invalidate(); e.glide = nil
+        e.glow.orderOut(nil); e.cursor.orderOut(nil); e.pill.orderOut(nil); e.visible = false
+    }
 
     // MARK: cursor
 
-    /// Moves the agent cursor to `global` (top-left screen points) over window `wid`, optionally with a click ripple.
-    /// Blocks for the move so the action that follows visibly lands where the cursor is. No-op when no overlay is shown.
-    func act(bundleId: String, wid: Int?, global: CGPoint, click: Bool) {
+    /// Moves the agent cursor to `global` (top-left screen points) over window `wid` along the entry's motion style,
+    /// optionally with a click ripple. `target` is the element's size when known (it times the move). Blocks until the
+    /// tip arrives so the action that follows visibly lands where the cursor is; a settle or follow-through keeps
+    /// playing during the action. No-op when no overlay is shown.
+    func act(bundleId: String, wid: Int?, global: CGPoint, click: Bool, target: CGSize?) {
         let wait: TimeInterval = onMain {
             guard let e = entries[bundleId] else { return 0 }
             if let wid { e.windowId = wid }
             refresh(e)
-            let animate = !reduceMotion && e.point != nil && e.visible
+            let animate = !reduceMotion && e.point != nil && e.visible && hypot(global.x - e.tip.x, global.y - e.tip.y) > 1
             e.point = global
-            let origin = NSPoint(x: appKitPoint(global).x - cursorSize / 2, y: appKitPoint(global).y - cursorSize / 2)
+            e.glide?.invalidate(); e.glide = nil
+            var arrival = 0.0
             if animate {
-                // animator().setFrameOrigin does not move a window; setFrame(_:display:) animates.
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.2
-                    ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                    e.cursor.animator().setFrame(NSRect(origin: origin, size: e.cursor.frame.size), display: true)
+                let path = planMove(e.motion, from: e.tip, to: global, target: target)
+                arrival = path.arrival
+                let start = CACurrentMediaTime()
+                // A timer moving the window: animator().setFrame cannot follow a curve, and a CADisplayLink would
+                // need a view on screen first.
+                let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self, weak e] timer in
+                    guard let self, let e else { timer.invalidate(); return }
+                    let s = path.at(CACurrentMediaTime() - start)
+                    self.place(e, s.p, heading: s.heading)
+                    if s.t >= path.duration { timer.invalidate(); if e.glide === timer { e.glide = nil } }
                 }
+                RunLoop.main.add(timer, forMode: .common)
+                e.glide = timer
             } else {
-                e.cursor.setFrameOrigin(origin)
+                place(e, global, heading: 0)
             }
             orderAbove(e)
             if click {
-                DispatchQueue.main.asyncAfter(deadline: .now() + (animate ? 0.2 : 0)) { [weak e] in e?.cursorView.ripple(reduceMotion: self.reduceMotion) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + arrival) { [weak e] in e?.cursorView.ripple(reduceMotion: self.reduceMotion) }
             }
-            return animate ? 0.22 : 0.03
+            return animate ? arrival + 0.02 : 0.03
         }
         if wait > 0 { Thread.sleep(forTimeInterval: wait) }
+    }
+
+    private func place(_ e: Entry, _ tip: CGPoint, heading: Double) {
+        e.tip = tip
+        let p = appKitPoint(tip)
+        e.cursor.setFrameOrigin(NSPoint(x: p.x - cursorSize / 2, y: p.y - cursorSize / 2))
+        e.cursorView.setHeading(heading)
     }
 
     // MARK: placement
@@ -339,8 +371,8 @@ final class Overlay {
         e.pill.setFrameOrigin(NSPoint(x: e.pillFrame.minX - pillMargin, y: e.pillFrame.minY - pillMargin))
         if !e.visible {
             e.visible = true
-            let p = e.point ?? CGPoint(x: i.bounds.midX, y: i.bounds.midY)
-            e.cursor.setFrameOrigin(NSPoint(x: appKitPoint(p).x - cursorSize / 2, y: appKitPoint(p).y - cursorSize / 2))
+            e.glide?.invalidate(); e.glide = nil
+            place(e, e.point ?? CGPoint(x: i.bounds.midX, y: i.bounds.midY), heading: 0)
             e.point = nil   // first move after (re)appearing jumps instead of flying in from a stale place
             e.cursor.alphaValue = 1; e.pill.alphaValue = reduceMotion ? 1 : 0; e.glow.alphaValue = reduceMotion ? 1 : 0
             // never orderFrontRegardless: ordered relative to the target next
@@ -410,15 +442,16 @@ private func notifyAppGone(_ e: Entry) {
 // MARK: RPC + action hook
 
 /// Called by input handlers before they act: moves the agent cursor to a global point (no-op without an overlay).
-func overlayAct(_ t: InputTarget, wid: Int?, global: CGPoint, click: Bool) {
-    Overlay.shared.act(bundleId: t.bundleId, wid: wid, global: global, click: click)
+func overlayAct(_ t: InputTarget, wid: Int?, global: CGPoint, click: Bool, target: CGSize? = nil) {
+    Overlay.shared.act(bundleId: t.bundleId, wid: wid, global: global, click: click, target: target)
 }
 
 func registerOverlayMethods() {
     methods["overlay_show"] = { params in
         let t = try inputTarget(params)
         let wid = (params["window_id"] as? NSNumber)?.intValue
-        return Overlay.shared.show(t, session: params["session_label"] as? String ?? params["session"] as? String, windowId: wid)
+        let motion = (params["motion"] as? String).flatMap(MotionStyle.init(rawValue:)) ?? .signatureArc
+        return Overlay.shared.show(t, session: params["session_label"] as? String ?? params["session"] as? String, windowId: wid, motion: motion)
     }
     methods["overlay_hide"] = { params in
         var id: String?

@@ -309,7 +309,8 @@ export class ComputerAgent {
   private async begin(handle: string, session: Session, target: Target): Promise<void> {
     if (session.apps.has(target.bundleId) || !target.running) return;
     const label = (await this.host.chatName(handle).catch(() => undefined)) ?? "this chat";
-    await this.service.call("overlay_show", { app: { bundleId: target.bundleId }, session_label: label, session: handle });
+    const motion = (await this.policy.get()).cursorMotion;
+    await this.service.call("overlay_show", { app: { bundleId: target.bundleId }, session_label: label, session: handle, motion });
     session.apps.set(target.bundleId, { name: target.name });
   }
 

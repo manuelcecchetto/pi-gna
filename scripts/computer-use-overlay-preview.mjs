@@ -1,5 +1,5 @@
 // Renders the Computer Use overlay (glow frame, pigna pointer, click ripple, pill) over a sample window and saves
-// screenshots, to check its look without driving an app: node scripts/computer-use-overlay-preview.mjs [parentDir] (creates a unique subdirectory)
+// screenshots, to check its look without driving an app: node scripts/computer-use-overlay-preview.mjs [parentDir] [motion] (creates a unique subdirectory)
 // Shows a floating window on screen for about 3 s; screencapture needs Screen Recording for the terminal.
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
@@ -21,4 +21,4 @@ const files = readdirSync(src).filter((f) => f.endsWith('.swift') && f !== 'main
 // Top-level code is only allowed in main.swift.
 cpSync(join(root, 'native/computer-use/fixture/overlay-preview.swift'), join(out, 'main.swift'))
 execFileSync('swiftc', ['-o', join(app, 'MacOS/preview'), ...files, join(out, 'main.swift')], { stdio: 'inherit' })
-execFileSync(join(app, 'MacOS/preview'), ['--out', out], { stdio: 'inherit' })
+execFileSync(join(app, 'MacOS/preview'), ['--out', out, ...(process.argv[3] ? ['--motion', process.argv[3]] : [])], { stdio: 'inherit' })
