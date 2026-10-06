@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Updates: a release published while pi-gna downloads an update, or after one is ready to install, is now downloaded too, so a restart always installs the newest version instead of skipping ahead later. The update that is already ready stays installable until the newer one is ready, and stays ready if the newer download fails.
+
 ## 0.6.4 - 2026-10-06
 
 - Phone: chat links open what the Mac would. A file link, a mention or a tool's file path opens the Mac's preview in a tab of that chat, at the phone's size; a card link opens the card; a localhost link opens in the Mac's browser (other web links still open in Safari); images an answer embeds show inline. Only files inside the chat's folder and project open from the phone; others read as plain text.

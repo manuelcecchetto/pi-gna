@@ -1,9 +1,11 @@
 import { execFile, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { app, net } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { bundleOf, compareVersions, installBlocker, parseRelease, SWAP_SCRIPT } from "./updater";
+import type { UpdateState } from "../shared/ipc";
+import { bundleOf, compareVersions, installBlocker, parseRelease, SWAP_SCRIPT, Updater } from "./updater";
 
 vi.mock("electron", () => ({ app: {}, net: {} }));
 
@@ -143,5 +145,109 @@ describe("SWAP_SCRIPT", () => {
     expect(readFileSync(join(target, "marker"), "utf8")).toBe("old");
     expect(readFileSync(failed, "utf8")).toMatch(/^could not move the new version to .*pi-gna\.app: /);
     expect(existsSync(join(dir, "launched"))).toBe(false);
+  });
+});
+
+describe("Updater", () => {
+  let dir: string;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** An installed pi-gna 0.1.0 whose GitHub answers `published.version`; downloads wait for `release()`. */
+  function setup() {
+    dir = mkdtempSync(join(tmpdir(), "pigna-updater-"));
+    const exe = join(dir, "Applications", "pi-gna.app", "Contents", "MacOS", "pi-gna");
+    mkdirSync(join(exe, ".."), { recursive: true });
+    Object.assign(app, {
+      getPath: (key: string) => (key === "exe" ? exe : join(dir, "profile")),
+      getName: () => "pi-gna",
+      getVersion: () => "0.1.0",
+      isPackaged: true,
+      runningUnderARM64Translation: false,
+    });
+    const published = { version: "0.2.0" };
+    const asset = `pi-gna-${process.arch}.dmg`;
+    Object.assign(net, {
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        json: async () =>
+          latest({
+            tag_name: `v${published.version}`,
+            assets: [{ name: asset, size: 1, digest: `sha256:${SHA}`, browser_download_url: `https://github.com/r/download/v${published.version}/${asset}` }],
+          }),
+      }),
+    });
+    const downloads: { version: string; finish: (error?: Error) => void }[] = [];
+    vi.spyOn(Updater.prototype as unknown as Record<string, (...args: never[]) => Promise<unknown>>, "fetchDmg").mockImplementation((async (dmg: { url: string }, path: string) => {
+      writeFileSync(path, "");
+      const version = /download\/v([^/]+)/.exec(dmg.url)?.[1] ?? "";
+      await new Promise<void>((resolve, reject) => downloads.push({ version, finish: (error) => (error ? reject(error) : resolve()) }));
+    }) as never);
+    vi.spyOn(Updater.prototype as unknown as Record<string, (...args: never[]) => Promise<unknown>>, "stage").mockImplementation((async (_dmg: string, version: string, folder: string) => {
+      const staged = join(folder, "pi-gna.app");
+      mkdirSync(staged, { recursive: true });
+      writeFileSync(join(staged, "version"), version);
+      return { app: staged, exe: "pi-gna" };
+    }) as never);
+    const states: UpdateState[] = [];
+    const updater = new Updater(join(dir, "main.log"), (state) => states.push(state));
+    /** Lets the next download in line end, with `error` or not, and waits for the state that follows. */
+    const finish = async (version: string, error?: Error) => {
+      for (let i = 0; i < 50 && downloads[0]?.version !== version; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(downloads[0]?.version).toBe(version);
+      const seen = states.length;
+      downloads.shift()?.finish(error);
+      for (let i = 0; i < 50 && !states.slice(seen).some((state) => state.phase !== "downloading"); i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    };
+    const stagedVersions = () => (existsSync(join(dir, "profile", "update")) ? readdirSync(join(dir, "profile", "update")).sort() : []);
+    return { updater, published, finish, downloads, stagedVersions };
+  }
+
+  it("moves on to a release published while it downloads", async () => {
+    const { updater, published, finish, stagedVersions } = setup();
+    await updater.check();
+    const download = updater.download();
+    published.version = "0.3.0";
+    expect((await updater.check()).phase).toBe("downloading");
+
+    await finish("0.2.0");
+    await finish("0.3.0");
+    await download;
+    expect(updater.get()).toMatchObject({ phase: "ready", release: { version: "0.3.0" } });
+    expect(stagedVersions()).toEqual(["0.3.0"]);
+  });
+
+  it("stages a newer release over a staged one, keeping the staged one until the newer is ready", async () => {
+    const { updater, published, finish, stagedVersions } = setup();
+    await updater.check();
+    const download = updater.download();
+    await finish("0.2.0");
+    await download;
+    expect(updater.get()).toMatchObject({ phase: "ready", release: { version: "0.2.0" } });
+
+    published.version = "0.3.0";
+    expect((await updater.check()).phase).toBe("downloading");
+    expect(stagedVersions()).toEqual(["0.2.0", "0.3.0"]);
+    await finish("0.3.0", new Error("the download answered 500"));
+    expect(updater.get()).toMatchObject({ phase: "ready", release: { version: "0.2.0" } });
+    expect(stagedVersions()).toEqual(["0.2.0"]);
+
+    expect((await updater.check()).phase).toBe("downloading");
+    await finish("0.3.0");
+    expect(updater.get()).toMatchObject({ phase: "ready", release: { version: "0.3.0" } });
+    expect(stagedVersions()).toEqual(["0.3.0"]);
+  });
+
+  it("leaves a staged release alone when GitHub has nothing newer", async () => {
+    const { updater, finish, downloads } = setup();
+    await updater.check();
+    const download = updater.download();
+    await finish("0.2.0");
+    await download;
+    expect((await updater.check())).toMatchObject({ phase: "ready", release: { version: "0.2.0" } });
+    expect(downloads).toEqual([]);
   });
 });
