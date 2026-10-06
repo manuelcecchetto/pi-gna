@@ -9,7 +9,7 @@ import type { Wallpaper } from "../../../shared/settings";
 export interface Look {
   /** The project's built-in wallpaper, over settings.wallpaper (and its loop). */
   wallpaper?: Wallpaper;
-  /** The project's own wallpaper image (data: URL). */
+  /** The project's own wallpaper image (blob: URL, see useThemeImage). */
   wallpaperUrl?: string;
   logo?: string;
 }
@@ -76,6 +76,18 @@ export function applyThemeVars(vars: Record<string, string>, root: HTMLElement =
 
 /** Fired on window after a theme is applied: inline visuals post the new tokens to their frames. */
 export const THEME_EVENT = "pigna-theme";
+
+/** A data: URL from main (themes.image) as a Blob. Chromium drops a custom property over 2 MiB, so an image goes into
+ * imageWallpaperStyle as a short blob: URL, never inline (a 1.7 MB PNG is 2.3 MB of base64). Decoded here because
+ * the window's CSP does not let fetch() read data: URLs. */
+export function dataUrlBlob(url: string): Blob | null {
+  const [, type, base64] = /^data:([^;,]+);base64,(.*)$/s.exec(url) ?? [];
+  if (!type || base64 === undefined) return null;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
 
 /** The empty state's backdrop for an image wallpaper: the same picture at dusk and by day. */
 export const imageWallpaperStyle = (url: string): CSSProperties => ({ "--wallpaper-dusk": `url("${url}")`, "--wallpaper-day": `url("${url}")` }) as CSSProperties;

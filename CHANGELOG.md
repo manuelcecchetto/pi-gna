@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Project wallpapers over about 1.5 MB now show behind a new chat on desktop. The window put the image inline in a CSS variable, which Chromium drops past 2 MiB; it now uses a short blob: URL.
+
 ## 0.6.5 - 2026-10-06
 
 - New browser tab: + now opens a start tab instead of a blank web page, with the address bar focused, Open file…, a Tools grid, a ⌘P finder over the chat's project files and suggested dev servers. Whatever you pick opens in that tab.
