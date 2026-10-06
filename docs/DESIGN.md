@@ -354,7 +354,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
 ## Kanban (M3)
 
 - **One board per project** (cwd). Cards are tasks (title, notes, tags, column, attached chats, reports), not threads: a
-  chat is on at most one card, a card can have several chats, and a chat only joins cards of its own project.
+  chat can be on several cards and a card can have several chats, but a chat only joins cards of its own project.
+  The chat header and menus show the card it joined last (`cardOfChat`); `kanban_update` takes a card id and needs
+  one only when the chat is on several cards.
   Columns are To do, In progress, In review and Done. A card moves only when you move it (drag, its menu, its
   dialog) or an agent does; what its chats are doing shows as the sidebar's pi-logo mark on the card
   (`cardAttention`, the strongest mark of its open chats), never as a column change.

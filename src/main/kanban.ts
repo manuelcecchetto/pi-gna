@@ -1,13 +1,13 @@
 // POST /kanban on the agent bridge: the kanban_* tools. The calling chat is the session behind the token; it sees
-// its project's board (projectOf: a card's worktree counts as its project), and its card is the one its session
-// file is attached to (one at a time).
+// its project's board (projectOf: a card's worktree counts as its project), and its cards are the ones its session
+// file is attached to (any number). It may update any card of the board; without a card id, update means its card.
 import {
   type Board,
   type Card,
   type Column,
   COLUMN_LABELS,
   COLUMNS,
-  cardOfChat,
+  cardsOfChat,
   freshId,
   isColumn,
   projectCards,
@@ -31,17 +31,15 @@ export function kanbanRoute(board: BoardStore, identify: Identify): Route {
     if (request?.column !== undefined && !isColumn(request.column)) throw bridgeError(400, `unknown column ${String(request.column)}; use one of ${COLUMNS.join(", ")}`);
     const chat = await identify(handle);
     const project = projectOf(chat.cwd);
-    const mine = () => board.get().then((current) => cardOfChat(current, chat.path));
 
     switch (request?.action) {
       case "list": {
         const current = await board.get();
-        const own = cardOfChat(current, chat.path);
-        if (request.card) return { text: detail(find(current, request.card, project), chat.path), card: own?.id };
-        return { text: overview(current, request.column, project, own), card: own?.id };
+        const own = cardsOfChat(current, chat.path).filter((card) => card.cwd === project);
+        if (request.card) return { text: detail(find(current, request.card, project), chat.path), card: own[0]?.id };
+        return { text: overview(current, request.column, project, own), card: own[0]?.id };
       }
       case "claim": {
-        const previous = await mine();
         let id = request.card;
         if (id) find(await board.get(), id, project);
         else {
@@ -52,24 +50,35 @@ export function kanbanRoute(board: BoardStore, identify: Identify): Route {
         await board.apply({ type: "attach", id, chat: { path: chat.path, cwd: chat.cwd } });
         if (request.column) await board.apply({ type: "report", id, text: "", column: request.column, chat: chat.path });
         const card = find(await board.get(), id, project);
-        const left = previous && previous.id !== id ? ` This chat left card ${previous.id} (${previous.title}).` : "";
-        return { text: `This chat now works on card ${card.id}: ${card.title} (${COLUMN_LABELS[card.column]}).${left}`, card: card.id };
+        const others = cardsOfChat(await board.get(), chat.path).filter((other) => other.id !== id && other.cwd === project);
+        const also = others.length ? ` It also works on card${others.length === 1 ? "" : "s"} ${others.map((other) => other.id).join(", ")}.` : "";
+        return { text: `This chat now works on card ${card.id}: ${card.title} (${COLUMN_LABELS[card.column]}).${also}`, card: card.id };
       }
       case "update": {
-        const own = await mine();
-        if (!own) throw bridgeError(409, "This chat has no card. Use kanban_claim first.");
+        const current = await board.get();
+        const id = request.card ? find(current, request.card, project).id : ownCard(current, chat.path, project);
         const edit = request.title !== undefined || request.tags !== undefined;
-        if (!request.report && !request.column && !edit) throw bridgeError(400, "pass column, report, title or tags");
-        if (edit) await board.apply({ type: "edit", id: own.id, title: request.title, tags: request.tags });
-        if (request.report || request.column) await board.apply({ type: "report", id: own.id, text: request.report ?? "", column: request.column, chat: chat.path });
-        const card = find(await board.get(), own.id, project);
+        if (!request.report && !request.column && !edit && !request.leave) throw bridgeError(400, "pass column, report, title, tags or leave");
+        if (edit) await board.apply({ type: "edit", id, title: request.title, tags: request.tags });
+        if (request.report || request.column) await board.apply({ type: "report", id, text: request.report ?? "", column: request.column, chat: chat.path });
+        if (request.leave) await board.apply({ type: "detach", id, path: chat.path });
+        const card = find(await board.get(), id, project);
         const tags = card.tags.length ? ` Tags: ${card.tags.join(", ")}.` : "";
-        return { text: `Card ${card.id} (${card.title}) is in ${COLUMN_LABELS[card.column]}.${tags}${request.report ? " Report saved." : ""}`, card: card.id };
+        const left = request.leave ? " This chat left it." : "";
+        return { text: `Card ${card.id} (${card.title}) is in ${COLUMN_LABELS[card.column]}.${tags}${request.report ? " Report saved." : ""}${left}`, card: card.id };
       }
       default:
         throw bridgeError(400, `unknown action ${String(request?.action)}`);
     }
   };
+}
+
+/** The card an update without a card id means: the chat's only card on this board. */
+function ownCard(board: Board, path: string, cwd: string): string {
+  const own = cardsOfChat(board, path).filter((card) => card.cwd === cwd);
+  if (own.length === 1) return own[0]!.id;
+  if (!own.length) throw bridgeError(409, "This chat has no card. Pass card (an id from kanban_list), or use kanban_claim first.");
+  throw bridgeError(409, `This chat works on cards ${own.map((card) => card.id).join(", ")}. Pass card to say which one.`);
 }
 
 /** A card on the chat's project board. */
@@ -79,9 +88,10 @@ function find(board: Board, id: string, cwd: string): Card {
   return card;
 }
 
-function overview(board: Board, only: Column | undefined, cwd: string, own: Card | undefined): string {
+function overview(board: Board, only: Column | undefined, cwd: string, own: Card[]): string {
   const cards = projectCards(board, cwd).filter((card) => !only || card.column === only);
-  const head = `Kanban board of ${cwd}: ${cards.length} card${cards.length === 1 ? "" : "s"}. ${own ? `This chat works on card ${own.id}.` : "This chat has no card."}`;
+  const works = own.length ? `This chat works on card${own.length === 1 ? "" : "s"} ${own.map((card) => card.id).join(", ")}.` : "This chat has no card.";
+  const head = `Kanban board of ${cwd}: ${cards.length} card${cards.length === 1 ? "" : "s"}. ${works}`;
   const sections = COLUMNS.filter((column) => !only || column === only).map((column) => {
     const inColumn = cards.filter((card) => card.column === column);
     const limit = column === "done" && !only ? SHOWN_DONE : SHOWN_PER_COLUMN;
@@ -92,9 +102,9 @@ function overview(board: Board, only: Column | undefined, cwd: string, own: Card
   return [head, ...sections].join("\n\n");
 }
 
-function summary(card: Card, own: Card | undefined): string {
+function summary(card: Card, own: Card[]): string {
   const marks = [
-    card.id === own?.id ? "this chat's card" : "",
+    own.includes(card) ? "this chat's card" : "",
     card.chats.length ? `${card.chats.length} chat${card.chats.length === 1 ? "" : "s"}` : "",
     ...card.github.map(refLabel),
   ];

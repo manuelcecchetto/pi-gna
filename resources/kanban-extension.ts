@@ -1,5 +1,5 @@
 // pi extension loaded into every pi-gna session (`pi -e`). Registers kanban_* tools for the project's Kanban board
-// in pi-gna: a chat takes one card at a time, moves it between columns and reports progress on it. Calls go
+// in pi-gna: a chat takes cards (any number), moves them between columns and reports progress on them. Calls go
 // through pi-gna's token-gated localhost bridge, which knows the calling chat from its token.
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -41,6 +41,7 @@ export default function (pi: ExtensionAPI) {
     description: `${ABOUT}List the board's cards by column with their ids and latest report, or pass card to read one card in full (notes and reports).`,
     promptGuidelines: [
       "When you work on a card from the pi-gna Kanban board (the user's message names it, or they ask you to take one), keep it current: kanban_update with column in_progress when you start and in_review with a short report for the user when you finish. Do not create, claim or move cards otherwise.",
+      "A chat can work on several cards; when this chat has more than one, pass card to kanban_update to say which one.",
     ],
     parameters: Type.Object({
       column: column("Only this column"),
@@ -54,7 +55,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "kanban_claim",
     label: "Take a Kanban card",
-    description: `${ABOUT}Make this chat the one working on a card: pass card (an id from kanban_list), or title and notes to create a card. A chat works on one card at a time; claiming another card leaves the previous one.`,
+    description: `${ABOUT}Put this chat on a card: pass card (an id from kanban_list), or title and notes to create a card. A chat can work on several cards; claiming one keeps the others.`,
     executionMode: "sequential",
     parameters: Type.Object({
       card: Type.Optional(Type.String({ description: "Id of an existing card" })),
@@ -71,13 +72,15 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "kanban_update",
     label: "Update Kanban card",
-    description: `${ABOUT}Move this chat's card to another column and/or add a progress report the user reads on the card; title and tags rename and retag it. Use in_review when the work is ready for the user to check, done only when they confirmed it.`,
+    description: `${ABOUT}Move a card to another column and/or add a progress report the user reads on it; title and tags rename and retag it, leave takes this chat off it. Without card it changes this chat's card (pass card when the chat has several). Use in_review when the work is ready for the user to check, done only when they confirmed it.`,
     executionMode: "sequential",
     parameters: Type.Object({
+      card: Type.Optional(Type.String({ description: "Id of the card to change; default: this chat's card" })),
       column: column("New column for the card"),
       title: Type.Optional(Type.String({ description: `New title for the card (at most ${LIMITS.title} characters)` })),
       tags: tags("Replace the card's tags"),
       report: Type.Optional(Type.String({ description: `Short progress note for the user: what changed, what is left (at most ${LIMITS.report} characters)` })),
+      leave: Type.Optional(Type.Boolean({ description: "Take this chat off the card" })),
     }),
     async execute(_id, params, signal) {
       return call({ action: "update", ...params }, signal);

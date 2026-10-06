@@ -1,6 +1,6 @@
 // The Kanban boards: task cards in four columns, one board per project (cards carry their project's cwd). Chats
-// of the project attach to cards (a chat works on one card at a time), and agents move their card and report on
-// it through the kanban_* tools. Main owns the cards and applies every change through applyOp, from the renderer
+// of the project attach to cards (a chat can work on several), and agents move their cards and report on them
+// through the kanban_* tools. Main owns the cards and applies every change through applyOp, from the renderer
 // (drag, menus, dialog) and from agents (the bridge) alike.
 
 export const COLUMNS = ["todo", "in_progress", "in_review", "done"] as const;
@@ -80,7 +80,7 @@ export type BoardOp =
   | { type: "edit"; id: string; title?: string; notes?: string; tags?: string[] }
   | ({ type: "move"; id: string; column: Column } & Placement)
   | { type: "remove"; id: string }
-  /** Attach a chat of the card's project (projectOf); it leaves any other card first. */
+  /** Attach a chat of the card's project (projectOf); it stays on its other cards. */
   | { type: "attach"; id: string; chat: { path: string; cwd: string; label?: string } }
   | { type: "detach"; id: string; path: string }
   | { type: "report"; id: string; text: string; column?: Column; chat?: string }
@@ -96,7 +96,7 @@ export interface KanbanRequest {
   action: "list" | "claim" | "update";
   /** list: only this column. claim, update: move the card here. */
   column?: Column;
-  /** list: show this card in full. claim: the card to take. */
+  /** list: show this card in full. claim: the card to take. update: the card to change (the chat's card when it has one). */
   card?: string;
   /** claim: create a card in this chat's project instead. update: rename the card. */
   title?: string;
@@ -105,11 +105,13 @@ export interface KanbanRequest {
   tags?: string[];
   /** update: a progress note for the user. */
   report?: string;
+  /** update: take this chat off the card. */
+  leave?: boolean;
 }
 
 export interface KanbanResponse {
   text: string;
-  /** The chat's card after the call. */
+  /** The card the call took or changed, or for list the chat's latest card. */
   card?: string;
 }
 
@@ -208,11 +210,7 @@ export function applyOp(board: Board, op: BoardOp, now: number): Board {
       if (projectOf(chat.cwd) !== card.cwd) throw new BoardError(`card ${card.id} is on the board of ${card.cwd}, not of this chat's project`);
       if (op.chat.label) chat.label = text(op.chat.label, "label", LIMITS.label).replace(/\s+/g, " ").trim();
       if (card.chats.some((ref) => ref.path === chat.path)) return board;
-      const cards = board.cards.map((other) => {
-        if (other.id === card.id) return { ...other, chats: [...other.chats, chat], updatedAt: now };
-        return other.chats.some((ref) => ref.path === chat.path) ? { ...other, chats: other.chats.filter((ref) => ref.path !== chat.path) } : other;
-      });
-      return { ...board, cards };
+      return update(board, { ...card, chats: [...card.chats, chat], updatedAt: now });
     }
     case "detach": {
       const card = find(board, op.id);
@@ -319,10 +317,14 @@ const isGithubRef = (value: unknown): boolean => {
 
 export const projectCards = (board: Board, cwd: string) => board.cards.filter((card) => card.cwd === cwd);
 
-/** The card a chat is attached to. */
-export function cardOfChat(board: Board, path: string): Card | undefined {
-  return board.cards.find((card) => card.chats.some((ref) => ref.path === path));
+/** The cards a chat is attached to, the one it joined last first. */
+export function cardsOfChat(board: Board, path: string): Card[] {
+  const joined = (card: Card) => card.chats.find((ref) => ref.path === path)?.at || 0;
+  return board.cards.filter((card) => card.chats.some((ref) => ref.path === path)).sort((a, b) => joined(b) - joined(a));
 }
+
+/** The card a chat joined last, the one its header and menus show. */
+export const cardOfChat = (board: Board, path: string): Card | undefined => cardsOfChat(board, path)[0];
 
 /** Read a board file, keeping the cards that are well formed. */
 export function parseBoard(value: unknown): { board: Board; dropped: number } {

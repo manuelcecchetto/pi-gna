@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, type Column, cardOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
+import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, type Column, cardOfChat, cardsOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
 
 const run = (ops: BoardOp[], board = emptyBoard()) => ops.reduce((current, op, index) => applyOp(current, op, 1000 + index), board);
 const add = (id: string, column: Column = "todo"): Extract<BoardOp, { type: "add" }> => ({
@@ -66,15 +66,18 @@ describe("board ops", () => {
     expect(applyOp(board, { type: "move", id: "aaaaaa", column: "done", before: "aaaaaa" }, 53)).toBe(board);
   });
 
-  it("keeps a chat on one card at a time", () => {
+  it("puts a chat on several cards, the one it joined last first", () => {
     const chat = { path: "/s/one.jsonl", cwd: "/repo", label: "  Fix\nthe build " };
     let board = run([add("aaaaaa"), add("bbbbbb"), { type: "attach", id: "aaaaaa", chat }]);
     expect(board.cards[0]?.chats).toEqual([{ path: "/s/one.jsonl", cwd: "/repo", label: "Fix the build", at: 1002 }]);
     expect(applyOp(board, { type: "attach", id: "aaaaaa", chat }, 9)).toBe(board);
-    board = applyOp(board, { type: "attach", id: "bbbbbb", chat }, 10);
-    expect(board.cards.map((card) => card.chats.length)).toEqual([0, 1]);
+    board = applyOp(board, { type: "attach", id: "bbbbbb", chat }, 2000);
+    expect(board.cards.map((card) => card.chats.length)).toEqual([1, 1]);
+    expect(cardsOfChat(board, "/s/one.jsonl").map((card) => card.id)).toEqual(["bbbbbb", "aaaaaa"]);
     expect(cardOfChat(board, "/s/one.jsonl")?.id).toBe("bbbbbb");
-    board = applyOp(board, { type: "detach", id: "bbbbbb", path: "/s/one.jsonl" }, 11);
+    board = applyOp(board, { type: "detach", id: "bbbbbb", path: "/s/one.jsonl" }, 2001);
+    expect(cardOfChat(board, "/s/one.jsonl")?.id).toBe("aaaaaa");
+    board = applyOp(board, { type: "detach", id: "aaaaaa", path: "/s/one.jsonl" }, 2002);
     expect(cardOfChat(board, "/s/one.jsonl")).toBeUndefined();
   });
 

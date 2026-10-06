@@ -127,25 +127,39 @@ describe("POST /kanban", () => {
     await expect(route("h", { action: "list", card: "cccccc" })).rejects.toThrow("No card cccccc on this project's board");
   });
 
-  it("takes one card at a time, moves it and reports, attributed to the chat", async () => {
+  it("takes several cards, moves them and reports, attributed to the chat", async () => {
     const { store, route } = await setup();
     expect(text(await route("h", { action: "claim", card: "aaaaaa", column: "in_progress" }))).toBe("This chat now works on card aaaaaa: Fix the build (In progress).");
     await expect(route("h", { action: "claim", card: "cccccc" })).rejects.toThrow("No card cccccc");
     const created = await route("h", { action: "claim", title: "Found another bug", notes: "in the parser" });
-    expect(text(created)).toContain("This chat left card aaaaaa (Fix the build).");
+    expect(text(created)).toContain("It also works on card aaaaaa.");
     const id = (created as { card: string }).card;
-    await route("h", { action: "update", column: "in_review", report: "Fixed the parser" });
+    expect(text(await route("h", { action: "list" }))).toContain(`This chat works on cards ${id}, aaaaaa.`);
+    await expect(route("h", { action: "update", report: "which one?" })).rejects.toThrow(`This chat works on cards ${id}, aaaaaa. Pass card to say which one.`);
+    await route("h", { action: "update", card: id, column: "in_review", report: "Fixed the parser" });
+    await route("h", { action: "update", card: "aaaaaa", report: "Still red", leave: true });
+    await expect(route("h", { action: "update", card: "cccccc", report: "x" })).rejects.toThrow("No card cccccc");
     const board = await store.get();
     const card = board.cards.find((other) => other.id === id);
     expect(card).toMatchObject({ cwd: "/repo", column: "in_review", chats: [{ path: chat.path, cwd: "/repo" }] });
     expect(card?.reports.at(-1)).toMatchObject({ text: "Fixed the parser", column: "in_review", chat: chat.path });
-    expect(board.cards.find((other) => other.id === "aaaaaa")?.chats).toEqual([]);
+    const left = board.cards.find((other) => other.id === "aaaaaa");
+    expect(left?.chats).toEqual([]);
+    expect(left?.reports.at(-1)).toMatchObject({ text: "Still red", chat: chat.path });
+    // With one card left, update means that card again.
+    expect(text(await route("h", { action: "update", report: "done" }))).toContain(`Card ${id}`);
+  });
+
+  it("updates a card the chat is not on, by its id", async () => {
+    const { store, route } = await setup();
+    expect(text(await route("h", { action: "update", card: "aaaaaa", column: "done" }))).toBe("Card aaaaaa (Fix the build) is in Done.");
+    expect((await store.get()).cards.find((card) => card.id === "aaaaaa")?.chats).toEqual([]);
   });
 
   it("renames and retags the chat's card, and shows its tags", async () => {
     const { store, route } = await setup();
     await route("h", { action: "claim", card: "aaaaaa" });
-    await expect(route("h", { action: "update" })).rejects.toThrow("pass column, report, title or tags");
+    await expect(route("h", { action: "update" })).rejects.toThrow("pass column, report, title, tags or leave");
     expect(text(await route("h", { action: "update", title: "CI fails on lint", tags: ["CI", "#lint"] }))).toBe("Card aaaaaa (CI fails on lint) is in To do. Tags: ci, lint.");
     expect((await store.get()).cards.find((card) => card.id === "aaaaaa")?.reports).toEqual([]);
     expect(text(await route("h", { action: "list" }))).toContain("- aaaaaa CI fails on lint #ci #lint  (this chat's card, 1 chat)");
@@ -155,7 +169,7 @@ describe("POST /kanban", () => {
 
   it("asks the chat to take a card before updating one", async () => {
     const { route } = await setup();
-    await expect(route("h", { action: "update", report: "done" })).rejects.toThrow("This chat has no card. Use kanban_claim first.");
+    await expect(route("h", { action: "update", report: "done" })).rejects.toThrow("This chat has no card. Pass card");
     await expect(route("h", { action: "update", column: "later" })).rejects.toThrow("unknown column later");
     await expect(route("h", { action: "drop" })).rejects.toThrow("unknown action drop");
   });
