@@ -113,7 +113,7 @@ export async function applyTheme(store: ThemeStore, op: ThemeOp, baseRev?: numbe
 /** A set_theme patch for the global scope: its mode and built-in wallpaper are settings; the rest is the global theme. */
 function globalSettingsOps(patch: Record<string, unknown>, settings: Settings): { ops: SettingsOp[]; rest: Record<string, unknown> } {
   if ("logo" in patch) throw new ThemeError('a logo belongs to a project: use scope "project"');
-  for (const key of Object.keys(patch)) if (!["base", "wallpaper", "font", "colors"].includes(key)) throw new ThemeError(`unknown field ${key} (expected base, wallpaper, font, colors)`);
+  for (const key of Object.keys(patch)) if (!["preset", "base", "wallpaper", "font", "colors"].includes(key)) throw new ThemeError(`unknown field ${key} (expected base, wallpaper, font, colors)`);
   const { base, wallpaper, ...rest } = patch;
   const ops: SettingsOp[] = [];
   if (base !== undefined) ops.push({ type: "theme", theme: base === null ? "system" : (base as Settings["theme"]) });

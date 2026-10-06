@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Ten curated light/dark theme presets, selectable per project or globally and through `set_theme`. pi-gna Original remains the unchanged default; switching palettes preserves wallpapers and logos.
+
 - Project themes: choose separate light/dark colors, installed fonts and text size in Settings > Appearance, with project-local images replacing the wallpaper and a project logo. Ask an agent to change any project theme field with `set_theme` (partial patches, null resets). Themes follow the active project on desktop and phone; inline HTML visuals inherit the same colors and fonts live.
 
 ## 0.6.2 - 2026-10-06

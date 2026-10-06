@@ -6,6 +6,7 @@
 // The global appearance mode and built-in wallpaper stay in pi-gna's settings (settings.theme, settings.wallpaper);
 // the global theme here adds fonts and colors on top. A project's theme overrides both, field by field. Card worktrees
 // share their project's theme (projectOf).
+import { THEME_PRESETS, themePreset, type ThemePresetId } from "./theme-presets";
 import { projectOf } from "./board";
 import { type Settings, THEMES, type Theme, WALLPAPERS, type Wallpaper } from "./settings";
 
@@ -29,6 +30,7 @@ export interface ThemeFont {
 export type ThemeWallpaper = { builtin: Wallpaper } | { path: string };
 
 export interface ThemeSpec {
+  preset?: ThemePresetId;
   /** A project's appearance mode; the global one is settings.theme. */
   base?: Theme;
   font?: ThemeFont;
@@ -131,9 +133,9 @@ function mergeFields<T extends object>(current: T | undefined, patch: unknown, k
   return Object.keys(next).length ? (next as T) : undefined;
 }
 
-const SPEC_KEYS = ["base", "font", "colors", "wallpaper", "logo"] as const;
+const SPEC_KEYS = ["preset", "base", "font", "colors", "wallpaper", "logo"] as const;
 /** The global theme's own fields: its mode and wallpaper are settings.theme and settings.wallpaper. */
-const GLOBAL_KEYS = ["font", "colors"] as const;
+const GLOBAL_KEYS = ["preset", "font", "colors"] as const;
 
 function checkPalette(current: Palette | undefined, patch: unknown, where: string): Palette | undefined {
   return mergeFields<Palette>(current, patch, COLOR_KEYS, where, (key, value) => {
@@ -165,6 +167,9 @@ export function mergeTheme(current: ThemeSpec, patch: unknown, scope: "global" |
   return (
     mergeFields<ThemeSpec>(current, patch, keys, "", (key, value) => {
       switch (key) {
+        case "preset":
+          if (!THEME_PRESETS.some((preset) => preset.id === value)) throw new ThemeError(`unknown preset ${JSON.stringify(value)}`);
+          return value;
         case "base":
           if (!THEMES.includes(value as Theme)) throw new ThemeError(`base must be ${THEMES.join(", ")}`);
           return value;
@@ -249,10 +254,13 @@ export function effectiveTheme(themes: Themes, settings: Pick<Settings, "theme" 
   const project = cwd ? projectOf(cwd) : undefined;
   const own = (project && themes.projects[project]) || {};
   const { global } = themes;
+  // An explicit project preset starts fresh; otherwise inherit the global preset and its edits.
+  const inherited = own.preset ? {} : global;
+  const palette = themePreset(own.preset ?? global.preset).colors as Record<Mode, Palette>;
   return {
     base: own.base ?? settings.theme,
-    font: { ...global.font, ...own.font },
-    colors: { light: { ...global.colors?.light, ...own.colors?.light }, dark: { ...global.colors?.dark, ...own.colors?.dark } },
+    font: { ...inherited.font, ...own.font },
+    colors: { light: { ...palette.light, ...inherited.colors?.light, ...own.colors?.light }, dark: { ...palette.dark, ...inherited.colors?.dark, ...own.colors?.dark } },
     wallpaper: own.wallpaper ?? { builtin: settings.wallpaper },
     ...(own.logo && { logo: own.logo }),
     ...(project && themes.projects[project] && { project }),

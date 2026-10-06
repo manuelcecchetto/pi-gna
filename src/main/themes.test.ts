@@ -26,6 +26,17 @@ async function setup() {
 }
 
 describe("POST /theme", () => {
+  it("accepts global presets, persists them, and rejects invalid presets atomically", async () => {
+    const { store, settings, route, dir } = await setup();
+    await route("h", { scope: "global", preset: "aurora" });
+    expect((await store.get()).global).toEqual({ preset: "aurora" });
+    await store.flushed();
+    expect(JSON.parse(await readFile(join(dir, "themes.json"), "utf8")).global.preset).toBe("aurora");
+    await expect(route("h", { scope: "global", preset: "nope", base: "dark" })).rejects.toMatchObject({ status: 400 });
+    expect((await settings.get()).theme).toBe("system");
+    expect((await store.get()).global.preset).toBe("aurora");
+  });
+
   it("merges a project patch, saves and pushes it, and replies with the whole theme", async () => {
     const { dir, project, store, route, pushed } = await setup();
     await route("h", { base: "dark", colors: { dark: { primary: "#4f46e5" } }, logo: { path: "assets/logo.svg" } });

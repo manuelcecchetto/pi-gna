@@ -1,7 +1,14 @@
+import { effectiveTheme, emptyThemes } from "../../../shared/themes";
+import { emptySettings } from "../../../shared/settings";
 import { describe, expect, it } from "vitest";
 import { themeVars } from "./theme";
 
 describe("themeVars", () => {
+  it("leaves original CSS untouched in both modes", () => {
+    const themes = emptyThemes();
+    themes.global = { preset: "original" };
+    for (const mode of ["light", "dark"] as const) expect(themeVars(effectiveTheme(themes, emptySettings(), undefined), mode)).toEqual({});
+  });
   it("sets nothing for an empty theme", () => {
     expect(themeVars({ font: {}, colors: { light: {}, dark: {} } }, "dark")).toEqual({});
   });

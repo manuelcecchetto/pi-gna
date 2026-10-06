@@ -714,6 +714,15 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
 
 ## Project themes
 
+`src/shared/theme-presets.ts` defines ten paired light/dark palettes plus Original.
+No preset (and explicit `original`) contributes zero CSS overrides, retaining the pre-theme appearance.
+An explicit project preset replaces global fonts/colors; otherwise those inherit. Custom edits layer over
+its palette. The picker sends `{preset, font:null, colors:null}` for a clean switch while preserving mode,
+wallpaper and logo. The Applies to dropdown includes known projects, normalized worktree roots, and
+stored project themes; changing its target never navigates or changes another project's appearance.
+An agent's preset-only patch still preserves omitted custom edits. Presets must retain
+readable text and link contrast against both surfaces (covered by the registry test).
+
 `src/shared/themes.ts` is the validated patch/merge contract; `main/themes.ts` owns
 `userData/themes.json` (revisioned JsonStore). Project keys use `projectOf(cwd)`, so card worktrees
 share their original project's theme. Resolution is project fields over global fonts/colors over

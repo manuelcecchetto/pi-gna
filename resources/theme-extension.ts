@@ -6,6 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { COLOR_KEYS, FONT_SIZE, IMAGE_EXTENSIONS, IMAGE_MAX_BYTES, type ThemeRequest, type ThemeResponse } from "../src/shared/themes";
 import { THEMES, WALLPAPERS } from "../src/shared/settings";
+import { THEME_PRESETS } from "../src/shared/theme-presets";
 
 const BRIDGE = process.env.PIGNA_BRIDGE;
 const TOKEN = process.env.PIGNA_TOKEN;
@@ -33,6 +34,7 @@ export default function (pi: ExtensionAPI) {
     executionMode: "sequential",
     parameters: Type.Object({
       scope: Type.Optional(Type.Union([Type.Literal("project"), Type.Literal("global")], { description: "project (default): only this project; global: every project without its own value" })),
+      preset: Type.Optional(Type.Union([...THEME_PRESETS.map(({ id }) => Type.Literal(id)), Type.Null()], { description: "Named palette for both modes. original is classic pi-gna; null inherits. For a clean switch also pass font:null and colors:null; otherwise existing custom edits remain. Wallpaper, logo and mode stay unchanged." })),
       base: Type.Optional(Type.Union([Type.Union(THEMES.map((theme) => Type.Literal(theme))), Type.Null()], { description: `Appearance mode: ${THEMES.join(", ")} (system follows each device); ${resettable}` })),
       font: Type.Optional(
         Type.Union([

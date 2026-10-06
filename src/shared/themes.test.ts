@@ -106,3 +106,25 @@ describe("parseThemes", () => {
     expect(() => parseThemes([])).toThrow();
   });
 });
+
+
+describe("presets", () => {
+  it("inherits global edits until a project picks its own palette, and Original restores CSS defaults", () => {
+    const themes = emptyThemes();
+    themes.global = { preset: "aurora", font: { ui: "Inter" }, colors: { dark: { primary: "#123456" } } };
+    expect(effectiveTheme(themes, emptySettings(), "/repo")).toMatchObject({ font: { ui: "Inter" }, colors: { dark: { primary: "#123456" } } });
+    themes.projects["/repo"] = { preset: "original" };
+    expect(effectiveTheme(themes, emptySettings(), "/repo")).toMatchObject({ font: {}, colors: { light: {}, dark: {} } });
+    themes.projects["/repo"] = mergeTheme(themes.projects["/repo"]!, { preset: null }, "project");
+    expect(effectiveTheme(themes, emptySettings(), "/repo").font).toEqual({ ui: "Inter" });
+  });
+
+  it("preserves omitted edits and images, clean switches reset only fonts/colors, and persists presets", () => {
+    const before = { preset: "aurora" as const, base: "dark" as const, wallpaper: { path: "art.png" }, logo: { path: "logo.svg" }, font: { ui: "Inter" }, colors: { dark: { primary: "#123456" } } };
+    expect(mergeTheme(before, { preset: "forest" }, "project")).toEqual({ ...before, preset: "forest" });
+    const after = mergeTheme(before, { preset: "forest", font: null, colors: null }, "project");
+    expect(after).toEqual({ preset: "forest", base: "dark", wallpaper: before.wallpaper, logo: before.logo });
+    expect(parseThemes({ global: { preset: "ocean" }, projects: { "/repo": after } }).themes.projects["/repo"]).toEqual(after);
+    expect(() => mergeTheme({}, { preset: "unknown" }, "global")).toThrow(/unknown preset/);
+  });
+});

@@ -1,0 +1,20 @@
+// Curated palettes, shared by Settings and set_theme. Original intentionally leaves CSS defaults untouched.
+import type { Mode, Palette } from "./themes";
+
+export const THEME_PRESETS = [
+  { id: "original", name: "pi-gna Original", about: "The classic pi-gna appearance", colors: { light: {}, dark: {} } },
+  { id: "aurora", name: "Aurora", about: "Cool teal and northern violet", colors: { light: { background: "#eff8f5", panel: "#e0efeb", fg: "#17332f", primary: "#077867", secondary: "#5059a6", accent: "#956313" }, dark: { background: "#0d1920", panel: "#162730", fg: "#e2f3f2", primary: "#68dbc7", secondary: "#a5b4fc", accent: "#eecb85" } } },
+  { id: "midnight", name: "Midnight", about: "Deep navy and electric blue", colors: { light: { background: "#f1f5fc", panel: "#e4ecf8", fg: "#192b49", primary: "#245cb5", secondary: "#126e86", accent: "#8050aa" }, dark: { background: "#101827", panel: "#1a2639", fg: "#e4ecfa", primary: "#85b5ff", secondary: "#91d9ef", accent: "#d8b4fe" } } },
+  { id: "rose", name: "Rose Quartz", about: "Dusty rose and warm porcelain", colors: { light: { background: "#fcf3f7", panel: "#f4e5ed", fg: "#452735", primary: "#a53664", secondary: "#7653a2", accent: "#966031" }, dark: { background: "#241a22", panel: "#332630", fg: "#f6e6ef", primary: "#efa4c5", secondary: "#c9b3f1", accent: "#f5c29a" } } },
+  { id: "forest", name: "Forest", about: "Pine green and soft moss", colors: { light: { background: "#f1f6ec", panel: "#e4eddb", fg: "#293c24", primary: "#46712f", secondary: "#237465", accent: "#896616" }, dark: { background: "#132019", panel: "#203027", fg: "#e5f0e5", primary: "#9bd49e", secondary: "#8ccfc2", accent: "#e2c784" } } },
+  { id: "ember", name: "Ember", about: "Burnt orange and charcoal", colors: { light: { background: "#fbf4ec", panel: "#f2e6d7", fg: "#493021", primary: "#a44f18", secondary: "#866019", accent: "#a1404a" }, dark: { background: "#241b17", panel: "#342820", fg: "#f6e9dd", primary: "#f5b078", secondary: "#e3c08c", accent: "#efa3a3" } } },
+  { id: "lavender", name: "Lavender", about: "Lilac ink and pale violet", colors: { light: { background: "#f7f3fc", panel: "#ede6f7", fg: "#36264c", primary: "#7650ac", secondary: "#2d708e", accent: "#a34880" }, dark: { background: "#201b2c", panel: "#2c263b", fg: "#eee8fa", primary: "#c4adf7", secondary: "#98cce5", accent: "#f0afd4" } } },
+  { id: "ocean", name: "Ocean", about: "Marine blue and sea glass", colors: { light: { background: "#eff8fb", panel: "#deeff4", fg: "#193c49", primary: "#156f8d", secondary: "#18775e", accent: "#8b651b" }, dark: { background: "#101f27", panel: "#1a303b", fg: "#e0f2f8", primary: "#7acde9", secondary: "#83d9bd", accent: "#e8ca85" } } },
+  { id: "sandstone", name: "Sandstone", about: "Warm paper and desert ink", colors: { light: { background: "#faf6ec", panel: "#efe7d5", fg: "#433b29", primary: "#806023", secondary: "#576d33", accent: "#9a5131" }, dark: { background: "#242019", panel: "#332d23", fg: "#f1eadd", primary: "#d8bc8c", secondary: "#b8c998", accent: "#e2ac8e" } } },
+  { id: "graphite", name: "Graphite", about: "Quiet neutrals and crisp silver", colors: { light: { background: "#f5f6f8", panel: "#e8eaee", fg: "#282d36", primary: "#4d6489", secondary: "#356f7e", accent: "#815779" }, dark: { background: "#1b1d20", panel: "#282b30", fg: "#eceef1", primary: "#b5c4df", secondary: "#a3c5ce", accent: "#d3bbcf" } } },
+  { id: "cherry", name: "Cherry", about: "Burgundy and vivid coral", colors: { light: { background: "#fff3f1", panel: "#f7e3e1", fg: "#4c252c", primary: "#ae364b", secondary: "#886030", accent: "#7b50ab" }, dark: { background: "#28191d", panel: "#39242a", fg: "#f8e7e9", primary: "#ffabb5", secondary: "#dec0a1", accent: "#c9b4f2" } } },
+
+] as const satisfies readonly { id: string; name: string; about: string; colors: Record<Mode, Palette> }[];
+
+export type ThemePresetId = (typeof THEME_PRESETS)[number]["id"];
+export const themePreset = (id: ThemePresetId = "original") => THEME_PRESETS.find((preset) => preset.id === id)!;

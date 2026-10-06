@@ -5,7 +5,8 @@ import { RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { projectOf } from "../../../shared/board";
 import { THEMES, type Theme, WALLPAPERS } from "../../../shared/settings";
-import { COLOR_KEYS, type ColorKey, FONT_SIZE, MODES, type Mode, scopeTheme, type ThemeScope, type ThemeSpec } from "../../../shared/themes";
+import { COLOR_KEYS, effectiveTheme, type ColorKey, FONT_SIZE, MODES, type Mode, scopeTheme, type ThemeScope, type ThemeSpec } from "../../../shared/themes";
+import { THEME_PRESETS } from "../../../shared/theme-presets";
 import { baseName } from "../lib/format";
 import { WALLPAPER_LABELS } from "../lib/wallpapers";
 import { applyTheme, useApp } from "../state/app";
@@ -78,7 +79,7 @@ function ColorField({ mode, name, value, inherited, onChange }: { mode: Mode; na
       </label>
       <div className="min-w-0 flex-1">
         <div className="text-[12.5px] text-fg">{COLOR_LABELS[name]}</div>
-        <div className={`font-mono text-[11px] ${value ? "text-muted" : "text-faint"}`}>{value ?? (inherited ? `${inherited} (inherited)` : "default")}</div>
+        <div className={`font-mono text-[11px] ${value ? "text-muted" : "text-faint"}`}>{value ?? (inherited ? `${inherited} (palette)` : "default")}</div>
       </div>
       {value && (
         <button type="button" title="Back to the default" onClick={() => onChange(null)} className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
@@ -105,19 +106,30 @@ function useDebounced(send: (patch: unknown) => void, scope: string) {
 
 export function ThemeEditor({ cwd }: { cwd: string }) {
   const themes = useApp((state) => state.themes);
-  const project = cwd && cwd !== window.studio.homeDir ? projectOf(cwd) : undefined;
-  const [which, setWhich] = useState<"global" | "project">(project && themes.projects[project] ? "project" : "global");
-  const scope: ThemeScope = which === "project" && project ? { project } : "global";
+  const settings = useApp((state) => state.settings);
+  const projects = useApp((state) => state.projects);
+  const current = cwd && cwd !== window.studio.homeDir ? projectOf(cwd) : undefined;
+  const [target, setTarget] = useState(current && themes.projects[current] ? current : "global");
+  const project = target === "global" ? undefined : target;
+  const choices = [...new Set([
+    ...projects.map((item) => projectOf(item.cwd)),
+    ...Object.keys(themes.projects),
+    ...(current ? [current] : []),
+    ...(project ? [project] : []),
+  ])].filter((path) => path !== window.studio.homeDir).sort((a, b) => baseName(a).localeCompare(baseName(b)) || a.localeCompare(b));
+  const scope: ThemeScope = project ? { project } : "global";
   const theme: ThemeSpec = scopeTheme(themes, scope);
   const set = (patch: unknown) => applyTheme({ type: "set", scope, patch });
   const colors = useDebounced(set, JSON.stringify(scope));
+  const resolved = effectiveTheme(themes, settings, scope === "global" ? undefined : project);
+  const selected = theme.preset ?? (scope === "global" ? "original" : themes.global.preset ?? "original");
   const wallpaper = theme.wallpaper;
   const wallpaperChoice = !wallpaper ? "inherit" : "builtin" in wallpaper ? wallpaper.builtin : "image";
 
   return (
     <Card
       key={JSON.stringify(scope)}
-      title="Custom theme"
+      title="Project themes"
       note={
         <>
           Fonts use installed family names on each device (unavailable fonts fall back to the system font). Images are files inside the project, by their path from its folder. Agents can change all of this with their{" "}
@@ -125,11 +137,28 @@ export function ThemeEditor({ cwd }: { cwd: string }) {
         </>
       }
     >
-      {project && (
-        <Row title="Applies to" about={which === "project" ? `Only ${baseName(project)}, over the theme for all projects.` : "Every project without its own value."}>
-          <Segmented value={which} options={["global", "project"] as const} labels={{ global: "All projects", project: baseName(project) || "This project" }} onChange={setWhich} />
-        </Row>
-      )}
+      <Row title="Applies to" about={project ? `Only ${project}. Changes appear when this project is active.` : "Every project without its own value."}>
+        <select aria-label="Applies to" value={target} onChange={(event) => { colors.cancel(); setTarget(event.target.value); }} className="max-w-64 truncate rounded-lg border border-line bg-panel px-2 py-1 text-[12px] text-fg outline-none">
+          <option value="global">All projects</option>
+          {choices.map((path) => <option key={path} value={path}>{choices.some((other) => other !== path && baseName(other) === baseName(path)) ? path : baseName(path)}</option>)}
+        </select>
+      </Row>
+      <div className="px-3 py-3">
+        <div className="mb-2 flex items-center justify-between text-[12px] text-muted">
+          <span>{scope !== "global" && !theme.preset ? "Inherited palette" : "Palette"}{theme.colors || theme.font ? " · customized" : ""} · light and dark</span>
+          {scope !== "global" && theme.preset && <button type="button" className="text-accent" onClick={() => { colors.cancel(); void set({ preset: null, font: null, colors: null }); }}>Use global</button>}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {THEME_PRESETS.map((preset) => {
+            const palette = { ...DEFAULTS.dark, ...preset.colors.dark };
+            return <button key={preset.id} type="button" aria-pressed={selected === preset.id} title={preset.about} onClick={() => { colors.cancel(); void set({ preset: preset.id, font: null, colors: null }); }} className={`rounded-lg border p-2 text-left hover:bg-raised ${selected === preset.id ? "border-accent" : "border-line"}`}>
+              <div className="mb-1.5 flex gap-1" aria-hidden="true">{(["background", "primary", "secondary", "accent"] as const).map((key) => <span key={key} className="h-3 flex-1 rounded-sm border border-line" style={{ background: palette[key] }} />)}</div>
+              <div className="text-[12px] text-fg">{preset.name}</div>
+            </button>;
+          })}
+        </div>
+        <p className="mt-2 text-[11px] text-faint">Original is the default. Picking a palette resets custom fonts and colors, not your mode, wallpaper or logo.</p>
+      </div>
       {scope !== "global" && (
         <Row title="Mode" about="Inherit uses the Theme above.">
           <Segmented value={theme.base ?? "inherit"} options={BASES} labels={BASE_LABELS} onChange={(base) => set({ base: base === "inherit" ? null : (base as Theme) })} />
@@ -149,7 +178,7 @@ export function ThemeEditor({ cwd }: { cwd: string }) {
           <div key={mode}>
             <div className="mb-1 text-[12px] font-medium text-muted">{MODE_LABELS[mode]}</div>
             {COLOR_KEYS.map((name) => (
-              <ColorField key={name} mode={mode} name={name} value={theme.colors?.[mode]?.[name]} inherited={scope !== "global" ? themes.global.colors?.[mode]?.[name] : undefined} onChange={(value) => colors.send(`${mode}.${name}`, { colors: { [mode]: { [name]: value } } })} />
+              <ColorField key={name} mode={mode} name={name} value={theme.colors?.[mode]?.[name]} inherited={resolved.colors[mode][name]} onChange={(value) => colors.send(`${mode}.${name}`, { colors: { [mode]: { [name]: value } } })} />
             ))}
           </div>
         ))}
@@ -183,7 +212,7 @@ export function ThemeEditor({ cwd }: { cwd: string }) {
           </Row>
         </>
       )}
-      <Row title="Reset" about={scope === "global" ? "Forget the fonts and colors for all projects." : "Forget this project's theme."}>
+      <Row title="Reset" about={scope === "global" ? "Forget the palette, fonts and colors for all projects." : "Forget this project's theme."}>
         <ConfirmButton label="Reset" confirm="Reset theme" onConfirm={() => { colors.cancel(); void applyTheme({ type: "reset", scope }); }} />
       </Row>
     </Card>
