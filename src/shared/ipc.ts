@@ -73,6 +73,7 @@ export const IPC = {
   browserPreviewOpen: "browser:preview-open",
   browserResolveTargets: "browser:resolve-targets",
   browserReadImage: "browser:read-image",
+  browserSiteIcon: "browser:site-icon",
   sidebarToggle: "studio:sidebar-toggle",
   pageToggle: "studio:page-toggle",
   openProject: "studio:open-project",
@@ -403,6 +404,8 @@ export interface BrowserApi {
   resolvePreviewTargets(cwd: string, targets: string[]): Promise<(string | null)[]>;
   /** The bytes of an image a chat answer embeds (`![alt](target)`, resolved like a file link), or null. */
   readPreviewImage(cwd: string, target: string): Promise<{ mimeType: string; data: string } | null>;
+  /** The favicon of the site a web link of a chat answer points to, or null. */
+  siteIcon(url: string): Promise<{ mimeType: string; data: string } | null>;
   /** Open a local file in a preview tab (reusing one for the same file). Resolves with the tab id; rejects for missing paths and directories. */
   preview(path: string, options?: PreviewOpenOptions): Promise<string>;
   /** Show a Kanban card in a tab (reusing this chat's tab of the card). Resolves with the tab id. */

@@ -344,6 +344,20 @@ body,
 .prose a:hover {
   text-decoration: underline;
 }
+/* The site's favicon before a web link (lib/preview.ts loadSiteIcons). A light backing keeps dark marks (GitHub,
+   X) visible on the dark theme; preflight makes images blocks, so it is set inline again. */
+.prose a .site-icon {
+  display: inline-block;
+  box-sizing: content-box;
+  width: 0.85em;
+  height: 0.85em;
+  padding: 0.075em;
+  margin-right: 0.3em;
+  vertical-align: -0.12em;
+  border-radius: 3px;
+  background: #fff;
+  object-fit: contain;
+}
 .prose strong {
   font-weight: 600;
 }

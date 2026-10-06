@@ -73,6 +73,7 @@ const api: StudioApi = {
     preview: (path, options) => ipcRenderer.invoke(IPC.browserPreview, path, options),
     resolvePreviewTargets: (cwd, targets) => ipcRenderer.invoke(IPC.browserResolveTargets, cwd, targets),
     readPreviewImage: (cwd, target) => ipcRenderer.invoke(IPC.browserReadImage, cwd, target),
+    siteIcon: (url) => ipcRenderer.invoke(IPC.browserSiteIcon, url),
     previewMode: (id, mode) => ipcRenderer.invoke(IPC.browserPreviewMode, id, mode),
     card: (card) => ipcRenderer.invoke(IPC.browserCard, card),
     previewReveal: (id) => ipcRenderer.invoke(IPC.browserPreviewReveal, id),

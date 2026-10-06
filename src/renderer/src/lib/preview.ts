@@ -153,6 +153,35 @@ export async function loadChatImages(root: HTMLElement | null): Promise<void> {
   );
 }
 
+// Icon data URLs per host for this window, so re-rendered answers show them without another round trip.
+const siteIcons = new Map<string, Promise<string | null>>();
+
+/** Prepend the site's favicon to each web link of a rendered answer; links without one stay as they are. */
+export async function loadSiteIcons(root: HTMLElement | null): Promise<void> {
+  const api = window.studio?.browser;
+  if (!root || !api?.siteIcon) return;
+  const links = [...root.querySelectorAll<HTMLAnchorElement>("a[href]:not([data-site-icon])")].filter((link) => /^https?:$/.test(link.protocol) && link.hostname);
+  await Promise.all(
+    links.map(async (link) => {
+      link.dataset.siteIcon = "1";
+      const host = link.hostname.toLowerCase();
+      let icon = siteIcons.get(host);
+      if (!icon) {
+        icon = api.siteIcon(link.href).then((result) => (result ? `data:${result.mimeType};base64,${result.data}` : null), () => null);
+        siteIcons.set(host, icon);
+      }
+      const src = await icon;
+      if (!src || !link.isConnected) return;
+      const img = document.createElement("img");
+      img.className = "site-icon";
+      img.alt = "";
+      img.decoding = "async";
+      img.src = src;
+      link.prepend(img);
+    }),
+  );
+}
+
 /** Click or Enter on a `[data-file]` element of a rendered answer: preview it (cmd/ctrl: new tab). */
 export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey: boolean }): void {
   if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
