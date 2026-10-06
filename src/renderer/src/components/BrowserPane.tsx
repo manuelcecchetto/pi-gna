@@ -21,6 +21,7 @@ import {
   SquareArrowOutUpRight,
   Smartphone,
   X,
+  SquareKanban,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
@@ -30,6 +31,7 @@ import { fuzzyFilter } from "../lib/fuzzy";
 import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
 import { setPane, store, toast, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
+import { CardTab } from "./CardDialog";
 import { COLLAPSED_INSET } from "./Sidebar";
 
 const browser = () => window.studio.browser;
@@ -53,7 +55,8 @@ export function BrowserPane() {
   const showDimensions = Boolean(active) && (dimensionsOpen || Boolean(active?.viewport));
   // Native views draw above the DOM, so hide the page while a DOM overlay must cover it.
   const inWindow = active?.surface === "window";
-  const visible = pane.open && Boolean(active) && !inWindow && !lightbox && !suggesting && !overlay;
+  // A card tab is drawn by the renderer: its page stays hidden.
+  const visible = pane.open && Boolean(active) && !active?.card && !inWindow && !lightbox && !suggesting && !overlay;
 
   useLayoutEffect(() => {
     const element = viewport.current;
@@ -125,7 +128,7 @@ export function BrowserPane() {
         </IconButton>
       </div>
 
-      {active && !active.preview && (
+      {active && !active.preview && !active.card && (
         <div className="flex h-10 shrink-0 items-center gap-0.5 border-b border-line px-2">
           <IconButton title="Back" disabled={!active.canGoBack} onClick={() => browser().command(active.id, "back")}>
             <ArrowLeft size={15} />
@@ -169,12 +172,13 @@ export function BrowserPane() {
         </div>
       )}
 
-      {active && !active.preview && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
+      {active && !active.preview && !active.card && showDimensions && <DimensionsBar key={active.id} tab={active} stage={stage} />}
 
       <div ref={viewport} className="relative min-h-0 flex-1 bg-sunken">
         {!active && <StartPage />}
         {active && inWindow && <WindowPlaceholder tab={active} />}
-        {active && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
+        {active?.card && <CardView tab={active} card={active.card} />}
+        {active && !active.card && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
         {active?.viewport && visible && <DeviceFrame spec={active.viewport} stage={stage} />}
       </div>
       {state.annotating && (
@@ -279,18 +283,21 @@ function TabPill({
   agentRunning: boolean;
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
-  const label = tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab");
+  const card = useApp((s) => (tab.card ? s.board.cards.find((entry) => entry.id === tab.card) : undefined));
+  const label = tab.card ? (card?.title ?? tab.card) : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
   const FileIcon = tab.preview ? iconForKind(tab.preview.kind) : undefined;
   return (
     <div
       onContextMenu={onContextMenu}
       className={`group flex h-8 max-w-48 min-w-24 shrink-0 items-center gap-1.5 rounded-lg pr-1 pl-2.5 text-[12px] ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised/50"}`}
     >
-      <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.preview?.path ?? tab.url}>
+      <button type="button" onClick={() => browser().activate(tab.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left" title={tab.card ? `Card ${tab.card}` : (tab.preview?.path ?? tab.url)}>
         {tab.surface === "window" ? (
           <AppWindow size={12} className="shrink-0 text-accent" />
         ) : tab.agent ? (
           <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
+        ) : tab.card ? (
+          <SquareKanban size={12} className="shrink-0 text-faint" />
         ) : FileIcon ? (
           <FileIcon size={12} className="shrink-0 text-faint" />
         ) : (
@@ -303,6 +310,14 @@ function TabPill({
       </button>
     </div>
   );
+}
+
+/** A Kanban card in a tab: its details beside the chat, from the board the renderer already holds. */
+function CardView({ tab, card: id }: { tab: BrowserTab; card: string }) {
+  const card = useApp((s) => s.board.cards.find((entry) => entry.id === id));
+  const active = useApp((s) => s.active);
+  if (!card) return <div className="grid h-full place-items-center text-[12px] text-faint">Card not found: {id}</div>;
+  return <CardTab key={card.id} card={card} chat={tab.agent ?? active} onClose={() => browser().closeTab(tab.id)} />;
 }
 
 function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (open: boolean) => void }) {

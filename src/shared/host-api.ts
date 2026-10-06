@@ -529,6 +529,7 @@ export interface HostMethods {
   "browser.popOut": { args: { id: string }; result: null };
   "browser.returnToPane": { args: { id: string }; result: null };
   "browser.preview": { args: { path: string; options?: PreviewOpenOptions }; result: string };
+  "browser.card": { args: { card: string }; result: string };
   "browser.previewMode": { args: { id: string; mode: PreviewMode }; result: null };
   "browser.previewReveal": { args: { id: string }; result: null };
   "browser.previewOpen": { args: { id: string }; result: null };
@@ -632,6 +633,7 @@ export const DESKTOP_ONLY_METHODS = [
   "browser.popOut",
   "browser.returnToPane",
   "browser.preview",
+  "browser.card",
   "browser.previewReveal",
   "browser.previewOpen",
   "browser.resolveTargets",

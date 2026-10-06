@@ -40,7 +40,7 @@ import {
   stripStudioBlocks,
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
-import { cardBlock, pickModel } from "../../../shared/task-prompts";
+import { cardBlock, inChatPrompt, pickModel } from "../../../shared/task-prompts";
 import { bootUiState } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
@@ -929,6 +929,20 @@ export async function startCardTask(card: Card, kind: CardTaskKind): Promise<voi
       setCardTask(card.id, kind, undefined);
     }, CARD_TASK_STARTED_MS),
   );
+}
+
+/** A card task in a chat that is already open (the card tab's default): the prompt goes to it and the chat joins the card. */
+export async function runCardTaskHere(card: Card, kind: CardTaskKind, handle: string): Promise<void> {
+  if (store.get().cardTasks[card.id]?.[kind] === "starting") return;
+  setCardTask(card.id, kind, "starting");
+  const sent = await send(handle, inChatPrompt(card, kind), "followUp");
+  if (!sent) {
+    setCardTask(card.id, kind, undefined);
+    return toast("That chat is not available", "error");
+  }
+  await joinCard(handle, card.id);
+  setCardTask(card.id, kind, "started");
+  setTimeout(() => setCardTask(card.id, kind, undefined), CARD_TASK_STARTED_MS);
 }
 
 /**

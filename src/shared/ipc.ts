@@ -66,6 +66,7 @@ export const IPC = {
   browserAnnotation: "browser:annotation",
   browserToggle: "browser:toggle",
   browserPreview: "browser:preview",
+  browserCard: "browser:card",
   browserPreviewMode: "browser:preview-mode",
   browserPreviewReveal: "browser:preview-reveal",
   browserPreviewOpen: "browser:preview-open",
@@ -393,6 +394,8 @@ export interface BrowserApi {
   readPreviewImage(cwd: string, target: string): Promise<{ mimeType: string; data: string } | null>;
   /** Open a local file in a preview tab (reusing one for the same file). Resolves with the tab id; rejects for missing paths and directories. */
   preview(path: string, options?: PreviewOpenOptions): Promise<string>;
+  /** Show a Kanban card in a tab (reusing this chat's tab of the card). Resolves with the tab id. */
+  card(card: string): Promise<string>;
   /** Switch a preview tab between its rendered and raw view. */
   previewMode(id: string, mode: PreviewMode): Promise<void>;
   /** Show a preview tab's file in Finder. */

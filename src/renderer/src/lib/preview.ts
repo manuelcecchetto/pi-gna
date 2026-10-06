@@ -1,7 +1,7 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
 import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type LucideIcon } from "lucide-react";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
-import { showBoard, showBrowser, store, toast } from "../state/app";
+import { showBrowser, store, toast } from "../state/app";
 import { resolveFilePath } from "./preview-path";
 
 /** Opens a local file in a preview tab; the active chat's project is the root so relative links work. */
@@ -183,10 +183,11 @@ export function resolveCardLinks(root: HTMLElement | null): void {
   }
 }
 
-/** Click or Enter on a `[data-card]` element: that card's details on its project's board. */
+/** Click or Enter on a `[data-card]` element: that card's details in a tab of the browser pane, beside the chat. */
 export function openCardLink(el: HTMLElement): void {
   if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
   const card = store.get().board.cards.find((entry) => entry.id === el.dataset.card);
-  if (card) showBoard(card.cwd, card.id);
-  else toast("Card not found", "error");
+  if (!card) return toast("Card not found", "error");
+  showBrowser();
+  void window.studio.browser.card(card.id).catch(() => toast("Could not open the card", "error"));
 }

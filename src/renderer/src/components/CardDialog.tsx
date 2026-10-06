@@ -1,6 +1,7 @@
-// A card's details in a native <dialog>: its title, tags and notes, its column, the chats it can start and the
-// chats on it, and what they reported. New cards are added on the board (AddCard), with their screenshots.
-import { Check, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
+// A card's details (CardDetails): its title, tags and notes, its column, the chats it can start and the chats on it,
+// and what they reported. They show in a native <dialog> on the board (CardDialog) and in a preview tab (CardTab).
+// New cards are added on the board (AddCard), with their screenshots.
+import { Check, ChevronDown, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS, COLUMNS, githubKey, LIMITS } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";
@@ -13,18 +14,11 @@ import { applyBoard, boardRev, openSession, remoteError, sessionTitle, setOverla
 import { cardActions } from "../state/card-actions";
 import { ColumnIcon } from "./ColumnIcon";
 import { RefIcon } from "./GitHub";
+import { ContextMenu } from "./ContextMenu";
 import { Indicator } from "./Sidebar";
 
 export function CardDialog({ card, onClose }: { card: Card; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const sessions = useApp((state) => state.sessions);
-  const projects = useApp((state) => state.projects);
-  const github = useFeature("github");
-  const tasks = useApp((state) => state.cardTasks[card.id]);
-  const live = useMemo(() => Object.values(sessions), [sessions]);
-  const [title, setTitle] = useState(card.title);
-  const [notes, setNotes] = useState(card.notes);
-  const [deleting, setDeleting] = useState(false);
   /** A screenshot shown full size, inside the dialog: the app's lightbox would be under it (the top layer). */
   const [zoom, setZoom] = useState<string>();
 
@@ -34,6 +28,63 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
     return () => setOverlay(false);
   }, []);
 
+  return (
+    <dialog
+      ref={dialog}
+      onClose={onClose}
+      onCancel={(event) => {
+        if (!zoom) return;
+        event.preventDefault(); // Esc closes the screenshot first
+        setZoom(undefined);
+      }}
+      onClick={(event) => {
+        if (event.target === dialog.current) dialog.current?.close(); // the backdrop
+      }}
+      className="card-dialog m-auto max-h-[min(780px,calc(100vh-64px))] w-[min(640px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-line-strong bg-panel p-0 text-fg shadow-[0_24px_80px_-24px_rgb(0_0_0/0.6)] backdrop:bg-black/45"
+    >
+      <CardDetails card={card} onClose={() => dialog.current?.close()} zoom={zoom} onZoom={setZoom} />
+    </dialog>
+  );
+}
+
+/** A card in a preview tab: the same details, filling the pane, so a chat link keeps the chat on screen. */
+export function CardTab({ card, chat, onClose }: { card: Card; chat?: string; onClose: () => void }) {
+  const [zoom, setZoom] = useState<string>();
+  return (
+    <div className="h-full overflow-hidden bg-panel text-fg [contain:paint] [&>div]:h-full">
+      <CardDetails card={card} chat={chat} onClose={onClose} zoom={zoom} onZoom={setZoom} />
+    </div>
+  );
+}
+
+/**
+ * The card's fields and actions. `onClose` closes whatever holds them (the dialog, the tab); text edits are saved when
+ * they unmount. Screenshots zoom through `zoom`, held by the owner so its Esc can close the zoom first. With `chat`, the
+ * chat the card is shown beside, its tasks run there and a dropdown offers a new chat; without it they start a new chat.
+ */
+export function CardDetails({
+  card,
+  chat,
+  onClose,
+  zoom,
+  onZoom,
+}: {
+  card: Card;
+  chat?: string;
+  onClose: () => void;
+  zoom?: string;
+  onZoom: (src: string | undefined) => void;
+}) {
+  const here = useApp((state) => (chat && state.sessions[chat]?.phase !== "exited" ? chat : undefined));
+  const [elsewhere, setElsewhere] = useState<{ at: { x: number; y: number }; run: () => void }>();
+  const sessions = useApp((state) => state.sessions);
+  const projects = useApp((state) => state.projects);
+  const github = useFeature("github");
+  const tasks = useApp((state) => state.cardTasks[card.id]);
+  const live = useMemo(() => Object.values(sessions), [sessions]);
+  const [title, setTitle] = useState(card.title);
+  const [notes, setNotes] = useState(card.notes);
+  const [deleting, setDeleting] = useState(false);
   // An agent can change the card while it is open: follow it, unless you are editing that field.
   const seen = useRef(card);
   // The board revision the title and notes on screen come from: text edits are checked against it, so an agent's
@@ -69,26 +120,17 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
       }
     });
   };
-  const close = () => {
-    save();
-    onClose();
-  };
+  const removed = useRef(false);
+  const latestSave = useRef(save);
+  latestSave.current = save;
+  useEffect(() => () => {
+    if (!removed.current) latestSave.current();
+  }, []);
   const titleOf = (path: string) => chatTitle(path, card, projects, live, sessionTitle);
 
   return (
-    <dialog
-      ref={dialog}
-      onClose={close}
-      onCancel={(event) => {
-        if (!zoom) return;
-        event.preventDefault(); // Esc closes the screenshot first
-        setZoom(undefined);
-      }}
-      onClick={(event) => {
-        if (event.target === dialog.current) dialog.current?.close(); // the backdrop
-      }}
-      className="card-dialog m-auto max-h-[min(780px,calc(100vh-64px))] w-[min(640px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-line-strong bg-panel p-0 text-fg shadow-[0_24px_80px_-24px_rgb(0_0_0/0.6)] backdrop:bg-black/45"
-    >
+    <>
+      {elsewhere && <ContextMenu at={elsewhere.at} sections={[[{ label: "On another chat", icon: <MessagesSquare size={13} />, hint: "A new chat takes it, in its own git worktree for Resolve", onSelect: elsewhere.run }]]} onClose={() => setElsewhere(undefined)} />}
       <div className="flex max-h-[inherit] flex-col">
         <div className="flex items-center gap-1 px-4 pt-3.5">
           {COLUMNS.map((option) => {
@@ -108,7 +150,7 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
           })}
           <div className="flex-1" />
           <span className="selectable font-mono text-[11px] text-faint">{card.id}</span>
-          <button type="button" title="Close (Esc)" onClick={() => dialog.current?.close()} className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
+          <button type="button" title="Close (Esc)" onClick={onClose} className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
             <X size={15} />
           </button>
         </div>
@@ -131,31 +173,48 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
             placeholder="Notes: what needs doing, links, how to tell it is done"
             className="selectable mt-3 max-h-80 min-h-24 w-full resize-none rounded-xl border border-line bg-sunken px-3 py-2.5 text-[13px] leading-relaxed text-fg outline-none [field-sizing:content] placeholder:text-faint focus:border-line-strong"
           />
-          <Screenshots notes={card.notes} onZoom={setZoom} />
+          <Screenshots notes={card.notes} onZoom={onZoom} />
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {cardActions(card).map((action) => {
               // A task the host is starting cannot be started again (a double click would start two chats).
               const phase = action.task && tasks?.[action.task];
+              const runHere = here && action.runHere;
               return (
-                <button
-                  key={action.id}
-                  type="button"
-                  title={action.hint}
-                  disabled={phase === "starting"}
-                  aria-busy={phase === "starting" || undefined}
-                  onClick={() => action.run(card)}
-                  className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] ${phase === "started" ? "border-ok/40 text-ok hover:bg-raised" : phase === "starting" ? "cursor-default border-line-strong text-muted" : "border-line-strong text-fg hover:bg-raised"}`}
-                >
-                  {phase === "starting" ? (
-                    <LoaderCircle size={13} className="animate-spin text-muted" />
-                  ) : phase === "started" ? (
-                    <Check size={13} />
-                  ) : (
-                    <action.icon size={13} className="text-muted" />
+                <div key={action.id} className="flex">
+                  <button
+                    type="button"
+                    title={runHere ? `${action.label} in this chat` : action.hint}
+                    disabled={phase === "starting"}
+                    aria-busy={phase === "starting" || undefined}
+                    onClick={() => (runHere ? action.runHere?.(card, here) : action.run(card))}
+                    className={`flex items-center gap-1.5 border px-2.5 py-1 text-[12.5px] ${runHere ? "rounded-l-lg" : "rounded-lg"} ${phase === "started" ? "border-ok/40 text-ok hover:bg-raised" : phase === "starting" ? "cursor-default border-line-strong text-muted" : "border-line-strong text-fg hover:bg-raised"}`}
+                  >
+                    {phase === "starting" ? (
+                      <LoaderCircle size={13} className="animate-spin text-muted" />
+                    ) : phase === "started" ? (
+                      <Check size={13} />
+                    ) : (
+                      <action.icon size={13} className="text-muted" />
+                    )}
+                    {phase === "starting" ? `Starting ${action.label}…` : phase === "started" ? `${action.label} started` : action.label}
+                  </button>
+                  {runHere && (
+                    <button
+                      type="button"
+                      title={`${action.label}: more ways`}
+                      aria-haspopup="menu"
+                      disabled={phase === "starting"}
+                      onClick={(event) => {
+                        const box = event.currentTarget.getBoundingClientRect();
+                        setElsewhere({ at: { x: box.left, y: box.bottom + 4 }, run: () => action.run(card) });
+                      }}
+                      className="rounded-r-lg border border-l-0 border-line-strong px-1.5 text-muted hover:bg-raised hover:text-fg disabled:cursor-default"
+                    >
+                      <ChevronDown size={13} />
+                    </button>
                   )}
-                  {phase === "starting" ? `Starting ${action.label}…` : phase === "started" ? `${action.label} started` : action.label}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -224,6 +283,7 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
             onClick={() => {
               if (!deleting) return setDeleting(true);
               void applyBoard({ type: "remove", id: card.id });
+              removed.current = true;
               onClose();
             }}
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[12.5px] ${deleting ? "bg-bad/15 text-bad" : "text-faint hover:bg-raised hover:text-bad"}`}
@@ -234,13 +294,14 @@ export function CardDialog({ card, onClose }: { card: Card; onClose: () => void 
         </footer>
       </div>
       {zoom && (
-        <button type="button" onClick={() => setZoom(undefined)} className="fixed inset-0 z-10 grid cursor-zoom-out place-items-center bg-black/75 p-10">
+        <button type="button" onClick={() => onZoom(undefined)} className="fixed inset-0 z-10 grid cursor-zoom-out place-items-center bg-black/75 p-10">
           <img alt="" src={zoom} className="max-h-full max-w-full rounded-lg shadow-2xl" />
         </button>
       )}
-    </dialog>
+    </>
   );
 }
+
 
 /** The images among the card's attachments (splitAttachments), read from disk; a file that is gone is left out. */
 function Screenshots({ notes, onZoom }: { notes: string; onZoom: (src: string) => void }) {

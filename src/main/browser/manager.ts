@@ -55,6 +55,8 @@ export interface Tab {
   /** "pane" for the browser pane, otherwise the id of the BrowserWindow the tab lives in. */
   surface: "pane" | number;
   win?: BrowserWindow;
+  /** Id of the Kanban card this tab shows; its page is blank, the renderer draws the card. */
+  card?: string;
   /** The viewport was made up when popping out a tab that had none; returning to the pane drops it again. */
   autoViewport?: boolean;
   /** Remote viewers watching this tab: while any, the view stays in the window tree (see `hold`). */
@@ -148,6 +150,7 @@ export class BrowserManager {
             surface: tab.win ? ("window" as const) : ("pane" as const),
             agentAt: tab.agentAt,
             preview: tab.preview?.info,
+            card: tab.card,
           },
         ];
       }),
@@ -340,6 +343,17 @@ export class BrowserManager {
     if (!shown || needsReload(shown, mode, options.line, tab.view.webContents.isCrashed())) this.startPreview(tab, file, root, mode, options.line);
     this.activate(tab.id);
     if (!tab.win) this.events.reveal(tab.agent);
+    return tab;
+  }
+
+  /** Show a Kanban card in a tab next to the previews. A chat reuses its own tab of the same card. */
+  openCard(card: string, agent?: string): Tab {
+    const owner = agent ?? this.chat;
+    const tab = [...this.tabs.values()].find((other) => other.card === card && other.agent === owner) ?? this.makeTab(owner);
+    tab.card = card;
+    this.activate(tab.id);
+    if (!tab.win) this.events.reveal(tab.agent);
+    this.emitState();
     return tab;
   }
 

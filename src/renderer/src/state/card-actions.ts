@@ -2,7 +2,7 @@
 // check it in review (main starts them: ChatTasks) or talk about it. Other features add theirs with registerCardAction (say, opening a card's GitHub issue).
 import { ClipboardCheck, type LucideIcon, MessageSquarePlus, Search, Wrench } from "lucide-react";
 import type { Card } from "../../../shared/board";
-import { type CardTaskKind, discussCard, startCardTask } from "./app";
+import { type CardTaskKind, discussCard, runCardTaskHere, startCardTask } from "./app";
 
 export interface CardAction {
   id: string;
@@ -13,6 +13,8 @@ export interface CardAction {
   /** Offered only for the cards this accepts. */
   when?: (card: Card) => boolean;
   run: (card: Card) => void;
+  /** Does it in the chat the card is shown beside, where the card tab offers that ("On another chat" is `run`). */
+  runHere?: (card: Card, chat: string) => void;
   /** The card task it starts: its button and the card show it starting, then started (AppState.cardTasks). */
   task?: CardTaskKind;
 }
@@ -30,7 +32,11 @@ export function cardActions(card: Card): CardAction[] {
   return actions.filter((action) => !action.when || action.when(card));
 }
 
-const cardTask = (task: CardTaskKind): Pick<CardAction, "run" | "task"> => ({ task, run: (card) => void startCardTask(card, task) });
+const cardTask = (task: CardTaskKind): Pick<CardAction, "run" | "runHere" | "task"> => ({
+  task,
+  run: (card) => void startCardTask(card, task),
+  runHere: (card, chat) => void runCardTaskHere(card, task, chat),
+});
 
 registerCardAction({
   id: "investigate",

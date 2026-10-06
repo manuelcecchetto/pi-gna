@@ -10,6 +10,7 @@ import {
   draftTitle,
   fixPrompt,
   hasWorktree,
+  inChatPrompt,
   investigatePrompt,
   lamentBlock,
   pickModel,
@@ -87,6 +88,16 @@ describe("the chats a card starts", () => {
     expect(there).toContain(`The change is on branch pigna/bbbbbb-ship-dark-mode, in a git worktree of the project: your working directory, ${cwd},`);
     expect(there).toContain("Do not commit, push or merge, and leave the checkout at /repo as it is.");
     expect(there).not.toMatch(/project folder|uncommitted changes, which/);
+  });
+});
+
+describe("a card task in the chat you are in", () => {
+  it("is the new chat's prompt, told to work in this chat's folder", () => {
+    expect(inChatPrompt(card("aaaaaa"), "investigate")).toBe(investigatePrompt(card("aaaaaa")));
+    const resolve = inChatPrompt(card("aaaaaa"), "resolve");
+    expect(resolve).toContain("Card aaaaaa");
+    expect(resolve).toContain("You work here, in this chat's folder");
+    expect(resolve).not.toContain("git worktree of the project, on branch");
   });
 });
 

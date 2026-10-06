@@ -89,6 +89,17 @@ export function cardBlock(card: Card): string {
   return `<kanban-card>\n${lines.join("\n")}\n</kanban-card>`;
 }
 
+/**
+ * A card task as a message to a chat that is already open (the card tab's default), instead of a new chat's first one.
+ * That chat keeps its own folder: only a new chat gets the card's git worktree.
+ */
+export function inChatPrompt(card: Card, kind: "investigate" | "resolve" | "qa"): string {
+  if (kind === "investigate") return investigatePrompt(card);
+  const prompt = kind === "resolve" ? resolvePrompt(card) : qaPrompt(card);
+  const note = hasWorktree(card) ? "\n\nEarlier chats on this card worked in a git worktree of the project: find it with `git worktree list` and the card's reports." : "";
+  return `${prompt.replace("This chat is attached to the card.", "You work here, in this chat's folder, and this chat is attached to the card.")}${note}`;
+}
+
 export function investigatePrompt(card: Card): string {
   return [
     `Investigate this card from the project's Kanban board. Do not change any files: work out what is going on and what it would take, then tell me what you found and how you would resolve it.`,

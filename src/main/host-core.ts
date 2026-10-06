@@ -352,6 +352,18 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         return (await browser.openPreview(path, options)).id;
       },
     ),
+    "browser.card": method<{ card: string }>(
+      "desktop",
+      (raw) => {
+        if (typeof raw.card !== "string" || !raw.card) throw new Error("Invalid card id");
+        return { card: raw.card };
+      },
+      (_ctx, { card }) => {
+        const browser = deps.browser();
+        if (!browser) throw new Error("The browser is not ready");
+        return browser.openCard(card).id;
+      },
+    ),
     "browser.previewMode": method<{ id: string; mode: PreviewMode }>(
       "remote",
       (raw) => {
@@ -654,6 +666,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserPopOut, "browser.popOut", (id) => ({ id })),
   route(IPC.browserReturn, "browser.returnToPane", (id) => ({ id })),
   route(IPC.browserPreview, "browser.preview", (path, options) => ({ path, options })),
+  route(IPC.browserCard, "browser.card", (card) => ({ card })),
   route(IPC.browserPreviewMode, "browser.previewMode", (id, mode) => ({ id, mode })),
   route(IPC.browserPreviewReveal, "browser.previewReveal", (id) => ({ id })),
   route(IPC.browserResolveTargets, "browser.resolveTargets", (cwd, targets) => ({ cwd, targets })),
