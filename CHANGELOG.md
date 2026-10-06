@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.6.5 - 2026-10-06
+
 - New browser tab: + now opens a start tab instead of a blank web page, with the address bar focused, Open file…, a Tools grid, a ⌘P finder over the chat's project files and suggested dev servers. Whatever you pick opens in that tab.
 - Settings has an About section: the version, Electron, Chromium and Node versions (with Copy for bug reports), the changelog, source, issue and pi.dev links, license and credits. The app menu's About pi-gna opens it.
 - The browser tab strip now scrolls smoothly across the gaps between tabs instead of stalling at each tab's edge.
