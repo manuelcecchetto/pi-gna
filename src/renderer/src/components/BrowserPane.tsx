@@ -296,10 +296,12 @@ function TabPill({
           <AppWindow size={12} className="shrink-0 text-accent" />
         ) : tab.card ? (
           <SquareKanban size={12} className="shrink-0 text-faint" />
-        ) : tab.agent ? (
+        ) : tab.agent && (agentRunning || !tab.favicon) ? (
           <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
         ) : FileIcon ? (
           <FileIcon size={12} className="shrink-0 text-faint" />
+        ) : tab.favicon ? (
+          <img src={tab.favicon} alt="" draggable={false} className={`size-3.5 shrink-0 rounded-[3px] object-contain ${tab.loading ? "opacity-60" : ""}`} />
         ) : (
           <Globe size={12} className={`shrink-0 text-faint ${tab.loading ? "pulse-dot" : ""}`} />
         )}

@@ -22,6 +22,8 @@ export interface BrowserTab {
   preview?: TabPreview;
   /** Set when the tab shows a Kanban card (its id): the renderer draws the card from the board, the native view stays hidden. */
   card?: string;
+  /** The page's icon as a data URL (web tabs only, once known). */
+  favicon?: string;
 }
 
 /** How long after its last action a tab still counts as driven by the agent. */

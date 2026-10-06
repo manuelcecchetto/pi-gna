@@ -182,6 +182,12 @@ tabs close when its session ends. The phone still lists every chat's tabs.
   and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views
   paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
   image lightbox, the Kanban card dialog and menus). History lives in `userData/browser-history.json`.
+- **Tab icons** (`main/browser/favicon.ts`): on `page-favicon-updated` main fetches the page's own icon through the
+  tab's session (so local dev servers get theirs; inline `data:` icons are decoded without the network), shrinks
+  bitmaps to 32 px with `nativeImage` (SVG and undecodable ICO stay raw up to 32 KB) and puts the data URL in
+  `BrowserTab.favicon`; a navigation to another origin drops it. Without one, public sites fall back to the chat-link
+  icon service (`site-icons.ts`). The strip shows it instead of the globe, and instead of the agent's icon unless the
+  agent is driving the tab right now; the phone shows it too.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
   `browser_screenshot`, `browser_evaluate`, `browser_console`, `browser_viewport`, `browser_window`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never

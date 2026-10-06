@@ -85,6 +85,7 @@ export function BrowserScreen({ client, back }: { client: HostClient; back: () =
             <div key={t.id} className={`${chip} ${active ? "border-accent/60 text-fg" : "border-line text-muted"}`} data-testid="browser-tab" data-active={active}>
               <button type="button" onClick={() => void call("browser.activate", { id: t.id })} className="flex min-h-9 max-w-40 items-center gap-1.5">
                 {t.preview && <File size={13} className="shrink-0 text-faint" data-testid="preview-icon" />}
+                {!t.preview && t.favicon && <img src={t.favicon} alt="" className="size-3.5 shrink-0 rounded-[3px] object-contain" />}
                 <span className="truncate">{tabTitle(t)}</span>
                 {t.agent && (
                   <span className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${agentActive(t, now) ? "bg-accent/20 text-accent" : "text-faint"}`} data-testid="agent-badge" title={agentActive(t, now) ? "The agent is using this tab" : "Opened by an agent"}>

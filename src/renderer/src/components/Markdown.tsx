@@ -1,10 +1,10 @@
-import { memo, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { memo, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChatUiProvider, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
 import { renderMarkdown } from "../lib/markdown";
-import { loadChatImages, loadSiteIcons, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
+import { decorateWebLinks, loadChatImages, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
 
 function onProseClick(event: MouseEvent<HTMLElement>, openExternal: (url: string) => void, openLightbox: (src: string) => void): void {
   const target = event.target as HTMLElement;
@@ -66,10 +66,11 @@ export const Markdown = memo(function Markdown({
   useEffect(() => {
     if (!streaming) highlightWithin(ref.current);
   }, [html, streaming]);
+  // Site icons go in before paint so links do not shift; favicons are fetched once the message is complete.
+  useLayoutEffect(() => decorateWebLinks(ref.current, !streaming), [html, streaming]);
   // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
     if (!streaming) resolveCardLinks(ref.current);
-    if (!streaming) void loadSiteIcons(ref.current);
     if (!streaming) void resolveFileLinks(ref.current).then(() => loadChatImages(ref.current));
   }, [html, streaming]);
   useEffect(() => {
