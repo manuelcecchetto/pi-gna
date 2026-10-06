@@ -3,6 +3,7 @@ import {
   ArrowDown,
   Check,
   ChevronRight,
+  ChevronsUpDown,
   CircleSlash,
   Copy,
   FileText,
@@ -48,7 +49,7 @@ export interface TurnNav {
   sessionPath?: string;
 }
 
-export function Transcript({ session, earlier, turns }: { session: SessionState; earlier?: EarlierTurns; turns?: (nav: TurnNav) => React.ReactNode }) {
+export function Transcript({ session, earlier, turns, onPickProject }: { session: SessionState; earlier?: EarlierTurns; turns?: (nav: TurnNav) => React.ReactNode; /** Makes the project name of the empty state a button (the phone: switch project). */ onPickProject?: () => void }) {
   const derive = useMemo(() => createRunDeriver(), []);
   const runs = derive(session);
   const [limit, setLimit] = useState(PAGE);
@@ -62,7 +63,7 @@ export function Transcript({ session, earlier, turns }: { session: SessionState;
   const [paging, setPaging] = useState(false);
 
   if (session.loading) return <div className="flex-1" />; // not the empty state: this chat has a history
-  if (!runs.length && !session.running) return <EmptyTranscript session={session} />;
+  if (!runs.length && !session.running) return <EmptyTranscript session={session} onPickProject={onPickProject} />;
 
   /** Render a turn from an earlier page, for the turn rail to scroll to. */
   const reveal = (key: string) => {
@@ -333,14 +334,27 @@ export function HeroBackdrop() {
   return style ? <div className="hero" style={style} aria-hidden /> : null;
 }
 
-function EmptyTranscript({ session }: { session: SessionState }) {
+function EmptyTranscript({ session, onPickProject }: { session: SessionState; onPickProject?: () => void }) {
   const { homeDir } = useChatActions();
   return (
     <div className="relative flex min-h-0 flex-1 flex-col items-center justify-end overflow-hidden px-8 pb-8">
       <HeroBackdrop />
       <div className="relative flex flex-col items-center">
         <h1 className="text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
-        <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, homeDir)}</div>
+        {onPickProject ? (
+          <button
+            type="button"
+            onClick={onPickProject}
+            aria-label="Switch project"
+            data-testid="switch-project"
+            className="mt-3 flex max-w-full items-center gap-1.5 rounded-full border border-line bg-panel px-4 py-2 font-mono text-[13px] text-fg active:opacity-60"
+          >
+            <span className="min-w-0 truncate">{tildify(session.cwd, homeDir)}</span>
+            <ChevronsUpDown size={14} className="shrink-0 text-muted" />
+          </button>
+        ) : (
+          <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, homeDir)}</div>
+        )}
       </div>
     </div>
   );

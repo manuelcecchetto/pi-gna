@@ -9,6 +9,8 @@ import { useStore } from "../renderer/src/lib/store";
 import { attention } from "../shared/session-state";
 import { toggleExpandAll } from "./chat-ui";
 import type { HostClient } from "./client/host-client";
+import { projectOf } from "../shared/board";
+import { FolderPicker } from "./ProjectSheets";
 import { MobileComposer } from "./MobileComposer";
 import type { Route } from "./nav";
 import { Header, Mark } from "./Screens";
@@ -102,8 +104,9 @@ function ComputerPreview({ client, handle, running }: { client: HostClient; hand
   );
 }
 
-export function ChatScreen({ client, route, back }: { client: HostClient; route: ChatRoute; back: () => void }) {
+export function ChatScreen({ client, route, back, replace }: { client: HostClient; route: ChatRoute; back: () => void; replace: (route: Route) => void }) {
   const [attempt, setAttempt] = useState(0);
+  const [picking, setPicking] = useState(false);
   const { handle, error } = useJoinedChat(client, route, attempt);
   const entry = useStore(client.store, (s) => (handle ? s.chats[handle] : undefined));
   const session = entry?.session;
@@ -153,7 +156,7 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
               </button>
             </div>
           )}
-          <Transcript session={session} earlier={earlier} turns={(nav) => <TurnList client={client} nav={nav} />} />
+          <Transcript session={session} earlier={earlier} turns={(nav) => <TurnList client={client} nav={nav} />} onPickProject={() => setPicking(true)} />
           {session.dialogs.length > 0 && (
             <div className="max-h-[55%] shrink-0 overflow-y-auto px-3 pb-2" data-testid="dialogs">
               <Dialogs handle={session.handle} dialogs={session.dialogs} />
@@ -162,6 +165,16 @@ export function ChatScreen({ client, route, back }: { client: HostClient; route:
           <ComputerPreview client={client} handle={session.handle} running={session.running} />
           <MobileComposer client={client} session={session} initialText={route.prefill} cardId={route.cardId} />
         </>
+      )}
+      {picking && (
+        <FolderPicker
+          client={client}
+          onClose={() => setPicking(false)}
+          onPick={(path) => {
+            setPicking(false);
+            replace({ screen: "chat", cwd: projectOf(path) });
+          }}
+        />
       )}
     </div>
   );

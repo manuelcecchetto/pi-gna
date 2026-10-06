@@ -7,6 +7,7 @@ import { ChatScreen } from "./Chat";
 import { createChatUi } from "./chat-ui";
 import { Lightbox } from "./Lightbox";
 import { HostClient, type ConnectionState } from "./client/host-client";
+import { rememberProject } from "./last-project";
 import { useRoute } from "./nav";
 import { BoardScreen } from "./Board";
 import { LamentsScreen } from "./Laments";
@@ -53,7 +54,18 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
     [],
   );
   const [homeDir, setHomeDir] = useState("");
-  const { route, push, back } = useRoute();
+  const { route, push, replace, back } = useRoute();
+
+  // A chat started here has a session file only once pi writes it, and the host announces nothing: ask again whenever
+  // a list screen comes up, and when the live chats start or finish a turn.
+  const liveKey = useStore(client.store, (s) =>
+    Object.values(s.global.attention).map((c) => `${c.handle}:${c.settled?.at ?? ""}:${c.sessionPath ?? ""}`).join("|"),
+  );
+  useEffect(() => void client.refreshProjects(), [client, liveKey, route.screen]);
+
+  useEffect(() => {
+    if ("cwd" in route) rememberProject(route.cwd);
+  }, [route]);
 
   useEffect(() => {
     client.start();
@@ -115,7 +127,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
         {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
-        {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} />}
+        {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} replace={replace} />}
       </div>
       <Toasts />
       <Lightbox />
