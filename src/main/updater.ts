@@ -114,8 +114,8 @@ export class Updater {
   private state: UpdateState = { phase: "idle" };
   private release?: ReleaseInfo;
   private checking?: Promise<UpdateState>;
-  /** The downloaded app, verified and ready to swap in, and its executable's name. */
-  private staged?: { app: string; exe: string };
+  /** The downloaded app, verified and ready to swap in, its executable's name and the release it is. */
+  private staged?: { app: string; exe: string; release: ReleaseInfo };
   private relaunch = false;
   /** Why the last install failed, from the swap script's file; shown until an install works. */
   private installError?: string;
@@ -130,7 +130,7 @@ export class Updater {
     this.installError = (existsSync(this.failedFile) && readFileSync(this.failedFile, "utf8").trim()) || undefined;
     if (this.installError) log.error("updater", `the last update did not install: ${this.installError}`);
     rmSync(this.failedFile, { force: true });
-    // Leftovers of a download that never got installed (pi-gna was killed, or it found a newer release since).
+    // Leftovers of a download that never got installed (pi-gna was killed before it quit cleanly).
     rmSync(this.dir, { recursive: true, force: true });
   }
 
@@ -159,8 +159,19 @@ export class Updater {
     if (response.status === 404) return this.state; // nothing released yet
     if (!response.ok) throw new Error(`GitHub answered ${response.status} ${response.statusText}`);
     const release = parseRelease(await response.json(), this.asset);
-    // A download in progress or waiting for the restart stays; the next check after it picks up anything newer.
-    if (this.state.phase === "downloading" || this.state.phase === "ready") return this.state;
+    // The user chose to update, so a newer release replaces the one downloading or staged: a download in progress
+    // moves on to it when it ends, and a staged one stays installable until the newer one is staged.
+    if (this.state.phase === "downloading") {
+      if (release.dmg && this.release && compareVersions(release.version, this.release.version) > 0) this.supersede(release);
+      return this.state;
+    }
+    if (this.state.phase === "ready") {
+      if (release.dmg && this.staged && compareVersions(release.version, this.staged.release.version) > 0) {
+        this.supersede(release);
+        void this.fetchAndStage(release);
+      }
+      return this.state;
+    }
     if (compareVersions(release.version, app.getVersion()) <= 0) {
       this.release = undefined;
       return this.set({ phase: "idle" });
@@ -173,33 +184,53 @@ export class Updater {
     return this.set({ phase: "available", release: shown, manual });
   }
 
+  private supersede(release: ReleaseInfo): void {
+    if (this.release?.version !== release.version) log.info("updater", `${release.version} is available (running ${app.getVersion()}, updating to ${this.release?.version})`);
+    this.release = release;
+  }
+
   /** Downloads, verifies and stages the available release; the state says how it went. */
   async download(): Promise<void> {
     const release = this.release;
     if (!release?.dmg || !this.bundle || (this.state.phase !== "available" && this.state.phase !== "failed")) return;
-    const shown = publicRelease(release);
     const blocker = installBlocker(this.bundle, app.isPackaged, isWritable);
     if (blocker) {
-      this.set({ phase: "failed", release: shown, error: blocker });
+      this.set({ phase: "failed", release: publicRelease(release), error: blocker });
       return;
     }
     this.installError = undefined;
+    await this.fetchAndStage(release);
+  }
+
+  /**
+   * Stages `release` in a folder of its own, so an older staged release stays installable until this one replaces
+   * it; when that fails, the older one is still ready. Then moves on to any newer release a check found meanwhile.
+   */
+  private async fetchAndStage(release: ReleaseInfo): Promise<void> {
+    if (!release.dmg) return;
+    const shown = publicRelease(release);
+    const dir = join(this.dir, release.version);
     this.set({ phase: "downloading", release: shown, progress: 0 });
     const started = Date.now();
     try {
-      rmSync(this.dir, { recursive: true, force: true });
-      mkdirSync(this.dir, { recursive: true });
-      const dmg = join(this.dir, this.asset);
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir, { recursive: true });
+      const dmg = join(dir, this.asset);
       await this.fetchDmg(release.dmg, dmg, (progress) => this.set({ phase: "downloading", release: shown, progress }));
-      this.staged = await this.stage(dmg, release.version);
+      const staged = await this.stage(dmg, release.version, dir);
       rmSync(dmg, { force: true });
+      if (this.staged) rmSync(dirname(this.staged.app), { recursive: true, force: true });
+      this.staged = { ...staged, release };
       log.info("updater", `${release.version} is ready to install (${Math.round((Date.now() - started) / 1000)} s)`);
       this.set({ phase: "ready", release: shown });
     } catch (error) {
       log.error("updater", `could not download ${release.version}: ${(error as Error).message}`);
-      rmSync(this.dir, { recursive: true, force: true });
-      this.set({ phase: "failed", release: shown, error: (error as Error).message });
+      rmSync(dir, { recursive: true, force: true });
+      if (this.staged) this.set({ phase: "ready", release: publicRelease(this.staged.release) });
+      else this.set({ phase: "failed", release: shown, error: (error as Error).message });
     }
+    const latest = this.release;
+    if (latest && latest !== release && compareVersions(latest.version, (this.staged?.release ?? release).version) > 0) await this.fetchAndStage(latest);
   }
 
   private async fetchDmg(dmg: NonNullable<ReleaseInfo["dmg"]>, path: string, onProgress: (progress: number) => void): Promise<void> {
@@ -228,14 +259,14 @@ export class Updater {
   }
 
   /** Copies the app out of the dmg next to it and checks that it is pi-gna at that version and intact. */
-  private async stage(dmg: string, version: string): Promise<{ app: string; exe: string }> {
-    const mount = join(this.dir, "mount");
+  private async stage(dmg: string, version: string, dir: string): Promise<{ app: string; exe: string }> {
+    const mount = join(dir, "mount");
     await run("/usr/bin/hdiutil", ["attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen", "-mountpoint", mount, dmg]);
     let staged: string;
     try {
       const bundle = readdirSync(mount).find((entry) => entry.endsWith(".app"));
       if (!bundle) throw new Error("the dmg has no app in it");
-      staged = join(this.dir, bundle);
+      staged = join(dir, bundle);
       // --noqtn: never carry a quarantine flag over, or Gatekeeper would stop the restarted app.
       await run("/usr/bin/ditto", ["--noqtn", join(mount, bundle), staged]);
     } finally {
@@ -265,7 +296,7 @@ export class Updater {
     const staged = this.staged;
     if (!staged || !this.bundle) return;
     this.staged = undefined;
-    log.info("updater", `installing ${this.release?.version ?? "the update"} over ${this.bundle}${this.relaunch ? " and restarting" : ""}`);
+    log.info("updater", `installing ${staged.release.version} over ${this.bundle}${this.relaunch ? " and restarting" : ""}`);
     const out = openSync(this.logFile, "a");
     const args = [String(process.pid), this.bundle, staged.app, join(this.dir, "previous.app"), this.failedFile, this.relaunch ? staged.exe : ""];
     spawn("/bin/sh", ["-c", SWAP_SCRIPT, "pigna-update", ...args], { detached: true, stdio: ["ignore", out, out] }).unref();
