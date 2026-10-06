@@ -4,7 +4,7 @@ import { ChevronRight, CircleCheck, MessagesSquare, MoreHorizontal, RotateCcw, T
 import { useMemo, useState } from "react";
 import { Markdown } from "../renderer/src/components/Markdown";
 import { baseName, formatStamp, relativeTime } from "../renderer/src/lib/format";
-import { fixChat, lamentSnippet, reportChat } from "../renderer/src/lib/laments";
+import { fixChat, lamentSnippet, reportChat, SEVERITY_TONE } from "../renderer/src/lib/laments";
 import { useStore } from "../renderer/src/lib/store";
 import { type Lament, type LamentOp, lamentSeverity, projectLaments, SEVERITY, type Severity } from "../shared/laments";
 import type { HostClient } from "./client/host-client";
@@ -91,7 +91,10 @@ export function LamentsScreen({ client, cwd, push, back }: { client: HostClient;
                         {lament.reports.length > 1 && <span className="shrink-0 rounded-full border border-line px-1.5 font-mono text-[11px] text-muted">×{lament.reports.length}</span>}
                         <span className="shrink-0 font-mono text-[11px] text-faint">{relativeTime(lament.updatedAt)}</span>
                       </div>
-                      {!isOpen && <div className="mt-0.5 truncate text-[13px] text-faint">{lamentSnippet(lament)}</div>}
+                      <div className="mt-0.5 flex min-w-0 gap-1 text-[13px] text-faint">
+                        <span className={`shrink-0 font-medium ${SEVERITY_TONE[lamentSeverity(lament)]}`}>{SEVERITY[lamentSeverity(lament)].label}</span>
+                        {!isOpen && <span className="truncate">· {lamentSnippet(lament)}</span>}
+                      </div>
                     </div>
                     <ChevronRight size={15} className={`mt-1 shrink-0 text-faint transition-transform ${isOpen ? "rotate-90" : ""}`} />
                   </button>
@@ -108,7 +111,7 @@ export function LamentsScreen({ client, cwd, push, back }: { client: HostClient;
                           <li key={`${report.at}-${index}`} className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-1.5 text-[12px] text-faint">
                               <Mark severity={report.severity} size={12} />
-                              <span>{SEVERITY[report.severity].label}</span>
+                              <span className={SEVERITY_TONE[report.severity]}>{SEVERITY[report.severity].label}</span>
                               <span>· {index === lament.reports.length - 1 ? "filed" : "hit again"} {formatStamp(report.at)}</span>
                               {chat && (
                                 <button type="button" onClick={() => openChat(chat, chat.title)} className="flex min-w-0 items-center gap-1 py-1 text-accent" data-testid="report-chat">

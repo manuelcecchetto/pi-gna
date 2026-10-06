@@ -1,5 +1,5 @@
 // The Laments page: one project's laments, which agents file with the lament tool when a tool or capability they
-// needed was missing, unavailable or failing. Worst first, each with the emoji of its severity; open one to read its
+// needed was missing, unavailable or failing. Worst first, each with the emoji and colored name of its severity; open one to read its
 // reports, open the chat that filed it, have a new chat fix it in a git worktree (Fix), and mark it resolved once
 // the fix is in (a repeat reopens it).
 import { Angry, ChevronRight, CircleCheck, MessagesSquare, RotateCcw, Trash2, Wrench } from "./icons";
@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Lament, type LamentFix, type LamentReport, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
 import { findSummary } from "../lib/board";
 import { baseName, formatStamp, relativeTime } from "../lib/format";
-import { fixChat, lamentProjects, lamentSnippet, reportChat } from "../lib/laments";
+import { fixChat, lamentProjects, lamentSnippet, reportChat, SEVERITY_TONE } from "../lib/laments";
 import { applyLament, fixLament, openSession, type PageState, sessionTitle, showPage, useApp } from "../state/app";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Markdown } from "./Markdown";
@@ -130,7 +130,7 @@ function Empty({ project, resolved }: { project: string; resolved: boolean }) {
         {SEVERITIES.map((severity) => (
           <span key={severity} className="flex items-center gap-1.5" title={SEVERITY[severity].about}>
             <SeverityMark severity={severity} size={14} />
-            {SEVERITY[severity].label}
+            <span className={SEVERITY_TONE[severity]}>{SEVERITY[severity].label}</span>
           </span>
         ))}
       </div>
@@ -181,7 +181,10 @@ function LamentView({ lament, expanded, onToggle, onMenu }: { lament: Lament; ex
               {relativeTime(lament.updatedAt)}
             </span>
           </div>
-          {!expanded && <div className="mt-0.5 truncate text-[12px] text-faint">{lamentSnippet(lament)}</div>}
+          <div className="mt-0.5 flex min-w-0 gap-1 text-[12px] text-faint">
+            <span className={`shrink-0 font-medium ${SEVERITY_TONE[severity]}`}>{SEVERITY[severity].label}</span>
+            {!expanded && <span className="truncate">· {lamentSnippet(lament)}</span>}
+          </div>
         </div>
         <ChevronRight size={14} className={`mt-1 shrink-0 text-faint transition-transform ${expanded ? "rotate-90" : ""}`} />
       </button>
@@ -280,7 +283,7 @@ function ReportView({ report, first }: { report: LamentReport; first: boolean })
     <li className="min-w-0">
       <div className="flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-faint">
         <SeverityMark severity={report.severity} size={12} />
-        <span>{SEVERITY[report.severity].label}</span>
+        <span className={SEVERITY_TONE[report.severity]}>{SEVERITY[report.severity].label}</span>
         <span>· {first ? "filed" : "hit again"} {formatStamp(report.at)}</span>
         {chat && (
           <button type="button" onClick={() => openSession(chat)} className="flex min-w-0 items-center gap-1 rounded px-1 hover:bg-raised hover:text-fg" title="Open this chat">
