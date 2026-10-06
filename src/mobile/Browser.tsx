@@ -495,8 +495,13 @@ function CommentSheet({ client, tab, chat, point, onClose }: { client: HostClien
       if (!annotation) throw new Error("No element there");
       annotations.add(annotation);
       if (now && chat) {
-        const sent = await sendAnnotations((method, args) => client.call(method, args), chat);
-        toast(sent.accepted ? "Sent to the chat." : `Not sent (${sent.error ?? "pi did not take it"}). It goes with your next message.`, sent.accepted ? undefined : "error");
+        // The pick is saved already: a failed Send must not leave the sheet open to pick it again.
+        try {
+          const sent = await sendAnnotations((method, args) => client.call(method, args), chat);
+          toast(sent.accepted ? "Sent to the chat." : `Not sent (${sent.error ?? "pi did not take it"}). It goes with your next message.`, sent.accepted ? undefined : "error");
+        } catch (error) {
+          toast(`Could not send: ${failure(error)}. Comments kept for your next message.`, "error");
+        }
       } else toast("Comment added. It goes with your next message.");
       onClose();
     } catch (error) {
