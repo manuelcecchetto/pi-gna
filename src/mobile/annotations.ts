@@ -30,3 +30,17 @@ export const annotations = {
 };
 
 export const useAnnotations = () => useSyncExternalStore(annotations.subscribe, annotations.get);
+
+type ChatSend = (method: "chat.send", args: { handle: string; text: string; mode: "send"; annotations: Annotation[] }) => Promise<{ accepted: boolean; error?: string }>;
+
+/**
+ * Send in the comment sheet: every waiting comment goes to `handle` now, as a prompt of its own (the host steers a
+ * running chat). They leave the list only once pi took them; otherwise they wait for the next message as usual.
+ */
+export async function sendAnnotations(call: ChatSend, handle: string): Promise<{ accepted: boolean; error?: string }> {
+  const sent = annotations.get();
+  if (!sent.length) return { accepted: false, error: "No comments to send" };
+  const result = await call("chat.send", { handle, text: "", mode: "send", annotations: sent });
+  if (result.accepted) annotations.drop(sent);
+  return result;
+}

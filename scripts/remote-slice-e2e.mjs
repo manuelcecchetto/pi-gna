@@ -1122,6 +1122,7 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     await sleep(300);
     await tapPage(180, 240);
     await until("the comment sheet", () => exists('[data-testid="comment-sheet"]'));
+    check(await phone.eval(`!!document.querySelector('[data-testid="comment-send"]')?.disabled && document.body.innerText.includes("belongs to no chat")`), "Send now is off on a tab no chat owns");
     await typeInto("comment-text", "make this bigger");
     await click("comment-add");
     await until("the annotation chip", () => exists('[data-testid="annotation-chip"]'), 20_000, 100);
