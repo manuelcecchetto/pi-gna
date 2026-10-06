@@ -2,6 +2,7 @@
 // key is typed here, goes to `providers.answer` over TLS and is saved by pi in the Mac's auth.json; the host never sends
 // one back (AuthState holds names and statuses). Account sign-ins show their link or device code on the phone, and a flow
 // that can only finish in the Mac's browser says so.
+import { CodeText } from "../renderer/src/components/CodeText";
 import { Check, ExternalLink, LoaderCircle, Search, TriangleAlert } from "../renderer/src/components/icons";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { accountLabel, answered, type LoginView, startLogin, updateLogin } from "../renderer/src/lib/login";
@@ -96,7 +97,9 @@ export function ProvidersSection({ client }: { client: HostClient }) {
   if (state.error) {
     return (
       <div className="mx-4 mt-4 flex flex-col gap-2 rounded-xl border border-warn/40 p-3 text-[13px] text-fg" data-testid="providers-error">
-        <p className="break-words">{state.error}</p>
+        <p className="break-words">
+          <CodeText text={state.error} />
+        </p>
         <p className="text-muted">pi-gna signs in with the pi on the Mac's PATH, the one its chats run.</p>
         <button type="button" className={button} onClick={reload}>
           Try again
@@ -290,7 +293,9 @@ function LoginSheet({ view, onAnswer, onCancel }: { view: LoginView; onAnswer: (
         {view.error ? (
           <div className="flex items-start gap-2 rounded-xl border border-bad/40 p-3 text-[13.5px] text-fg" data-testid="login-error">
             <TriangleAlert size={15} className="mt-0.5 shrink-0 text-bad" />
-            <p className="min-w-0 flex-1 break-words">{view.error}</p>
+            <p className="min-w-0 flex-1 break-words">
+              <CodeText text={view.error} />
+            </p>
           </div>
         ) : (
           waiting && (

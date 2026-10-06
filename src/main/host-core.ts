@@ -189,6 +189,13 @@ const packageToggle = (raw: any): PackageToggle => {
   return { scope: raw.scope, source: text(raw.source, "package"), packageScope: packageScope(raw.packageScope), enabled: raw.enabled };
 };
 
+/** A dependency's failure that explains itself (the Computer Use helper missing from the build, not starting) as a
+ * HostError, which a phone sees; the remote server answers any other error with a bare "internal error". */
+const explained = <T>(work: Promise<T>): Promise<T> =>
+  work.catch((error: unknown) => {
+    throw error instanceof HostError ? error : new HostError("unavailable", error instanceof Error ? error.message : String(error));
+  });
+
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
@@ -504,7 +511,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
 
     "computer.get": any("remote", () => computerPolicy.get()),
     "computer.apply": any<{ op: ComputerOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => computerPolicy.apply(op, baseRev)),
-    "computer.permissions": any("remote", () => computerHelper.call("permissions", {})),
+    "computer.permissions": any("remote", () => explained(computerHelper.call("permissions", {}))),
     "computer.requestPermissions": any<{ pane?: "accessibility" | "screen_recording" }>("remote", async (_ctx, { pane }) => {
       await computerHelper.call("request_permissions", {});
       const permissions = await computerHelper.call("permissions", {});

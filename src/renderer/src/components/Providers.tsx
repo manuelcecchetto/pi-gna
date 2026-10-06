@@ -8,6 +8,7 @@ import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, au
 import { tildify } from "../lib/format";
 import { accountLabel, answered, type LoginView, logoFor, startLogin, updateLogin } from "../lib/login";
 import { remoteError, toast } from "../state/app";
+import { CodeText } from "./CodeText";
 import { Button, ConfirmButton } from "./SettingsControls";
 
 /** `simple`: without the notes about pi's files and the environment (Setup, for the non-technical). */
@@ -74,7 +75,9 @@ export function ProvidersSection({ simple = false }: { simple?: boolean }) {
       <div className="flex items-start gap-2.5 rounded-lg border border-warn/40 bg-warn/5 px-3 py-2.5 text-[12.5px] text-fg">
         <TriangleAlert size={14} className="mt-0.5 shrink-0 text-warn" />
         <div className="min-w-0 flex-1">
-          <p className="selectable break-words">{state.error}</p>
+          <p className="selectable break-words">
+            <CodeText text={state.error} />
+          </p>
           <p className="mt-1 text-muted">pi-gna signs in with the pi on your PATH, the one its chats run.</p>
         </div>
         <Button onClick={reload}>Try again</Button>
@@ -352,7 +355,9 @@ function LoginPanel({ view, onAnswer, onCancel }: { view: LoginView; onAnswer: (
       {view.error ? (
         <div className="flex items-start gap-2 rounded-lg border border-bad/40 bg-bad/5 px-3 py-2 text-[12.5px] text-fg">
           <TriangleAlert size={14} className="mt-0.5 shrink-0 text-bad" />
-          <p className="selectable min-w-0 flex-1 break-words">{view.error}</p>
+          <p className="selectable min-w-0 flex-1 break-words">
+            <CodeText text={view.error} />
+          </p>
           <Button onClick={onCancel}>Close</Button>
         </div>
       ) : (

@@ -16,16 +16,18 @@ const piBin = () => process.env.PIGNA_PI_BIN || "pi";
 
 type Ran = { ok: true; out: string } | { ok: false; missing: boolean; error: string };
 
-/** A command's trimmed stdout; `missing` when there is no such command. */
+/** A command's trimmed stdout; `missing` when there is no such command. A failure keeps the end of stderr: "Command
+ * failed" alone does not say what to fix. */
 function run(command: string, args: string[], timeout: number): Promise<Ran> {
   return new Promise((resolve) => {
-    execFile(command, args, { timeout, env: process.env }, (error, stdout) => {
+    execFile(command, args, { timeout, env: process.env }, (error, stdout, stderr) => {
       if (!error) return resolve({ ok: true, out: stdout.trim() });
       const code = (error as NodeJS.ErrnoException).code;
+      const said = stderr.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-6);
       resolve({
         ok: false,
         missing: code === "ENOENT",
-        error: error.killed ? `no answer in ${Math.round(timeout / 1000)} s` : (error.message.split("\n")[0] ?? "failed"),
+        error: error.killed ? `no answer in ${Math.round(timeout / 1000)} s` : [error.message.split("\n")[0] ?? "failed", ...said].join("\n"),
       });
     });
   });

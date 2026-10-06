@@ -18,6 +18,7 @@ import plug from "../assets/setup/pigna-plug.webp";
 import shock from "../assets/setup/pigna-shock.webp";
 import { createStore, useStore } from "../lib/store";
 import { applySettings, newChat, remoteError, setOverlay, store, useApp } from "../state/app";
+import { CodeText } from "./CodeText";
 import { PiSpinner } from "./PiLogo";
 import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
@@ -403,15 +404,7 @@ function PiStep({ persona }: { persona: Persona }) {
             ) : !status && checkError ? (
               <Retry persona={persona} text={nerdy ? `Could not check: ${checkError}` : "pi-gna could not look around your Mac."} checking={checking} />
             ) : broken ? (
-              <Retry
-                persona={persona}
-                text={
-                  nerdy
-                    ? `\`pi --version\` failed: ${broken}. Fix it in a terminal (reinstall with ${PI_INSTALL_COMMAND}), then check again.`
-                    : "pi is on your Mac but didn't answer. Restarting your Mac often helps; then check again."
-                }
-                checking={checking}
-              />
+              <Broken persona={persona} error={broken} checking={checking} />
             ) : install.phase === "failed" && !ready ? (
               <InstallFailed persona={persona} error={install.error ?? ""} lines={install.lines} checking={checking} />
             ) : status && needsNode ? (
@@ -541,7 +534,7 @@ function InstallFailed({ persona, error, lines, checking }: { persona: Persona; 
   return (
     <div className="setup-rise flex flex-col gap-3">
       <Note>
-        {persona === "nerd" ? error : "The install did not go through. Try once more. If it fails again, copy the command and ask someone techy to run it in Terminal."}
+        {persona === "nerd" ? <CodeText text={error} /> : "The install did not go through. Try once more. If it fails again, copy the command and ask someone techy to run it in Terminal."}
       </Note>
       {persona === "nerd" && lines.length > 0 && <Log lines={lines.slice(-12)} className="max-h-24" />}
       <div className="flex items-center gap-2">
@@ -554,6 +547,36 @@ function InstallFailed({ persona, error, lines, checking }: { persona: Persona; 
           <RotateCw size={13} /> Try again
         </button>
         <CopyChip text={PI_INSTALL_COMMAND} label="Copy the command" />
+      </div>
+    </div>
+  );
+}
+
+// pi is installed but `pi --version` fails. Setup does not install over it (PiSetup.install), so this says what pi
+// printed, for the person fixing it in a terminal.
+function Broken({ persona, error, checking }: { persona: Persona; error: string; checking: boolean }) {
+  const nerdy = persona === "nerd";
+  const lines = error.split("\n");
+  return (
+    <div className="setup-rise flex w-full flex-col items-start gap-3">
+      <Note>
+        {nerdy ? (
+          <CodeText text={`\`pi --version\` failed. Fix it in a terminal, for example by reinstalling with \`${PI_INSTALL_COMMAND}\`, then check again.`} />
+        ) : (
+          "pi is on your Mac but would not start, so pi-gna cannot use it. Show the details to someone techy, or reinstall pi in Terminal; then check again."
+        )}
+      </Note>
+      {nerdy ? (
+        <Log lines={lines} className="max-h-32 w-full" />
+      ) : (
+        <details className="w-full text-[12px] text-muted">
+          <summary className="cursor-default select-none hover:text-fg">What went wrong</summary>
+          <Log lines={lines} className="mt-1.5 max-h-32" />
+        </details>
+      )}
+      <div className="flex items-center gap-2">
+        <CheckAgain persona={persona} checking={checking} />
+        <CopyChip text={nerdy ? error : `pi --version failed:\n${error}`} label="Copy the details" />
       </div>
     </div>
   );

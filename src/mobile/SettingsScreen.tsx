@@ -7,7 +7,7 @@ import { useStore } from "../renderer/src/lib/store";
 import { formatStamp, tildify } from "../renderer/src/lib/format";
 import { WALLPAPER_LABELS } from "../renderer/src/lib/wallpapers";
 import type { Permissions } from "../shared/computer";
-import { DENYLIST } from "../shared/computer";
+import { deniedApps } from "../shared/computer";
 import type { DeviceInfo, RemoteStatus } from "../shared/host-api";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../shared/pi-settings";
 import type { Model, ThinkingLevel } from "../shared/protocol";
@@ -471,7 +471,7 @@ function ComputerSection({ client }: { client: HostClient }) {
   const [problem, setProblem] = useState<string>();
   const check = useCallback(() => {
     setProblem(undefined);
-    client.call("computer.permissions", {}).then(setPermissions, (error) => setProblem(changeError(error).text));
+    client.call("computer.permissions", {}).then(setPermissions, (error) => setProblem(`Could not reach the Computer Use helper on the Mac: ${changeError(error).text}`));
   }, [client]);
   useEffect(check, [check]);
   const granted = (value: boolean | undefined) => (value === undefined ? (problem ? "Unknown" : "Checking…") : value ? "Granted" : "Not granted");
@@ -487,7 +487,7 @@ function ComputerSection({ client }: { client: HostClient }) {
         <Row title="Screen recording" about={granted(permissions?.screenRecording)} />
         <Row title="Check again" onClick={check} />
       </Card>
-      {problem && <p className="px-5 pt-2 text-[12.5px] text-warn">{problem}</p>}
+      {problem && <p className="px-5 pt-2 text-[12.5px] wrap-anywhere text-warn">{problem}</p>}
       <Card title="Always allowed apps">
         {(computer?.alwaysAllowed.length ?? 0) === 0 ? (
           <p className="px-3.5 py-3 text-[13px] text-faint">No apps yet. Choose "Always allow" when pi asks to use an app.</p>
@@ -502,8 +502,8 @@ function ComputerSection({ client }: { client: HostClient }) {
         )}
       </Card>
       <Card title="Never allowed" note="No approval unlocks these apps.">
-        {Object.entries(DENYLIST).map(([bundleId, reason]) => (
-          <Row key={bundleId} title={bundleId} about={reason} />
+        {deniedApps().map((group) => (
+          <Row key={group.reason} title={group.names.join(", ")} about={group.reason} />
         ))}
       </Card>
     </>

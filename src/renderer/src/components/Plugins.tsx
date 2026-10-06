@@ -4,6 +4,7 @@
 // (src/main/plugins.ts), so `pi config` in the terminal shows the same, and chats started afterwards load it.
 import { Blocks, Check, ChevronRight, ExternalLink, Globe, Image, LoaderCircle, type IconComponent, Package, Plug, RotateCcw, Search, TriangleAlert, X } from "./icons";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CodeText } from "./CodeText";
 import {
   type CatalogConnection,
   type CatalogEntry,
@@ -61,7 +62,9 @@ export function PluginsSection({ cwd, simple = false }: { cwd: string; simple?: 
       <div className="flex items-start gap-2.5 rounded-lg border border-warn/40 bg-warn/5 px-3 py-2.5 text-[12.5px] text-fg">
         <TriangleAlert size={14} className="mt-0.5 shrink-0 text-warn" />
         <div className="min-w-0 flex-1">
-          <p className="selectable break-words">{state.error}</p>
+          <p className="selectable break-words">
+            <CodeText text={state.error} />
+          </p>
           <p className="mt-1 text-muted">pi-gna changes plugins with the pi on your PATH, the one its chats run.</p>
         </div>
         <Button onClick={plugins.reload}>Try again</Button>

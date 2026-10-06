@@ -68,7 +68,7 @@ describe("status", () => {
     expect(status).toMatchObject({ node: { version: "20.11.1", ok: false }, npm: false, pi: null, sdk: false });
     script("pi", "echo boom >&2; exit 3");
     status = await new PiSetup({ onLine: () => undefined }).status();
-    expect(status.pi).toMatchObject({ error: expect.any(String) });
+    expect(status.pi).toMatchObject({ error: expect.stringMatching(/\nboom$/) });
   });
 
   it("calls a pi that does not answer broken", async () => {

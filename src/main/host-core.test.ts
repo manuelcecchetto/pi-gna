@@ -17,7 +17,7 @@ const deps = {
   settings: { get: record("settings.get") },
   uiState: {},
   computerPolicy: {},
-  computerHelper: {},
+  computerHelper: { call: () => Promise.reject(new Error("Computer Use helper is missing from this build (/x.app)")) },
   computerAgent: { preview: async (handle: string) => (handle === "held" ? { mimeType: "image/jpeg", data: "AAAA", app: "Calc" } : null) },
   laments: {},
   github: { project: record("github.project"), list: record("github.list") },
@@ -81,6 +81,10 @@ describe("host methods table", () => {
     expect(() => dispatch(core, desktop(), "browser.viewport", { id: 3 })).toThrow("Invalid browser tab");
     expect(() => dispatch(core, desktop(), "browser.viewport", { id: "t", request: [] })).toThrow("Invalid viewport request");
     expect(() => dispatch(core, desktop(), "computer.openSettings", { pane: "x" })).toThrow("Unknown settings pane");
+  });
+
+  it("tells a phone why the Computer Use helper cannot answer", async () => {
+    await expect(dispatch(core, phone(), "computer.permissions", {})).rejects.toMatchObject({ code: "unavailable", message: "Computer Use helper is missing from this build (/x.app)" });
   });
 
   it("limits computer.preview to one per second per client and passes the handle through", async () => {
