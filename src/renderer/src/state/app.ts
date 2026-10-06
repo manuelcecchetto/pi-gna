@@ -1044,9 +1044,13 @@ export function boot(): void {
   browser.onState((state) => store.set((s) => ({ ...s, browserAll: state })));
   browser.onReveal(revealBrowser);
   browser.onToggle(toggleBrowser);
-  browser.onAnnotation((annotation) => {
+  browser.onAnnotation((annotation, now) => {
     const chat = annotation.chat;
-    if (chat) store.set((s) => ({ ...s, annotations: { ...s.annotations, [chat]: [...(s.annotations[chat] ?? []), annotation] } }));
+    if (!chat) return;
+    store.set((s) => ({ ...s, annotations: { ...s.annotations, [chat]: [...(s.annotations[chat] ?? []), annotation] } }));
+    // Send in the picker: this comment and any others waiting go now (steering a running chat); the composer's text
+    // stays a draft. If pi does not take it, the comments stay in the composer.
+    if (now) void send(chat, "", "send");
   });
   void browser.state().then((state) => state && store.set((s) => ({ ...s, browserAll: state })));
   const update = studio().update;

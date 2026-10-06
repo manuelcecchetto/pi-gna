@@ -18,6 +18,7 @@ import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
 import { cdp } from "./cdp";
 import { tabFavicon } from "./favicon";
+import { previewContext, type SourceHint } from "./annotation-source";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 import { previews } from "./preview-protocol";
 import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
@@ -95,7 +96,8 @@ export interface BrowserEvents {
   state(state: BrowserState): void;
   /** Ask the renderer to show the pane (the agent is about to use it). */
   reveal(chat?: string): void;
-  annotation(annotation: Annotation): void;
+  /** `send`: the user chose Send in the picker, so the chat sends it (and any other waiting comments) now. */
+  annotation(annotation: Annotation, send: boolean): void;
 }
 
 export class BrowserManager {
@@ -893,7 +895,7 @@ export class BrowserManager {
     while (this.annotating && generation === this.annotateGeneration) {
       const tab = this.active();
       if (!tab) return;
-      type Picked = Omit<Annotation, "id" | "image"> & { rect: { x: number; y: number; width: number; height: number } };
+      type Picked = Omit<Annotation, "id" | "image"> & { rect: { x: number; y: number; width: number; height: number }; source?: SourceHint; send?: boolean };
       let picked: Picked | undefined;
       try {
         picked = await tab.view.webContents.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD, [{ code: ANNOTATE }], true);
@@ -906,7 +908,7 @@ export class BrowserManager {
         this.emitState();
         return;
       }
-      const { rect, ...rest } = picked;
+      const { rect, source, send, line, ...rest } = picked;
       const pad = 12;
       const crop = await tab.view.webContents
         .capturePage({
@@ -917,8 +919,9 @@ export class BrowserManager {
         })
         .catch(() => undefined);
       const image = crop && !crop.isEmpty() ? (crop.getSize().width > 800 ? crop.resize({ width: 800 }) : crop).toJPEG(80).toString("base64") : undefined;
-      this.events.annotation({ ...rest, id: randomUUID().slice(0, 8), image, chat: tab.agent });
-      log.info("browser", `annotation on ${rest.url}: ${rest.label}`);
+      const where = await previewContext(tab.preview?.info, line, source);
+      this.events.annotation({ ...rest, ...where, id: randomUUID().slice(0, 8), image, chat: tab.agent }, send === true);
+      log.info("browser", `annotation on ${where.file ?? rest.url}: ${rest.label}${send ? " (send)" : ""}`);
     }
   }
 

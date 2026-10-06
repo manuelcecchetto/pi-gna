@@ -143,7 +143,8 @@ export type GlobalEvent =
   | { kind: "browser"; state: BrowserState }
   /** The agent opened a browser tab: clients show the browser. */
   | { kind: "browser.reveal"; chat?: string }
-  | { kind: "browser.annotation"; annotation: Annotation }
+  /** `send`: sent from the picker's Send, so the desktop sends the chat's comments at once. */
+  | { kind: "browser.annotation"; annotation: Annotation; send?: boolean }
   | { kind: "update"; state: UpdateState }
   | { kind: "providers.login"; update: LoginUpdate }
   | { kind: "devices"; devices: DeviceInfo[] }

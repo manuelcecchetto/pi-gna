@@ -118,6 +118,44 @@ const ELEMENT_HELPERS = String.raw`  const describe = (el) => {
     }
     return parts.join(" > ");
   };
+  // The styles a design comment is usually about, skipping values that say nothing (none, 0px, transparent, ...).
+  const stylesOf = (el) => {
+    const s = getComputedStyle(el);
+    const out = [];
+    const add = (name, value) => {
+      if (value && !/^(none|normal|auto|0px|static|visible|start|1|rgba\(0, 0, 0, 0\)|0px none .*)$/.test(value)) out.push(name + ": " + value);
+    };
+    if (s.display !== "block" && s.display !== "inline") add("display", s.display);
+    if (/flex|grid/.test(s.display)) {
+      if (s.display.includes("flex")) add("flex-direction", s.flexDirection === "row" ? "" : s.flexDirection);
+      add("justify-content", s.justifyContent);
+      add("align-items", s.alignItems);
+      add("gap", s.gap);
+      if (s.display.includes("grid")) add("grid-template-columns", s.gridTemplateColumns);
+    }
+    add("position", s.position);
+    add("font", s.fontSize + "/" + s.lineHeight + " " + s.fontWeight + " " + s.fontFamily.split(",")[0].trim());
+    add("color", s.color);
+    add("background", s.backgroundColor);
+    add("padding", s.padding);
+    add("margin", s.margin);
+    add("border", s.borderTopWidth === "0px" ? "" : s.borderTop);
+    add("border-radius", s.borderRadius);
+    add("text-align", s.textAlign);
+    add("opacity", s.opacity);
+    return out.join("; ").slice(0, 500);
+  };
+  // Where the element sits in the source: main maps tag + index to a line of a previewed HTML file; the Markdown viewer
+  // marks its top-level blocks with the line they start on (pigna-file pages only, and main uses it for Markdown only).
+  const sourceOf = (el) => {
+    const same = Array.from(document.getElementsByTagName(el.tagName)).filter((node) => !node.closest("[data-pi-skip]"));
+    return { tag: el.tagName.toLowerCase(), index: same.indexOf(el), count: same.length, id: el.id || undefined };
+  };
+  const viewerLine = (el) => {
+    if (location.protocol !== "pigna-file:") return undefined;
+    const block = el.closest("[data-source-line]");
+    return block ? Number(block.getAttribute("data-source-line")) || undefined : undefined;
+  };
   const infoOf = (target) => {
     const rect = target.getBoundingClientRect();
     const label = (target.getAttribute("aria-label") || target.innerText || target.getAttribute("placeholder") || target.getAttribute("alt") || "").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -131,6 +169,11 @@ const ELEMENT_HELPERS = String.raw`  const describe = (el) => {
       rect: { x: Math.max(0, rect.left), y: Math.max(0, rect.top), width: rect.width, height: rect.height },
       url: location.href,
       title: document.title,
+      styles: stylesOf(target),
+      box: Math.round(rect.width) + "x" + Math.round(rect.height) + " at " + Math.round(rect.left) + "," + Math.round(rect.top),
+      viewport: innerWidth + "x" + innerHeight,
+      line: viewerLine(target),
+      source: sourceOf(target),
     };
   };`;
 
@@ -142,8 +185,9 @@ export const pickAt = (x: number, y: number) => String.raw`(() => {
 })()`;
 
 /**
- * Element picker. Resolves with the picked element and the user's comment, or undefined when
- * stopped (window.__piAnnotateStop). The overlay lives in a shadow root so page CSS cannot touch it.
+ * Element picker. Resolves with the picked element, the user's comment and whether to send it now (Send, ⌘Enter) or
+ * keep it for the next prompt (Add, Enter); undefined when stopped (window.__piAnnotateStop). The overlay lives in a
+ * shadow root so page CSS cannot touch it.
  */
 export const ANNOTATE = String.raw`new Promise((resolve) => {
   if (window.__piAnnotateStop) window.__piAnnotateStop();
@@ -159,6 +203,9 @@ export const ANNOTATE = String.raw`new Promise((resolve) => {
     '.row{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}' +
     'button{font:12px -apple-system,system-ui,sans-serif;border-radius:7px;padding:4px 10px;border:1px solid rgba(255,255,255,.14);background:transparent;color:#a1a1aa;cursor:pointer}' +
     'button.primary{background:#5b8def;border-color:#5b8def;color:#fff}' +
+    'kbd{font:10.5px ui-monospace,Menlo,monospace;opacity:.7;margin-left:4px}' +
+    '@media (prefers-color-scheme: light){.card{background:#fff;color:#18181b;border-color:rgba(0,0,0,.12);box-shadow:0 12px 40px -12px rgba(0,0,0,.25)}' +
+    'textarea{background:#f4f4f5;color:#18181b;border-color:rgba(0,0,0,.1)}button{color:#52525b;border-color:rgba(0,0,0,.14)}}' +
     '</style><div class="box" hidden></div><div class="tag" hidden></div>';
   const box = root.querySelector(".box");
   const tag = root.querySelector(".tag");
@@ -201,22 +248,25 @@ export const ANNOTATE = String.raw`new Promise((resolve) => {
     const r = target.getBoundingClientRect();
     card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = '<textarea placeholder="What should change here?"></textarea><div class="row"><button>Cancel</button><button class="primary">Add comment</button></div>';
+    card.innerHTML = '<textarea placeholder="What should change here?"></textarea><div class="row"><button>Cancel</button>' +
+      '<button title="Add to your next message (Enter)">Add<kbd>⏎</kbd></button><button class="primary" title="Send to the chat now, with any other comments (⌘Enter)">Send<kbd>⌘⏎</kbd></button></div>';
     card.style.left = Math.min(innerWidth - 292, Math.max(8, r.left)) + "px";
     card.style.top = (r.bottom + 150 < innerHeight ? r.bottom + 8 : Math.max(8, r.top - 150)) + "px";
     root.appendChild(card);
     const area = card.querySelector("textarea");
-    const [cancel, add] = card.querySelectorAll("button");
-    const submit = () => {
+    const [cancel, add, sendNow] = card.querySelectorAll("button");
+    const submit = (send) => {
       const comment = area.value.trim();
       if (!comment) return;
-      finish({ ...infoOf(target), comment });
+      finish({ ...infoOf(target), comment, send });
     };
     cancel.addEventListener("click", (e) => { e.stopPropagation(); card.remove(); card = null; });
-    add.addEventListener("click", (e) => { e.stopPropagation(); submit(); });
+    add.addEventListener("click", (e) => { e.stopPropagation(); submit(false); });
+    sendNow.addEventListener("click", (e) => { e.stopPropagation(); submit(true); });
     area.addEventListener("keydown", (e) => {
       e.stopPropagation();
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(true); }
+      else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(false); }
       if (e.key === "Escape") { card.remove(); card = null; }
     });
     setTimeout(() => area.focus(), 0);

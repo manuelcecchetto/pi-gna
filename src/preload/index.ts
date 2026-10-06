@@ -83,7 +83,7 @@ const api: StudioApi = {
     state: () => ipcRenderer.invoke(IPC.browserGetState),
     onState: (listener) => subscribe<BrowserState>(IPC.browserState, listener),
     onReveal: (listener) => subscribe<string | undefined>(IPC.browserReveal, listener),
-    onAnnotation: (listener) => subscribe<Annotation>(IPC.browserAnnotation, listener),
+    onAnnotation: (listener) => subscribe<{ annotation: Annotation; send: boolean }>(IPC.browserAnnotation, ({ annotation, send }) => listener(annotation, send)),
     onToggle: (listener) => subscribe<void>(IPC.browserToggle, listener),
   },
   board: {

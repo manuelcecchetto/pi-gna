@@ -89,6 +89,28 @@ const marked = new Marked({
   },
 });
 
+/**
+ * 1-based line each top-level block of `source` starts on, in the order marked renders them (one element each, except
+ * raw HTML blocks); undefined when a block's text cannot be found. The file viewer puts them on the rendered blocks
+ * so a comment on one can name its line.
+ */
+export function markdownBlockLines(source: string): number[] | undefined {
+  const text = source.replace(/\r\n?/g, "\n");
+  const lines: number[] = [];
+  let at = 0;
+  let line = 1;
+  for (const token of marked.lexer(text)) {
+    if (token.type === "space" || token.type === "def") continue;
+    const found = text.indexOf(token.raw, at);
+    if (found < 0) return undefined;
+    for (let i = at; i < found; i++) if (text.charCodeAt(i) === 10) line++;
+    lines.push(line);
+    for (let i = found; i < found + token.raw.length; i++) if (text.charCodeAt(i) === 10) line++;
+    at = found + token.raw.length;
+  }
+  return lines;
+}
+
 /** Markdown -> HTML before sanitizing (exported for tests). */
 export function markdownToHtml(source: string, options: MarkdownOptions = {}): string {
   visualsOn = options.visuals === true;

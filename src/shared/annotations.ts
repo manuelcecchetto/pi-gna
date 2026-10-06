@@ -8,13 +8,20 @@ export function formatAnnotations(annotations: Annotation[]): string {
   const items = annotations.map((a, index) =>
     [
       `${index + 1}. ${a.comment}`,
-      `   page: ${a.url}${a.title ? ` (${a.title})` : ""}`,
+      a.file ? `   file: ${a.file}${a.line ? `:${a.line}` : ""}` : `   page: ${a.url}${a.title ? ` (${a.title})` : ""}`,
       `   element: ${a.label}  selector: ${a.selector}`,
+      a.box && `   box: ${a.box}${a.viewport ? ` in a ${a.viewport} viewport` : ""}`,
+      a.styles && `   styles: ${a.styles}`,
       `   html: ${a.html.replace(/\s+/g, " ").slice(0, 400)}`,
-    ].join("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   );
-  const note = annotations.some((a) => a.image) ? " Attached images are crops of the commented elements, in order." : "";
-  return `<browser-comments>\nThe user commented on elements in the pi-gna browser.${note}\n${items.join("\n")}\n</browser-comments>`;
+  const notes = [
+    annotations.some((a) => a.line) && "A file line is where the element, or the Markdown block holding it, starts.",
+    annotations.some((a) => a.image) && "Attached images are crops of the commented elements, in order.",
+  ].filter(Boolean);
+  return `<browser-comments>\nThe user commented on elements in the pi-gna browser or a file preview.${notes.map((n) => ` ${n}`).join("")}\n${items.join("\n")}\n</browser-comments>`;
 }
 
 export const MAX_ANNOTATIONS = 20;
@@ -28,6 +35,19 @@ export function parseAnnotations(raw: unknown): Annotation[] {
     if (typeof item !== "object" || item === null) throw new Error("invalid annotation");
     const a = item as Record<string, unknown>;
     const image = typeof a.image === "string" && a.image.length <= MAX_IMAGE_CHARS && /^[A-Za-z0-9+/=]+$/.test(a.image) ? a.image : undefined;
-    return { id: text(a.id, 80), url: text(a.url, 2000), title: text(a.title, 300), selector: text(a.selector, 1000), label: text(a.label, 300), html: text(a.html, 4000), comment: text(a.comment, 4000), ...(image ? { image } : {}) };
+    const line = typeof a.line === "number" && Number.isInteger(a.line) && a.line > 0 ? a.line : undefined;
+    const extra = { file: text(a.file, 2000), box: text(a.box, 80), viewport: text(a.viewport, 40), styles: text(a.styles, 600) };
+    return {
+      id: text(a.id, 80),
+      url: text(a.url, 2000),
+      title: text(a.title, 300),
+      selector: text(a.selector, 1000),
+      label: text(a.label, 300),
+      html: text(a.html, 4000),
+      comment: text(a.comment, 4000),
+      ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value)),
+      ...(line ? { line } : {}),
+      ...(image ? { image } : {}),
+    };
   });
 }

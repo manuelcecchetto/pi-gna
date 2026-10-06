@@ -10,6 +10,7 @@ import { log } from "../log";
 import { pressKey } from "./agent";
 import { cdp } from "./cdp";
 import type { BrowserManager, Tab } from "./manager";
+import { previewContext, type SourceHint } from "./annotation-source";
 import { ISOLATED_WORLD, pickAt } from "./page-scripts";
 
 /** One screencast frame for a viewer. `cssWidth` x `cssHeight` is the page viewport the frame shows, in input coordinates. */
@@ -251,11 +252,12 @@ export class RemoteBrowser {
     if (!comment || comment.length > COMMENT_LIMIT) throw new Error("A comment is required");
     const point = { x: Math.max(0, Math.min(page.width - 1, Number(input.x) || 0)), y: Math.max(0, Math.min(page.height - 1, Number(input.y) || 0)) };
     const wc = tab.view.webContents;
-    type Picked = Omit<Annotation, "id" | "image" | "comment"> & { rect: { x: number; y: number; width: number; height: number } };
+    type Picked = Omit<Annotation, "id" | "image" | "comment"> & { rect: { x: number; y: number; width: number; height: number }; source?: SourceHint };
     const picked = (await wc.executeJavaScriptInIsolatedWorld(ISOLATED_WORLD, [{ code: pickAt(point.x, point.y) }], true)) as Picked | null;
     if (!picked) throw new Error("No element at that point");
-    const { rect, ...rest } = picked;
-    return { ...rest, comment, id: randomUUID().slice(0, 8), image: cast?.last ? cropFrame(cast.last, rect) : undefined };
+    const { rect, source, line, ...rest } = picked;
+    const where = await previewContext(tab.preview?.info, line, source);
+    return { ...rest, ...where, comment, id: randomUUID().slice(0, 8), image: cast?.last ? cropFrame(cast.last, rect) : undefined };
   }
 }
 

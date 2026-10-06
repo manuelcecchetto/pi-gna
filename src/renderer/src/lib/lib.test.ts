@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
-import { markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
+import { markdownBlockLines, markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
 import { applyQueueOp } from "../../../shared/queue";
 import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
@@ -296,5 +296,13 @@ describe("clampPanel", () => {
     expect(clampPanel(600, ATP_DETAIL, 450.6)).toBe(451); // the graph would get narrower than its minimum
     expect(clampPanel(600, ATP_DETAIL, 50)).toBe(300); // no room at all: the minimum still wins
     expect(clampPanel(Number.NaN, ATP_DETAIL)).toBe(380);
+  });
+});
+
+describe("markdownBlockLines", () => {
+  it("gives the line each rendered block starts on", () => {
+    const source = "# Title\n\nSome text\nwrapped.\n\n- a\n- b\n\n```ts\nx\n```\n\n[ref]: https://x.y\n\n> quote\n\n| a | b |\n| - | - |\n| 1 | 2 |\n";
+    expect(markdownBlockLines(source)).toEqual([1, 3, 6, 9, 15, 17]);
+    expect(markdownBlockLines(source.replaceAll("\n", "\r\n"))).toEqual([1, 3, 6, 9, 15, 17]);
   });
 });
