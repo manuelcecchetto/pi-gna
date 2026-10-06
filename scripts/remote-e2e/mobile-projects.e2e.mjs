@@ -92,7 +92,7 @@ async function projectChecks({ phone, A, handle, shot, text, exists, present }) 
   await until("the pin on the host", async () => (await A.ok("ui.get")).pins.length === 1);
   check(true, "Pin project is saved on the host");
   await sleep(500);
-  check(await phone.eval(`!!document.querySelector('[data-testid="project-row"] svg.lucide-pin')`), "the pinned project shows its pin");
+  check(await phone.eval(`!!document.querySelector('[data-testid="project-row"] svg.icon-pin')`), "the pinned project shows its pin");
   await shot("13-pinned");
   await type("search", "nothing-like-this-zz");
   await until("no match", present("No project matches."));
