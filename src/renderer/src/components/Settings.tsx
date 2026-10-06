@@ -1,15 +1,17 @@
 // The Settings page (⌘,): pi-gna's own settings (main's settings.json: features, appearance, the models of the chats
 // pi-gna starts), the pi settings it edits in pi's settings.json (pi reads them when a chat starts, so they apply to
 // new chats) and Computer Use. While it is open, the sidebar lists its sections instead of the chats (SettingsNav).
-import { ArrowLeft, Blocks, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Blocks, BookOpen, Bug, Code, Globe, Info, Bot, Cpu, FolderOpen, KeyRound, Keyboard, type LucideIcon, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
+import { author, bugs, homepage, license } from "../../../../package.json";
 import { tildify } from "../lib/format";
 import { WALLPAPER_LABELS, wallpaperStyle } from "../lib/wallpapers";
 import { applySettings, closeSettings, openSettings, type PageState, remoteError, showUpdate, toast, useApp } from "../state/app";
 import { useAtp } from "../state/atp";
 import { applyComputer, ComputerSection, useComputerSettings } from "./Computer";
+import { PignaMark } from "./PignaMark";
 import { DigitHint, Kbd, Switch, useCommandDigits } from "./primitives";
 import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
@@ -32,9 +34,10 @@ interface SectionInfo {
 }
 
 const SECTIONS: SectionInfo[] = [
-  { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update about settings.json file folder setup onboarding install pi welcome first run" },
+  { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update settings.json file folder setup onboarding install pi welcome first run" },
   { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color colour palette primary secondary accent font typeface size wallpaper background backdrop empty state image logo project custom loop cycle rotate shuffle" },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: Keyboard, group: "pi-gna", about: "Hold ⌘ anywhere to see ⌘1–⌘9 on the chats in the sidebar.", keywords: "keys hotkeys keyboard command" },
+  { id: "about", label: "About", icon: Info, group: "pi-gna", about: "Which pi-gna this is, where it comes from, and where to report a problem.", keywords: "version build electron chromium node license mit credits author github source code issues bug report release notes changelog twemoji" },
   {
     id: "providers",
     label: "Providers",
@@ -201,6 +204,8 @@ export function SettingsPage({ page }: { page: PageState }) {
             <FeaturesSection />
           ) : section.id === "remote" ? (
             <RemoteSection />
+          ) : section.id === "about" ? (
+            <AboutSection />
           ) : (
             <ComputerSection />
           )}
@@ -303,6 +308,63 @@ function GeneralSection({ pi }: { pi: Pi }) {
         </Row>
       </Card>
       {pi.state?.problem && <PiFileNote pi={pi} />}
+    </>
+  );
+}
+
+const REPO = homepage.replace(/\/$/, "");
+
+/** A link out of the app, opened in your browser. */
+function LinkButton({ url, icon: Icon, children }: { url: string; icon: LucideIcon; children: string }) {
+  return (
+    <Button title={url} onClick={() => window.studio.openExternal(url)}>
+      <Icon size={12} /> {children}
+    </Button>
+  );
+}
+
+function AboutSection() {
+  const { electron, chrome, node } = window.studio.runtime;
+  const runtime = `Electron ${electron} · Chromium ${chrome} · Node ${node}`;
+  return (
+    <>
+      <div className="flex items-center gap-4">
+        <PignaMark className="text-[28px] font-semibold tracking-tight text-fg" />
+        <div className="min-w-0">
+          <div className="text-[13px] text-fg">
+            Version <span className="selectable font-mono">{window.studio.version}</span>
+          </div>
+          <div className="mt-0.5 text-[12px] text-muted">A desktop app for the pi coding agent. Your pi, with a window.</div>
+        </div>
+      </div>
+      <Card>
+        <Row title="Runtime" about={<span className="selectable font-mono">{runtime}</span>}>
+          <Button onClick={() => void navigator.clipboard.writeText(`pi-gna ${window.studio.version} (${runtime})`).then(() => toast("Copied the versions"))}>Copy</Button>
+        </Row>
+        <Row title="Release notes" about="What changed in each version.">
+          <LinkButton url={`${REPO}/blob/main/CHANGELOG.md`} icon={BookOpen}>
+            Changelog
+          </LinkButton>
+        </Row>
+        <Row title="Source code" about={<span className="font-mono">{REPO.replace(/^https:\/\//, "")}</span>}>
+          <LinkButton url={REPO} icon={Code}>
+            GitHub
+          </LinkButton>
+        </Row>
+        <Row title="Report a problem" about="Include the versions above; Copy puts them on the clipboard.">
+          <LinkButton url={bugs.url} icon={Bug}>
+            Open an issue
+          </LinkButton>
+        </Row>
+        <Row title="pi" about="The coding agent pi-gna runs your chats on.">
+          <LinkButton url="https://pi.dev" icon={Globe}>
+            pi.dev
+          </LinkButton>
+        </Row>
+      </Card>
+      <p className="text-[12px] leading-relaxed text-faint">
+        {license} License, © 2026 {author}. The 🤌 in the logo is Twemoji (CC-BY 4.0, © Twitter, Inc. and other contributors).
+      </p>
     </>
   );
 }

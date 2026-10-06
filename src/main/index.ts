@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, powerSaveBlocker, screen, session, shell } from "electron";
-import { bugs, description } from "../../package.json";
+import { bugs } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import type { BoardOp } from "../shared/board";
@@ -547,7 +547,8 @@ function buildMenu(features: Record<Feature, boolean> = emptySettings().features
         // Not role "appMenu", whose own submenu would replace this one.
         label: app.name,
         submenu: [
-          { role: "about" },
+          // Settings > About, not the native panel: the version, links, license and credits in one place.
+          { label: `About ${app.name}`, click: () => send(IPC.pageToggle, "settings", "about") },
           { label: "Check for Updates…", click: () => void checkForUpdates() },
           { type: "separator" },
           { label: "Settings…", accelerator: "CmdOrCtrl+,", click: () => send(IPC.pageToggle, "settings") },
@@ -658,11 +659,6 @@ function init(): void {
     log.info("pigna", `${app.getName()} ${app.getVersion()} build ${__PIGNA_BUILD__}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
     log.info("pigna", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PIGNA_DEBUG=1 logs RPC traffic)"}`);
     if (!app.isPackaged && process.platform === "darwin") app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
-    app.setAboutPanelOptions({
-      applicationName: app.getName(),
-      applicationVersion: app.getVersion(),
-      credits: `${description}\n\nThe 🤌 in the logo is Twemoji (CC-BY 4.0, © Twitter, Inc. and other contributors).`,
-    });
     // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
     serveVisual();

@@ -24,6 +24,7 @@ const api: StudioApi = {
   launchCwd: arg("studio-launch-cwd"),
   stale: arg("pigna-build") !== __PIGNA_BUILD__,
   version: arg("pigna-version"),
+  runtime: { electron: process.versions.electron ?? "", chrome: process.versions.chrome ?? "", node: process.versions.node },
   zoomFactor: () => webFrame.getZoomFactor(),
   relaunch: () => ipcRenderer.invoke(IPC.relaunch),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),

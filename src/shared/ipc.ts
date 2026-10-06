@@ -513,6 +513,8 @@ export interface StudioApi {
   zoomFactor: () => number;
   /** The running pi-gna's version (package.json, `app.getVersion()`), as in the About panel. */
   version: string;
+  /** The Electron, Chromium and Node versions pi-gna runs on (Settings > About). */
+  runtime: { electron: string; chrome: string; node: string };
   /** Quit and start pi-gna again from the build on disk, or as the staged update; running chats stop. */
   relaunch(): Promise<void>;
   listSessions(): Promise<ProjectGroup[]>;
