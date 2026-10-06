@@ -335,6 +335,27 @@ function curve(points: [number, number][]): string {
 
 const round = (value: number) => Math.round(value * 10) / 10;
 
+/**
+ * Where a plan too big to read when fitted opens: where its work is now. The first running node, else one a stopped
+ * run left behind, a failed one, the first ready one; a finished plan opens on its outcome and an untouched one on its
+ * start. Ties go to the leftmost (earliest) node.
+ */
+export function startNode(nodes: Pick<AtpNode, "id" | "status" | "scope" | "closed">[], layout: PlanLayout, stalled?: string): string | undefined {
+  const at = (id: string) => layout.nodes.get(id) ?? { x: 0, y: 0 };
+  const work = nodes
+    .filter((node) => !node.scope && !node.closed && layout.nodes.has(node.id))
+    .sort((a, b) => at(a.id).x - at(b.id).x || at(a.id).y - at(b.id).y);
+  const find = (test: (node: (typeof work)[number]) => boolean) => work.find(test)?.id;
+  return (
+    find((node) => node.status === "CLAIMED" && node.id !== stalled) ??
+    find((node) => node.id === stalled) ??
+    find((node) => node.status === "FAILED") ??
+    find((node) => node.status === "READY") ??
+    (work.length && work.every((node) => node.status === "COMPLETED") ? work.at(-1)?.id : work[0]?.id) ??
+    nodes[0]?.id
+  );
+}
+
 /** A node and everything it depends on or that depends on it, through dependencies and scopes: the selection's lineage. */
 export function lineage(nodes: Pick<AtpNode, "id" | "dependencies" | "scope" | "children">[], id: string): Set<string> {
   const ups = new Map<string, string[]>();

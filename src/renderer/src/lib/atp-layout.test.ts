@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutPlan, lineage, NODE_H, NODE_W } from "./atp-layout";
+import { layoutPlan, lineage, NODE_H, NODE_W, startNode } from "./atp-layout";
 
 type Node = { id: string; dependencies: string[]; scope: boolean; children: string[] };
 const node = (id: string, dependencies: string[] = [], children?: string[]): Node => ({ id, dependencies, scope: Boolean(children), children: children ?? [] });
@@ -96,5 +96,27 @@ describe("lineage", () => {
     const nodes = [node("A"), node("S", ["A"], ["S1"]), node("S1", ["A"]), node("B", ["S1"]), node("X")];
     expect([...lineage(nodes, "S")].sort()).toEqual(["A", "B", "S", "S1"]);
     expect([...lineage(nodes, "X")]).toEqual(["X"]);
+  });
+});
+
+describe("startNode", () => {
+  const plan = (statuses: Record<string, string>) => {
+    const nodes = [node("A"), node("B", ["A"]), node("C", ["A"]), node("D", ["B", "C"])].map((n) => ({ ...n, status: (statuses[n.id] ?? "LOCKED") as "LOCKED" }));
+    return { nodes, layout: layoutPlan(nodes) };
+  };
+
+  it("is where the work is now: running, then interrupted, failed, ready", () => {
+    const { nodes, layout } = plan({ A: "COMPLETED", B: "CLAIMED", C: "FAILED" });
+    expect(startNode(nodes, layout)).toBe("B");
+    expect(startNode(nodes, layout, "B")).toBe("B");
+    expect(startNode(plan({ A: "COMPLETED", B: "COMPLETED", C: "FAILED" }).nodes, layout)).toBe("C");
+    expect(startNode(plan({ A: "COMPLETED", B: "READY", C: "READY" }).nodes, layout)).toMatch(/^[BC]$/);
+  });
+
+  it("is the outcome of a finished plan and the start of an untouched one", () => {
+    const done = plan({ A: "COMPLETED", B: "COMPLETED", C: "COMPLETED", D: "COMPLETED" });
+    expect(startNode(done.nodes, done.layout)).toBe("D");
+    const fresh = plan({});
+    expect(startNode(fresh.nodes, fresh.layout)).toBe("A");
   });
 });

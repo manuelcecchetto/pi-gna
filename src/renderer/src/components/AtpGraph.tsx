@@ -3,10 +3,11 @@
 // layout only reruns when the graph's shape changes, pan and zoom never re-render React, and zoomed out the cards
 // lose their text and become status-colored blocks (data-lod), so a whole plan reads as a map of its progress.
 // Running nodes glow and the edges into them march; a minimap shows where you are in a plan that does not fit.
+// A plan that fits only as blocks opens readable instead, on where its work is (startNode); Fit shows the whole map.
 import { Ban, CircleCheck, CircleDashed, CircleX, Layers, LoaderCircle, Lock, Maximize, Minus, Plus, TriangleAlert } from "./icons";
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AtpNode, AtpPlan } from "../../../shared/atp";
-import { type LaidEdge, type PlanLayout, layoutPlan, lineage, NODE_H, NODE_W } from "../lib/atp-layout";
+import { type LaidEdge, type PlanLayout, layoutPlan, lineage, NODE_H, NODE_W, startNode } from "../lib/atp-layout";
 import { Elapsed } from "./primitives";
 
 export interface GraphHandle {
@@ -21,6 +22,11 @@ const PAD = 48;
 /** Zoom below which a card only shows its title, and below which it is a colored block. */
 const LOD_MID = 0.6;
 const LOD_FAR = 0.34;
+/** How far past the fitting zoom the view is before the minimap shows. */
+const OVERVIEW = 1.4;
+/** A big plan's first zoom: just under LOD_MID, where titles are drawn large and read better than the full card's
+ * small text does at the same zoom. */
+const HOME_K = LOD_MID - 0.02;
 
 type View = { x: number; y: number; k: number };
 
@@ -81,8 +87,10 @@ export const AtpGraph = forwardRef<
   const [overview, setOverview] = useState(false);
   const covered = useRef(inset);
   covered.current = inset;
-  /** The view is as fit() left it: the orchestrator growing or shrinking fits the plan again. */
-  const untouched = useRef(false);
+  /** The view is as fit() or home() left it: the orchestrator growing or shrinking places the plan again that way. */
+  const untouched = useRef<"fit" | "home" | false>(false);
+  /** The bottom strip the zoom controls (and on a narrow view the minimap above them) cover: fitting keeps clear of it. */
+  const overlay = useRef<HTMLDivElement>(null);
 
   const shape = shapeOf(plan.nodes);
   // The shape string stands in for the nodes: a status change keeps the layout.
@@ -111,7 +119,7 @@ export const AtpGraph = forwardRef<
         box.style.height = `${(height / k) * scale}px`;
       }
       setZoom(k);
-      setOverview(fitK.current < LOD_MID && k > fitK.current * 1.4);
+      setOverview(fitK.current < LOD_MID && k > fitK.current * OVERVIEW);
     },
     [layout],
   );
@@ -122,20 +130,60 @@ export const AtpGraph = forwardRef<
     [layout],
   );
 
+  /** The part of the view the plan can use: above the orchestrator and clear of the zoom controls. */
+  const room = useCallback(() => {
+    const outer = viewport.current;
+    if (!outer) return undefined;
+    const { width, height } = outer.getBoundingClientRect();
+    const controls = (overlay.current?.offsetHeight ?? 0) + 12 + 12;
+    return { width, height: height - covered.current - Math.max(0, controls - PAD) };
+  }, []);
+
   const fit = useCallback(
     (animate = false) => {
-      const outer = viewport.current;
-      if (!outer) return;
+      const box = room();
+      if (!box) return;
       focus.current = undefined;
-      const { width } = outer.getBoundingClientRect();
-      const height = outer.getBoundingClientRect().height - covered.current;
+      const { width, height } = box;
       const k = fitScale(width, height);
       fitK.current = k;
       view.current = { k, x: (width - layout.width * k) / 2, y: Math.max(PAD, (height - layout.height * k) / 2) };
       apply(animate);
-      untouched.current = true;
+      untouched.current = "fit";
     },
-    [layout, apply, fitScale],
+    [layout, apply, fitScale, room],
+  );
+
+  // What home() opens on reads the plan as it is then, without re-placing the view on every status change.
+  const latest = useRef({ nodes: plan.nodes, stalled });
+  latest.current = { nodes: plan.nodes, stalled };
+
+  /** The first view: the whole plan when it fits readably, else readable around where its work is, the minimap showing
+   * the rest (fitted, a big plan is only colored blocks and tells nothing until you zoom). */
+  const home = useCallback(
+    (animate = false) => {
+      const box = room();
+      if (!box) return;
+      const { width, height } = box;
+      const fitted = fitScale(width, height);
+      const id = startNode(latest.current.nodes, layout, latest.current.stalled);
+      const laid = id ? layout.nodes.get(id) : undefined;
+      // A plan that nearly fits readably is fitted: opening it zoomed in would only crop it, with no minimap to say so.
+      if (fitted * OVERVIEW >= HOME_K || !laid) return fit(animate);
+      focus.current = undefined;
+      fitK.current = fitted;
+      const k = HOME_K;
+      // Centered on the node, but the plan's edges never pulled in past the padding (the start opens at the left).
+      const place = (want: number, size: number, length: number) => (size + PAD * 2 <= length ? (length - size) / 2 : Math.min(PAD, Math.max(length - PAD - size, want)));
+      view.current = {
+        k,
+        x: place(width / 2 - (laid.x + NODE_W / 2) * k, layout.width * k, width),
+        y: place(height / 2 - (laid.y + NODE_H / 2) * k, layout.height * k, height),
+      };
+      apply(animate);
+      untouched.current = "home";
+    },
+    [layout, apply, fitScale, fit, room],
   );
 
   const center = useCallback(
@@ -162,20 +210,20 @@ export const AtpGraph = forwardRef<
 
   useImperativeHandle(ref, () => ({ fit: () => fit(true), reveal }), [fit, reveal]);
 
-  // Only the orchestrator resizing refits: a plan that grows keeps your view.
-  const refit = useRef(fit);
-  refit.current = fit;
+  // Only the orchestrator resizing places the plan again: a plan that grows keeps your view.
+  const refit = useRef({ fit, home });
+  refit.current = { fit, home };
   useEffect(() => {
-    if (untouched.current) refit.current();
+    if (untouched.current) refit.current[untouched.current]();
   }, [inset]);
 
-  // A new plan (or one opened again) starts fitted; a plan that grows keeps your view.
+  // A new plan (or one opened again) starts at its first view; a plan that grows keeps your view.
   const fitted = useRef<string>(undefined);
   useLayoutEffect(() => {
     if (fitted.current === plan.path) return;
     fitted.current = plan.path;
-    fit();
-  }, [plan.path, fit]);
+    home();
+  }, [plan.path, home]);
 
   // The view resizes (the node panel or the orchestrator's conversation opens, the window): what was in the middle
   // stays there, a revealed node stays centered, and the selected one in view.
@@ -189,7 +237,7 @@ export const AtpGraph = forwardRef<
       const { width, height } = outer.getBoundingClientRect();
       const v = { ...view.current, x: view.current.x + (width - size.width) / 2, y: view.current.y + (height - size.height) / 2 };
       size = outer.getBoundingClientRect();
-      fitK.current = fitScale(width, height - covered.current);
+      fitK.current = fitScale(room()?.width ?? width, room()?.height ?? height);
       if (focus.current) return center(focus.current, false);
       const laid = selectedRef.current ? layout.nodes.get(selectedRef.current) : undefined;
       if (laid) {
@@ -202,7 +250,7 @@ export const AtpGraph = forwardRef<
     });
     observer.observe(outer);
     return () => observer.disconnect();
-  }, [layout, apply, center, fitScale]);
+  }, [layout, apply, center, fitScale, room]);
 
   // Wheel: scroll pans, pinch (or ⌘/Ctrl + wheel) zooms around the pointer. Non-passive, to keep the page still.
   useEffect(() => {
@@ -358,19 +406,22 @@ export const AtpGraph = forwardRef<
           );
         })}
       </div>
-      <div style={{ bottom: inset + 12 }} className="absolute left-3 flex items-center gap-0.5 rounded-lg border border-line bg-panel/90 p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)] backdrop-blur">
-        <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
-          <Minus size={13} />
-        </button>
-        <span className="w-10 text-center font-mono text-[11px]">{Math.round(zoom * 100)}%</span>
-        <button type="button" title="Zoom in" onClick={() => zoomBy(1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
-          <Plus size={13} />
-        </button>
-        <button type="button" title="Fit the plan" onClick={() => fit(true)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
-          <Maximize size={13} />
-        </button>
+      {/* One bottom row: on a view too narrow for both, the minimap wraps above the controls instead of covering them. */}
+      <div style={{ bottom: inset + 12 }} className="pointer-events-none absolute inset-x-3 flex flex-wrap-reverse items-end justify-between gap-2">
+        <div ref={overlay} className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-line bg-panel/90 p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)] backdrop-blur">
+          <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
+            <Minus size={13} />
+          </button>
+          <span className="w-10 text-center font-mono text-[11px]">{Math.round(zoom * 100)}%</span>
+          <button type="button" title="Zoom in" onClick={() => zoomBy(1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
+            <Plus size={13} />
+          </button>
+          <button type="button" title="Fit the plan" onClick={() => fit(true)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
+            <Maximize size={13} />
+          </button>
+        </div>
+        {overview && <Minimap plan={plan} layout={layout} stalled={stalled} frame={frame} onPan={panTo} onReady={apply} />}
       </div>
-      {overview && <Minimap plan={plan} layout={layout} stalled={stalled} frame={frame} bottom={inset + 12} onPan={panTo} onReady={apply} />}
     </div>
   );
 });
@@ -397,7 +448,6 @@ function Minimap({
   layout,
   stalled,
   frame,
-  bottom,
   onPan,
   onReady,
 }: {
@@ -405,7 +455,6 @@ function Minimap({
   layout: PlanLayout;
   stalled?: string;
   frame: React.RefObject<HTMLDivElement | null>;
-  bottom: number;
   onPan: (x: number, y: number, animate: boolean) => void;
   onReady: () => void;
 }) {
@@ -462,8 +511,7 @@ function Minimap({
       data-minimap
       onPointerDown={onPointerDown}
       title="The whole plan: press or drag to look elsewhere"
-      style={{ bottom }}
-      className="absolute right-3 cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-panel/90 p-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] backdrop-blur"
+      className="pointer-events-auto ml-auto cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-panel/90 p-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] backdrop-blur"
     >
       <div className="relative overflow-hidden" style={{ width, height }}>
         <canvas ref={canvas} style={{ width, height }} className="block" />
