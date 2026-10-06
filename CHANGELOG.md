@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.6.1 - 2026-10-06
+
 - Web links in chats show the site's icon at their left (a globe until it loads, so text never shifts); localhost and private addresses are never looked up. Browser tabs show the page's own favicon, on the Mac and in the phone's tab list.
 - A chat can work on several Kanban cards: `kanban_claim` no longer takes the chat off its other cards, `kanban_update` takes an optional card (required only when the chat is on several) and a `leave` flag, and the chat header shows the latest card plus "+N".
 - Sidebar: a project's chat list now shows 10 more at a time behind "Show more", with "Show less" beside it once expanded, instead of revealing every chat at once.
