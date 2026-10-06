@@ -1,6 +1,6 @@
 // Projects -> Chats -> Chat as a stack on the browser's history, so the iPhone's back swipe and the back button agree.
 import type { MobileSection } from "./settings-data";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { lastProject } from "./last-project";
 
 export type Route =
@@ -17,18 +17,32 @@ export type Route =
 
 const HOME: Route = { screen: "projects" };
 
-/** A fresh launch (nothing in the history, no notification naming a chat) opens an empty chat in the last project. */
-const launchRoute = (): Route => {
-  const cwd = lastProject();
-  return cwd && !location.hash ? { screen: "chat", cwd } : HOME;
-};
+/**
+ * The history entries the page starts on, bottom first; the last is shown. A fresh launch (no route in the history,
+ * no notification naming a chat) opens an empty chat in the last project with its chat list and the projects below
+ * it, so the back button and the iPhone's back swipe have somewhere to go. Seeding real entries matters on iOS:
+ * `history.length` there counts entries outside the app (the pairing page, earlier loads of the PWA), so a lone
+ * chat entry would hand `history.back()` to a page that is not the app and look stuck.
+ * A reload keeps its route and the entries below it, except a chat, which reopens as a fresh launch over it.
+ */
+export function launchStack(state: unknown, hash: string, lastCwd: string | undefined): Route[] {
+  if (isRoute(state) && state.screen !== "chat") return [state];
+  return lastCwd && !hash ? [HOME, { screen: "chats", cwd: lastCwd }, { screen: "chat", cwd: lastCwd }] : [HOME];
+}
 
-const isRoute = (value: unknown): value is Route => typeof value === "object" && value !== null && typeof (value as Route).screen === "string";
+function isRoute(value: unknown): value is Route {
+  return typeof value === "object" && value !== null && typeof (value as Route).screen === "string";
+}
 
 export function useRoute(): { route: Route; push: (route: Route) => void; replace: (route: Route) => void; back: () => void } {
-  const [route, setRoute] = useState<Route>(() => (isRoute(history.state) && history.state.screen !== "chat" ? history.state : launchRoute()));
+  const [stack] = useState(() => launchStack(history.state, location.hash, lastProject()));
+  const [route, setRoute] = useState<Route>(stack[stack.length - 1] ?? HOME);
+  const seeded = useRef(false);
   useEffect(() => {
-    history.replaceState(route, "");
+    // Only a fresh launch seeds more than one entry; it replaces the entry the page loaded with, then pushes the rest.
+    // Once: StrictMode runs this effect twice and a second seed would stack a duplicate set.
+    if (!seeded.current) stack.forEach((entry, i) => (i === 0 ? history.replaceState(entry, "") : history.pushState(entry, "")));
+    seeded.current = true;
     const onPop = (event: PopStateEvent) => setRoute(isRoute(event.state) ? event.state : HOME);
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -43,7 +57,7 @@ export function useRoute(): { route: Route; push: (route: Route) => void; replac
     history.replaceState(next, "");
     setRoute(next);
   }, []);
-  // A deep entry (a reload inside a chat) has nothing below it to go back to: fall to the projects.
-  const back = useCallback(() => (history.length > 1 ? history.back() : setRoute(HOME)), []);
+  // A deep entry with nothing below it (a reload of a page opened in a browser tab) falls to the projects.
+  const back = useCallback(() => (history.length > 1 ? history.back() : replace(HOME)), [replace]);
   return { route, push, replace, back };
 }
