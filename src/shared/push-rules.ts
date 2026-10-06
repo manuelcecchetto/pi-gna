@@ -1,6 +1,7 @@
 // What a push is about and when one is sent (docs/REMOTE.md section 13a): kinds, per-device preferences, the payload,
 // and the pure rules for suppression and rate limits. Delivery lives in src/main/push-service.ts.
 import type { AttentionSummary } from "./host-api";
+import type { Item } from "./session-state";
 
 export const PUSH_KINDS = ["approval", "done", "failed", "plan", "host_quit"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
@@ -27,9 +28,9 @@ export function clipText(text: string, max: number): string | undefined {
 }
 
 /** The start of the last assistant reply in a chat's items: its text blocks only, no tool calls or thinking. */
-export function responsePreview(items: readonly { kind: string; message?: { content?: readonly { type: string; text?: string }[] } }[]): string | undefined {
+export function responsePreview(items: readonly Item[]): string | undefined {
   const last = items.findLast((item) => item.kind === "assistant");
-  const text = (last?.message?.content ?? []).flatMap((block) => (block.type === "text" && typeof block.text === "string" ? [block.text] : [])).join(" ");
+  const text = (last?.kind === "assistant" ? last.message.content : []).flatMap((block) => (block.type === "text" ? [block.text] : [])).join(" ");
   return clipText(text, PUSH_PREVIEW_MAX);
 }
 

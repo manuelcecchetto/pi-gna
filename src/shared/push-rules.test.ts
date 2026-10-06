@@ -60,7 +60,7 @@ describe("push excerpts", () => {
       { kind: "assistant", message: { content: [{ type: "thinking", text: "hmm" }, { type: "text", text: "Hello\nworld" }, { type: "toolCall" }] } },
       { kind: "notice" },
     ];
-    expect(responsePreview(items)).toBe("Hello world");
+    expect(responsePreview(items as never)).toBe("Hello world");
     expect(responsePreview([])).toBeUndefined();
   });
 });
