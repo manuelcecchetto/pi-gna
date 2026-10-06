@@ -10,10 +10,13 @@ import { accountLabel, answered, type LoginView, logoFor, startLogin, updateLogi
 import { remoteError, toast } from "../state/app";
 import { Button, ConfirmButton } from "./SettingsControls";
 
-export function ProvidersSection() {
+/** `simple`: without the notes about pi's files and the environment (Setup, for the non-technical). */
+export function ProvidersSection({ simple = false }: { simple?: boolean }) {
   const { state, reload } = useAuthState();
   const [login, setLogin] = useState<LoginView | null>(null);
   const [query, setQuery] = useState("");
+  // Simple: API keys wait behind a button, so the accounts (the easy way) come first.
+  const [showKeys, setShowKeys] = useState(!simple);
   // The running login, so a result that arrives after you cancelled or started another one is ignored.
   const running = useRef(0);
   const seq = useRef(0);
@@ -79,7 +82,10 @@ export function ProvidersSection() {
     );
   }
 
-  const { accounts, keys, piClaude } = splitProviders(state.providers);
+  const split = splitProviders(state.providers);
+  const { keys, piClaude } = split;
+  // Simple: no "(legacy)" duplicates of an account login.
+  const accounts = simple ? split.accounts.filter((provider) => !/legacy/i.test(provider.name)) : split.accounts;
   const shown = searchProviders(keys, query);
   const busy = login !== null && !login.error;
   // In the two-column grid of accounts, a login's panel opens under the row of its card.
@@ -87,10 +93,12 @@ export function ProvidersSection() {
   const panelAfter = active === -1 ? -1 : Math.min(active + 1 - (active % 2), accounts.length - 1);
   return (
     <>
-      <p className="text-[12px] leading-relaxed text-faint">
-        Saved in pi's <span className="font-mono text-muted">{state.path ? tildify(state.path, window.studio.homeDir) : "auth.json"}</span>, which pi in the terminal uses too
-        {accounts.some((provider) => provider.id === CLAUDE_BRIDGE) && "; Claude Code keeps its own login"}. Chats you start after signing in can use the provider's models.
-      </p>
+      {!simple && (
+        <p className="text-[12px] leading-relaxed text-faint">
+          Saved in pi's <span className="font-mono text-muted">{state.path ? tildify(state.path, window.studio.homeDir) : "auth.json"}</span>, which pi in the terminal uses too
+          {accounts.some((provider) => provider.id === CLAUDE_BRIDGE) && "; Claude Code keeps its own login"}. Chats you start after signing in can use the provider's models.
+        </p>
+      )}
       <section>
         <h2 className="mb-2 text-[13px] font-medium text-fg">Accounts</h2>
         <div className="grid grid-cols-2 gap-2.5">
@@ -122,43 +130,51 @@ export function ProvidersSection() {
           </div>
         )}
       </section>
-      <section>
-        <div className="mb-2 flex items-center gap-3">
-          <h2 className="flex-1 text-[13px] font-medium text-fg">API keys</h2>
-          <label className="flex w-52 items-center gap-2 rounded-lg bg-sunken px-2.5 py-1 focus-within:ring-1 focus-within:ring-line-strong">
-            <Search size={12} className="shrink-0 text-faint" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape" && query) {
-                  event.stopPropagation();
-                  setQuery("");
-                }
-              }}
-              placeholder="Search providers"
-              spellCheck={false}
-              className="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg outline-none placeholder:text-faint"
-            />
-          </label>
-        </div>
-        <div className="flex flex-col divide-y divide-line rounded-lg border border-line">
-          {shown.map((provider) => (
-            <div key={provider.id}>
-              <KeyRow provider={provider} busy={busy} onAdd={() => void signIn(provider, "api_key")} onRemove={() => void signOut(provider)} />
-              {login?.provider.id === provider.id && login.method === "api_key" && (
-                <div className="px-3 pb-3">
-                  <LoginPanel view={login} onAnswer={answer} onCancel={cancel} />
-                </div>
-              )}
-            </div>
-          ))}
-          {!shown.length && <p className="px-3 py-2.5 text-[12.5px] text-faint">No provider matches “{query}”.</p>}
-        </div>
-        <p className="mt-2 text-[12px] leading-relaxed text-faint">
-          A key in your shell's environment (say <span className="font-mono">ANTHROPIC_API_KEY</span>) works without saving it here; pi-gna reads the environment of your login shell.
-        </p>
-      </section>
+      {!showKeys ? (
+        <button type="button" onClick={() => setShowKeys(true)} className="w-fit text-[12.5px] text-muted hover:text-fg hover:underline">
+          No subscription? I have an API key
+        </button>
+      ) : (
+        <section>
+          <div className="mb-2 flex items-center gap-3">
+            <h2 className="flex-1 text-[13px] font-medium text-fg">API keys</h2>
+            <label className="flex w-52 items-center gap-2 rounded-lg bg-sunken px-2.5 py-1 focus-within:ring-1 focus-within:ring-line-strong">
+              <Search size={12} className="shrink-0 text-faint" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && query) {
+                    event.stopPropagation();
+                    setQuery("");
+                  }
+                }}
+                placeholder="Search providers"
+                spellCheck={false}
+                className="min-w-0 flex-1 bg-transparent text-[12.5px] text-fg outline-none placeholder:text-faint"
+              />
+            </label>
+          </div>
+          <div className="flex flex-col divide-y divide-line rounded-lg border border-line">
+            {shown.map((provider) => (
+              <div key={provider.id}>
+                <KeyRow provider={provider} busy={busy} onAdd={() => void signIn(provider, "api_key")} onRemove={() => void signOut(provider)} />
+                {login?.provider.id === provider.id && login.method === "api_key" && (
+                  <div className="px-3 pb-3">
+                    <LoginPanel view={login} onAnswer={answer} onCancel={cancel} />
+                  </div>
+                )}
+              </div>
+            ))}
+            {!shown.length && <p className="px-3 py-2.5 text-[12.5px] text-faint">No provider matches “{query}”.</p>}
+          </div>
+          {!simple && (
+            <p className="mt-2 text-[12px] leading-relaxed text-faint">
+              A key in your shell's environment (say <span className="font-mono">ANTHROPIC_API_KEY</span>) works without saving it here; pi-gna reads the environment of your login shell.
+            </p>
+          )}
+        </section>
+      )}
     </>
   );
 }

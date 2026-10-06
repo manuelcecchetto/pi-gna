@@ -41,6 +41,7 @@ import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
 import { PiAuth } from "./pi-auth";
 import { PiPlugins } from "./plugins";
+import { PiSetup } from "./setup";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { onDisk } from "./resources";
 import { SettingsStore } from "./settings";
@@ -240,6 +241,7 @@ const plugins = new PiPlugins({
   remote: "https://raw.githubusercontent.com/manuelcecchetto/pi-gna/main/resources/plugins/catalog.json",
   onLogin: (update) => send(IPC.pluginsLoginUpdate, update),
 });
+const setup = new PiSetup({ onLine: (line) => send(IPC.setupLine, line) });
 
 function createWindow(): void {
   const stateFile = join(app.getPath("userData"), "window-state.json");
@@ -418,6 +420,7 @@ function registerIpc(shellEnv: Promise<void>): void {
     atpThreads,
     auth,
     plugins,
+    setup,
     browser: () => browser,
     remoteBrowser: () => remoteBrowser,
     updater: () => updater,
@@ -580,7 +583,10 @@ function init(): void {
 
   updater = new Updater(logFile, (state) => publish({ kind: "update", state }));
   // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
-  app.on("will-quit", () => updater?.installOnQuit());
+  app.on("will-quit", () => {
+    setup.dispose();
+    updater?.installOnQuit();
+  });
 
   let forced = false;
   app.on("before-quit", (event) => {

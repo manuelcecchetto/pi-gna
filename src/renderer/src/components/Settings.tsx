@@ -13,6 +13,7 @@ import { applyComputer, ComputerSection, useComputerSettings } from "./Computer"
 import { DigitHint, Kbd, Switch, useCommandDigits } from "./primitives";
 import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
+import { openSetup } from "./Setup";
 import { RemoteSection } from "./Remote";
 import { Button, Card, Choice, ModelChoice, NumberField, Row, Segmented } from "./SettingsControls";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -30,7 +31,7 @@ interface SectionInfo {
 }
 
 const SECTIONS: SectionInfo[] = [
-  { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update about settings.json file folder" },
+  { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update about settings.json file folder setup onboarding install pi welcome first run" },
   { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color wallpaper background backdrop empty state image loop cycle rotate shuffle" },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: Keyboard, group: "pi-gna", about: "Hold ⌘ anywhere to see ⌘1–⌘9 on the chats in the sidebar.", keywords: "keys hotkeys keyboard command" },
   {
@@ -295,6 +296,9 @@ function GeneralSection({ pi }: { pi: Pi }) {
           <Button onClick={() => void window.studio.settings.revealPi()}>
             <FolderOpen size={12} /> Show in Finder
           </Button>
+        </Row>
+        <Row title="Setup" about="Install pi, sign in to a provider and add plugins, step by step.">
+          <Button onClick={openSetup}>Run setup</Button>
         </Row>
       </Card>
       {pi.state?.problem && <PiFileNote pi={pi} />}

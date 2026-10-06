@@ -11,6 +11,7 @@ import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject 
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
+import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, DeviceInfo, HostErrorCode, HostEvent, NewCardAttachment, PairingStatus, QueueEdit, RemoteStatus, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type { UiOp } from "./ui-state";
@@ -117,6 +118,9 @@ export const IPC = {
   pluginsLoginUpdate: "plugins:login-update",
   pluginsCancelLogin: "plugins:cancel-login",
   pluginsLogout: "plugins:logout",
+  setupStatus: "setup:status",
+  setupInstallPi: "setup:install-pi",
+  setupLine: "setup:line",
   boardSaveImage: "board:save-image",
   githubProject: "github:project",
   githubChoose: "github:choose",
@@ -340,6 +344,13 @@ export type UpdateState =
   | { phase: "ready"; release: UpdateRelease }
   | { phase: "failed"; release: UpdateRelease; error: string };
 
+/** The first-run Setup flow (src/shared/setup.ts): what pi-gna found, and pi's install with npm's output line by line. */
+export interface SetupApi {
+  status(): Promise<SetupStatus>;
+  installPi(): Promise<SetupInstallResult>;
+  onLine(listener: (line: string) => void): () => void;
+}
+
 export interface UpdateApi {
   state(): Promise<UpdateState>;
   onState(listener: (state: UpdateState) => void): () => void;
@@ -546,5 +557,6 @@ export interface StudioApi {
   github: GithubApi;
   atp: AtpApi;
   update: UpdateApi;
+  setup: SetupApi;
   remote: RemoteApi;
 }

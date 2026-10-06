@@ -12,6 +12,7 @@ import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, Gi
 import type { LamentOp, Laments } from "./laments";
 import type { PreviewMode, PreviewOpenOptions } from "./preview";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
+import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
@@ -588,6 +589,10 @@ export interface HostMethods {
   "plugins.cancelLogin": { args: Record<string, never>; result: null };
   "plugins.logout": { args: { cwd?: string; server: string }; result: null };
 
+  // setup (desktop only: installs run code on the Mac)
+  "setup.status": { args: Record<string, never>; result: SetupStatus };
+  "setup.installPi": { args: Record<string, never>; result: SetupInstallResult };
+
   // github
   "github.project": { args: { cwd: string; refresh?: boolean }; result: GithubProject };
   "github.choose": { args: { cwd: string; login: string | null }; result: GithubProject };
@@ -668,6 +673,8 @@ export const DESKTOP_ONLY_METHODS = [
   "plugins.login",
   "plugins.cancelLogin",
   "plugins.logout",
+  "setup.status",
+  "setup.installPi",
 ] as const satisfies readonly HostMethod[];
 
 const DESKTOP_ONLY: ReadonlySet<string> = new Set(DESKTOP_ONLY_METHODS);
@@ -684,6 +691,7 @@ export const READ_ONLY_METHODS = [
   "chat.snapshot",
   "chat.files",
   "chat.compactionSettings",
+  "setup.status",
   "board.get",
   "laments.get",
   "settings.get",

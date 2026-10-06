@@ -18,6 +18,11 @@ export type Theme = (typeof THEMES)[number];
 export const WALLPAPERS = ["sky", "stars", "peak", "pines", "shadow", "ink", "fresco", "none"] as const;
 export type Wallpaper = (typeof WALLPAPERS)[number];
 
+/** Who set pi up (Setup's first step): the nerd 🤌 wants commands and logs, the cool 🤌 plain words. Only Setup reads
+ * it for now; kept so later screens can speak the same way. */
+export const PERSONAS = ["nerd", "cool"] as const;
+export type Persona = (typeof PERSONAS)[number];
+
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly ThinkingLevel[];
 
 /** The model a chat pi-gna starts runs on, for that chat only. Without a provider, the chat's own one if it has the
@@ -70,6 +75,8 @@ export interface Settings {
   remote: RemoteSettings;
   /** Start pi-gna when you log in to the Mac. */
   openAtLogin: boolean;
+  /** Setup's answer; missing until you pick one. */
+  persona?: Persona;
 }
 
 export type SettingsOp =
@@ -82,6 +89,7 @@ export type SettingsOp =
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
   | { type: "openAtLogin"; on: boolean }
+  | { type: "persona"; persona: Persona }
   /** null: back to the default. */
   | { type: "model"; task: Task; model: TaskModel | null };
 
@@ -170,6 +178,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn open at login ${String(op.on)}`);
       return settings.openAtLogin === op.on ? settings : { ...settings, openAtLogin: op.on };
     }
+    case "persona": {
+      if (!PERSONAS.includes(op.persona)) throw new SettingsError(`unknown persona ${String(op.persona)}`);
+      return settings.persona === op.persona ? settings : { ...settings, persona: op.persona };
+    }
     case "model": {
       if (!TASKS.includes(op.task)) throw new SettingsError(`unknown task ${String(op.task)}`);
       const model = op.model === null ? undefined : taskModelOf(op.model);
@@ -214,6 +226,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.visuals !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
+  if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;
+  else if (file.persona !== undefined) dropped++;
   const remote = (file.remote ?? {}) as Record<string, unknown>;
   if (typeof remote.enabled === "boolean") settings.remote.enabled = remote.enabled;
   else if (remote.enabled !== undefined) dropped++;

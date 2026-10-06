@@ -1035,3 +1035,344 @@ code.hl span {
     animation: none !important;
   }
 }
+
+/* Setup (components/Setup.tsx): a card over a blurred window, a soft pi glow behind it, steps sliding in the
+   direction you go (--dir), Pignas that bob, pop, hammer and bow, and confetti in the logo colors. */
+.setup-card {
+  --pi-coral: #f09082;
+  --pi-blue: #4d9abf;
+  --pi-yellow: #f1be58;
+}
+.setup-card::backdrop {
+  animation: backdrop-in 220ms ease-out;
+}
+.setup-card {
+  box-shadow: 0 30px 90px -30px rgb(0 0 0 / 0.6);
+  animation: setup-card-in 420ms cubic-bezier(0.2, 0.9, 0.25, 1.15);
+}
+.setup-glow {
+  position: absolute;
+  inset: -40% -20% auto;
+  height: 70%;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side, color-mix(in srgb, var(--pi-coral) 26%, transparent), transparent) 10% 60% / 45% 80% no-repeat,
+    radial-gradient(closest-side, color-mix(in srgb, var(--pi-blue) 24%, transparent), transparent) 50% 70% / 45% 80% no-repeat,
+    radial-gradient(closest-side, color-mix(in srgb, var(--pi-yellow) 22%, transparent), transparent) 90% 60% / 45% 80% no-repeat;
+  filter: blur(30px);
+  opacity: 0.25;
+  animation: setup-glow-drift 12s ease-in-out infinite alternate;
+}
+.setup-step {
+  animation: setup-step-in 380ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.setup-rise {
+  animation: setup-rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.setup-row {
+  animation: setup-rise 380ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+/* One solid primary: white on #3b74d6 is 4.6:1 (the accent token is lighter in dark mode). */
+.setup-next {
+  background: #3b74d6;
+  color: white;
+  transition:
+    background 0.2s ease,
+    transform 0.15s ease,
+    opacity 0.2s;
+}
+.setup-next:enabled:hover {
+  background: #3468c4;
+  transform: translateY(-1px);
+}
+.setup-next:enabled:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Progress: numbered dots on a line that fills as you go. */
+.setup-dot {
+  border: 1px solid var(--line-strong);
+  color: var(--faint);
+  transition:
+    background 0.3s,
+    color 0.3s,
+    border-color 0.3s,
+    transform 0.3s;
+}
+.setup-dot.active {
+  border-color: transparent;
+  color: white;
+  background: #3b74d6;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.setup-dot.done {
+  border-color: transparent;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.setup-track {
+  background: var(--accent);
+  transition: width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Step 1: the nerd and the cool one; the one you pick steps forward, the other dims. */
+.setup-persona {
+  border: 1px solid var(--line);
+  transition:
+    transform 0.35s cubic-bezier(0.2, 0.9, 0.25, 1.3),
+    opacity 0.3s,
+    filter 0.3s,
+    background 0.3s,
+    border-color 0.3s;
+  opacity: 0.8;
+  filter: saturate(0.6);
+  transform: scale(0.96);
+  animation: setup-rise 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.setup-persona:hover {
+  opacity: 0.95;
+  filter: saturate(0.9);
+}
+.setup-persona:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.setup-persona.picked {
+  opacity: 1;
+  filter: none;
+  transform: scale(1);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+.setup-sprite-wrap {
+  transform-origin: 50% 100%;
+}
+.setup-persona.picked .setup-sprite-wrap {
+  animation: setup-boing 520ms cubic-bezier(0.2, 0.9, 0.25, 1.4);
+}
+.setup-sprite {
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 10px 14px rgb(0 0 0 / 0.28));
+}
+.setup-persona.picked .setup-sprite.nerd {
+  animation: setup-nerd 1.6s ease-in-out infinite;
+}
+.setup-persona.picked .setup-sprite.cool {
+  animation: setup-cool 2.4s ease-in-out infinite;
+}
+/* Step 2. */
+.setup-pop.setup-bob {
+  animation:
+    setup-pop 520ms cubic-bezier(0.2, 0.9, 0.25, 1.4) both,
+    setup-bob 2.6s ease-in-out 520ms infinite;
+  transform-origin: 50% 100%;
+}
+.setup-pop {
+  animation: setup-pop 520ms cubic-bezier(0.2, 0.9, 0.25, 1.4) both;
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 10px 14px rgb(0 0 0 / 0.25));
+}
+.setup-pop.setup-hammer {
+  animation:
+    setup-pop 520ms cubic-bezier(0.2, 0.9, 0.25, 1.4) both,
+    setup-hammer 0.5s ease-in-out 520ms infinite;
+  transform-origin: 40% 100%;
+}
+.setup-check {
+  border: 1px solid var(--line-strong);
+}
+.setup-check.ok,
+.setup-check.bad {
+  border-color: transparent;
+  color: white;
+  animation: setup-boing 420ms cubic-bezier(0.2, 0.9, 0.25, 1.5) both;
+}
+.setup-check.ok {
+  background: var(--ok);
+}
+.setup-check.todo {
+  border-style: dashed;
+}
+.setup-check.bad {
+  background: var(--bad);
+}
+.setup-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--raised);
+}
+.setup-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--pi-coral), var(--pi-blue), var(--pi-yellow));
+  animation: setup-bar 1.4s ease-in-out infinite;
+}
+.setup-fun {
+  animation: setup-rise 360ms ease-out both;
+}
+
+/* Step 5: a bow, confetti, and the pi logo landing. */
+.setup-pop.setup-bow {
+  animation:
+    setup-pop 520ms cubic-bezier(0.2, 0.9, 0.25, 1.4) both,
+    setup-bow 2.2s ease-in-out 600ms infinite;
+}
+.setup-assemble {
+  animation: setup-boing 600ms cubic-bezier(0.2, 0.9, 0.25, 1.6) 120ms both;
+}
+.setup-confetti span {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: setup-confetti 1100ms cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes setup-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+  }
+}
+@keyframes setup-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--dir, 1) * 36px));
+  }
+}
+@keyframes setup-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes setup-glow-drift {
+  to {
+    transform: translateX(8%) translateY(6%) rotate(4deg);
+  }
+}
+@keyframes setup-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6) translateY(20px);
+  }
+}
+@keyframes setup-boing {
+  0% {
+    transform: scale(0.6);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  80% {
+    transform: scale(0.96);
+  }
+}
+@keyframes setup-bob {
+  50% {
+    transform: translateY(-6px) rotate(-1.5deg);
+  }
+}
+@keyframes setup-nerd {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  20% {
+    transform: rotate(-3deg) translateY(-3px);
+  }
+  40% {
+    transform: rotate(2deg);
+  }
+  60% {
+    transform: rotate(-2deg) translateY(-2px);
+  }
+}
+@keyframes setup-cool {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(4deg) translateX(3px);
+  }
+}
+@keyframes setup-hammer {
+  50% {
+    transform: rotate(-4deg) translateY(-4px);
+  }
+}
+@keyframes setup-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@keyframes setup-bow {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-10deg) translateY(4px);
+  }
+}
+@keyframes setup-confetti {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.4);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), calc(var(--y) + 40px)) rotate(var(--r)) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .setup-card::backdrop,
+  .setup-card,
+  .setup-glow,
+  .setup-step,
+  .setup-rise,
+  .setup-row,
+  .setup-persona,
+  .setup-persona .setup-sprite-wrap,
+  .setup-persona .setup-sprite,
+  .setup-bob,
+  .setup-pop,
+  .setup-hammer,
+  .setup-check,
+  .setup-bar::after,
+  .setup-fun,
+  .setup-bow,
+  .setup-assemble,
+  .setup-confetti span {
+    animation: none !important;
+  }
+  .setup-dot,
+  .setup-track,
+  .setup-next,
+  .setup-persona {
+    transition: none !important;
+  }
+  .setup-card .shimmer,
+  .setup-card .spin,
+  .setup-card .pi-spin {
+    animation: none !important;
+  }
+  .setup-next:enabled:hover {
+    transform: none;
+  }
+}

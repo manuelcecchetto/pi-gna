@@ -125,6 +125,18 @@ describe("remote access and host lifecycle", () => {
     expect(() => applySettingsOp(start, { type: "openAtLogin", on: 1 as never })).toThrow(SettingsError);
   });
 
+  it("keeps Setup's persona once picked", () => {
+    expect(start.persona).toBeUndefined();
+    const nerd = applySettingsOp(start, { type: "persona", persona: "nerd" });
+    expect(nerd.persona).toBe("nerd");
+    expect(applySettingsOp(nerd, { type: "persona", persona: "nerd" })).toBe(nerd);
+    expect(() => applySettingsOp(start, { type: "persona", persona: "chad" as never })).toThrow(SettingsError);
+    expect(parseSettings({ persona: "cool" }).settings.persona).toBe("cool");
+    const dropped = parseSettings({ persona: "chad" });
+    expect(dropped.dropped).toBe(1);
+    expect(dropped.settings.persona).toBeUndefined();
+  });
+
   it("changes behaviour only while remote access is on", () => {
     const always = applySettingsOp(start, { type: "keepAwake", mode: "always" });
     expect(hidesOnClose(start)).toBe(false);

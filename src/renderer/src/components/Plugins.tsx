@@ -39,7 +39,8 @@ const TAB_LABELS: Record<Tab, string> = { discover: "Discover", installed: "Inst
 const SCOPES: readonly PluginScope[] = ["global", "project"];
 const SCOPE_LABELS: Record<PluginScope, string> = { global: "Personal", project: "This project" };
 
-export function PluginsSection({ cwd }: { cwd: string }) {
+/** `simple`: only the app connections, in plain words (Setup, for the non-technical). */
+export function PluginsSection({ cwd, simple = false }: { cwd: string; simple?: boolean }) {
   const project = cwd && cwd !== window.studio.homeDir ? cwd : undefined;
   const plugins = usePlugins(project);
   const [tab, setTab] = useState<Tab>("discover");
@@ -67,6 +68,7 @@ export function PluginsSection({ cwd }: { cwd: string }) {
       </div>
     );
   }
+  if (simple) return <Discover plugins={plugins} query="" onManage={() => undefined} simple />;
   return (
     <>
       <div className="flex items-center gap-3">
@@ -188,7 +190,7 @@ function ScopeNote({ state, scope }: { state: PluginsState; scope: PluginScope }
 
 // ── Discover ─────────────────────────────────────────────────────────────────
 
-function Discover({ plugins, query, onManage }: { plugins: Plugins; query: string; onManage: () => void }) {
+function Discover({ plugins, query, onManage, simple = false }: { plugins: Plugins; query: string; onManage: () => void; simple?: boolean }) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const entries = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -211,19 +213,29 @@ function Discover({ plugins, query, onManage }: { plugins: Plugins; query: strin
     <>
       {connections.length > 0 && (
         <section>
-          <h2 className="mb-1 text-[13px] font-medium text-fg">Connections</h2>
-          <p className="mb-2.5 text-[12px] leading-relaxed text-faint">MCP servers of apps you use, added to pi's mcp.json. Their tools reach chats you start afterwards.</p>
+          <h2 className="mb-1 text-[13px] font-medium text-fg">{simple ? "Apps" : "Connections"}</h2>
+          <p className="mb-2.5 text-[12px] leading-relaxed text-faint">
+            {simple ? "Connect one and pi can read and update it in new chats." : "MCP servers of apps you use, added to pi's mcp.json. Their tools reach chats you start afterwards."}
+          </p>
           <CardGrid
             entries={connections}
             panelFor={connecting}
             renderCard={(entry) => (
-              <CatalogCard entry={entry} active={connecting === entry.id} added={added(entry)} busy={plugins.busy !== null || connecting !== null} onAction={() => setConnecting(entry.id)} onManage={onManage} />
+              <CatalogCard
+                entry={entry}
+                active={connecting === entry.id}
+                added={added(entry)}
+                busy={plugins.busy !== null || connecting !== null}
+                onAction={() => setConnecting(entry.id)}
+                onManage={onManage}
+                simple={simple}
+              />
             )}
             renderPanel={(entry) => <ConnectPanel plugins={plugins} entry={entry} onClose={close} />}
           />
         </section>
       )}
-      {packages.length > 0 && (
+      {packages.length > 0 && !simple && (
         <section>
           <h2 className="mb-1 text-[13px] font-medium text-fg">Packages</h2>
           <p className="mb-2.5 text-[12px] leading-relaxed text-faint">
@@ -265,7 +277,23 @@ function CardGrid<T extends CatalogEntry>({ entries, panelFor, renderCard, rende
   );
 }
 
-function CatalogCard({ entry, active, added, busy, onAction, onManage }: { entry: CatalogEntry; active: boolean; added: boolean; busy: boolean; onAction: () => void; onManage: () => void }) {
+function CatalogCard({
+  entry,
+  active,
+  added,
+  busy,
+  onAction,
+  onManage,
+  simple = false,
+}: {
+  entry: CatalogEntry;
+  active: boolean;
+  added: boolean;
+  busy: boolean;
+  onAction: () => void;
+  onManage: () => void;
+  simple?: boolean;
+}) {
   const installing = entry.kind === "package" && active;
   return (
     <div className={`flex flex-col gap-2 rounded-xl border p-3 transition-colors ${active ? "border-line-strong bg-raised/50" : "border-line"}`}>
@@ -274,10 +302,22 @@ function CatalogCard({ entry, active, added, busy, onAction, onManage }: { entry
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-medium text-fg">{entry.name}</div>
           <div className="truncate text-[12px] text-faint" title={entry.kind === "package" ? entry.source : undefined}>
-            {entry.kind === "mcp" ? (entry.auth.type === "key" ? "MCP server · token" : "MCP server · sign in") : `pi package · ${entry.publisher}`}
+            {entry.kind === "mcp"
+              ? simple
+                ? entry.auth.type === "key"
+                  ? "Needs an access key"
+                  : "Sign in with your account"
+                : entry.auth.type === "key"
+                  ? "MCP server · token"
+                  : "MCP server · sign in"
+              : `pi package · ${entry.publisher}`}
           </div>
         </div>
-        {added ? (
+        {added && simple ? (
+          <span className="flex shrink-0 items-center gap-1 px-1.5 py-1 text-[12px] text-muted">
+            <Check size={12} className="text-ok" /> Connected
+          </span>
+        ) : added ? (
           <button type="button" onClick={onManage} title="Show it under Installed" className="flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-[12px] text-muted hover:bg-raised hover:text-fg">
             <Check size={12} className="text-ok" /> {entry.kind === "mcp" ? "Added" : "Installed"}
           </button>
@@ -296,9 +336,11 @@ function CatalogCard({ entry, active, added, busy, onAction, onManage }: { entry
         )}
       </div>
       <p className="line-clamp-2 text-[12px] leading-relaxed text-muted">{entry.description}</p>
-      <button type="button" onClick={() => window.studio.openExternal(entry.homepage)} className="flex w-fit items-center gap-1 text-[11.5px] text-faint hover:text-fg">
-        {host(entry.homepage)} <ExternalLink size={10} />
-      </button>
+      {!simple && (
+        <button type="button" onClick={() => window.studio.openExternal(entry.homepage)} className="flex w-fit items-center gap-1 text-[11.5px] text-faint hover:text-fg">
+          {host(entry.homepage)} <ExternalLink size={10} />
+        </button>
+      )}
     </div>
   );
 }

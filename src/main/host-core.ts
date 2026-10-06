@@ -39,6 +39,7 @@ import type { Github } from "./github";
 import type { LamentStore } from "./laments";
 import type { PiAuth } from "./pi-auth";
 import type { PiPlugins } from "./plugins";
+import type { PiSetup } from "./setup";
 import type { SessionHost } from "./session-host";
 import type { SettingsStore } from "./settings";
 import type { UiStateStore } from "./ui-state";
@@ -85,6 +86,7 @@ export interface HostDeps {
   atpThreads: AtpThreads;
   auth: PiAuth;
   plugins: PiPlugins;
+  setup: PiSetup;
   browser(): BrowserManager | undefined;
   /** Frames and input for phones; exists with the browser manager. */
   remoteBrowser(): RemoteBrowser | undefined;
@@ -521,6 +523,9 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       (raw) => ({ cwd: maybeProject(raw.cwd), server: text(raw.server, "server") }),
       async (_ctx, { cwd, server }) => (await env(), plugins.signIn(server, cwd)),
     ),
+    // First-run Setup: Node.js, pi and pi's package, with the login shell's PATH; installs pi with npm.
+    "setup.status": any("desktop", async () => (await env(), deps.setup.status())),
+    "setup.installPi": any("desktop", async () => (await env(), deps.setup.installPi())),
     "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
     "plugins.logout": method<{ cwd?: string; server: string }>(
       "desktop",
@@ -698,6 +703,8 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.pluginsLogin, "plugins.login", (cwd, server) => ({ cwd, server })),
   route(IPC.pluginsCancelLogin, "plugins.cancelLogin", () => ({}), true),
   route(IPC.pluginsLogout, "plugins.logout", (cwd, server) => ({ cwd, server })),
+  route(IPC.setupStatus, "setup.status"),
+  route(IPC.setupInstallPi, "setup.installPi"),
   route(IPC.githubProject, "github.project", (cwd, refresh) => ({ cwd, refresh })),
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),
   route(IPC.githubList, "github.list", (cwd, kind, filter) => ({ cwd, kind, filter })),

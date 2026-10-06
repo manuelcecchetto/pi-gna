@@ -164,6 +164,11 @@ const api: StudioApi = {
     cancelLogin: () => ipcRenderer.send(IPC.pluginsCancelLogin),
     logout: (cwd, server) => ipcRenderer.invoke(IPC.pluginsLogout, cwd, server),
   },
+  setup: {
+    status: () => ipcRenderer.invoke(IPC.setupStatus),
+    installPi: () => ipcRenderer.invoke(IPC.setupInstallPi),
+    onLine: (listener) => subscribe<string>(IPC.setupLine, listener),
+  },
   update: {
     state: () => ipcRenderer.invoke(IPC.updateGet),
     onState: (listener) => subscribe<UpdateState>(IPC.updateState, listener),

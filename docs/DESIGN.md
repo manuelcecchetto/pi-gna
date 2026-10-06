@@ -776,6 +776,41 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   falls back to that copy, then to the bundled one. Logos: Notion, Intercom and Brevo from simple-icons (CC0), Attio's
   mark from attio.com, Granola's app icon from granola.ai.
 
+## Setup
+
+The first-run flow (`components/Setup.tsx`, `src/main/setup.ts`, `src/shared/setup.ts`): a native `<dialog>` (modal,
+`setOverlay` so the browser view does not draw over it) with five animated steps: You, pi, Providers, Plugins & MCP,
+Done. It opens by itself when pi is missing or broken (`piReady`), or on a first launch (localStorage
+`pigna:setup-done` unset) with no provider signed in; Settings > General > Run setup opens it again. Step one picks a
+persona by clicking a card, the nerd 🤌 or the cool 🤌 (`Settings.persona`; only Setup reads it so far): the nerd sees
+commands, versions and npm's log, the cool one plain words, a progress bar and funny lines, and the `simple` Providers
+(no file or environment notes, no "(legacy)" logins, API keys behind a button) and Plugins (app connections only).
+Not installed yet is a dashed to-do check; red is for a Node.js that is too old, a broken pi or a failed install.
+
+- `setup.status` runs `node --version`, `npm --version` and `pi --version` and looks for pi's package (`findPiSdk`)
+  with the login shell's PATH. A pi that is there but fails or does not answer is `{ error }`, not missing: Setup never
+  installs over it. Next needs a pi that answers; the package only gates the Providers and Plugins steps.
+- `setup.installPi` runs pi's README command, `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`
+  (desktop-only, refused when pi is there), streams its lines (`setup:line`, one decoder per stream), stops after 10
+  minutes or when pi-gna quits, then appends `npm prefix -g`/bin to main's PATH when it is missing. No Node.js (or one
+  older than 22.19) gets a link to nodejs.org and Check again; pi-gna does not install Node. Known gap: Node from
+  nodejs.org's installer has a root-owned global prefix, so the install fails with EACCES and Setup says so.
+- Checks and the install live in a module store, so closing Setup mid-install keeps npm running and reopening shows
+  it. The chat behind Setup, which failed while pi was missing, gets a fresh pi on close or when the install finishes
+  after you closed Setup (`reviveChat`), never while pi is still missing.
+- Esc closes Setup only when nothing inside wanted it: login prompts (window capture + `preventDefault`), search
+  fields (`stopPropagation`) and fields with text keep theirs; the dialog's own `cancel` is always prevented.
+- Sprites (`assets/setup/`): nerd, cool, hammer, joy, shock and plug were generated with GPT Image from the
+  pigna-video model sheet `pigna-poses.png` (always the pinched 🤌, never an open hand); bow and conduct are video
+  sprites. Each was cut out with the light paper fringe outside the outline peeled off and resized with premultiplied
+  alpha; a plain alpha threshold leaves a jagged cream halo on dark surfaces. Size them with `h-full` inside a flex box:
+  `max-h-full` does not resolve inside an auto-sized grid row, and the sprite overflows.
+- Test with `PATH` holding only `node` and `npm` (symlinks) and `npm_config_prefix` in a scratch folder, so the real
+  install goes there; `src/main/setup.test.ts` fakes node, npm and pi as shell scripts (use `exec` in a fake that
+  sleeps, or `execFile`'s timeout waits for the orphaned child's pipes). A hidden test window can be recorded to video
+  by looping `webContents.capturePage(undefined, { stayHidden: true })` in main (`scripts/cdp.mjs main`) and joining the
+  frames with ffmpeg's concat demuxer using the capture times as durations.
+
 ## pi RPC notes (pi 1.0.0)
 
 Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-agent/docs/` (`rpc.md`,

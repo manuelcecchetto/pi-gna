@@ -7,6 +7,7 @@ import { LamentsPage } from "./components/Laments";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { SettingsPage } from "./components/Settings";
+import { SetupFlow } from "./components/Setup";
 import { HeroBackdrop } from "./components/Transcript";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
@@ -112,6 +113,7 @@ export function App() {
       <CollapsedSidebarControls />
       <Lightbox />
       <UpdateDialog />
+      <SetupFlow />
     </div>
   );
 }
