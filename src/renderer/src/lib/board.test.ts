@@ -40,6 +40,8 @@ describe("Kanban view", () => {
     expect(cardSnippet(card("aaaaaa"))).toBe("Fails on CI about 1 in 5 runs");
     const reported = applyOp(board, { type: "report", id: "aaaaaa", text: "Found it: a race in the session cookie" }, 9);
     expect(cardSnippet(reported.cards.find((c) => c.id === "aaaaaa")!)).toBe("Found it: a race in the session cookie");
+    const markdown = applyOp(board, { type: "report", id: "aaaaaa", text: "Fixed on branch `pigna/aaaaaa-fix`:\n\n- **Cause:** a [race](https://e.com)" }, 10);
+    expect(cardSnippet(markdown.cards.find((c) => c.id === "aaaaaa")!)).toBe("Fixed on branch pigna/aaaaaa-fix: Cause: a race");
   });
 
   it("lists the sidebar's projects and any other project with cards, with open cards", () => {

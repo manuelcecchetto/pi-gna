@@ -442,7 +442,11 @@ function CardPage({ client, board, card, apply, startTask, starting, push, onClo
                       {report.column && <span>· moved to {COLUMN_LABELS[report.column]}</span>}
                       {report.chat && <span className="truncate">· {titleOf(report.chat)}</span>}
                     </div>
-                    {report.text && <p className="mt-0.5 text-[14px] leading-relaxed break-words whitespace-pre-wrap text-fg/90">{report.text}</p>}
+                    {report.text && (
+                      <div className="card-report mt-0.5 text-fg/90">
+                        <Markdown text={report.text} />
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}

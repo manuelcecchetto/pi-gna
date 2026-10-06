@@ -17,6 +17,7 @@ import { ColumnIcon } from "./ColumnIcon";
 import { RefIcon } from "./GitHub";
 import { ContextMenu } from "./ContextMenu";
 import { Indicator } from "./Sidebar";
+import { Markdown } from "./Markdown";
 
 export function CardDialog({ card, onClose }: { card: Card; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -277,7 +278,11 @@ export function CardDetails({
                         {report.column && <span>· moved to {COLUMN_LABELS[report.column]}</span>}
                         {report.chat && <span className="truncate">· {titleOf(report.chat)}</span>}
                       </div>
-                      {report.text && <p className="selectable mt-0.5 text-[13px] leading-relaxed break-words whitespace-pre-wrap text-fg/90">{report.text}</p>}
+                      {report.text && (
+                        <div className="card-report selectable mt-0.5 text-fg/90">
+                          <Markdown text={report.text} />
+                        </div>
+                      )}
                     </div>
                   </li>
                 ))}

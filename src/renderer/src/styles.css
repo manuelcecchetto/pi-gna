@@ -655,6 +655,7 @@ code.hl span {
 
 /* A lament's reports read at the size of the card text around them. */
 .lament-report .prose,
+.card-report .prose,
 .github-body .prose {
   font-size: 13px;
   line-height: 1.6;

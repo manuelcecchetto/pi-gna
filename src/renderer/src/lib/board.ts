@@ -2,6 +2,7 @@
 // a card starts are told (src/shared/task-prompts.ts).
 import { type Board, COLUMNS, type Card, type ChatRef, type Column, projectCards } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
+import { markdownText } from "../../../shared/markdown-text";
 import { splitAttachments } from "../../../shared/task-prompts";
 import { type Attention, type SessionState, strongestAttention } from "../../../shared/session-state";
 
@@ -24,7 +25,7 @@ export function cardAttention(card: Card, sessions: SessionState[]): Attention |
 
 /** The line under a card's title: its latest report, else its notes (without their attachments). */
 export function cardSnippet(card: Card): string {
-  const latest = (card.reports.findLast((report) => report.text)?.text || splitAttachments(card.notes).text).replace(/\s+/g, " ").trim();
+  const latest = markdownText(card.reports.findLast((report) => report.text)?.text || splitAttachments(card.notes).text);
   // A short description is all in the title of its new card.
   return latest === card.title ? "" : latest;
 }
