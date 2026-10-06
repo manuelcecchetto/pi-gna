@@ -33,6 +33,8 @@ import { SettingsNav } from "./Settings";
 import { UpdateRow } from "./Update";
 
 const SESSIONS_PER_PROJECT = 6;
+/** How many more chats each "Show more" reveals in a project. */
+const SESSIONS_PAGE = 10;
 
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
@@ -64,16 +66,16 @@ export function Sidebar() {
   const inDraft = Boolean(activeSession && isDraft(activeSession));
   const width = clampSidebarWidth(layout.width, window.innerWidth);
 
-  // Which projects are open and show all their chats, here rather than in each section: ⌘1…⌘9 number the chat rows
+  // Which projects are open and how many of their chats they show, here rather than in each section: ⌘1…⌘9 number the chat rows
   // you can see. A project opens as it was when it first showed: the first four, and the active chat's.
   const [opened, setOpened] = useState<Record<string, boolean>>({});
-  const [showAll, setShowAll] = useState<Record<string, boolean>>({});
+  const [shown, setShown] = useState<Record<string, number>>({});
   const firstOpen = useRef(new Map<string, boolean>());
   groups.forEach((group, index) => {
     if (!firstOpen.current.has(group.cwd)) firstOpen.current.set(group.cwd, index < 4 || group.cwd === activeCwd);
   });
   const isOpen = (cwd: string) => opened[cwd] ?? firstOpen.current.get(cwd) ?? false;
-  const visible = groups.flatMap((group) => (isOpen(group.cwd) ? (showAll[group.cwd] ? group.rows : group.rows.slice(0, SESSIONS_PER_PROJECT)) : []));
+  const visible = groups.flatMap((group) => (isOpen(group.cwd) ? group.rows.slice(0, shown[group.cwd] ?? SESSIONS_PER_PROJECT) : []));
   const numbered = visible.slice(0, 9);
   const settingsMode = page?.kind === "settings";
   const hints = useCommandDigits(numbered.map((row) => () => openRow(row)), !settingsMode);
@@ -214,8 +216,8 @@ export function Sidebar() {
                   features={features}
                   open={isOpen(group.cwd)}
                   onOpen={(open) => setOpened((all) => ({ ...all, [group.cwd]: open }))}
-                  showAll={showAll[group.cwd] ?? false}
-                  onShowAll={(all) => setShowAll((shown) => ({ ...shown, [group.cwd]: all }))}
+                  shown={shown[group.cwd] ?? SESSIONS_PER_PROJECT}
+                  onShown={(count) => setShown((all) => ({ ...all, [group.cwd]: count }))}
                   digits={hints ? digits : undefined}
                   onMenu={openMenu}
                 />
@@ -281,8 +283,8 @@ function ProjectSection({
   features,
   open,
   onOpen,
-  showAll,
-  onShowAll,
+  shown,
+  onShown,
   digits,
   onMenu,
 }: {
@@ -292,13 +294,14 @@ function ProjectSection({
   features: Record<Feature, boolean>;
   open: boolean;
   onOpen: (open: boolean) => void;
-  showAll: boolean;
-  onShowAll: (all: boolean) => void;
+  /** How many of the project's chats are listed. */
+  shown: number;
+  onShown: (count: number) => void;
   /** ⌘1…⌘9 of the rows that have one, while ⌘ is held. */
   digits?: Map<string, number>;
   onMenu: OpenMenu;
 }) {
-  const rows = showAll ? group.rows : group.rows.slice(0, SESSIONS_PER_PROJECT);
+  const rows = group.rows.slice(0, shown);
   // A collapsed project still says when one of its chats is running, waiting or unread.
   const rollup = open ? undefined : strongestAttention(group.rows.flatMap((row) => (row.live ? [row.live] : [])));
   return (
@@ -351,10 +354,20 @@ function ProjectSection({
           {rows.map((row) => (
             <SessionRow key={row.key} row={row} active={row.live?.handle === active && active !== undefined} kanban={features.kanban} digit={digits?.get(row.key)} onMenu={onMenu} />
           ))}
+          {/* Long histories page in a few chats at a time; "Show less" sits beside "Show more", never past the whole list. */}
           {group.rows.length > SESSIONS_PER_PROJECT && (
-            <button type="button" onClick={() => onShowAll(!showAll)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
-              {showAll ? "Show less" : `Show ${group.rows.length - SESSIONS_PER_PROJECT} more`}
-            </button>
+            <div className="flex">
+              {rows.length < group.rows.length && (
+                <button type="button" onClick={() => onShown(shown + SESSIONS_PAGE)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
+                  Show more
+                </button>
+              )}
+              {shown > SESSIONS_PER_PROJECT && (
+                <button type="button" onClick={() => onShown(SESSIONS_PER_PROJECT)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
+                  Show less
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
