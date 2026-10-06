@@ -3,7 +3,7 @@ import { useChatActions } from "../lib/chat-ui";
 import { CodeView } from "./Markdown";
 
 const MIN_H = 40;
-const MAX_H = 560;
+const MAX_H = 720;
 const WATCHDOG_MS = 8000;
 
 const TOKEN_NAMES = ["--canvas", "--panel", "--sunken", "--raised", "--fg", "--muted", "--faint", "--accent", "--ok", "--bad", "--warn", "--line"];
@@ -33,14 +33,9 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
   const [armed, setArmed] = useState(!visualFrames?.tapToRender);
   if (!armed)
     return (
-      <>
-        <header>
-          <span>visual</span>
-        </header>
-        <button type="button" onClick={() => setArmed(true)} className="visual-tap" data-testid="visual-tap">
-          Tap to render
-        </button>
-      </>
+      <button type="button" onClick={() => setArmed(true)} className="visual-tap" data-testid="visual-tap">
+        Tap to render visual
+      </button>
     );
   return <LiveFrame source={source} />;
 });
@@ -52,6 +47,8 @@ function LiveFrame({ source }: { source: string }) {
   const src = visualFrames ? visualFrames.src(frameId) : `pigna-visual://${frameId}/doc`;
   const [height, setHeight] = useState(MIN_H);
   const [expanded, setExpanded] = useState(false);
+  // Full window: the same iframe restyled (moving it in the DOM would reload it and lose its state).
+  const [full, setFull] = useState(false);
   const [showSource, setShowSource] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
@@ -117,6 +114,17 @@ function LiveFrame({ source }: { source: string }) {
     };
   }, [source, openExternal]);
 
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setFull(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [full]);
+
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(source);
     setCopied(true);
@@ -124,15 +132,34 @@ function LiveFrame({ source }: { source: string }) {
   }, [source]);
 
   const clamped = height > MAX_H;
-  const shown = clamped && !expanded ? MAX_H : height;
+  const shown = clamped && !expanded && !full ? MAX_H : height;
+  // No box around the frame: the visual reads as part of the reply, and its actions sit under it, shown on hover.
   return (
     <>
-      <header>
-        <span>visual</span>
-        <span className="visual-actions">
-          {clamped && (
-            <button type="button" onClick={() => setExpanded((on) => !on)}>
-              {expanded ? "Collapse" : "Expand"}
+      {full && <div className="visual-backdrop" onClick={() => setFull(false)} />}
+      <div className={full ? "visual-box full" : "visual-box"}>
+        {error && <div className="visual-error">Visual error: {error}</div>}
+        {/* A remote client cannot kill the frame's process, so a failed frame is taken out of the page altogether. */}
+        {!(error && visualFrames) && (
+          <iframe
+            ref={frameRef}
+            className={clamped && !expanded && !full ? "visual-frame clamped" : "visual-frame"}
+            title="Visual"
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+            src={src}
+            style={{ height: full ? undefined : shown, display: error ? "none" : undefined }}
+          />
+        )}
+        <footer className="visual-actions">
+          {clamped && !error && !full && (
+            <button type="button" className={expanded ? undefined : "visual-more"} onClick={() => setExpanded((on) => !on)}>
+              {expanded ? "Collapse" : "Show all"}
+            </button>
+          )}
+          {!error && (
+            <button type="button" onClick={() => setFull((on) => !on)} title={full ? "Close (Esc)" : "Open in the full window"}>
+              {full ? "Close" : "Expand"}
             </button>
           )}
           <button type="button" onClick={() => setShowSource((on) => !on)}>
@@ -141,22 +168,9 @@ function LiveFrame({ source }: { source: string }) {
           <button type="button" onClick={copy}>
             {copied ? "Copied" : "Copy"}
           </button>
-        </span>
-      </header>
-      {error && <div className="visual-error">Visual error: {error}</div>}
-      {/* A remote client cannot kill the frame's process, so a failed frame is taken out of the page altogether. */}
-      {!(error && visualFrames) && (
-      <iframe
-        ref={frameRef}
-        className="visual-frame"
-        title="Visual"
-        sandbox="allow-scripts"
-        referrerPolicy="no-referrer"
-        src={src}
-        style={{ height: shown, display: error ? "none" : undefined }}
-      />
-      )}
-      {(showSource || error) && <CodeView code={source} lang="html" />}
+        </footer>
+        {(showSource || error) && !full && <CodeView code={source} lang="html" />}
+      </div>
     </>
   );
 }

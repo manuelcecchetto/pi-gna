@@ -43,13 +43,14 @@ describe("piArgs pr-review skill", () => {
 });
 
 describe("piArgs visuals prompt", () => {
-  it("appends the visual prompt only when visuals is on", () => {
-    expect(argsFor(base).join(" ")).not.toContain("pigna-visual-prompt.md");
-    expect(argsFor({ ...base, visuals: true })).toContain("/app/resources/pigna-visual-prompt.md");
+  it("loads the visual extension only when visuals is on", () => {
+    expect(argsFor(base).join(" ")).not.toContain("visual");
+    const args = argsFor({ ...base, visuals: true });
+    expect(args[args.indexOf("/app/resources/visual-extension.ts") - 1]).toBe("-e");
   });
-  it("also appends it for ATP chats", () => {
+  it("also loads it for ATP chats", () => {
     const args = argsFor({ ...base, visuals: true }, { role: "worker", plan: "/p/x.atp.json" } as never);
-    expect(args).toContain("/app/resources/pigna-visual-prompt.md");
+    expect(args).toContain("/app/resources/visual-extension.ts");
   });
 });
 
