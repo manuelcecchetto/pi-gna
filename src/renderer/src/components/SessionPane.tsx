@@ -1,6 +1,6 @@
 import { Globe, ListChevronsDownUp, ListChevronsUpDown, Paperclip, SquareKanban } from "lucide-react";
 import { useRef, useState } from "react";
-import { cardOfChat } from "../../../shared/board";
+import { cardsOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../../../shared/session-state";
 import { addChatToBoard, attachFiles, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
@@ -81,19 +81,22 @@ export function SessionPane({ session }: { session: SessionState }) {
   );
 }
 
-/** The card this chat works on (opens it on the board), or a button to put the chat on the board. */
+/** The card this chat joined last (opens it on the board) and how many more it is on, or a button to put the chat on the board. */
 function CardChip({ session }: { session: SessionState }) {
-  const card = useApp((state) => (session.sessionPath ? cardOfChat(state.board, session.sessionPath) : undefined));
+  const board = useApp((state) => state.board);
+  const cards = session.sessionPath ? cardsOfChat(board, session.sessionPath) : [];
+  const card = cards[0];
   if (card) {
     return (
       <button
         type="button"
         onClick={() => showBoard(card.cwd, card.id)}
-        title={`On the board: ${card.title}`}
+        title={`On the board: ${cards.map((other) => other.title).join(", ")}`}
         className="flex max-w-60 min-w-0 items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-0.5 text-[12px] text-muted hover:bg-raised hover:text-fg"
       >
         <ColumnIcon column={card.column} size={12} />
         <span className="truncate">{card.title}</span>
+        {cards.length > 1 && <span className="shrink-0 text-faint">+{cards.length - 1}</span>}
       </button>
     );
   }
