@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.6.6 - 2026-10-06
+
 - New icons: pi-gna draws its own set, softer and rounder (2px round strokes, gentle corners), replacing lucide-react everywhere on the Mac and the phone. The sidebar is roomier: 16px icons and 14px labels, and a project's folder opens and closes with it instead of a chevron, with its chats lined up under the name.
 
 ## 0.6.5 - 2026-10-06
