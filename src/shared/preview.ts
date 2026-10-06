@@ -21,6 +21,8 @@ export interface TabPreview {
 export interface PreviewOpenOptions {
   /** Open another tab even if the file is already previewed. */
   newTab?: boolean;
+  /** Id of a start tab (`BrowserTab.start`) to show the file in, instead of reusing a preview or opening a tab. */
+  into?: string;
   agent?: string;
   /** 1-based line to scroll to, for kinds that have lines. */
   line?: number;

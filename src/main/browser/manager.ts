@@ -59,6 +59,8 @@ export interface Tab {
   win?: BrowserWindow;
   /** Id of the Kanban card this tab shows; its page is blank, the renderer draws the card. */
   card?: string;
+  /** A new tab with nothing loaded yet; the renderer draws the start page. Cleared by `load`. */
+  start?: boolean;
   /** The viewport was made up when popping out a tab that had none; returning to the pane drops it again. */
   autoViewport?: boolean;
   /** Remote viewers watching this tab: while any, the view stays in the window tree (see `hold`). */
@@ -174,6 +176,7 @@ export class BrowserManager {
             agentAt: tab.agentAt,
             preview: tab.preview?.info,
             card: tab.card,
+            start: tab.start,
             favicon: tab.preview || tab.card || tab.favicon?.origin !== originOf(wc.getURL()) ? undefined : tab.favicon?.url,
           },
         ];
@@ -204,8 +207,10 @@ export class BrowserManager {
     return tab;
   }
 
+  /** Opens a tab on `url`, or without one a start tab, which the renderer draws as a launcher until something loads. */
   createTab(url?: string, agent?: string): Tab {
     const tab = this.makeTab(agent);
+    if (!url) tab.start = true;
     this.activate(tab.id);
     if (url) void this.load(tab, url);
     return tab;
@@ -348,6 +353,10 @@ export class BrowserManager {
 
   /** Load a URL; resolves when the main frame finished or failed (failures land in the tab console). */
   async load(tab: Tab, url: string): Promise<void> {
+    if (tab.start) {
+      tab.start = undefined;
+      this.emitState();
+    }
     try {
       await tab.view.webContents.loadURL(url);
     } catch (error) {
@@ -372,9 +381,11 @@ export class BrowserManager {
     const root = previewRoot(file, project);
     // A chat reuses only its own previews: another chat's tab of the same file stays that chat's.
     const owner = options.agent ?? this.chat;
-    const reuse = options.newTab ? undefined : reusableTab([...this.tabs.values()].filter((tab) => tab.agent === owner).map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
+    const into = options.into ? this.tabs.get(options.into) : undefined;
+    if (options.into && !into?.start) throw new Error(`Browser tab ${options.into} is not a new tab`);
+    const reuse = into || options.newTab ? undefined : reusableTab([...this.tabs.values()].filter((tab) => tab.agent === owner).map((tab) => ({ id: tab.id, path: tab.preview?.info.path })), file);
     const reused = reuse ? this.tabs.get(reuse) : undefined;
-    const tab = reused ?? this.makeTab(owner);
+    const tab = into ?? reused ?? this.makeTab(owner);
     const defaults = previewFor(file);
     const mode = options.mode && defaults.modes.includes(options.mode) ? options.mode : defaults.mode;
     const shown = reused?.preview?.info.mode;
