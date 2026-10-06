@@ -32,6 +32,7 @@
     "dist": "node scripts/build-computer-use.mjs && node scripts/build.mjs && electron-builder --mac --publish never",
     "build:computer-use": "node scripts/build-computer-use.mjs",
     "icon": "electron scripts/make-icon.mjs",
+    "dmg-background": "electron scripts/make-dmg-background.mjs",
     "icon:mobile": "node scripts/make-mobile-icons.mjs",
     "dev:mobile": "vite build --watch -c vite.mobile.config.ts",
     "release": "node scripts/release.mjs",
