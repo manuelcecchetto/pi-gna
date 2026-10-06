@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.5.4 - 2026-10-06
+
 - The iPhone's empty chat state now shows the wallpaper chosen on the Mac, and follows it when you change it.
 
 ## 0.5.3 - 2026-10-05
