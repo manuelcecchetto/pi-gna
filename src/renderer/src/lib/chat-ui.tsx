@@ -8,7 +8,7 @@ import type { AppState } from "../state/app";
 import { type Store, useStore } from "./store";
 
 /** The slice of state the shared components read; the desktop's `AppState` has it as is. */
-export type ChatUiState = Pick<AppState, "expandAll" | "expanded" | "board"> & {
+export type ChatUiState = Pick<AppState, "expandAll" | "expanded" | "board" | "look"> & {
   settings: Pick<AppState["settings"], "visuals" | "wallpaper" | "wallpaperLoop">;
 };
 

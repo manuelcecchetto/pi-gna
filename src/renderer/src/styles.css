@@ -23,11 +23,39 @@
   --add-bg: rgb(95 211 141 / 0.1);
   --del-bg: rgb(255 107 107 / 0.1);
   --sidebar: #161618;
+  /* A custom theme (lib/theme.ts) overrides these on <html>: secondary colors links, highlight the text selection. */
+  --secondary: var(--accent);
+  --highlight: var(--accent);
+  --app-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --app-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --app-font-size: 14px;
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme-mode]) {
+    --canvas: #fcfcfb;
+    --panel: #f4f4f3;
+    --raised: #ebebea;
+    --sunken: #f7f7f6;
+    --line: rgb(0 0 0 / 0.08);
+    --line-strong: rgb(0 0 0 / 0.14);
+    --fg: #1d1d20;
+    --muted: #63636b;
+    --faint: #9a9aa2;
+    --accent: #2f6fe4;
+    --accent-soft: rgb(47 111 228 / 0.1);
+    --ok: #1f9d55;
+    --bad: #d93b3b;
+    --warn: #a86b00;
+    --add-bg: rgb(31 157 85 / 0.09);
+    --del-bg: rgb(217 59 59 / 0.08);
+    --sidebar: #f1f1f0;
+    color-scheme: light;
+  }
+}
+:root[data-theme-mode="light"] {
+  & {
     --canvas: #fcfcfb;
     --panel: #f4f4f3;
     --raised: #ebebea;
@@ -64,8 +92,10 @@
   --color-ok: var(--ok);
   --color-bad: var(--bad);
   --color-warn: var(--warn);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
-  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --color-secondary: var(--secondary);
+  --color-highlight: var(--highlight);
+  --font-sans: var(--app-sans);
+  --font-mono: var(--app-mono);
 }
 
 html,
@@ -76,7 +106,7 @@ body,
   background: var(--sidebar);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--app-font-size);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
@@ -85,6 +115,9 @@ body,
 .selectable,
 .selectable * {
   user-select: text;
+}
+:root[data-highlight] ::selection {
+  background: color-mix(in srgb, var(--highlight) 38%, transparent);
 }
 
 .drag {
@@ -280,7 +313,7 @@ body,
   color: var(--faint);
 }
 .prose a {
-  color: var(--accent);
+  color: var(--secondary);
   text-decoration: none;
 }
 .prose .file-link,
@@ -581,7 +614,7 @@ pre.code {
 code.hl span {
   color: var(--shiki-dark);
 }
-@media (prefers-color-scheme: light) {
+:root[data-theme-mode="light"] {
   code.hl span {
     color: var(--shiki-light);
   }
@@ -601,7 +634,7 @@ code.hl span {
 .wallpaper-thumb {
   background: var(--wallpaper-dusk) center / cover no-repeat;
 }
-@media (prefers-color-scheme: light) {
+:root[data-theme-mode="light"] {
   .hero {
     background-image: var(--wallpaper-day);
   }
@@ -714,7 +747,7 @@ code.hl span {
       100% 50%;
   }
 }
-@media (prefers-color-scheme: light) {
+:root[data-theme-mode="light"] {
   .composer-glow {
     opacity: 0.1;
   }

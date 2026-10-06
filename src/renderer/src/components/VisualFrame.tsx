@@ -1,12 +1,16 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useChatActions } from "../lib/chat-ui";
+import { THEME_EVENT } from "../lib/theme";
 import { CodeView } from "./Markdown";
 
 const MIN_H = 40;
 const MAX_H = 720;
 const WATCHDOG_MS = 8000;
 
-const TOKEN_NAMES = ["--canvas", "--panel", "--sunken", "--raised", "--fg", "--muted", "--faint", "--accent", "--ok", "--bad", "--warn", "--line"];
+const TOKEN_NAMES = ["--theme-mode", "--app-font-size", "--canvas", "--panel", "--sunken", "--raised", "--fg", "--muted", "--faint", "--accent", "--accent-soft", "--secondary", "--highlight", "--ok", "--bad", "--warn", "--line"];
+/** The first categorical colors, which a custom theme sets to its primary, secondary and accent: always sent, empty when
+ * the theme leaves them, so the frame falls back to the kit's own. */
+const PALETTE_NAMES = ["--c1", "--c2", "--c3"];
 
 function readTokens(): Record<string, string> {
   const style = getComputedStyle(document.documentElement);
@@ -19,6 +23,7 @@ function readTokens(): Record<string, string> {
     const value = style.getPropertyValue(name).trim();
     if (value) tokens[name] = value;
   }
+  for (const name of PALETTE_NAMES) tokens[name] = style.getPropertyValue(name).trim();
   return tokens;
 }
 
@@ -106,7 +111,9 @@ function LiveFrame({ source }: { source: string }) {
     window.addEventListener("message", onMessage);
     frame.addEventListener("load", onLoad);
     media.addEventListener("change", onTheme);
+    window.addEventListener(THEME_EVENT, onTheme);
     return () => {
+      window.removeEventListener(THEME_EVENT, onTheme);
       clearInterval(watchdog);
       window.removeEventListener("message", onMessage);
       frame.removeEventListener("load", onLoad);

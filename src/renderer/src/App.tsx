@@ -9,6 +9,7 @@ import { SessionPane } from "./components/SessionPane";
 import { SettingsPage } from "./components/Settings";
 import { SetupFlow } from "./components/Setup";
 import { HeroBackdrop } from "./components/Transcript";
+import { ThemeRoot } from "./components/ThemeRoot";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
@@ -76,6 +77,7 @@ export function App() {
 
   return (
     <div className="flex h-full">
+      <ThemeRoot />
       <Sidebar />
       <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`}>

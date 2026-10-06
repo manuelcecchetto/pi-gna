@@ -15,6 +15,7 @@ import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
 import { openSetup } from "./Setup";
 import { RemoteSection } from "./Remote";
+import { ThemeEditor } from "./ThemeSettings";
 import { Button, Card, Choice, ModelChoice, NumberField, Row, Segmented } from "./SettingsControls";
 import { COLLAPSED_INSET } from "./Sidebar";
 
@@ -32,7 +33,7 @@ interface SectionInfo {
 
 const SECTIONS: SectionInfo[] = [
   { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update about settings.json file folder setup onboarding install pi welcome first run" },
-  { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color wallpaper background backdrop empty state image loop cycle rotate shuffle" },
+  { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color colour palette primary secondary accent font typeface size wallpaper background backdrop empty state image logo project custom loop cycle rotate shuffle" },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: Keyboard, group: "pi-gna", about: "Hold ⌘ anywhere to see ⌘1–⌘9 on the chats in the sidebar.", keywords: "keys hotkeys keyboard command" },
   {
     id: "providers",
@@ -185,7 +186,7 @@ export function SettingsPage({ page }: { page: PageState }) {
           {section.id === "general" ? (
             <GeneralSection pi={pi} />
           ) : section.id === "appearance" ? (
-            <AppearanceSection />
+            <AppearanceSection cwd={page.cwd} />
           ) : section.id === "shortcuts" ? (
             <ShortcutsSection />
           ) : section.id === "providers" ? (
@@ -308,7 +309,7 @@ function GeneralSection({ pi }: { pi: Pi }) {
 
 const THEME_LABELS: Record<Theme, string> = { system: "System", light: "Light", dark: "Dark" };
 
-function AppearanceSection() {
+function AppearanceSection({ cwd }: { cwd: string }) {
   const theme = useApp((state) => state.settings.theme);
   const wallpaper = useApp((state) => state.settings.wallpaper);
   const loop = useApp((state) => state.settings.wallpaperLoop);
@@ -339,6 +340,7 @@ function AppearanceSection() {
           <Switch on={loop} onChange={(on) => void applySettings({ type: "wallpaperLoop", loop: on })} />
         </Row>
       </Card>
+      <ThemeEditor cwd={cwd} />
     </>
   );
 }

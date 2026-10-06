@@ -384,3 +384,22 @@ describe("stream", () => {
     expect(t.client.store.get().connection).toBe("live");
   });
 });
+
+
+describe("theme synchronization", () => {
+  it("reads themes on sync and applies only fresh live theme events", async () => {
+    const themes = { version: 1, rev: 1, global: {}, projects: { "/p": { base: "dark" } } };
+    const t = setup((call) => call.path === "themes.get" ? ok({ seq: 5, value: themes }) : reads()(call));
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    expect(t.client.store.get().global.themes).toEqual(themes);
+    const next = { ...themes, rev: 2, projects: { "/p": { base: "light" } } };
+    t.src().host(6, "global", { kind: "themes", themes: next });
+    t.src().host(6, "global", { kind: "themes", themes });
+    expect(t.client.store.get().global.themes).toEqual(next);
+    t.client.stop();
+  });
+});

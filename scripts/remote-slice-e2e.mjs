@@ -2,7 +2,7 @@
 // End to end test of the remote vertical slice, without a phone (docs/REMOTE.md, "Automated end-to-end test"):
 // pairing, open, prompt, streaming, approvals, cancellation, reconnect and recovery, closing clients mid-run, and
 // screenshots of the mobile screens. Run it from the repo root:
-//   node scripts/remote-slice-e2e.mjs [--keep] [--no-build] [--shots <dir>] [--hold] [--screens-only] [--debug]
+//   node scripts/remote-slice-e2e.mjs [--keep] [--no-build] [--shots <dir>] [--hold] [--screens-only] [--themes-only] [--debug]
 // It builds the app into its own folder under the temp dir, starts a test instance there (own PIGNA_USER_DATA,
 // own free ports, PIGNA_BACKGROUND=1, scripts/fake-pi.mjs as pi), drives it as two paired phones (HTTP + SSE, like
 // the HostClient) and as the desktop window (CDP), and stops it by PID. Nothing touches a running pi-gna.
@@ -113,8 +113,12 @@ function seed(ports) {
       ],
     }),
   );
+  // Project-owned theme images exercise the same confined-file path as real projects.
+  mkdirSync(join(project, "assets"), { recursive: true });
+  writeFileSync(join(project, "assets", "theme-wallpaper.png"), Buffer.from(png(32, 24, [24, 90, 170]), "base64"));
+  writeFileSync(join(project, "assets", "theme-logo.png"), Buffer.from(png(20, 20, [220, 80, 40]), "base64"));
   // Remote access on through the profile's settings; the server follows them at launch.
-  writeFileSync(join(userData, "settings.json"), JSON.stringify({ version: 1, remote: { enabled: true, port: ports.remote, keepAwake: "off" } }));
+  writeFileSync(join(userData, "settings.json"), JSON.stringify({ version: 1, visuals: true, remote: { enabled: true, port: ports.remote, keepAwake: "off" } }));
   return file;
 }
 
@@ -146,7 +150,7 @@ function png(width, height, [r, g, b], noise = false) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: height }, row)))), chunk("IEND", Buffer.alloc(0))]).toString("base64");
 }
 
-const VISUAL_OK = '<div class="stack"><div class="stat"><span class="stat-value" id="v">42</span><span class="stat-label">answers</span></div></div>';
+const VISUAL_OK = '<div class="stack"><div class="stat"><span class="stat-value" id="v">42</span><span class="stat-label">answers</span></div></div><script>const themeFixtureSentinel=1;window.__themeFixtureRuns=(window.__themeFixtureRuns||0)+1;window.addEventListener("message",e=>{if(e.source===parent&&(e.data?.type==="tokens"||e.data?.type==="render")){setTimeout(()=>parent.postMessage({type:"theme-proof",mode:document.documentElement.dataset.themeMode,accent:getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),size:getComputedStyle(document.documentElement).getPropertyValue("--app-font-size").trim(),runs:window.__themeFixtureRuns},"*"),0)}})</script>';
 // Stops the kit's heartbeat without blocking the page: what a wedged frame looks like to the watchdog.
 const VISUAL_STUCK = "<div>stuck</div><script>for (let i = 0; i < 99999; i++) clearInterval(i);</script>";
 
@@ -450,11 +454,19 @@ async function scenario(ctx) {
   const cwd = ctx.project;
   const deviceA = devices.find((d) => d.name === "iPhone A");
 
+  await themeChecks({ A, desktop, project });
+  if (flag("--themes-only")) return screens(ctx, { handle: "", A, B, project });
+
   if (flag("--screens-only")) {
     // Development shortcut: skip the scenarios, just look at the mobile screens.
     await showSession(desktop, "Earlier question 1");
     const { handle } = await A.ok("chat.open", { request: { cwd, sessionPath: sessionFile } });
-    return screens(ctx, { handle, A, B });
+    const stream = A.events([handle]);
+    await until("the screens-only stream", () => stream.frames.some((frame) => frame.event === "hello"));
+    await A.ok("chat.send", { handle, text: "screens-only fixture [lines=50][delay=1]", mode: "send" });
+    await until("the screens-only answer", () => agentEnds(stream.events, `chat:${handle}`) === 1, 30_000);
+    stream.drop();
+    return screens(ctx, { handle, A, B, project });
   }
 
   // ── Open ────────────────────────────────────────────────────────────────
@@ -695,7 +707,7 @@ async function scenario(ctx) {
   check((await A.call("chat.live", {})).status === 200, "calls answer again after resume");
   sleeper.drop();
 
-  await screens(ctx, { handle, A });
+  await screens(ctx, { handle, A, project: ctx.project });
   // The phone checks close the chat (Close chat in the sheet): the sections below need it live again.
   handle = (await A.ok("chat.open", { request: { cwd, sessionPath: sessionFile } })).handle;
 
@@ -729,6 +741,37 @@ async function scenario(ctx) {
     log(`holding; debug port ${ctx.ports.debug}; Ctrl-C to stop`);
     await new Promise(() => undefined);
   }
+}
+
+
+/** Desktop theme application plus remote read/image allowlisting; no theme mutation is exposed remotely. */
+async function themeChecks({ A, desktop, project }) {
+  log("themes: desktop apply, remote read allowlist, project images and live visual tokens");
+  const denied = await A.call("themes.active", { project });
+  check(denied.status === 403, "remote themes.active is forbidden", denied.status);
+  const initial = await A.ok("themes.get");
+  check(!!initial && typeof initial === "object", "remote themes.get is allowed");
+
+  // Activate the seeded project first so ThemeRoot has a project scope; this is the desktop Settings bridge.
+  await showSession(desktop, "Tools demo");
+  // This is the same desktop bridge invoked by Settings > Appearance; deliberately call through the desktop API.
+  await desktop.eval(`window.studio.themes.apply({ type: "set", scope: { project: ${JSON.stringify(project)} }, patch: { base: "dark", font: { ui: "Arial", size: 18 }, colors: { dark: { primary: "#d34a6f", background: "#17121a" } }, wallpaper: { path: "assets/theme-wallpaper.png" }, logo: { path: "assets/theme-logo.png" } } })`);
+  await until("desktop theme saved", async () => (await A.ok("themes.get")).projects?.[project]?.font?.size === 18);
+  const wallpaper = await A.ok("themes.image", { project, kind: "wallpaper" });
+  const logo = await A.ok("themes.image", { project, kind: "logo" });
+  check(typeof wallpaper === "string" && wallpaper.startsWith("data:image/png;base64,"), "remote themes.image delivers project wallpaper data");
+  check(typeof logo === "string" && logo.startsWith("data:image/png;base64,"), "remote themes.image delivers project logo data");
+  await until("desktop theme tokens", () => desktop.eval(`getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() === "#d34a6f" && getComputedStyle(document.documentElement).getPropertyValue("--app-font-size").trim() === "18px"`), 10_000, 150);
+  check(true, "desktop theme settings update live color and font tokens");
+
+  // The frame is sandboxed, so its fixture reports computed tokens through the actual postMessage boundary.
+  await desktop.eval(`window.__visualThemeProofs = []; window.addEventListener("message", (event) => { if (event.data?.type === "theme-proof") window.__visualThemeProofs.push(event.data); });`);
+  await desktop.eval(`window.studio.themes.apply({ type: "set", scope: { project: ${JSON.stringify(project)} }, patch: { base: "light", colors: { light: { primary: "#38a878" } }, font: { ui: "Georgia", size: 19 } } })`);
+  await until("VisualFrame computed theme update", () => desktop.eval(`window.__visualThemeProofs.some((proof) => proof.mode === "light" && proof.accent === "#38a878" && proof.size === "19px" && proof.runs === 1)`), 10_000, 150);
+  check(true, "inline VisualFrame computes the new forced mode, palette and font in-place without rerunning its sentinel", await desktop.eval(`window.__visualThemeProofs.at(-1)`));
+
+  // Restore project mode to system for the rest of the remote scenario.
+  await desktop.eval(`window.studio.themes.apply({ type: "set", scope: { project: ${JSON.stringify(project)} }, patch: { base: null } })`);
 }
 
 // ── Desktop helpers ──────────────────────────────────────────────────────────
@@ -776,7 +819,7 @@ function startProxy(remotePort, cookie, login) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
-async function screens({ desktop, ports }, { handle, A }) {
+async function screens({ desktop, ports }, { handle, A, project }) {
   log("mobile screens (iPhone 15 preset in the instance's own browser)");
   proxy = await startProxy(ports.remote, A.cookie, A.login);
   const proxyPort = proxy.address().port;
@@ -821,12 +864,43 @@ async function screens({ desktop, ports }, { handle, A }) {
   if (flag("--debug")) log(`  page ${await phone.eval("location.href")}: ${(await text()).slice(0, 300)}`);
   const present = (needle) => async () => (await text()).includes(needle);
   const exists = (selector) => phone.eval(`!!document.querySelector(${JSON.stringify(selector)})`);
+  const screenshotPhone = async (name) => {
+    const data = await mainEval(`${view}.capturePage().then((image) => image.toPNG().toString("base64"))`);
+    const file = join(dir, `${name}.png`);
+    writeFileSync(file, Buffer.from(data, "base64"));
+    log(`  shot ${file}`);
+  };
+
+  if (flag("--themes-only")) {
+    await until("the projects screen", present("project"), 30_000, 250);
+    const setBase = (base) => desktop.eval(`window.studio.themes.apply({ type: "set", scope: { project: ${JSON.stringify(project)} }, patch: { base: ${JSON.stringify(base)} } })`);
+    await phone.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+    await setBase("light");
+    await tap("project");
+    await until("the project chats screen", present("Earlier question 1"));
+    await until("project light mode over dark OS", () => phone.eval(`document.documentElement.dataset.themeMode === "light"`), 10_000, 150);
+    check(true, "mobile active project forces light while its emulated OS is dark");
+    await screenshotPhone("themes-project-light");
+    await phone.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+    await setBase("dark");
+    await until("project dark mode over light OS", () => phone.eval(`document.documentElement.dataset.themeMode === "dark"`), 10_000, 150);
+    check(true, "mobile active project forces dark while its emulated OS is light");
+    await screenshotPhone("themes-project-dark");
+    await mainEval(`${view}.debugger.detach(), globalThis.__sliceWin.destroy(), true`);
+    inspector.close();
+    return;
+  }
 
   await until("the projects screen", present("project"), 30_000, 250);
   await sleep(800);
   await shot("1-projects");
+  // Pin the emulated OS to light, then give the active project an explicit dark mode: project theme must win.
+  await phone.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+  await desktop.eval(`window.studio.themes.apply({ type: "set", scope: { project: ${JSON.stringify(project)} }, patch: { base: "dark" } })`);
   check(await tap("project"), "the phone lists the project");
   await until("the chats screen", present("Earlier question 1"));
+  await until("the mobile project-forced dark mode", () => phone.eval(`document.documentElement.dataset.themeMode === "dark"`), 10_000, 150);
+  check(true, "the active project forces dark on a mobile emulating a light OS");
   await sleep(800);
   await shot("2-chats");
   check(await tap("Earlier question 1"), "the phone lists the session");

@@ -79,8 +79,13 @@ export class SessionHost {
   private readonly settleListeners = new Set<(handle: string, outcome: RunOutcome) => void>();
   private readonly working = new Set<string>();
   private readonly runningListeners = new Set<() => void>();
-  /** The browser_*, kanban_* and lament tools, which reach pi-gna through the bridge. */
-  private readonly extensions = { browser: onDisk("resources", "browser-extension.ts"), kanban: onDisk("resources", "kanban-extension.ts"), laments: onDisk("resources", "lament-extension.ts") };
+  /** The browser_*, set_theme, kanban_* and lament tools, which reach pi-gna through the bridge. */
+  private readonly extensions = {
+    browser: onDisk("resources", "browser-extension.ts"),
+    theme: onDisk("resources", "theme-extension.ts"),
+    kanban: onDisk("resources", "kanban-extension.ts"),
+    laments: onDisk("resources", "lament-extension.ts"),
+  };
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
   /** Skills pi-gna bundles: pr-review, which the GitHub page's Review starts a chat with. */
@@ -99,7 +104,7 @@ export class SessionHost {
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
   /** @internal exposed for tests */
   piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, features: SessionFeatures): { args: string[]; env: Record<string, string> } {
-    const args = ["-e", this.extensions.browser, "--append-system-prompt", this.prompt];
+    const args = ["-e", this.extensions.browser, "-e", this.extensions.theme, "--append-system-prompt", this.prompt];
     if (features.visuals) args.push("-e", onDisk("resources", "visual-extension.ts"));
     if (features.kanban) args.push("-e", this.extensions.kanban);
     if (features.laments) args.push("-e", this.extensions.laments);

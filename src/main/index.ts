@@ -17,6 +17,7 @@ import { HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
+import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
 import { AtpRuns } from "./atp-runner";
 import { AtpThreads } from "./atp-threads";
@@ -40,6 +41,7 @@ import { ComputerAgent, computerRoute } from "./computer/agent";
 import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
+import { ThemeStore, themeRoute } from "./themes";
 import { PiAuth } from "./pi-auth";
 import { PiPlugins } from "./plugins";
 import { PiSetup } from "./setup";
@@ -135,6 +137,7 @@ hub.subscribe({
         case "ui": send(IPC.uiChanged, e.ui); break;
         case "board": send(IPC.boardChanged, e.board); break;
         case "laments": send(IPC.lamentsChanged, e.laments); break;
+        case "themes": send(IPC.themesChanged, e.themes); break;
         case "computer": send(IPC.computerChanged, e.settings); break;
         case "atp.plans": send(IPC.atpPlans, e.plans); break;
         case "atp.held": send(IPC.atpHeld, e.plans); break;
@@ -218,6 +221,13 @@ bridge.route("/computer", computerRoute(() => computerAgent));
 host.onRunEnd((handle) => void computerAgent.release(handle));
 host.onExit((handle) => browser?.closeTabsOf(handle));
 bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) => host.identify(handle))));
+const themes = new ThemeStore(join(app.getPath("userData"), "themes.json"), (next) => {
+  publish({ kind: "themes", themes: next });
+  void applyAppearance();
+});
+bridge.route("/theme", themeRoute(themes, settings, async (handle) => (await host.identify(handle)).cwd));
+/** The project on the window's screen (themes.active): its theme's appearance mode is the app's. */
+let activeProject: string | null = null;
 const githubSettings = new GithubStore(join(app.getPath("userData"), "github.json"));
 const github = new Github(githubSettings);
 // The runner and its chats start once the shell environment is known (registerIpc); plans and holds reach it through these.
@@ -415,6 +425,11 @@ function registerIpc(shellEnv: Promise<void>): void {
     computerHelper,
     computerAgent,
     laments,
+    themes,
+    activeProject: (project) => {
+      activeProject = project;
+      void applyAppearance();
+    },
     github,
     atp,
     atpRuns,
@@ -478,12 +493,18 @@ async function checkForUpdates(): Promise<void> {
  * adds the host lifecycle: closing hides the window, the Mac may be kept awake, and pi-gna may open at login. */
 function applySettings(next: Settings): void {
   current = next;
-  nativeTheme.themeSource = next.theme;
+  void applyAppearance();
   buildMenu(next.features);
   syncKeepAwake();
   void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
   if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
+}
+
+/** Light, dark or the system's: the project on screen's theme, else the setting. Native too, so the window's
+ * prefers-color-scheme, its menus and the browser pane's pages follow it. */
+async function applyAppearance(): Promise<void> {
+  nativeTheme.themeSource = effectiveTheme(await themes.get(), current, activeProject ?? undefined).base;
 }
 
 /** Holds a power-save blocker (no idle sleep; the display may still sleep) exactly while the keep-awake setting wants
@@ -605,7 +626,7 @@ function init(): void {
     if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
     // Phones learn the Mac is quitting (best effort, bounded) while the network is still up.
     const quitPush = push && current.remote.enabled ? Promise.race([push.notifyQuit(), new Promise((resolve) => setTimeout(resolve, 3000))]) : undefined;
-    void Promise.allSettled([quitPush, remoteHost?.stop(), host.closeAll(), devices.flushed(), board.flushed(), laments.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    void Promise.allSettled([quitPush, remoteHost?.stop(), host.closeAll(), devices.flushed(), board.flushed(), laments.flushed(), themes.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => {
     if (!hidesOnClose(current)) app.quit();

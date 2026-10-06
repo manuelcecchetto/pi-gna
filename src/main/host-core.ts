@@ -9,6 +9,7 @@ import type { GithubFilter, GithubKind } from "../shared/github";
 import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, HostError, type MethodScope, type NewCardAttachment, type QueueEdit, type TaskTarget } from "../shared/host-api";
 import { type DialogAnswer, IPC, type OpenSessionRequest, type PickedPath } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
+import type { ThemeOp } from "../shared/themes";
 import type { PreviewMode, PreviewOpenOptions } from "../shared/preview";
 import { type PackageToggle, type PluginToggle, RESOURCE_TYPES } from "../shared/plugins";
 import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
@@ -38,6 +39,7 @@ import type { ComputerService } from "./computer/service";
 import type { ComputerStore } from "./computer/store";
 import type { Github } from "./github";
 import type { LamentStore } from "./laments";
+import { applyTheme, type ThemeStore, themeImage } from "./themes";
 import type { PiAuth } from "./pi-auth";
 import type { PiPlugins } from "./plugins";
 import type { PiSetup } from "./setup";
@@ -81,6 +83,9 @@ export interface HostDeps {
   computerHelper: ComputerService;
   computerAgent: ComputerAgent;
   laments: LamentStore;
+  themes: ThemeStore;
+  /** The project on the window's screen changed (themes.active). */
+  activeProject(project: string | null): void;
   github: Github;
   atp: Atp;
   atpRuns: AtpRuns;
@@ -429,6 +434,20 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     ),
     "laments.get": any("remote", () => laments.get()),
     "laments.apply": any<{ op: LamentOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => laments.apply(op, baseRev)),
+    "themes.get": any("remote", () => deps.themes.get()),
+    "themes.apply": any<{ op: ThemeOp; baseRev?: number }>("desktop", (_ctx, { op, baseRev }) => applyTheme(deps.themes, op, baseRev)),
+    "themes.image": method<{ project: string; kind: "wallpaper" | "logo" }>(
+      "remote",
+      (raw) => {
+        if (typeof raw?.project !== "string" || (raw.kind !== "wallpaper" && raw.kind !== "logo")) throw new HostError("bad_request", "a project and wallpaper or logo");
+        return { project: raw.project, kind: raw.kind };
+      },
+      async (_ctx, { project, kind }) => themeImage(await deps.themes.get(), project, kind),
+    ),
+    "themes.active": any<{ project: string | null }>("desktop", (_ctx, { project }) => {
+      deps.activeProject(typeof project === "string" ? project : null);
+      return null;
+    }),
 
     "computer.get": any("remote", () => computerPolicy.get()),
     "computer.apply": any<{ op: ComputerOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => computerPolicy.apply(op, baseRev)),
@@ -695,6 +714,10 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.addCard, "board.addCard", (cwd, column, description, attachments) => ({ cwd, column, description, attachments })),
   route(IPC.lamentsGet, "laments.get"),
   route(IPC.lamentsApply, "laments.apply", (op, baseRev) => ({ op, baseRev })),
+  route(IPC.themesGet, "themes.get"),
+  route(IPC.themesApply, "themes.apply", (op, baseRev) => ({ op, baseRev })),
+  route(IPC.themesImage, "themes.image", (project, kind) => ({ project, kind })),
+  route(IPC.themesActive, "themes.active", (project) => ({ project }), true),
   route(IPC.computerGet, "computer.get"),
   route(IPC.computerApply, "computer.apply", (op, baseRev) => ({ op, baseRev })),
   route(IPC.computerPermissions, "computer.permissions"),

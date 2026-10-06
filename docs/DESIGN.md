@@ -712,6 +712,33 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   Everything a real iPhone adds (pinch, long-press, push, Home Screen behavior) is the runbook in
   `docs/REMOTE_VERIFICATION.md`.
 
+## Project themes
+
+`src/shared/themes.ts` is the validated patch/merge contract; `main/themes.ts` owns
+`userData/themes.json` (revisioned JsonStore). Project keys use `projectOf(cwd)`, so card worktrees
+share their original project's theme. Resolution is project fields over global fonts/colors over
+built-in settings/default tokens. Omitted fields stay unchanged; null removes the override and
+inherits again. Theme files are local preferences, not executable project configuration.
+
+Settings > Appearance and the agent's `set_theme` extension reach the same main-owned validator.
+The token-gated `/theme` bridge obtains the project from the calling session, never an agent-supplied
+absolute path. Global mode/built-in wallpaper remain in settings for compatibility; image wallpapers
+and logos belong to projects. Images are project-relative files, realpath-contained, size-limited
+(12 MB wallpaper, 2 MB logo) and delivered as data URLs. Missing images show no replacement, not a
+filesystem URL. Fonts are installed family names only: no downloads; a phone without that font uses
+the fallback stack. `set_theme` reports the effective values, including inherited fields.
+
+`ThemeRoot` in each client resolves its own foreground project. The shared `useThemeAppearance`
+hook sets explicit light/dark mode and CSS variables; system mode follows that device. Only desktop
+may call `themes.active` to set native macOS appearance. Paired phones read `themes.get`/`themes.image`
+and receive revisioned theme events, including resync; they never change the Mac's foreground project.
+Project wallpaper overrides suppress wallpaper looping. VisualFrame forwards colors, fonts and mode
+on the `pigna-theme` event, so existing sandboxed inline visuals update without re-running scripts.
+
+Regression lesson: use explicit theme mode rather than only `prefers-color-scheme`: a phone's OS
+mode can differ from a project's mode. Keep the host allowlist, mobile snapshot/event handling and
+frame token propagation covered together (`scripts/remote-slice-e2e.mjs`).
+
 ## Settings
 
 Codex-style: a Settings row is fixed at the foot of the sidebar (⌘, or pi-gna > Settings…). While the page is open the

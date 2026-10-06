@@ -13,6 +13,8 @@ files:
   - src/shared/preview.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+  - src/shared/settings.ts
+  - src/shared/themes.ts
   - src/shared/viewport.ts
   - "!resources/icon.png"
   - "!resources/pigna-flag.ts"
@@ -24,6 +26,8 @@ asarUnpack:
   - src/shared/preview.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+  - src/shared/settings.ts
+  - src/shared/themes.ts
   - src/shared/viewport.ts
 # The Computer Use helper app (built by `pnpm build:computer-use`, which `pnpm dist` runs first) rides outside the
 # asar in Contents/Resources/computer-use/; main installs it to ~/.pi-gna and launches it from there.

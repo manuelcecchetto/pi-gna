@@ -84,6 +84,7 @@ export interface GlobalState {
   board?: HostResult<"board.get">["value"];
   laments?: HostResult<"laments.get">["value"];
   settings?: HostResult<"settings.get">["value"];
+  themes?: HostResult<"themes.get">["value"];
   computer?: HostResult<"computer.get">["value"];
   ui?: HostResult<"ui.get">["value"];
   atp?: HostResult<"atp.state">["value"];
@@ -129,6 +130,7 @@ const GLOBAL_READS: { key: GlobalKey; read: (c: HostClient) => Promise<{ seq?: n
   { key: "projects", read: async (c) => ({ value: await c.call("chat.list", {}) }) },
   { key: "board", read: async (c) => snapshotOf(await c.call("board.get", {})) },
   { key: "laments", read: async (c) => snapshotOf(await c.call("laments.get", {})) },
+  { key: "themes", read: async (c) => snapshotOf(await c.call("themes.get", {})) },
   { key: "settings", read: async (c) => snapshotOf(await c.call("settings.get", {})) },
   { key: "computer", read: async (c) => snapshotOf(await c.call("computer.get", {})) },
   { key: "ui", read: async (c) => snapshotOf(await c.call("ui.get", {})) },
@@ -143,6 +145,7 @@ function globalPatch(event: GlobalEvent): { key: GlobalKey; value: unknown } | n
     case "projects": return { key: "projects", value: event.projects };
     case "board": return { key: "board", value: event.board };
     case "laments": return { key: "laments", value: event.laments };
+    case "themes": return { key: "themes", value: event.themes };
     case "settings": return { key: "settings", value: event.settings };
     case "computer": return { key: "computer", value: event.settings };
     case "ui": return { key: "ui", value: event.ui };

@@ -25,6 +25,7 @@ import { distanceToEnd, END_SLACK, followsAfterScroll } from "../lib/turn-scroll
 import type { SessionState } from "../../../shared/session-state";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
+import { imageWallpaperStyle } from "../lib/theme";
 import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { ColumnIcon } from "./ColumnIcon";
 import { CompactionProgress } from "./CompactionProgress";
@@ -324,22 +325,27 @@ function useTurnScroll(
 
 /** Empty-state backdrop: the wallpaper picked in Settings (styles.css `.hero`), or nothing for none. While they loop,
  * each empty state shows the next one and keeps it while it is open. It picks again when the setting changes: at launch
- * the settings arrive from main after the first render. */
+ * the settings arrive from main after the first render. A project theme's wallpaper (`look`, an image or a built-in
+ * one) replaces it and never loops. */
 export function HeroBackdrop() {
-  const picked = useChatUi((state) => state.settings.wallpaper);
-  const loop = useChatUi((state) => state.settings.wallpaperLoop);
+  const look = useChatUi((state) => state.look);
+  const setting = useChatUi((state) => state.settings.wallpaper);
+  const picked = look?.wallpaper ?? setting;
+  const loop = useChatUi((state) => state.settings.wallpaperLoop) && !look?.wallpaper;
   const [shown, setShown] = useState(() => ({ picked, loop, id: loopWallpaper(picked, loop) }));
   if (shown.picked !== picked || shown.loop !== loop) setShown({ picked, loop, id: loopWallpaper(picked, loop) });
-  const style = wallpaperStyle(shown.id);
+  const style = look?.wallpaperUrl ? imageWallpaperStyle(look.wallpaperUrl) : wallpaperStyle(shown.id);
   return style ? <div className="hero" style={style} aria-hidden /> : null;
 }
 
 function EmptyTranscript({ session, onPickProject }: { session: SessionState; onPickProject?: () => void }) {
   const { homeDir } = useChatActions();
+  const logo = useChatUi((state) => state.look?.logo);
   return (
     <div className="relative flex min-h-0 flex-1 flex-col items-center justify-end overflow-hidden px-8 pb-8">
       <HeroBackdrop />
       <div className="relative flex flex-col items-center">
+        {logo && <img src={logo} alt="" data-testid="project-logo" className="mb-4 size-16 object-contain" />}
         <h1 className="text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
         {onPickProject ? (
           <button

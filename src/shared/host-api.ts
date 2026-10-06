@@ -10,6 +10,7 @@ import type { CompactionSettings } from "./compaction";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, GithubProject, GithubRepo } from "./github";
 import type { LamentOp, Laments } from "./laments";
+import type { ThemeOp, Themes } from "./themes";
 import type { PreviewMode, PreviewOpenOptions } from "./preview";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
@@ -131,6 +132,7 @@ export type GlobalEvent =
   | { kind: "chat.closed"; handle: string }
   | { kind: "board"; board: Revved<Board> }
   | { kind: "laments"; laments: Revved<Laments> }
+  | { kind: "themes"; themes: Revved<Themes> }
   | { kind: "settings"; settings: Revved<Settings> }
   | { kind: "computer"; settings: Revved<ComputerSettings> }
   | { kind: "ui"; ui: Revved<UiState> }
@@ -478,6 +480,12 @@ export interface HostMethods {
   "board.saveImage": { args: { card: string; image: { mimeType: string; data: string } }; result: string };
   "laments.get": { args: Record<string, never>; result: Snapshot<Revved<Laments>> };
   "laments.apply": { args: { op: LamentOp; baseRev?: number }; result: Revved<Laments> };
+  "themes.get": { args: Record<string, never>; result: Snapshot<Revved<Themes>> };
+  "themes.apply": { args: { op: ThemeOp; baseRev?: number }; result: Revved<Themes> };
+  /** A project theme's wallpaper or logo as a data: URL; null when it has none or the file is gone. */
+  "themes.image": { args: { project: string; kind: "wallpaper" | "logo" }; result: string | null };
+  /** The project on the window's screen: its theme's appearance mode becomes the app's. */
+  "themes.active": { args: { project: string | null }; result: null };
   "settings.get": { args: Record<string, never>; result: Snapshot<Revved<Settings>> };
   "settings.apply": { args: { op: SettingsOp; baseRev?: number }; result: Revved<Settings> };
   "settings.pi": { args: Record<string, never>; result: PiSettingsState };
@@ -631,6 +639,8 @@ export type BrowserInput =
 export const DESKTOP_ONLY_METHODS = [
   "chat.rawCommand",
   "settings.revealPi",
+  "themes.apply",
+  "themes.active",
   "computer.openSettings",
   "atp.importThreads",
   "ui.importLegacy",
@@ -698,6 +708,8 @@ export const READ_ONLY_METHODS = [
   "setup.status",
   "board.get",
   "laments.get",
+  "themes.get",
+  "themes.image",
   "settings.get",
   "settings.pi",
   "computer.get",

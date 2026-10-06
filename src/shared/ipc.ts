@@ -10,6 +10,7 @@ import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
+import type { ThemeOp, Themes } from "./themes";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, DeviceInfo, HostErrorCode, HostEvent, NewCardAttachment, PairingStatus, QueueEdit, RemoteStatus, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
@@ -84,6 +85,11 @@ export const IPC = {
   lamentsGet: "laments:get",
   lamentsApply: "laments:apply",
   lamentsChanged: "laments:changed",
+  themesGet: "themes:get",
+  themesApply: "themes:apply",
+  themesChanged: "themes:changed",
+  themesImage: "themes:image",
+  themesActive: "themes:active",
   computerGet: "computer:get",
   computerApply: "computer:apply",
   computerChanged: "computer:changed",
@@ -251,6 +257,17 @@ export interface LamentsApi {
   /** Rejects with the reason for an invalid op (unknown lament). */
   apply(op: LamentOp, baseRev?: number): Promise<Revved<Laments>>;
   onChange(listener: (laments: Revved<Laments>) => void): () => void;
+}
+
+/** Custom themes live in main, which agents change too (set_theme); every change is pushed back. */
+export interface ThemesApi {
+  get(): Promise<Revved<Themes>>;
+  /** Rejects with the reason for an invalid op (a bad color, an image outside the project). */
+  apply(op: ThemeOp, baseRev?: number): Promise<Revved<Themes>>;
+  onChange(listener: (themes: Revved<Themes>) => void): () => void;
+  image(project: string, kind: "wallpaper" | "logo"): Promise<string | null>;
+  /** The project on screen, whose theme's appearance mode the app takes. */
+  active(project: string | null): void;
 }
 
 /** The Kanban boards live in main, which agents change too; every change is pushed back. */
@@ -555,6 +572,7 @@ export interface StudioApi {
   browser: BrowserApi;
   board: BoardApi;
   laments: LamentsApi;
+  themes: ThemesApi;
   computer: ComputerApi;
   settings: SettingsApi;
   ui: UiApi;

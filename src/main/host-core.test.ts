@@ -44,7 +44,7 @@ describe("host methods table", () => {
     expect(new Set(routed).size).toBe(routed.length);
     for (const route of IPC_ROUTES) expect(core[route.method], route.method).toBeDefined();
     // Channels the main process pushes to the window have no route; every invoke/send channel does.
-    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.settingsChanged, IPC.uiChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pluginsLoginUpdate, IPC.setupLine, IPC.remoteChanged, IPC.devicesChanged, IPC.pairingChanged, IPC.pageToggle, IPC.sidebarToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
+    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.settingsChanged, IPC.uiChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.themesChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pluginsLoginUpdate, IPC.setupLine, IPC.remoteChanged, IPC.devicesChanged, IPC.pairingChanged, IPC.pageToggle, IPC.sidebarToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
     expect(channels.filter((channel) => !pushes.has(channel) && !routed.includes(channel))).toEqual([]);
   });
 

@@ -6,6 +6,8 @@ import { formatAnnotations } from "../../../shared/annotations";
 import type { Annotation, BrowserState } from "../../../shared/browser";
 import type { GithubItem, GithubRepo } from "../../../shared/github";
 import { emptyLaments, type Lament, type LamentOp, type Laments } from "../../../shared/laments";
+import { emptyThemes, type ThemeOp, type Themes } from "../../../shared/themes";
+import type { Look } from "../lib/theme";
 import {
   applySettingsOp,
   emptySettings,
@@ -93,6 +95,10 @@ export interface AppState {
   board: Revved<Board>;
   /** Every project's laments, which agents file; main owns them and pushes each change. */
   laments: Revved<Laments>;
+  /** Custom themes (global and per project); main owns them and pushes each change. */
+  themes: Revved<Themes>;
+  /** The images and wallpaper of the theme on screen (ThemeRoot), for the empty state. */
+  look?: Look;
   /** pi-gna's own settings (features, appearance, task models); main owns them and pushes each change. */
   settings: Revved<Settings>;
   /** A full-window page shown instead of the active chat. */
@@ -139,6 +145,7 @@ export const store = createStore<AppState>({
   sidebar: loadSidebar(),
   board: { ...emptyBoard(), rev: 0 },
   laments: { ...emptyLaments(), rev: 0 },
+  themes: { ...emptyThemes(), rev: 0 },
   settings: { ...emptySettings(), rev: 0 },
   overlay: false,
   update: { phase: "idle" },
@@ -808,7 +815,17 @@ function onSettings(settings: Revved<Settings>): void {
 
 export const useFeature = (feature: Feature): boolean => useApp((state) => state.settings.features[feature]);
 
-// ── Laments ──────────────────────────────────────────────────────────────────
+// ── Themes and laments ────────────────────────────────────────────────────────
+/** Change a theme; false after a toast (a bad color, an image outside the project). */
+export async function applyTheme(op: ThemeOp): Promise<boolean> {
+  try {
+    await studio().themes.apply(op, store.get().themes.rev);
+    return true;
+  } catch (error) {
+    toast(remoteError(error), "error");
+    return false;
+  }
+}
 
 /** Resolve, reopen or delete a lament, or record its Fix chat. Main applies it and pushes the laments back. */
 export async function applyLament(op: LamentOp): Promise<boolean> {
@@ -1015,6 +1032,10 @@ export function boot(): void {
   void studio()
     .laments.get()
     .then((laments) => store.set((s) => ({ ...s, laments })));
+  studio().themes.onChange((themes) => store.set((s) => ({ ...s, themes })));
+  void studio()
+    .themes.get()
+    .then((themes) => store.set((s) => ({ ...s, themes })));
   void studio()
     .board.get()
     .then((board) => store.set((s) => ({ ...s, board })));

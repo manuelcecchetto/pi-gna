@@ -5,6 +5,7 @@ import { ChatUiProvider } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import { ChatScreen } from "./Chat";
 import { createChatUi } from "./chat-ui";
+import { ThemeRoot } from "./ThemeRoot";
 import { Lightbox } from "./Lightbox";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { rememberProject } from "./last-project";
@@ -115,6 +116,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
 
   return (
     <ChatUiProvider ui={ui}>
+      <ThemeRoot client={client} ui={ui} cwd={"cwd" in route ? route.cwd : undefined} />
       {/* No top padding: every screen's Header covers the status bar itself. */}
       <div className="safe-area relative flex h-full flex-col bg-canvas pt-0">
         <ConnectionBanner client={client} />

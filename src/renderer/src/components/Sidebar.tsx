@@ -30,6 +30,7 @@ import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
 import { DigitHint, useCommandDigits } from "./primitives";
 import { SettingsNav } from "./Settings";
+import { useThemeImage } from "./ThemeRoot";
 import { UpdateRow } from "./Update";
 
 const SESSIONS_PER_PROJECT = 6;
@@ -302,6 +303,7 @@ function ProjectSection({
   onMenu: OpenMenu;
 }) {
   const rows = group.rows.slice(0, shown);
+  const logo = useThemeImage(useApp((state) => state.themes), group.cwd, "logo");
   // A collapsed project still says when one of its chats is running, waiting or unread.
   const rollup = open ? undefined : strongestAttention(group.rows.flatMap((row) => (row.live ? [row.live] : [])));
   return (
@@ -309,7 +311,7 @@ function ProjectSection({
       <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50" onContextMenu={(event) => onMenu(event, projectMenu(group, features))}>
         <button type="button" onClick={() => onOpen(!open)} title={tildify(group.cwd, home)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left">
           <ChevronRight size={12} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
-          <Folder size={13} className="shrink-0 text-faint" />
+          {logo ? <img src={logo} alt="" className="size-[13px] shrink-0 object-contain" /> : <Folder size={13} className="shrink-0 text-faint" />}
           <span className="truncate text-[13px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
           {rollup && <Indicator level={rollup} />}
         </button>

@@ -7,6 +7,7 @@
 
   function applyTokens(t) {
     if (!t || typeof t !== "object") return;
+    if (t["--theme-mode"] === "light" || t["--theme-mode"] === "dark") document.documentElement.dataset.themeMode = t["--theme-mode"];
     for (var k in t) {
       if (typeof t[k] === "string" && /^--[\w-]+$/.test(k)) document.documentElement.style.setProperty(k, t[k]);
     }

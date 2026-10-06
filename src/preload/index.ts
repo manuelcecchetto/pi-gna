@@ -5,6 +5,7 @@ import type { LoginUpdate } from "../shared/auth";
 import type { Annotation, BrowserState } from "../shared/browser";
 import type { ComputerSettings } from "../shared/computer";
 import type { Laments } from "../shared/laments";
+import type { Themes } from "../shared/themes";
 import type { McpLoginUpdate } from "../shared/plugins";
 import type { Settings, SettingsSection } from "../shared/settings";
 import type { AtpPlanThreads, AtpRunnerState, DeviceInfo, PairingStatus, RemoteStatus, Revved, UiState } from "../shared/host-api";
@@ -119,6 +120,13 @@ const api: StudioApi = {
     get: () => ipcRenderer.invoke(IPC.lamentsGet),
     apply: (op, baseRev) => ipcRenderer.invoke(IPC.lamentsApply, op, baseRev),
     onChange: (listener) => subscribe<Revved<Laments>>(IPC.lamentsChanged, listener),
+  },
+  themes: {
+    get: () => ipcRenderer.invoke(IPC.themesGet),
+    apply: (op, baseRev) => ipcRenderer.invoke(IPC.themesApply, op, baseRev),
+    onChange: (listener) => subscribe<Revved<Themes>>(IPC.themesChanged, listener),
+    image: (project, kind) => ipcRenderer.invoke(IPC.themesImage, project, kind),
+    active: (project) => ipcRenderer.send(IPC.themesActive, project),
   },
   computer: {
     get: () => ipcRenderer.invoke(IPC.computerGet),
