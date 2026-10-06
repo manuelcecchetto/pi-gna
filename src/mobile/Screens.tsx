@@ -107,7 +107,7 @@ function ProjectRow({ item, homeDir, onOpen, onMenu }: { item: ProjectItem; home
   );
 }
 
-export function Projects({ client, homeDir, push, footer }: { client: HostClient; homeDir: string; push: (route: Route) => void; footer?: React.ReactNode }) {
+export function Projects({ client, homeDir, push }: { client: HostClient; homeDir: string; push: (route: Route) => void }) {
   const projects = useStore(client.store, (s) => s.global.projects);
   const pins = useStore(client.store, (s) => s.global.ui?.pins);
   const attention = useStore(client.store, (s) => s.global.attention);
@@ -152,7 +152,6 @@ export function Projects({ client, homeDir, push, footer }: { client: HostClient
         {items?.map((item) => (
           <ProjectRow key={item.cwd} item={item} homeDir={homeDir} onOpen={() => push({ screen: "chats", cwd: item.cwd })} onMenu={() => setMenu(item)} />
         ))}
-        {footer}
       </div>
       {menu && <ProjectSheet title={name(menu.cwd)} actions={projectActions(features, menu.pinned)} onAction={(action) => act(menu, action)} onClose={() => setMenu(undefined)} />}
       {picking && (

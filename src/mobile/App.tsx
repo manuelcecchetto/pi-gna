@@ -120,7 +120,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
       {/* No top padding: every screen's Header covers the status bar itself. */}
       <div className="safe-area relative flex h-full flex-col bg-canvas pt-0">
         <ConnectionBanner client={client} />
-        {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} footer={signOut} />}
+        {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} />}
         {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
         {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
         {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} back={back} />}
