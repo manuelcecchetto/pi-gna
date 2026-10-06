@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-06
+
 - Setup: a guided first run that opens by itself when pi is missing, or on first launch when no provider is signed in. Choose the nerd or the cool pigna (technical or plain wording), let Setup check Node, npm, pi and its SDK and install pi with npm while it shows the output, sign in to a provider, then pick plugins and MCP servers. To open it again, go to Settings > General > Run setup. If you close Setup while pi is installing, the install keeps running. Known gap: with Node.js from the nodejs.org installer, the global npm install can fail with EACCES; Setup shows the error but cannot fix it for you.
 - Card IDs in chats are links: click one to open the card as a tab beside the chat. Investigate, Resolve and QA in that tab run in the current chat; "On another chat" starts a new one as before.
 - Phone notifications now show the chat's title, and a finished run's notification shows the start of pi's reply (up to 140 characters). Pushes stay end-to-end encrypted, but this text can appear on the lock screen.
