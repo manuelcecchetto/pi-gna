@@ -36,7 +36,7 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Web Push (REMOTE.md 13a): the payload is only {kind, chat, t}; the text comes from here. iOS revokes a subscription whose pushes
+// Web Push (REMOTE.md 13a): the payload is {kind, chat, t} plus the chat title and a reply excerpt; the status text comes from here. iOS revokes a subscription whose pushes
 // show nothing, so a notification is always shown unless the app is visibly open (then the app already shows the state).
 const PUSH_TEXT = ${JSON.stringify(PUSH_TEXT)};
 self.addEventListener("push", (event) => {
@@ -47,7 +47,9 @@ self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     if (windows.some((client) => client.visibilityState === "visible")) return;
-    await self.registration.showNotification("pi-gna", { body: PUSH_TEXT[kind], tag: kind + ":" + chat, data: { chat } });
+    const title = typeof data.title === "string" && data.title ? data.title : "pi-gna";
+    const preview = typeof data.preview === "string" && data.preview ? data.preview : "";
+    await self.registration.showNotification(title, { body: preview ? PUSH_TEXT[kind] + ": " + preview : PUSH_TEXT[kind], tag: kind + ":" + chat, data: { chat } });
   })());
 });
 

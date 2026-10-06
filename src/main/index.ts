@@ -1,4 +1,5 @@
 import { EventHub } from "./event-hub";
+import { responsePreview } from "../shared/push-rules";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -187,7 +188,7 @@ const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`,
   visuals: (await settings.get()).visuals,
 }));
 host.onGlobal(publish);
-const pushService = new PushService(join(app.getPath("userData"), "remote-push.json"), { viewing: (handle) => host.presence(handle).some((client) => client.viewing) });
+const pushService = new PushService(join(app.getPath("userData"), "remote-push.json"), { viewing: (handle) => host.presence(handle).some((client) => client.viewing), preview: (handle) => responsePreview(host.stateOf(handle)?.items ?? []) });
 push = pushService;
 hub.subscribe({ topics: ["global"], deliver: (batch) => batch.forEach(({ event }) => pushService.onGlobal(event as { kind: string })) });
 const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
