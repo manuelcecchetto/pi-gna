@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The iPhone's empty chat state now shows the wallpaper chosen on the Mac, and follows it when you change it.
+
 ## 0.5.3 - 2026-10-05
 
 - Notifications on the iPhone now arrive: the host signed pushes with a contact address Apple's push service rejected (403 BadJwtToken), so none were ever delivered.
