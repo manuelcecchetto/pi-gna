@@ -63,10 +63,33 @@ export function BrowserPane() {
   const [stage, setStage] = useState({ width: 0, height: 0 });
   // An active viewport keeps the row visible so an agent-set one can never be hidden.
   const showDimensions = Boolean(active) && (dimensionsOpen || Boolean(active?.viewport));
-  // Native views draw above the DOM, so hide the page while a DOM overlay must cover it.
   const inWindow = active?.surface === "window";
   // Card and start tabs are drawn by the renderer: their page stays hidden.
-  const visible = pane.open && Boolean(active) && !active?.card && !active?.start && !inWindow && !lightbox && !suggesting && !overlay;
+  const drawn = pane.open && Boolean(active) && !active?.card && !active?.start && !inWindow;
+  // Native views draw above the DOM, so hide the page while a DOM overlay must cover it, but only once a still of it is
+  // on screen in its place: a menu over the page must not blank it out.
+  const covered = Boolean(lightbox) || suggesting || overlay;
+  const [still, setStill] = useState<{ tab: string; src?: string }>();
+  const stillShown = drawn && still !== undefined && still.tab === active?.id;
+  const visible = drawn && !(covered && stillShown);
+
+  useEffect(() => {
+    if (!covered || !drawn || !active) return;
+    const tab = active.id;
+    let live = true;
+    const show = (src?: string | null) => live && setStill({ tab, src: src ?? undefined });
+    void browser().still().then(show, () => show());
+    return () => {
+      live = false;
+    };
+  }, [covered, drawn, active?.id]);
+
+  // The still stays under the view a moment after the cover goes, until main has put the view back over it.
+  useEffect(() => {
+    if (covered) return;
+    const timer = setTimeout(() => setStill(undefined), 200);
+    return () => clearTimeout(timer);
+  }, [covered]);
 
   useLayoutEffect(() => {
     const element = viewport.current;
@@ -198,7 +221,11 @@ export function BrowserPane() {
         {(!active || active.start) && <StartPage key={active?.id} tab={active} />}
         {active && inWindow && <WindowPlaceholder tab={active} />}
         {active?.card && <CardView tab={active} card={active.card} />}
-        {active && !active.card && !active.start && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>}
+        {stillShown && still.src ? (
+          <img src={still.src} alt="" draggable={false} className="pointer-events-none absolute inset-0 h-full w-full object-contain" />
+        ) : (
+          active && !active.card && !active.start && !inWindow && !visible && <div className="grid h-full place-items-center text-[12px] text-faint">{active.title || active.url}</div>
+        )}
         {active?.viewport && visible && <DeviceFrame spec={active.viewport} stage={stage} />}
       </div>
       {state.annotating && (

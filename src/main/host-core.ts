@@ -298,6 +298,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "update.download": any("remote", () => deps.updater()?.download()),
 
     "browser.layout": any<{ layout: Parameters<BrowserManager["setLayout"]>[0] }>("desktop", (_ctx, { layout }) => deps.browser()?.setLayout(layout)),
+    "browser.still": any("desktop", async () => (await deps.browser()?.still()) ?? null),
     "browser.focus": any<{ chat?: string }>("desktop", (_ctx, { chat }) => deps.browser()?.focus(typeof chat === "string" ? chat : undefined)),
     // `agent`: the chat the tab belongs to (a phone opens tabs from a chat's browser); otherwise the chat on the Mac's screen.
     "browser.newTab": any<{ url?: string; agent?: string }>("remote", (_ctx, { url, agent }) => {
@@ -740,6 +741,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.describePaths, "fs.describePaths", (paths) => ({ paths })),
   route(IPC.pickAttachments, "fs.pickAttachments", (kind) => ({ kind })),
   route(IPC.browserLayout, "browser.layout", (layout) => ({ layout }), true),
+  route(IPC.browserStill, "browser.still"),
   route(IPC.browserFocus, "browser.focus", (chat) => ({ chat }), true),
   route(IPC.browserNewTab, "browser.newTab", (url) => ({ url }), true),
   route(IPC.browserCloseTab, "browser.closeTab", (id) => ({ id }), true),

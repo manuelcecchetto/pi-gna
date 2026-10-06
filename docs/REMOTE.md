@@ -124,7 +124,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `browser.newTab`, `browser.closeTab`, `browser.activate`, `browser.navigate`, `browser.command`, `browser.annotate`, `browser.inspect`, `browser.viewport` | remote | yes | the same-named channels. |
 | `browser.view` | remote | no | new. `{ id, on }` → `{ stream: "/api/browser/view/<id>" }` (null when off or the tab is gone); the frames are the separate stream of section 4. |
 | `browser.input` | remote | yes | new. `BrowserInput`: `tap`, `longPress`, `scroll` (wheel delta), `drag`, `text`, `key`, and `pick { x, y, comment }` for comment mode. Coordinates are CSS px of the streamed page (`X-Css-Width` x `X-Css-Height` of the frame), clamped inside it. Touch-emulated tabs get touches, others mouse events; `pick` returns `{ annotation }` to the caller only (element selector/label/html plus a JPEG crop of the last frame), nothing is broadcast. Works with the desktop window hidden or the pane closed. Tab state carries `agentAt` (ms epoch of the agent's last action) for the "agent is using this" indicator; URL approvals stay chat cards. |
-| `browser.layout`, `browser.popOut`, `browser.returnToPane`, `browser.reveal` | desktop | yes | `browserLayout`, `browserPopOut`, `browserReturn`, `browserReveal` (window-bound; pop-out windows are host-only). |
+| `browser.layout`, `browser.still`, `browser.popOut`, `browser.returnToPane`, `browser.reveal` | desktop | yes | `browserLayout`, `browserStill`, `browserPopOut`, `browserReturn`, `browserReveal` (window-bound; pop-out windows are host-only). |
 
 **fs and uploads**
 
