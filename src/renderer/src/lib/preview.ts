@@ -153,6 +153,51 @@ export async function loadChatImages(root: HTMLElement | null): Promise<void> {
   );
 }
 
+// Icon data URLs per origin for this window: pending requests, and the answers already in (null: the site has none).
+const siteIconRequests = new Map<string, Promise<string | null>>();
+const siteIconsKnown = new Map<string, string | null>();
+
+function siteIconImage(src: string): HTMLImageElement {
+  const img = document.createElement("img");
+  img.className = "site-icon";
+  img.alt = "";
+  img.decoding = "async";
+  img.src = src;
+  return img;
+}
+
+/**
+ * Give each web link of a rendered answer a site icon at its left: the favicon once known, a globe until then and
+ * when the site has none, like the ChatGPT app. Runs before paint (a layout effect), so links do not shift when the
+ * slot appears; `fetch` (off while streaming) asks main for the favicons not known yet and swaps them in.
+ */
+export function decorateWebLinks(root: HTMLElement | null, fetch: boolean): void {
+  const api = window.studio?.browser;
+  if (!root || !api?.siteIcon) return;
+  for (const link of root.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+    if (!/^https?:$/.test(link.protocol) || !link.hostname) continue;
+    const origin = link.origin;
+    let slot = link.querySelector<HTMLElement>(":scope > .site-icon");
+    if (!slot) {
+      const known = siteIconsKnown.get(origin);
+      slot = known ? siteIconImage(known) : Object.assign(document.createElement("span"), { className: "site-icon globe" });
+      slot.setAttribute("aria-hidden", "true");
+      link.prepend(slot);
+    }
+    if (!fetch || slot.tagName === "IMG" || siteIconsKnown.has(origin)) continue;
+    let request = siteIconRequests.get(origin);
+    if (!request) {
+      request = api.siteIcon(link.href).then((icon) => (icon ? `data:${icon.mimeType};base64,${icon.data}` : null), () => null);
+      siteIconRequests.set(origin, request);
+      void request.then((src) => siteIconsKnown.set(origin, src));
+    }
+    const placeholder = slot;
+    void request.then((src) => {
+      if (src && placeholder.isConnected) placeholder.replaceWith(siteIconImage(src));
+    });
+  }
+}
+
 /** Click or Enter on a `[data-file]` element of a rendered answer: preview it (cmd/ctrl: new tab). */
 export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey: boolean }): void {
   if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;

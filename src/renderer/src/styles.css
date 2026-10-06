@@ -344,6 +344,30 @@ body,
 .prose a:hover {
   text-decoration: underline;
 }
+/* The site icon before a web link (lib/preview.ts decorateWebLinks): a globe until the favicon is known and when the
+   site has none. A light backing keeps dark marks (GitHub, X) visible on the dark theme; preflight makes images
+   blocks, so they are set inline again. */
+.prose a .site-icon {
+  display: inline-block;
+  box-sizing: content-box;
+  width: 0.85em;
+  height: 0.85em;
+  padding: 0.075em;
+  margin-right: 0.3em;
+  vertical-align: -0.12em;
+  border-radius: 3px;
+}
+.prose a img.site-icon {
+  background: #fff;
+  object-fit: contain;
+}
+.prose a .site-icon.globe {
+  background: currentColor;
+  opacity: 0.75;
+  -webkit-mask: var(--globe) center / 0.85em no-repeat;
+  mask: var(--globe) center / 0.85em no-repeat;
+  --globe: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20'/%3E%3C/svg%3E");
+}
 .prose strong {
   font-weight: 600;
 }

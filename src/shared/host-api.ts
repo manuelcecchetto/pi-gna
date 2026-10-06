@@ -536,6 +536,7 @@ export interface HostMethods {
   "browser.previewOpen": { args: { id: string }; result: null };
   "browser.resolveTargets": { args: { cwd: string; targets: string[] }; result: (string | null)[] };
   "browser.readImage": { args: { cwd: string; target: string }; result: { mimeType: string; data: string } | null };
+  "browser.siteIcon": { args: { url: string }; result: { mimeType: string; data: string } | null };
   "browser.reveal": { args: Record<string, never>; result: null };
 
   // fs, uploads
@@ -643,6 +644,7 @@ export const DESKTOP_ONLY_METHODS = [
   "browser.previewOpen",
   "browser.resolveTargets",
   "browser.readImage",
+  "browser.siteIcon",
   "browser.reveal",
   "fs.pickFolder",
   "fs.pickAttachments",

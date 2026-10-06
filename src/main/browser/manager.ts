@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { app, BrowserWindow, session, shell, WebContentsView, type WebContents } from "electron";
+import { app, BrowserWindow, nativeImage, session, shell, WebContentsView, type WebContents } from "electron";
 import {
   type Annotation,
   type BrowserCommand,
@@ -17,6 +17,7 @@ import { fitViewport, resolveViewport, userAgentFor, type ViewportRequest, type 
 import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
 import { cdp } from "./cdp";
+import { tabFavicon } from "./favicon";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 import { previews } from "./preview-protocol";
 import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
@@ -65,7 +66,27 @@ export interface Tab {
   agentAt?: number;
   /** Set while the tab shows a local file; web tabs have none. */
   preview?: PreviewState;
+  /** The page's icon as a data URL, and the origin it belongs to (a navigation elsewhere drops it). */
+  favicon?: { url: string; origin: string };
+  /** Bumped per favicon request, so a slow one for an earlier page cannot win. */
+  faviconSeq?: number;
 }
+
+/** Electron decodes the bitmap (PNG, JPEG; ICO where the platform can) and shrinks it for the tab strip. */
+const shrinkIcon = (bytes: Buffer, size: number): string | null => {
+  const image = nativeImage.createFromBuffer(bytes);
+  if (image.isEmpty()) return null;
+  const { width } = image.getSize();
+  return (width > size ? image.resize({ width: size, height: size, quality: "best" }) : image).toDataURL();
+};
+
+const originOf = (url: string): string => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+};
 
 /** Size a viewer-held tab without a viewport is laid out at while parked. */
 const PARK_SIZE = { width: 1280, height: 800 };
@@ -151,6 +172,7 @@ export class BrowserManager {
             agentAt: tab.agentAt,
             preview: tab.preview?.info,
             card: tab.card,
+            favicon: tab.preview || tab.card || tab.favicon?.origin !== originOf(wc.getURL()) ? undefined : tab.favicon?.url,
           },
         ];
       }),
@@ -194,7 +216,9 @@ export class BrowserManager {
     wc.on("did-stop-loading", changed);
     wc.on("page-title-updated", changed);
     wc.on("did-navigate-in-page", changed);
+    wc.on("page-favicon-updated", (_event, favicons) => void this.loadFavicon(tab, favicons));
     wc.on("did-navigate", (_event, url) => {
+      if (tab.favicon && tab.favicon.origin !== originOf(url)) tab.favicon = undefined;
       changed();
       this.syncPreview(tab, url);
       this.remember(url, wc);
@@ -226,6 +250,18 @@ export class BrowserManager {
       if (previewGate(url) || !/^(https?|file|about|data|blob|pigna-file):/i.test(url)) event.preventDefault();
     });
     attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url, tab.agent) });
+  }
+
+  private async loadFavicon(tab: Tab, favicons: string[]): Promise<void> {
+    const wc = tab.view.webContents;
+    const page = wc.getURL();
+    if (!/^https?:/i.test(page)) return;
+    const seq = (tab.faviconSeq ?? 0) + 1;
+    tab.faviconSeq = seq;
+    const url = await tabFavicon(page, favicons, (input, init) => wc.session.fetch(input as string, init), shrinkIcon).catch(() => null);
+    if (tab.faviconSeq !== seq || wc.isDestroyed()) return;
+    tab.favicon = url ? { url, origin: originOf(page) } : undefined;
+    this.emitState();
   }
 
   private pushConsole(tab: Tab, level: string, message: string, source: string): void {

@@ -18,6 +18,7 @@ import type { ViewportRequest } from "../shared/viewport";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
 import { readPreviewImage, resolvePreviewTargets } from "./browser/resolve-targets";
 import { listFiles } from "./files";
+import { siteIcon } from "./site-icons";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
 import { describePaths } from "./attachments";
@@ -400,6 +401,14 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
       (_ctx, { cwd, target }) => readPreviewImage(cwd, target),
     ),
+    "browser.siteIcon": method<{ url: string }>(
+      "desktop",
+      (raw) => {
+        if (typeof raw.url !== "string" || raw.url.length > 4096) throw new Error("Invalid url");
+        return { url: raw.url };
+      },
+      (_ctx, { url }) => siteIcon(url),
+    ),
     "browser.history": any("remote", () => deps.browser()?.getHistory() ?? []),
     "browser.state": any("remote", () => deps.browser()?.snapshot()),
 
@@ -676,6 +685,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserPreviewReveal, "browser.previewReveal", (id) => ({ id })),
   route(IPC.browserResolveTargets, "browser.resolveTargets", (cwd, targets) => ({ cwd, targets })),
   route(IPC.browserReadImage, "browser.readImage", (cwd, target) => ({ cwd, target })),
+  route(IPC.browserSiteIcon, "browser.siteIcon", (url) => ({ url })),
   route(IPC.browserPreviewOpen, "browser.previewOpen", (id) => ({ id })),
   route(IPC.browserHistory, "browser.history"),
   route(IPC.browserGetState, "browser.state"),
