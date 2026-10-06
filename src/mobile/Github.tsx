@@ -199,7 +199,7 @@ export function GithubScreen({ client, cwd, push, back }: { client: HostClient; 
           {problem ? (
             <div className="flex flex-col items-center gap-3 px-4 py-12 text-center" data-testid="github-problem">
               <GitPullRequest size={28} className="text-faint" />
-              <p className="max-w-md text-[13.5px] leading-relaxed break-words text-muted [overflow-wrap:anywhere]">
+              <p className="max-w-md text-[13.5px] leading-relaxed text-muted wrap-anywhere">
                 {problem.message.split("`").map((part, index) =>
                   index % 2 ? (
                     <code key={index} className="rounded bg-raised px-1 font-mono text-[12px] text-fg">

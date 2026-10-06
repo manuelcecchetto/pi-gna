@@ -93,7 +93,8 @@ export function BoardScreen({ client, cwd: initial, cardId, push, back }: { clie
           </>
         }
       />
-      <div className="flex shrink-0 justify-between border-b border-line px-2 py-2" role="tablist">
+      {/* The four columns share the row by their length (a 393 px phone has no room for four fixed pills); a label truncates last. */}
+      <div className="flex shrink-0 gap-1 border-b border-line px-2 py-2" role="tablist">
         {COLUMNS.map((option) => (
           <button
             key={option}
@@ -101,11 +102,11 @@ export function BoardScreen({ client, cwd: initial, cardId, push, back }: { clie
             role="tab"
             aria-selected={column === option}
             onClick={() => setColumn(option)}
-            className={`flex min-h-10 shrink-0 items-center gap-1 rounded-full px-2.5 text-[13px] ${column === option ? "bg-raised text-fg" : "text-muted"}`}
+            className={`flex min-h-10 min-w-0 flex-auto items-center justify-center gap-1 rounded-full px-1.5 text-[13px] ${column === option ? "bg-raised text-fg" : "text-muted"}`}
             data-testid={`column-${option}`}
           >
             <ColumnIcon column={option} size={13} />
-            {COLUMN_LABELS[option]}
+            <span className="truncate">{COLUMN_LABELS[option]}</span>
             <span className="font-mono text-[11px] text-faint" data-testid="column-count">{columns?.[option].length ?? 0}</span>
           </button>
         ))}
@@ -332,18 +333,18 @@ function CardPage({ client, board, card, apply, startTask, starting, push, onClo
     <div className="absolute inset-0 z-30 flex flex-col bg-canvas" data-testid="card-page">
       <Header title="Card" subtitle={card.id} onBack={close} />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-8">
-        <div className="flex gap-1 overflow-x-auto pb-2">
+        <div className="flex gap-1 pb-2">
           {COLUMNS.map((option) => (
             <button
               key={option}
               type="button"
               aria-pressed={card.column === option}
               onClick={() => { const op = moveToOp(card, option); if (op) void apply(op); }}
-              className={`flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] ${card.column === option ? "bg-raised text-fg" : "text-muted"}`}
+              className={`flex min-h-9 min-w-0 flex-auto items-center justify-center gap-1 rounded-full px-2 text-[13px] ${card.column === option ? "bg-raised text-fg" : "text-muted"}`}
               data-testid={`card-column-${option}`}
             >
               <ColumnIcon column={option} size={12} />
-              {COLUMN_LABELS[option]}
+              <span className="truncate">{COLUMN_LABELS[option]}</span>
             </button>
           ))}
         </div>
@@ -580,7 +581,7 @@ function GithubLinks({ client, card, apply }: { client: HostClient; card: Card; 
           />
         </div>
       )}
-      {error && <p className="text-[12.5px] leading-relaxed text-bad" data-testid="link-error">{error}</p>}
+      {error && <p className="text-[12.5px] leading-relaxed text-bad wrap-anywhere" data-testid="link-error">{error}</p>}
     </section>
   );
 }
@@ -651,7 +652,7 @@ function AddCard({ client, cwd, onClose }: { client: HostClient; cwd: string; on
           </button>
           <input ref={input} type="file" accept="image/*" multiple hidden onChange={(event) => pick(event.target.files)} data-testid="add-card-file" />
         </div>
-        {photos.some((photo) => photo.state === "error") && <p className="text-[12.5px] text-bad">{photos.find((photo) => photo.state === "error")?.error}</p>}
+        {photos.some((photo) => photo.state === "error") && <p className="text-[12.5px] text-bad wrap-anywhere">{photos.find((photo) => photo.state === "error")?.error}</p>}
         <button type="button" disabled={!canAdd} onClick={() => void submit()} className="min-h-12 rounded-xl bg-accent text-[15px] font-medium text-white disabled:opacity-40" data-testid="add-card-submit">
           {busy ? "Adding…" : "Add card"}
         </button>
