@@ -1,7 +1,7 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
 import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type LucideIcon } from "lucide-react";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
-import { showBrowser, store, toast } from "../state/app";
+import { showBoard, showBrowser, store, toast } from "../state/app";
 import { resolveFilePath } from "./preview-path";
 
 /** Opens a local file in a preview tab; the active chat's project is the root so relative links work. */
@@ -161,4 +161,32 @@ export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey
   const path = el.dataset.resolved ?? target?.path;
   if (!path) return toast("Could not resolve the file path", "error");
   void openPreviewPath(path, { line: target?.line, newTab: event.metaKey || event.ctrlKey });
+}
+
+/** Card links of a rendered answer (`[card x](q6ip3j)`): the card's title and column as tooltip; unknown ids read as missing. */
+export function resolveCardLinks(root: HTMLElement | null): void {
+  if (!root) return;
+  const { cards } = store.get().board;
+  for (const el of root.querySelectorAll<HTMLElement>("[data-card]:not([data-checked])")) {
+    const card = cards.find((entry) => entry.id === el.dataset.card);
+    if (!card) {
+      el.removeAttribute("data-card");
+      el.removeAttribute("role");
+      el.removeAttribute("tabindex");
+      el.classList.remove("card-link");
+      el.classList.add("file-missing");
+      el.title = `Card not found: ${el.dataset.card}`;
+      continue;
+    }
+    el.dataset.checked = "1";
+    el.title = `${card.title} · ${card.column.replace("_", " ")}`;
+  }
+}
+
+/** Click or Enter on a `[data-card]` element: that card's details on its project's board. */
+export function openCardLink(el: HTMLElement): void {
+  if (!window.studio?.browser?.preview || window.getSelection()?.toString()) return;
+  const card = store.get().board.cards.find((entry) => entry.id === el.dataset.card);
+  if (card) showBoard(card.cwd, card.id);
+  else toast("Card not found", "error");
 }

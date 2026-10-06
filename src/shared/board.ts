@@ -120,6 +120,12 @@ export const emptyBoard = (): Board => ({ version: 1, cards: [] });
 const ID = /^[a-z0-9]{6}$/;
 export const isCardId = (value: unknown): value is string => typeof value === "string" && ID.test(value);
 
+/** The card a chat link points at: `card:<id>` or the bare id an agent writes (`[card q6ip3j](q6ip3j)`). */
+export function cardLinkId(href: string): string | undefined {
+  const text = href.trim().replace(/^card:/i, "").toLowerCase();
+  return isCardId(text) ? text : undefined;
+}
+
 const WORKTREES = "/.pi-gna/worktrees/";
 
 /**

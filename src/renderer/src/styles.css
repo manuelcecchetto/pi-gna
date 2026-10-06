@@ -283,12 +283,14 @@ body,
   color: var(--accent);
   text-decoration: none;
 }
-.prose .file-link {
+.prose .file-link,
+.prose .card-link {
   cursor: pointer;
   color: var(--accent);
   border-radius: 4px;
 }
-.prose .file-link:hover {
+.prose .file-link:hover,
+.prose .card-link:hover {
   text-decoration: underline;
 }
 .prose span.file-link::before {
