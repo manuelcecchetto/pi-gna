@@ -1,6 +1,6 @@
 // Settings > Remote access: turn it on, publish it on the tailnet, pair phones and revoke them (docs/REMOTE.md).
 // Everything that changes the tailnet or lets a device in happens on a click here; the status comes from main.
-import { Check, CircleAlert, Smartphone } from "lucide-react";
+import { Check, CircleAlert, Smartphone } from "./icons";
 import { useEffect, useMemo, useState } from "react";
 import type { DeviceInfo, PairingStatus, RemoteStatus } from "../../../shared/host-api";
 import { KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES } from "../../../shared/settings";

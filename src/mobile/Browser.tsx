@@ -2,7 +2,7 @@
 // stream) and driven with `browser.input`. The page runs on the Mac, with the window hidden or the pane closed. A tap is a
 // click, a drag scrolls the page, two fingers zoom the picture locally (the page does not change), a long press is a right
 // click. Comment mode turns a tap into an annotation that rides with this phone's next prompt (`chat.send`).
-import { AppWindow, ArrowLeft, ArrowRight, Bot, File, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "lucide-react";
+import { AppWindow, ArrowLeft, ArrowRight, Bot, File, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "../renderer/src/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import type { Annotation, BrowserTab, HistoryEntry } from "../shared/browser";

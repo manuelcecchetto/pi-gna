@@ -1,5 +1,5 @@
 // A page header's project picker: the same page (board, laments) of another project.
-import { ChevronDown, Folder } from "lucide-react";
+import { ChevronDown, Folder } from "./icons";
 import { useCallback, useState } from "react";
 import { baseName, tildify } from "../lib/format";
 import { Popover } from "./primitives";

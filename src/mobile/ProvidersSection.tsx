@@ -2,7 +2,7 @@
 // key is typed here, goes to `providers.answer` over TLS and is saved by pi in the Mac's auth.json; the host never sends
 // one back (AuthState holds names and statuses). Account sign-ins show their link or device code on the phone, and a flow
 // that can only finish in the Mac's browser says so.
-import { Check, ExternalLink, LoaderCircle, Search, TriangleAlert } from "lucide-react";
+import { Check, ExternalLink, LoaderCircle, Search, TriangleAlert } from "../renderer/src/components/icons";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { accountLabel, answered, type LoginView, startLogin, updateLogin } from "../renderer/src/lib/login";
 import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, searchProviders, splitProviders } from "../shared/auth";

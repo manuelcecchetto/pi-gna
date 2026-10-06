@@ -1,6 +1,6 @@
 // The phone's replacement for the desktop's hover rail: a button over the transcript opens a sheet with one row per message
 // you sent (and a star for the bookmarks the host keeps, so they match the desktop). A row scrolls there and flashes it.
-import { ListTree, Star } from "lucide-react";
+import { ListTree, Star } from "../renderer/src/components/icons";
 import { useMemo, useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import type { TurnNav } from "../renderer/src/components/Transcript";

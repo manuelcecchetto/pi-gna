@@ -1,6 +1,6 @@
 // Full-screen image: pinch to zoom, drag to pan once zoomed, double tap to toggle, tap outside or X to close. The image is a
 // plain <img>, so iOS's own long-press menu (Save to Photos, Copy) works on it.
-import { X } from "lucide-react";
+import { X } from "../renderer/src/components/icons";
 import { useRef, useState } from "react";
 import { closeLightbox, useLightbox } from "./chat-ui";
 import { clampView, distance, doubleTap, FIT, midpoint, type View, zoomAt } from "./pinch";

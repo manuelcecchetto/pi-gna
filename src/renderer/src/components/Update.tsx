@@ -1,6 +1,6 @@
 // A newer pi-gna release: the row at the foot of the sidebar, and the dialog it opens with the release notes
 // and the install. Main's Updater does the work (docs/DESIGN.md, Updates); these only show its state.
-import { ArrowUpCircle, ChevronRight, X } from "lucide-react";
+import { ArrowUpCircle, ChevronRight, X } from "./icons";
 import { useEffect, useRef } from "react";
 import type { UpdateState } from "../../../shared/ipc";
 import { setOverlay, showUpdate, useApp } from "../state/app";

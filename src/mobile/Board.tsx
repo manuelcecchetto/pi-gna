@@ -1,7 +1,7 @@
 // The phone's Kanban page: one project's board as the desktop's, columns as a segmented control with counts, a
 // card's details in a page of its own, moves from a sheet or by long-press drag, new cards with photos, and the
 // chats a card starts on the Mac. The host owns the board; every change is an op through board.apply.
-import { ChevronDown, GripVertical, Image as ImageIcon, Link2, LoaderCircle, MessagesSquare, MoreHorizontal, Paperclip, Plus, Trash2, Unlink, X } from "lucide-react";
+import { ChevronDown, GripVertical, Image as ImageIcon, Link2, LoaderCircle, MessagesSquare, MoreHorizontal, Paperclip, Plus, Trash2, Unlink, X } from "../renderer/src/components/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnIcon } from "../renderer/src/components/ColumnIcon";
 import { Markdown } from "../renderer/src/components/Markdown";

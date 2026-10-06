@@ -1,8 +1,8 @@
-import { Circle, CircleCheck, CircleDot, CircleDotDashed, type LucideIcon } from "lucide-react";
+import { Circle, CircleCheck, CircleDot, CircleDotDashed, type IconComponent } from "./icons";
 import type { Column } from "../../../shared/board";
 
 /** A Kanban column's mark: open, half done, ready for you, done. */
-const COLUMN_STYLE: Record<Column, { icon: LucideIcon; color: string }> = {
+const COLUMN_STYLE: Record<Column, { icon: IconComponent; color: string }> = {
   todo: { icon: Circle, color: "text-faint" },
   in_progress: { icon: CircleDotDashed, color: "text-warn" },
   in_review: { icon: CircleDot, color: "text-accent" },

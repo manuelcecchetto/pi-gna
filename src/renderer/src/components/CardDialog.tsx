@@ -1,7 +1,7 @@
 // A card's details (CardDetails): its title, tags and notes, its column, the chats it can start and the chats on it,
 // and what they reported. They show in a native <dialog> on the board (CardDialog) and in a preview tab (CardTab).
 // New cards are added on the board (AddCard), with their screenshots.
-import { Check, ChevronDown, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "lucide-react";
+import { Check, ChevronDown, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "./icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type Card, COLUMN_LABELS, COLUMNS, githubKey, LIMITS } from "../../../shared/board";

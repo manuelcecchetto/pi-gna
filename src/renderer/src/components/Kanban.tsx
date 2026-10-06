@@ -1,7 +1,7 @@
 // The Kanban page: one project's board. Cards are tasks; chats attach to them, and agents move their card and
 // report on it (kanban_* tools). Add a card by describing it; drag cards between columns; right-click one to
 // start a chat on it.
-import { Check, Ellipsis, LoaderCircle, MessagesSquare, Paperclip, Pencil, Plus, SquareKanban, Trash2 } from "lucide-react";
+import { Check, Ellipsis, LoaderCircle, MessagesSquare, Paperclip, Pencil, Plus, SquareKanban, Trash2 } from "./icons";
 import { useCallback, useMemo, useState } from "react";
 import { type Card, COLUMN_LABELS, COLUMNS, type Column, githubKey } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";

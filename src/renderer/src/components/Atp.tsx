@@ -18,7 +18,7 @@ import {
   Search,
   Square,
   X,
-} from "lucide-react";
+} from "./icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, NEW_PLAN_DIR, planName, planProgress } from "../../../shared/atp";
 import { taskModel } from "../../../shared/settings";

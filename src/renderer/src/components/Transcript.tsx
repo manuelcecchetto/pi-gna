@@ -14,7 +14,7 @@ import {
   MessageSquare,
   SquareKanban,
   SquareTerminal,
-} from "lucide-react";
+} from "./icons";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";

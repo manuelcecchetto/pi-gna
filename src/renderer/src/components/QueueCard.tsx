@@ -1,6 +1,6 @@
 // Queued messages as a card attached to the top of the composer (Codex-style). Steers wait for the
 // current tool calls; follow-ups wait for the run to finish and can be steered in now.
-import { CornerDownRight, Ellipsis, ListEnd, Pencil, Trash2 } from "lucide-react";
+import { CornerDownRight, Ellipsis, ListEnd, Pencil, Trash2 } from "./icons";
 import { useCallback, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import type { QueueKind } from "../../../shared/queue";

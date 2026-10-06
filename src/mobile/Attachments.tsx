@@ -1,5 +1,5 @@
 // The composer's attachment UI: chips for what is attached, the + sheet (photos, files, host files) and the host file browser.
-import { ChevronLeft, File, FileImage, Folder, Image, Loader2, Monitor, Paperclip, X } from "lucide-react";
+import { ChevronLeft, File, FileImage, Folder, Image, Loader2, Monitor, Paperclip, X } from "../renderer/src/components/icons";
 import { useEffect, useRef, useState } from "react";
 import type { FolderListing } from "../shared/host-api";
 import type { HostClient } from "./client/host-client";

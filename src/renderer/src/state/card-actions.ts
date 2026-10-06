@@ -1,13 +1,13 @@
 // What you can start from a card (its right-click menu and its details): chats that investigate it, resolve it,
 // check it in review (main starts them: ChatTasks) or talk about it. Other features add theirs with registerCardAction (say, opening a card's GitHub issue).
-import { ClipboardCheck, type LucideIcon, MessageSquarePlus, Search, Wrench } from "lucide-react";
+import { ClipboardCheck, type IconComponent, MessageSquarePlus, Search, Wrench } from "../components/icons";
 import type { Card } from "../../../shared/board";
 import { type CardTaskKind, discussCard, runCardTaskHere, startCardTask } from "./app";
 
 export interface CardAction {
   id: string;
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   /** What it does, as a tooltip. */
   hint?: string;
   /** Offered only for the cards this accepts. */

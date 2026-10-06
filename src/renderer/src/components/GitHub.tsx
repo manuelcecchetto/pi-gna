@@ -19,7 +19,7 @@ import {
   ScanSearch,
   SquareKanban,
   UserRound,
-} from "lucide-react";
+} from "./icons";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS, githubKey } from "../../../shared/board";
 import {

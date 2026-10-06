@@ -1,7 +1,7 @@
 // Settings > Computer use: turn it on, fix macOS permissions and manage which apps pi may always operate. Policy
 // lives in main (src/main/computer/store.ts); permission status comes live from the native helper, which starts only
 // when this section asks (never in the background).
-import { Check, RefreshCw, ShieldAlert, X } from "lucide-react";
+import { Check, RefreshCw, ShieldAlert, X } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import { type ComputerOp, type ComputerSettings, DENYLIST, emptyComputerSettings, type Permissions } from "../../../shared/computer";
 import { formatStamp } from "../lib/format";

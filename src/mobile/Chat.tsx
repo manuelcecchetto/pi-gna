@@ -1,7 +1,7 @@
 // One chat: join it on the host (open, or attach to a live one), show its transcript and approvals, and let go on leave.
 // Leaving detaches only: the host keeps the run going (docs/REMOTE.md section 5).
 import { useEffect, useLayoutEffect, useState } from "react";
-import { Globe, ListChevronsDownUp, ListChevronsUpDown } from "lucide-react";
+import { Globe, ListChevronsDownUp, ListChevronsUpDown } from "../renderer/src/components/icons";
 import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
 import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";

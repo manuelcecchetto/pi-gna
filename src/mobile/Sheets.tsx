@@ -1,5 +1,5 @@
 // Bottom sheets for the phone's composer: the generic sheet, and the model and thinking pickers on it.
-import { Check, X } from "lucide-react";
+import { Check, X } from "../renderer/src/components/icons";
 import { type ReactNode, useState } from "react";
 import { fuzzyFilter } from "../renderer/src/lib/fuzzy";
 import type { Model, ThinkingLevel } from "../shared/protocol";

@@ -4,7 +4,7 @@
 // language: commands, versions and npm's log for the nerd, plain words and a friendly progress bar for the other.
 // It installs nothing behind your back: pi only with "Install pi", the rest is the Providers and Plugins sections.
 // The checks and the install live in a module store, so closing Setup mid-install and opening it again picks up.
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Copy, ExternalLink, RotateCw, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Copy, ExternalLink, RotateCw, TriangleAlert, X } from "./icons";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { Persona } from "../../../shared/settings";
 import { MIN_NODE, PI_INSTALL_COMMAND, PI_PACKAGE, piReady, type SetupStatus } from "../../../shared/setup";

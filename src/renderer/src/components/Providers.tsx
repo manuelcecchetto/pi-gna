@@ -2,7 +2,7 @@
 // login with pi's own SDK (src/main/pi-auth.ts) and opens sign-in pages in the browser; what a login asks (a choice, a
 // pasted code, an API key) is answered in a panel under the card or row that started it. Leaving the section cancels.
 // With pi-claude-bridge, Claude plans sign in with Claude Code's own login instead of pi's.
-import { Check, Copy, ExternalLink, LoaderCircle, Search, TriangleAlert, X } from "lucide-react";
+import { Check, Copy, ExternalLink, LoaderCircle, Search, TriangleAlert, X } from "./icons";
 import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
 import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, searchProviders, splitProviders, type StatusTone } from "../../../shared/auth";
 import { tildify } from "../lib/format";

@@ -1,4 +1,4 @@
-import { Angry, ChevronRight, Copy, Folder, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "lucide-react";
+import { Angry, Copy, Folder, FolderOpen, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "./icons";
 import { useMemo, useRef, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
@@ -132,9 +132,9 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={newChat}
-                className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${inDraft ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${inDraft ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
               >
-                <SquarePen size={14} className="shrink-0 text-muted" />
+                <SquarePen size={16} className="shrink-0 text-muted" />
                 <span className="flex-1">New chat</span>
                 <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘N</span>
               </button>
@@ -142,9 +142,9 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => page?.kind !== "kanban" && showPage("kanban", page?.cwd)}
-                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "kanban" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                  className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${page?.kind === "kanban" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
                 >
-                  <SquareKanban size={14} className="shrink-0 text-muted" />
+                  <SquareKanban size={16} className="shrink-0 text-muted" />
                   <span className="flex-1">Kanban</span>
                   <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧K</span>
                 </button>
@@ -153,9 +153,9 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => page?.kind !== "laments" && showPage("laments", page?.cwd)}
-                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "laments" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                  className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${page?.kind === "laments" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
                 >
-                  <Angry size={14} className="shrink-0 text-muted" />
+                  <Angry size={16} className="shrink-0 text-muted" />
                   <span className="flex-1">Laments</span>
                   {worst && (
                     <span className="flex items-center gap-1 group-hover:hidden" title={`${openLaments.length} open, the worst ${SEVERITY[worst].label.toLowerCase()}`}>
@@ -170,9 +170,9 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => page?.kind !== "github" && showPage("github", page?.cwd)}
-                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "github" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                  className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${page?.kind === "github" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
                 >
-                  <GitPullRequest size={14} className="shrink-0 text-muted" />
+                  <GitPullRequest size={16} className="shrink-0 text-muted" />
                   <span className="flex-1">GitHub</span>
                   <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘⇧G</span>
                 </button>
@@ -181,9 +181,9 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => page?.kind !== "atp" && showPage("atp", page?.cwd)}
-                  className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${page?.kind === "atp" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
+                  className={`group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${page?.kind === "atp" ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
                 >
-                  <Network size={14} className="shrink-0 text-muted" />
+                  <Network size={16} className="shrink-0 text-muted" />
                   <span className="flex-1">ATP</span>
                   {runningPlans > 0 && (
                     <span className="flex items-center gap-1 group-hover:hidden" title={`${runningPlans} plan${runningPlans === 1 ? "" : "s"} running`}>
@@ -197,7 +197,7 @@ export function Sidebar() {
             </div>
 
             <div className="group/projects flex items-center px-4 pt-2 pb-1">
-              <span className="flex-1 text-[12.5px] font-medium text-faint">Projects</span>
+              <span className="flex-1 text-[13.5px] font-medium text-faint">Projects</span>
               <button
                 type="button"
                 title="Open folder…"
@@ -226,8 +226,8 @@ export function Sidebar() {
             </nav>
             <UpdateRow />
             <div className="shrink-0 px-2 py-2">
-              <button type="button" onClick={() => openSettings()} className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-fg/90 hover:bg-raised/60">
-                <Settings size={14} className="shrink-0 text-muted" />
+              <button type="button" onClick={() => openSettings()} className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] text-fg/90 hover:bg-raised/60">
+                <Settings size={16} className="shrink-0 text-muted" />
                 <span className="flex-1">Settings</span>
                 <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">⌘,</span>
               </button>
@@ -309,10 +309,10 @@ function ProjectSection({
   return (
     <div className="mb-1">
       <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50" onContextMenu={(event) => onMenu(event, projectMenu(group, features))}>
-        <button type="button" onClick={() => onOpen(!open)} title={tildify(group.cwd, home)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left">
-          <ChevronRight size={12} className={`shrink-0 text-faint transition-transform ${open ? "rotate-90" : ""}`} />
-          {logo ? <img src={logo} alt="" className="size-[13px] shrink-0 object-contain" /> : <Folder size={13} className="shrink-0 text-faint" />}
-          <span className="truncate text-[13px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
+        <button type="button" onClick={() => onOpen(!open)} title={tildify(group.cwd, home)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left">
+          {/* The folder is the disclosure mark: open while the project's chats show. */}
+          {logo ? <img src={logo} alt="" className="size-4 shrink-0 object-contain" /> : open ? <FolderOpen size={16} className="shrink-0 text-muted" /> : <Folder size={16} className="shrink-0 text-muted" />}
+          <span className="truncate text-[14px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
           {rollup && <Indicator level={rollup} />}
         </button>
         {features.kanban && (
@@ -352,20 +352,20 @@ function ProjectSection({
         </button>
       </div>
       {open && (
-        <div className="ml-3 flex flex-col">
+        <div className="flex flex-col">
           {rows.map((row) => (
             <SessionRow key={row.key} row={row} active={row.live?.handle === active && active !== undefined} kanban={features.kanban} digit={digits?.get(row.key)} onMenu={onMenu} />
           ))}
-          {/* Long histories page in a few chats at a time; "Show less" sits beside "Show more", never past the whole list. */}
+          {/* Long histories page in a few chats at a time; "Show less" sits beside "Show more", never past the whole list. Both line up with the chat titles. */}
           {group.rows.length > SESSIONS_PER_PROJECT && (
-            <div className="flex">
+            <div className="flex pl-[23px]">
               {rows.length < group.rows.length && (
-                <button type="button" onClick={() => onShown(shown + SESSIONS_PAGE)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
+                <button type="button" onClick={() => onShown(shown + SESSIONS_PAGE)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
                   Show more
                 </button>
               )}
               {shown > SESSIONS_PER_PROJECT && (
-                <button type="button" onClick={() => onShown(SESSIONS_PER_PROJECT)} className="px-3 py-1 text-left text-[12px] text-faint hover:text-muted">
+                <button type="button" onClick={() => onShown(SESSIONS_PER_PROJECT)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
                   Show less
                 </button>
               )}
@@ -432,10 +432,10 @@ function SessionRow({ row, active, kanban, digit, onMenu }: { row: ProjectRow; a
       type="button"
       onClick={onClick}
       onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active, kanban))}
-      className={`group flex items-center gap-2 rounded-lg px-2.5 py-[5px] text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
+      className={`group flex items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
     >
-      <span className="grid w-3 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
-      <span className={`min-w-0 flex-1 truncate text-[13px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
+      <span className="grid w-4 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
+      <span className={`min-w-0 flex-1 truncate text-[14px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
       {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(row.time)}</span>}
     </button>
   );

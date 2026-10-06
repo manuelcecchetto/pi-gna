@@ -1082,6 +1082,13 @@ repo, docs); the 🤌i mark is visual only (sidebar header, icon). `resources/ic
 tile with blurred coral, blue and yellow glows in the corners; `pnpm icon` rasterizes it to `resources/icon.png`
 (dev Dock icon) and `build/icon.icns`. `assets/pigna-hand.svg` is the same hand cropped for the UI.
 
+Icons: pi-gna draws its own set, `components/icons.tsx` (renderer and mobile import it; no icon library). One
+style: 24-unit grid, 2px round strokes and joins, 3-4 unit corner radii, the fewest strokes that still read at
+12-16px. Exports keep the names of the lucide-react icons they replaced (`X`, `SquareKanban`, `Settings`), each
+renders `<svg class="icon icon-<name>">`, and props pass through, so `fill="currentColor"` fills a Square or Play
+and `strokeWidth` thickens one. A new icon is a new `icon()` entry drawn in that style, not a dependency. The
+markdown link icons in `styles.css` (`--file-icon` data URIs) reuse the same paths.
+
 ## Visuals
 
 Optional inline HTML visuals in assistant replies (Settings > Agent > Beta > Inline visuals, off by default). The agent

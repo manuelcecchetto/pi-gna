@@ -1,7 +1,7 @@
 // Settings on the phone: the sections of the desktop page except Shortcuts. Every change goes through
 // the same validated host methods as the desktop (settings.apply with baseRev for the choices, settings.setPi,
 // computer.apply, devices.revoke), so the Mac shows it live; pairing a new device and the macOS permission prompts stay on the Mac.
-import { Check, ChevronRight, RotateCcw, X } from "lucide-react";
+import { Check, ChevronRight, RotateCcw, X } from "../renderer/src/components/icons";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import { formatStamp, tildify } from "../renderer/src/lib/format";

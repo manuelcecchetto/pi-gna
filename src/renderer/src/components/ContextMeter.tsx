@@ -1,7 +1,7 @@
 // Context meter next to the send button (Codex-style ring). Hover for the details card: how full the
 // window is, how far pi's auto-compaction is, session totals, and Compact now. On a touch screen (`touch`) a tap
 // opens the same card as a bottom sheet.
-import { FoldVertical } from "lucide-react";
+import { FoldVertical } from "./icons";
 import { useEffect, useRef, useState } from "react";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { type ContextLevel, cacheHitRate, lastRequestUsage, summarizeContext } from "../lib/context";

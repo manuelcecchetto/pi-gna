@@ -1,7 +1,7 @@
 // The phone's ATP page: a project's plans as on the desktop (Atp.tsx), run by the host. Nodes grouped by status are the
 // primary view, the graph (AtpGraph, with touch pan and pinch) the other; a node opens to its instruction, report and
 // chats, and the orchestrator is a full chat screen. The run lives in Electron main, so closing the page stops nothing.
-import { ChevronRight, Layers, MessagesSquare, Network, Pause, Play, Plus, Search, Square } from "lucide-react";
+import { ChevronRight, Layers, MessagesSquare, Network, Pause, Play, Plus, Search, Square } from "../renderer/src/components/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AtpGraph, type GraphHandle, LOOK_LABEL, lookOf, StatusIcon } from "../renderer/src/components/AtpGraph";
 import { Markdown } from "../renderer/src/components/Markdown";

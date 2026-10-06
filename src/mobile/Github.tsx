@@ -2,7 +2,7 @@
 // Mac as the account that can see the repository; tokens never leave it. Loaded when the page opens and on Refresh.
 // A row opens to its body; the actions sheet opens it on GitHub (in the phone's browser), copies the link, reviews a PR
 // in a new chat on the Mac, makes a card of it or links it to one.
-import { Check, ChevronRight, CircleCheck, CircleDot, ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, MoreHorizontal, Plus, RefreshCw, ScanSearch, SquareKanban, UserRound } from "lucide-react";
+import { Check, ChevronRight, CircleCheck, CircleDot, ExternalLink, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, Link2, MoreHorizontal, Plus, RefreshCw, ScanSearch, SquareKanban, UserRound } from "../renderer/src/components/icons";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS, githubKey } from "../shared/board";
 import { ACCOUNT_REASONS, type GithubFilter, type GithubItem, type GithubKind, type GithubList, type GithubProject, itemRef, refLabel, repoUrl } from "../shared/github";
