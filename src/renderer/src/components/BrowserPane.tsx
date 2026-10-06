@@ -111,7 +111,9 @@ export function BrowserPane() {
         className="drag dashed-b titlebar flex shrink-0 items-center gap-1 overflow-hidden px-2"
         style={sidebar.collapsed && pane.full ? { paddingLeft: COLLAPSED_INSET } : undefined}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        {/* no-drag: wheel events skip window-drag regions, so the gaps between pills would stall a scroll mid-strip.
+            The strip only grows to its tabs; the spacer after it keeps the empty titlebar draggable. */}
+        <div className="no-drag flex min-w-0 items-center gap-1 overflow-x-auto">
           {state.tabs.map((tab) => (
             <TabPill
               key={tab.id}
@@ -129,6 +131,7 @@ export function BrowserPane() {
             <Plus size={14} />
           </IconButton>
         </div>
+        <div className="flex-1 self-stretch" />
         {active?.preview && active.preview.modes.length > 1 && <PreviewModes tab={active} />}
         {active?.preview && commentable(active.preview) && (
           <IconButton title={state.annotating ? "Stop commenting (Esc in page)" : "Comment on elements"} active={state.annotating} onClick={() => browser().annotate(!state.annotating)}>
