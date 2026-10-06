@@ -1,7 +1,10 @@
-// The phone's replacement for the desktop's hover rail: a button over the transcript opens a sheet with one row per message
-// you sent (and a star for the bookmarks the host keeps, so they match the desktop). A row scrolls there and flashes it.
+// The phone's replacement for the desktop's hover rail: a button in the chat's header opens a sheet with one row per
+// message you sent (and a star for the bookmarks the host keeps, so they match the desktop). A row scrolls there and
+// flashes it. The Transcript owns the turns, so the button is portalled into a slot the header leaves for it: floating
+// over the transcript, it covered the ends of lines and your own messages.
 import { ListTree, Star } from "../renderer/src/components/icons";
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "../renderer/src/lib/store";
 import type { TurnNav } from "../renderer/src/components/Transcript";
 import type { HostClient } from "./client/host-client";
@@ -10,7 +13,7 @@ import { toast } from "./toasts";
 
 const NONE: number[] = [];
 
-export function TurnList({ client, nav }: { client: HostClient; nav: TurnNav }) {
+export function TurnList({ client, nav, slot }: { client: HostClient; nav: TurnNav; slot: HTMLElement | null }) {
   const [open, setOpen] = useState(false);
   const [onlyMarked, setOnlyMarked] = useState(false);
   const marks = useStore(client.store, (s) => (nav.sessionPath ? (s.global.ui?.bookmarks[nav.sessionPath] ?? NONE) : NONE));
@@ -26,15 +29,13 @@ export function TurnList({ client, nav }: { client: HostClient; nav: TurnNav }) 
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Jump to a turn"
-        data-testid="turn-list-button"
-        onClick={() => setOpen(true)}
-        className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full border border-line-strong bg-panel/90 text-muted shadow-[0_6px_20px_-6px_rgb(0_0_0/0.5)]"
-      >
-        <ListTree size={17} />
-      </button>
+      {slot &&
+        createPortal(
+          <button type="button" aria-label="Jump to a turn" data-testid="turn-list-button" onClick={() => setOpen(true)} className="grid h-11 w-11 shrink-0 place-items-center text-muted">
+            <ListTree size={18} />
+          </button>,
+          slot,
+        )}
       {open && (
         <Sheet title={`Turns (${nav.items.length})`} onClose={() => setOpen(false)} testId="turn-list">
           {marks.length > 0 && (

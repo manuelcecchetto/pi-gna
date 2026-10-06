@@ -123,6 +123,8 @@ function BrowserButton({ client, handle, onOpen }: { client: HostClient; handle:
 export function ChatScreen({ client, route, back, push, replace }: { client: HostClient; route: ChatRoute; back: () => void; push: (route: Route) => void; replace: (route: Route) => void }) {
   const [attempt, setAttempt] = useState(0);
   const [picking, setPicking] = useState(false);
+  // Where TurnList puts its button: in the header, not over the transcript.
+  const [turnSlot, setTurnSlot] = useState<HTMLSpanElement | null>(null);
   const { handle, error } = useJoinedChat(client, route, attempt);
   const entry = useStore(client.store, (s) => (handle ? s.chats[handle] : undefined));
   const session = entry?.session;
@@ -144,6 +146,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
     <div className="flex min-h-0 flex-1 flex-col">
       <Header title={title} onBack={back} trailing={
           <>
+            <span ref={setTurnSlot} className="contents" />
             {session && <BrowserButton client={client} handle={session.handle} onOpen={() => push({ screen: "browser", handle: session.handle })} />}
             {session && (
               <button
@@ -180,7 +183,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
               </button>
             </div>
           )}
-          <Transcript session={session} earlier={earlier} turns={(nav) => <TurnList client={client} nav={nav} />} onPickProject={() => setPicking(true)} />
+          <Transcript session={session} earlier={earlier} turns={(nav) => <TurnList client={client} nav={nav} slot={turnSlot} />} onPickProject={() => setPicking(true)} />
           {session.dialogs.length > 0 && (
             <div className="max-h-[55%] shrink-0 overflow-y-auto px-3 pb-2" data-testid="dialogs">
               <Dialogs handle={session.handle} dialogs={session.dialogs} />
