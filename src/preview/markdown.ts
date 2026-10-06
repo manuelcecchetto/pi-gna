@@ -2,7 +2,7 @@
 // contents for long documents and links/images resolved against the preview origin. The file is untrusted; the
 // viewer CSP additionally blocks remote images and any script.
 import { highlightWithin } from "../renderer/src/lib/highlight";
-import { renderMarkdown } from "../renderer/src/lib/markdown";
+import { markdownBlockLines, renderMarkdown } from "../renderer/src/lib/markdown";
 import { PREVIEW_LIMITS } from "../shared/preview";
 import { classifyLink, resolveImage, slugify, splitFrontMatter } from "./links";
 import { app, readBytes, showMessage, type Source } from "./shell";
@@ -111,11 +111,17 @@ export async function showMarkdown(source: Source): Promise<void> {
   const file = await readBytes(source.rawUrl, PREVIEW_LIMITS.text);
   if (file.total === 0) return showMessage("This file is empty.", source.name);
   const cut = file.total > file.data.length;
-  const { entries, body } = splitFrontMatter(new TextDecoder().decode(file.data, { stream: true }));
+  const text = new TextDecoder().decode(file.data, { stream: true });
+  const { entries, body } = splitFrontMatter(text);
 
   const article = document.createElement("article");
   article.className = "prose";
   article.innerHTML = renderMarkdown(body, { fileLinks: false });
+  // The line each block starts on, for comments on the page (the picker reads the nearest one). Only when blocks and
+  // elements pair up one to one: a raw HTML block can render as several elements or none.
+  const lines = markdownBlockLines(body);
+  const offset = text.slice(0, text.length - body.length).split("\n").length - 1;
+  if (lines && lines.length === article.children.length) lines.forEach((line, i) => article.children[i]?.setAttribute("data-source-line", String(line + offset)));
   const headings = anchorHeadings(article);
   resolveAssets(article);
   if (entries.length) article.prepend(frontMatterTable(entries));

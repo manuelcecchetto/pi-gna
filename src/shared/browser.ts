@@ -59,6 +59,15 @@ export interface Annotation {
   comment: string;
   /** JPEG crop of the element, base64. */
   image?: string;
+  /** Absolute path of the previewed file the element is in (`url` is then that path too); web pages have none. */
+  file?: string;
+  /** 1-based line in `file`: the code viewer's line, or a previewed HTML file's tag when it maps unambiguously. */
+  line?: number;
+  /** Size and viewport position in CSS px (`120x32 at 40,200`), and the page viewport (`1280x800`). */
+  box?: string;
+  viewport?: string;
+  /** Computed styles that a design comment is usually about (font, colors, spacing, layout). */
+  styles?: string;
   /** The chat whose tab it was picked in; the comment waits in that chat's composer. */
   chat?: string;
 }

@@ -120,6 +120,11 @@ export function BrowserPane() {
           </IconButton>
         </div>
         {active?.preview && active.preview.modes.length > 1 && <PreviewModes tab={active} />}
+        {active?.preview && commentable(active.preview) && (
+          <IconButton title={state.annotating ? "Stop commenting (Esc in page)" : "Comment on elements"} active={state.annotating} onClick={() => browser().annotate(!state.annotating)}>
+            <MessageSquarePlus size={14} />
+          </IconButton>
+        )}
         <IconButton title={pane.full ? "Split view" : "Full view"} onClick={() => setPane({ full: !pane.full })}>
           {pane.full ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </IconButton>
@@ -183,13 +188,16 @@ export function BrowserPane() {
       </div>
       {state.annotating && (
         <div className="shrink-0 border-t border-accent/30 bg-accent-soft px-3 py-1.5 text-[12px] text-fg">
-          Click an element in the page to comment on it. Comments are attached to your next prompt. Esc stops.
+          Click an element to comment on it: Add keeps it for your next message, Send (⌘⏎) sends it now. Esc stops.
         </div>
       )}
       {menu}
     </div>
   );
 }
+
+/** Previews whose page is worth commenting on element by element: rendered Markdown and HTML. */
+const commentable = (preview: TabPreview) => preview.mode === "rendered" && (preview.kind === "markdown" || preview.kind === "html");
 
 /**
  * Rendered/Raw switch of the active preview, in the tab strip. A preview has no toolbar row of its own: the viewer's bar is

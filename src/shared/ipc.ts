@@ -438,7 +438,8 @@ export interface BrowserApi {
   onState(listener: (state: BrowserState) => void): () => void;
   /** The agent is about to use the browser of `chat`: show its pane. */
   onReveal(listener: (chat?: string) => void): () => void;
-  onAnnotation(listener: (annotation: Annotation) => void): () => void;
+  /** `send`: the user chose Send in the picker rather than Add. */
+  onAnnotation(listener: (annotation: Annotation, send: boolean) => void): () => void;
   /** View > Toggle Browser (a menu accelerator, so it works while a page has focus). */
   onToggle(listener: () => void): () => void;
 }

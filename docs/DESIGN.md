@@ -213,9 +213,14 @@ tabs close when its session ends. The phone still lists every chat's tabs.
   afterwards and stepped back if denied. Stagehand's `run`, `snapshot` and `screenshot` are excluded with
   `--exclude-tools` (override with `PIGNA_EXCLUDE_TOOLS`). The extension imports `src/shared/browser.ts`
   directly (pi loads extensions with jiti and aliases `typebox`).
-- **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab; a
-  long-pending promise resolves with the element, selector, HTML and comment, main crops the element, and the
-  renderer shows it as a chip. The next prompt carries a `<browser-comments>` block plus the crops as images.
+- **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab, a web page
+  or a rendered Markdown/HTML preview (the preview's toggle sits in the tab strip). A long-pending promise resolves
+  with the element (selector, label, HTML, box and viewport, key computed styles), the comment and the button: **Add**
+  (Enter) keeps it as a composer chip for the next prompt, **Send** (⌘Enter) adds it and sends the chat's comments at
+  once (`browser.annotation` with `send`; empty text, steering a running chat; the composer's draft stays). Main crops
+  the element and, on a preview, swaps the token URL for the file path and line (`annotation-source.ts`: the Markdown
+  viewer's `data-source-line` blocks, or a rendered HTML file's tag matched by id or by index when the page and the file
+  have as many of that tag). The prompt carries a `<browser-comments>` block (`formatAnnotations`) plus the crops.
 - **Responsive viewport and device windows**: a tab can emulate a device (measurements and rejected options in
   `docs/RESPONSIVE_BROWSER.md`).
   - *Mechanism*: CDP on the tab's debugger sets metrics (size, DPR, `mobile`, screen), touch emulation and the
@@ -1213,6 +1218,11 @@ frame instead (`capturePage` with `stayHidden`, device pixels; needs `--inspect`
 `BrowserWindow.getMediaSourceId()` (`window:<id>:0`) through `cdp.mjs main`); it includes the native tab views and
 device windows. A tab under touch emulation (a phone preset) never acknowledges CDP mouse presses, so `click` on its
 target hangs: click its elements with `eval` instead.
+A card worktree (`~/.pi-gna/worktrees/…`) may have no Electron binary (`pnpm install` there skipped the download): launch
+it with the main checkout's `require("electron")` path. Start a test instance in a detached subshell
+(`(… nohup "$ELECTRON" . … & disown)`): a tool call that times out kills its process group, the instance included. Once
+a background window stops drawing, CDP `click`, `type` and `key` queue forever; the comment picker still opens on
+mousemove/click events dispatched with `eval` (its isolated-world listeners see them), but its card's keys need frames.
 Provider logins (Settings > Providers) write `auth.json`: give test instances `PI_CODING_AGENT_DIR=/tmp/<dir>/agent`,
 never the real one. Flows that open a browser or ask a provider for a device code should not run for real in a test:
 put a fake SDK where `PIGNA_PI_BIN` resolves (a folder whose `package.json` is named `@earendil-works/pi-coding-agent`,

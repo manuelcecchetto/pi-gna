@@ -145,7 +145,7 @@ hub.subscribe({
         case "atp.threads": send(IPC.atpThreadsChanged, { plan: e.plan, threads: e.threads }); break;
         case "browser": send(IPC.browserState, e.state); break;
         case "browser.reveal": send(IPC.browserReveal, e.chat); break;
-        case "browser.annotation": send(IPC.browserAnnotation, e.annotation); break;
+        case "browser.annotation": send(IPC.browserAnnotation, { annotation: e.annotation, send: e.send === true }); break;
         case "update": send(IPC.updateState, e.state); break;
         case "devices": send(IPC.devicesChanged, e.devices); break;
         case "remote": send(IPC.remoteChanged, e.status); break;
@@ -324,7 +324,7 @@ function createWindow(): void {
   browser = new BrowserManager(window, {
     state: (state) => publish({ kind: "browser", state }),
     reveal: (chat) => publish({ kind: "browser.reveal", chat }),
-    annotation: (annotation) => publish({ kind: "browser.annotation", annotation }),
+    annotation: (annotation, send) => publish({ kind: "browser.annotation", annotation, send }),
   });
   agent = new BrowserAgent(browser);
   remoteBrowser = new RemoteBrowser(browser);

@@ -456,6 +456,17 @@ Limits are constants in `src/shared/preview.ts`, enforced in the viewer (it know
    paths outside the active cwd ask once per session like any other origin.
 All entries go through one main method, `BrowserManager.openPreview(path, options) -> tab` (exposed as `browser.preview` in `host-core.ts`'s table, `window.studio.browser.preview` over IPC; `browser.previewMode`, `previewReveal` and `previewOpen` switch Rendered/Raw, reveal in Finder and open with the default app).
 
+## Comments
+
+Rendered Markdown and HTML previews have the browser's comment mode (the speech-bubble toggle in the tab strip; the
+picker, Add/Send and the prompt block are in docs/DESIGN.md, Annotations). A comment names the file and, where it can be
+told for sure, a line: `annotation-source.ts`. Markdown: `showMarkdown` tags each top-level block with
+`data-source-line` (`markdownBlockLines`: marked's lexer, frontmatter offset added) only when blocks and elements pair
+one to one, so the line is where the commented element's block starts (a list, not its item); the viewer's computed
+styles are left out. HTML: main reads the file (up to 2 MB) and finds the opening tag by a unique id, else as the n-th
+tag of its name, only when the file has exactly as many as the page (scripts that add elements and implied tags such
+as `<tbody>` give no line). Code, JSON, PDF, Office and media previews have no comment mode.
+
 ## Chat links
 
 The agent cites files as Markdown links (`resources/pigna-prompt.md` asks for it); the transcript renders them as file chips and a click previews the file, like the Codex app.

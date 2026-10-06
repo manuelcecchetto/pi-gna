@@ -2,7 +2,7 @@
 // End to end test of the remote vertical slice, without a phone (docs/REMOTE.md, "Automated end-to-end test"):
 // pairing, open, prompt, streaming, approvals, cancellation, reconnect and recovery, closing clients mid-run, and
 // screenshots of the mobile screens. Run it from the repo root:
-//   node scripts/remote-slice-e2e.mjs [--keep] [--no-build] [--shots <dir>] [--hold] [--screens-only] [--themes-only] [--debug]
+//   node scripts/remote-slice-e2e.mjs [--keep] [--no-build] [--shots <dir>] [--hold] [--screens-only] [--browser-only] [--themes-only] [--debug]
 // It builds the app into its own folder under the temp dir, starts a test instance there (own PIGNA_USER_DATA,
 // own free ports, PIGNA_BACKGROUND=1, scripts/fake-pi.mjs as pi), drives it as two paired phones (HTTP + SSE, like
 // the HostClient) and as the desktop window (CDP), and stops it by PID. Nothing touches a running pi-gna.
@@ -457,8 +457,8 @@ async function scenario(ctx) {
   await themeChecks({ A, desktop, project });
   if (flag("--themes-only")) return screens(ctx, { handle: "", A, B, project });
 
-  if (flag("--screens-only")) {
-    // Development shortcut: skip the scenarios, just look at the mobile screens.
+  if (flag("--screens-only") || flag("--browser-only")) {
+    // Development shortcuts: skip the scenarios, seed a chat for the selected mobile checks.
     await showSession(desktop, "Earlier question 1");
     const { handle } = await A.ok("chat.open", { request: { cwd, sessionPath: sessionFile } });
     const stream = A.events([handle]);
@@ -891,6 +891,19 @@ async function screens({ desktop, ports }, { handle, A, project }) {
     return;
   }
 
+  if (flag("--browser-only")) {
+    // Exercise the real browser and chat links without unrelated screen/ATP prerequisites.
+    await browserChecks({ phone, A, shot, text, tap, exists, present });
+    await linkChecks({ phone, A, shot, text, exists });
+    if (flag("--hold")) {
+      log(`holding on the mobile page; debug port ${ports.debug}`);
+      await new Promise(() => undefined);
+    }
+    await mainEval(`${view}.debugger.detach(), globalThis.__sliceWin.destroy(), true`);
+    inspector.close();
+    return;
+  }
+
   await until("the projects screen", present("project"), 30_000, 250);
   await sleep(800);
   await shot("1-projects");
@@ -1141,6 +1154,67 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     const echoed = await text();
     check((() => { const tail = echoed.slice(echoed.indexOf("zzcomment")); return tail.includes("Browser comments (1)") && tail.includes("[images=1]"); })(), "the host composed the comment and its crop into the prompt", echoed.slice(-300));
     check(!(await exists('[data-testid="annotation-chip"]')), "the chip is gone once the prompt was taken");
+
+    // Send now in the comment sheet: the comment goes to the chat the browser opened from at once, with its crop.
+    await until("the chat to be idle", async () => !(await exists('[data-testid="stop"]')), 60_000, 250);
+    check(await click("open-browser"), "the chat header opens the browser again");
+    await until("the browser screen", () => exists('[data-testid="all-tabs"]'));
+    await click("all-tabs");
+    await until("the frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
+    await click("comment-mode");
+    await sleep(300);
+    await tapPage(180, 240);
+    await until("the comment sheet", () => exists('[data-testid="comment-sheet"]'));
+    await typeInto("comment-text", "echo-attach zzsendnow");
+    check(await phone.eval(`!document.querySelector('[data-testid="comment-send"]').disabled`), "the comment sheet offers Send now in a chat's browser");
+    await shot("browser-4-send-now");
+    await click("comment-send");
+    await until("the sheet to close", async () => !(await exists('[data-testid="comment-sheet"]')), 20_000, 100);
+    check(!(await exists('[data-testid="annotation-chip"]')), "Send now leaves no comment waiting");
+    await click("comment-mode");
+    await phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
+    // The comment lives in the block (rendered as the "Browser comments" disclosure); fake pi echoes the crop count.
+    const count = (pattern) => text().then((t) => (t.match(pattern) ?? []).length);
+    await until("the chat's echo of the sent comment", async () => (await count(/\[images=1\]/g)) >= 2, 30_000, 200);
+    check((await count(/Browser comments \(1\)/g)) >= 2, "the chat shows the comment block Send now sent, with its crop");
+
+    // A transport failure after picking keeps one saved comment, but closes the sheet so retry cannot pick it twice.
+    await until("the chat to be idle", async () => !(await exists('[data-testid="stop"]')), 60_000, 250);
+    await click("open-browser");
+    await until("the browser screen", () => exists('[data-testid="all-tabs"]'));
+    await click("all-tabs");
+    await until("the frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
+    await click("comment-mode");
+    await sleep(300);
+    await tapPage(180, 240);
+    await until("the comment sheet", () => exists('[data-testid="comment-sheet"]'));
+    await typeInto("comment-text", "keep this once");
+    await phone.eval(`(() => {
+      window.__commentFetch = window.fetch;
+      window.fetch = (input, init) => new URL(typeof input === "string" ? input : input.url, location.href).pathname === "/api/call/chat.send"
+        ? Promise.reject(new TypeError("test: send unavailable")) : window.__commentFetch(input, init);
+    })()`);
+    try {
+      await click("comment-send");
+      await until("the saved sheet to close after Send fails", async () => !(await exists('[data-testid="comment-sheet"]')), 20_000, 100);
+      check(await phone.eval(`document.querySelectorAll('[data-testid="annotation-chip"]').length === 1`), "failed Send keeps exactly one comment without inviting another pick");
+      check((await text()).includes("Comments kept for your next message."), "failed Send explains how to recover");
+      await shot("browser-5-send-failed");
+    } finally {
+      await phone.eval("window.fetch = window.__commentFetch; delete window.__commentFetch");
+    }
+
+    // The next comment sends both saved comments and both crops, once each.
+    await tapPage(100, 340);
+    await until("the next comment sheet", () => exists('[data-testid="comment-sheet"]'));
+    await typeInto("comment-text", "echo-attach zzretry");
+    await click("comment-send");
+    await until("the recovered sheet to close", async () => !(await exists('[data-testid="comment-sheet"]')), 20_000, 100);
+    check(!(await exists('[data-testid="annotation-chip"]')), "recovered Send clears the saved batch");
+    await click("comment-mode");
+    await phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
+    await until("the chat's echo of both crops", async () => (await count(/\[images=2\]/g)) >= 1, 30_000, 200);
+    check((await count(/Browser comments \(2\)/g)) === 1, "recovered Send delivers both comments to the originating chat once");
   } finally {
     fixture.close();
   }

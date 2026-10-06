@@ -8,7 +8,7 @@ import { useStore } from "../renderer/src/lib/store";
 import type { Annotation, BrowserTab, HistoryEntry } from "../shared/browser";
 import type { BrowserInput } from "../shared/host-api";
 import { DEVICE_PRESETS } from "../shared/viewport";
-import { annotations, useAnnotations } from "./annotations";
+import { annotations, sendAnnotations, useAnnotations } from "./annotations";
 import { agentActive, type Box, classify, isWindowTab, KEYS, LONG_PRESS_MS, pageSize, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
 import type { HostClient } from "./client/host-client";
 import { clampView, distance, FIT, midpoint, type View, zoomAt } from "./pinch";
@@ -128,7 +128,7 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
       </div>
       {tab ? <>
           <AddressBar key={tab.id} client={client} tab={tab} call={call} />
-          <Frame key={`frame:${tab.id}`} client={client} tab={tab} commenting={commenting} />
+          <Frame key={`frame:${tab.id}`} client={client} tab={tab} chat={handle ?? tab.agent} commenting={commenting} />
         </> : <div className="p-6 text-center text-[13.5px] text-faint">No tabs open. Tap + for a new one.</div>}
       {tab && (
         <div className="shrink-0 border-t border-line pb-[env(safe-area-inset-bottom)]">
@@ -282,7 +282,8 @@ interface One {
 }
 
 /** The stream and its gestures. */
-function Frame({ client, tab, commenting }: { client: HostClient; tab: BrowserTab; commenting: boolean }) {
+/** `chat`: where Send now in the comment sheet sends (the chat this browser opened from, else the tab's owner). */
+function Frame({ client, tab, chat, commenting }: { client: HostClient; tab: BrowserTab; chat?: string; commenting: boolean }) {
   const area = useRef<HTMLDivElement>(null);
   const img = useRef<HTMLImageElement>(null);
   const [room, setRoom] = useState({ width: 0, height: 0 });
@@ -473,15 +474,19 @@ function Frame({ client, tab, commenting }: { client: HostClient; tab: BrowserTa
         </button>
       )}
       {commenting && <div className="pointer-events-none absolute inset-x-0 top-0 bg-accent/90 px-3 py-1 text-center text-[12px] text-white">Tap an element to comment on it</div>}
-      {pick && <CommentSheet client={client} tab={tab} point={pick} onClose={() => setPick(undefined)} />}
+      {pick && <CommentSheet client={client} tab={tab} chat={chat} point={pick} onClose={() => setPick(undefined)} />}
     </div>
   );
 }
 
-function CommentSheet({ client, tab, point, onClose }: { client: HostClient; tab: BrowserTab; point: { x: number; y: number }; onClose: () => void }) {
+/**
+ * Add keeps the comment for this phone's next message; Send now sends it, with the other waiting comments, to `chat` at
+ * once: the chat whose header opened the browser (where Back returns), else the tab's owner. Without either, only Add.
+ */
+function CommentSheet({ client, tab, chat, point, onClose }: { client: HostClient; tab: BrowserTab; chat?: string; point: { x: number; y: number }; onClose: () => void }) {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
-  const submit = async () => {
+  const submit = async (now: boolean) => {
     if (!comment.trim() || busy) return;
     setBusy(true);
     try {
@@ -489,7 +494,15 @@ function CommentSheet({ client, tab, point, onClose }: { client: HostClient; tab
       const annotation: Annotation | undefined = result?.annotation;
       if (!annotation) throw new Error("No element there");
       annotations.add(annotation);
-      toast("Comment added. It goes with your next message.");
+      if (now && chat) {
+        // The pick is saved already: a failed Send must not leave the sheet open to pick it again.
+        try {
+          const sent = await sendAnnotations((method, args) => client.call(method, args), chat);
+          toast(sent.accepted ? "Sent to the chat." : `Not sent (${sent.error ?? "pi did not take it"}). It goes with your next message.`, sent.accepted ? undefined : "error");
+        } catch (error) {
+          toast(`Could not send: ${failure(error)}. Comments kept for your next message.`, "error");
+        }
+      } else toast("Comment added. It goes with your next message.");
       onClose();
     } catch (error) {
       toast(failure(error), "error");
@@ -498,11 +511,17 @@ function CommentSheet({ client, tab, point, onClose }: { client: HostClient; tab
   };
   return (
     <Sheet title="Comment on the element" onClose={onClose} testId="comment-sheet">
-      <form className="flex flex-col gap-3 px-4 pb-3" onSubmit={(event) => (event.preventDefault(), void submit())}>
+      <form className="flex flex-col gap-3 px-4 pb-3" onSubmit={(event) => (event.preventDefault(), void submit(false))}>
         <textarea autoFocus value={comment} onChange={(event) => setComment(event.target.value)} rows={3} placeholder="What should change here?" data-testid="comment-text" className="w-full resize-none rounded-xl bg-sunken px-3 py-2.5 text-[16px] text-fg outline-none placeholder:text-faint" />
-        <button type="submit" disabled={!comment.trim() || busy} data-testid="comment-add" className="min-h-12 rounded-xl bg-accent text-[15px] font-medium text-white disabled:opacity-40">
-          Add comment
-        </button>
+        <div className="flex gap-2">
+          <button type="submit" disabled={!comment.trim() || busy} data-testid="comment-add" className="min-h-12 flex-1 rounded-xl border border-line text-[15px] font-medium text-fg disabled:opacity-40">
+            Add
+          </button>
+          <button type="button" disabled={!comment.trim() || busy || !chat} onClick={() => void submit(true)} data-testid="comment-send" className="min-h-12 flex-1 rounded-xl bg-accent text-[15px] font-medium text-white disabled:opacity-40">
+            Send now
+          </button>
+        </div>
+        {!chat && <p className="text-[12.5px] text-faint">This tab belongs to no chat: add the comment and send it with a message.</p>}
       </form>
     </Sheet>
   );
