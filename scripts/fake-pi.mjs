@@ -25,7 +25,7 @@ const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0
 const LINES = Number(process.env.FAKE_LINES || 80);
 const DELAY = Number(process.env.FAKE_DELAY || 120);
 // A prompt containing `say:` is answered with the text after it, as Markdown (the phone's chat-link checks).
-// A prompt may carry `[lines=N]` and `[delay=N]` to override FAKE_LINES / FAKE_DELAY for that answer (scripts/remote-slice-e2e.mjs).
+// A prompt may carry `[lines=N]` and `[delay=N]` to override FAKE_LINES / FAKE_DELAY for that answer (scripts/remote-e2e).
 const directive = (text, name, fallback) => Number(text.match(new RegExp(`\\[${name}=(\\d+)\\]`))?.[1] ?? fallback);
 let current = model;
 let thinkingLevel = "off";

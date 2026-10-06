@@ -568,45 +568,63 @@ so about 40 MB crossed Tailscale before "Opening…" cleared. Now:
 - **Commands and mentions:** `get_commands` and `chat.files` (cached 15 s per folder) feed touch lists above the textarea; trigger detection is `src/shared/composer-menu.ts`, shared with the desktop composer.
 - **Shared components made touch-friendly, not forked:** `ContextMeter` (props `compaction`, `onCompact`, `touch`: a tap opens the card as a bottom sheet; compaction settings come from `chat.compactionSettings`), `QueueCard` (`touch`: rows show Steer now / After the run, Edit, Remove as full-size buttons; ops are `chat.editQueue`), `TokenRate`, `Widget`. The compaction indicator is the transcript's own `CompactionProgress`; an auto-retry shows a callout with "Give up" (`abort_retry`).
 - **Extension UI:** `HostClient.onChatEvent` sees each applied chat event once; `notices.ts` turns `notify` into toasts (startup info dropped, each startup warning once per page run). Widgets render above or below the composer, `set_editor_text` fills the draft (once per nonce), `setTitle` is the chat header.
-- **Verification:** `scripts/remote-slice-e2e.mjs` ends with `composerChecks` on the phone (fake-pi serves commands, thinking levels, model switches, compaction, stats; a prompt with `ext-ui` or `retry-demo` raises extension UI and an auto-retry). Real pi for models and commands: see docs/REMOTE_VERIFICATION.md.
+- **Verification:** the `mobile-chat` scenario of `pnpm e2e:remote` ends with `composerChecks` on the phone (fake-pi serves commands, thinking levels, model switches, compaction, stats; a prompt with `ext-ui` or `retry-demo` raises extension UI and an auto-retry). Real pi for models and commands: see docs/REMOTE_VERIFICATION.md.
 
-### Automated end-to-end test (T20, `scripts/remote-slice-e2e.mjs`)
+### Automated end-to-end tests (T20, `scripts/remote-e2e/`)
 
-`pnpm e2e:remote` (or `node scripts/remote-slice-e2e.mjs`) proves the vertical slice without a phone, in about 4 minutes. It builds the app
-into its own folder under the temp dir (`electron-vite` + the mobile bundle, one build id), starts a test instance there (own
-`PIGNA_USER_DATA`, free debugging/inspector/remote ports, `PIGNA_BACKGROUND=1`, `PIGNA_REMOTE_LOOPBACK=1`, `scripts/fake-pi.mjs` as pi, its own
-`PI_CODING_AGENT_DIR`, a throwaway git project with a three-turn session) with remote access switched on in the profile's `settings.json`, and
-stops it by PID. Nothing touches a running pi-gna. Exit code 0 only when every check passed; a failed run keeps its folder (`app.log` inside).
+`pnpm e2e:remote` proves the remote slice without a phone. It is a set of small scenarios, one file each
+(`scripts/remote-e2e/<name>.e2e.mjs`), on a shared harness (`harness.mjs`). The runner (`run.mjs`) builds the app once into a folder under
+the temp dir (`electron-vite` + the mobile bundle, one build id), then runs each scenario as its own process against its own fresh test
+instance: own `PIGNA_USER_DATA`, free debugging/inspector/remote ports, `PIGNA_BACKGROUND=1`, `PIGNA_REMOTE_LOOPBACK=1`, `scripts/fake-pi.mjs`
+as pi, its own `PI_CODING_AGENT_DIR`, and a throwaway git project with a three-turn session, a "Tools demo" session and three laments.
+Remote access and the task models (fake-pi's) are set in the profile's `settings.json`, and each instance is stopped by PID. Nothing touches a running pi-gna.
+A scenario never depends on another's leftovers, so a failure stops only its own checks. The run prints a pass/FAIL table; its exit code is
+0 only when every scenario passed. A failed scenario keeps its work folder (`app.log` inside).
 
-The multi-client rules (simultaneous prompts, steer vs. follow-up, one answer per dialog, abort against a steer, serialized queue edits, card edit conflicts and moves, leases and close broadcasts) are unit-tested in `src/main/multi-client.test.ts`; the script's "Two clients at once" section runs the prompt, queue-interrupt and card-edit cases through the real server.
+```bash
+pnpm e2e:remote                        # all scenarios, one at a time (about 4 minutes; --jobs 3 takes about 1.5)
+pnpm e2e:remote mobile-board reconnect # by name; a prefix such as `mobile` selects every mobile-* scenario
+pnpm e2e:remote --list                 # names only
+node scripts/remote-e2e/reconnect.e2e.mjs   # one scenario directly; builds unless SLICE_E2E_APP=<folder of an earlier build>
+```
 
-What it drives: two paired "phones" A and B (plain HTTP + SSE with the headers Tailscale serve and Safari would send: loopback `Host`, https
-`Origin`, `X-Pigna-Client`, `Tailscale-User-Login`, the device cookie), and the desktop window over CDP.
+Runner flags: `--jobs <n>` (parallel scenarios, output prefixed with the name), `--keep` (keep the build and work folders), `--shots <dir>`
+(screenshots under `<dir>/<scenario>`). A scenario run directly also takes `--keep`, `--shots <dir>`, `--hold` (stay up at the end for
+manual poking) and `--debug`. To add a check, add it to the scenario it belongs to, or add a new `<name>.e2e.mjs` that calls `scenario()`.
+Seed what it needs in its own body rather than relying on another scenario's state.
 
-1. **Pairing:** the Mac issues a code through the window's `studio.remote`, each phone claims it, the Mac's Allow is `pairDecide` (no test hook in the app), the cookie comes
-   from the long-poll. An unpaired client gets 401.
-2. **Open:** A opens the session file (host handle, empty `entries`), B gets the same handle (`reused`), the desktop shows the same live chat (one pi process).
-3. **Prompt and approval:** a prompt containing `ask-confirm` makes fake-pi raise a `confirm` dialog. A answers; B and the desktop drop the card on `dialog_resolved`
-   (naming A's device); B's later answer is `already_answered`; pi saw one answer. Lines 1..40 arrive once each on A, B and in the desktop's DOM.
-4. **Cancel:** B interrupts a long run started by A; it ends `aborted` everywhere with identical partial text; the host reports idle.
-5. **Reconnect:** A's stream is dropped mid-run and reopened with `Last-Event-ID` (replay, no `resync`, `seq` contiguous, lines 1..250 once); the same prompt retried with the same
-   `Idempotency-Key` returns the first result and adds no turn; the same key with another body is `400`.
-6. **Ring overflow:** with A away, more than 2000 events pass; A's reconnect gets `resync` and no replay; the snapshot plus the events after its `seq` leave no gap.
-7. **Closing clients mid-run:** A and B detach and drop their streams; the run goes on and the desktop sees it finish.
-8. **Mobile screens:** the mobile app loads in an offscreen window of the instance itself (iPhone 15 size, mobile user agent, touch emulation) through a small Tailscale-header proxy; the script navigates
-   Projects, Chats, Chat, sends a prompt from the phone's composer, taps Allow, Stop (confirm) and saves PNGs (`--shots <dir>`, default inside the work folder).
+What they drive: two paired "phones" A and B (plain HTTP + SSE with the headers Tailscale serve and Safari would send: loopback `Host`, https
+`Origin`, `X-Pigna-Client`, `Tailscale-User-Login`, the device cookie), the desktop window over CDP, and for `mobile-*` the mobile app in an
+offscreen window of the instance itself (iPhone 15 size, mobile user agent, touch emulation) through a small Tailscale-header proxy.
 
-Prompts steer fake-pi with `[lines=N]` and `[delay=N]` (ms). Flags: `--keep` (keep the work folder), `--no-build` with `SLICE_E2E_APP=<folder of an earlier build>`, `--shots <dir>`,
-`--screens-only` (pairing and screens, skipping the scenarios), `--browser-only` (pairing, browser and chat-link checks without the other screen/ATP checks), and `--hold` (stay up at the end for manual poking).
-Use `--browser-only` for browser work instead of copying the script to bypass unrelated screen failures; it still uses the real paired phone UI, host, page and comment crops.
+| Scenario | What it proves |
+| --- | --- |
+| `pairing` | The Mac issues a code through the window's `studio.remote`, each phone claims it, the Mac's Allow is `pairDecide` (no test hook in the app), the cookie comes from the long-poll. An unpaired client gets 401. |
+| `chat-sync` | A opens the session file (host handle, empty `entries`), B gets the same handle (`reused`), the desktop shows the same live chat. A prompt with `ask-confirm` raises a `confirm` dialog: A answers, B and the desktop drop the card on `dialog_resolved` (naming A's device), B's later answer is `already_answered`, pi saw one answer, and lines 1..40 arrive once each on A, B and in the desktop's DOM. B then interrupts a long run started by A: `aborted` everywhere with identical partial text. |
+| `multi-client` | Two simultaneous prompts: one runs, one queues, B's interrupt hands the queued one back. Two card edits from one revision: one lands, the other gets 409 `conflict`; concurrent moves both succeed. |
+| `reconnect` | A's stream is dropped mid-run and reopened with `Last-Event-ID` (replay, no `resync`, `seq` contiguous, lines 1..250 once); the same prompt retried with the same `Idempotency-Key` returns the first result and adds no turn; the same key with another body is `400`. Then with A away more than 2000 events pass: the reconnect gets `resync` and no replay, and the snapshot plus later events leave no gap. |
+| `host-lifecycle` | A and B detach mid-run and the run goes on to the end. The host process is paused (SIGSTOP on the test instance only) and resumed: calls hang, the stream stays, then carries every line once. A real restart: new boot id, an old idempotency key fails `host_restarted`, a stream resuming the old boot gets `resync(new_boot)`. |
+| `themes` | The desktop applies a project theme (tokens, wallpaper and logo images, a live VisualFrame without re-running its script); remote clients may read themes but not set them; the phone follows the project's forced light/dark mode over the emulated OS mode. |
+| `mobile-chat` | Projects, Chats, Chat (first page, earlier turns on scroll up), a prompt from the phone's composer, Allow, following the stream, Stop with confirmation, then the composer's chrome (`composerChecks`). |
+| `mobile-transcript` | Tool sheets, Expand all, images and the lightbox, links, visuals and their watchdog, the turn list and bookmarks. |
+| `mobile-projects` | Projects and Chats parity: search, long-press sheets, board from a chat, Kanban off, Close chat, pins, the folder browser. |
+| `mobile-board` | The Kanban board: counts, card edits with conflicts, tags, GitHub links, moves, drag reorder, add card with a photo, task chats. |
+| `mobile-laments`, `mobile-github`, `mobile-atp`, `mobile-settings` | Those pages' parity with the desktop (ATP runs a three-node plan on fake-pi workers; GitHub reads a public repository through the host's `gh`). |
+| `mobile-browser` | The Browser screen driving a local dev page (tap, type, keys, scroll, pinch, comments with crops), then chat links opening the Mac's preview, board and browser. |
+
+The multi-client rules (simultaneous prompts, steer vs. follow-up, one answer per dialog, abort against a steer, serialized queue edits, card edit conflicts and moves, leases and close broadcasts) are unit-tested in `src/main/multi-client.test.ts`; `multi-client` runs the prompt, queue-interrupt and card-edit cases through the real server.
+
+Prompts steer fake-pi with `[lines=N]` and `[delay=N]` (ms).
 
 Lessons baked in: windows and browser tabs of a `PIGNA_BACKGROUND=1` instance draw no frames, so `Page.captureScreenshot` and `capturePage` of a tab never answer; the screens
 use an offscreen `BrowserWindow` created through the inspector (`--inspect`) instead. The test found that `chat.respondDialog` ignored its caller, so `dialog_resolved.by`
-named `"desktop"` for a phone's answer (fixed: `host-core.ts` passes the caller).
+named `"desktop"` for a phone's answer (fixed: `host-core.ts` passes the caller). Splitting the old single script into scenarios exposed two hidden couplings: the
+transcript's image check passed only because an earlier section had given the project a logo `<img>`, and an ATP failure (task models fake-pi does not
+have) had kept every later mobile section from running.
 
 ### Resilience results (T41)
 
-Every recovery path has a test; none needed a production fix. Unit tests run in `pnpm test`; the process-level ones are in `pnpm e2e:remote` (sections 6, 8 and 9 of the script).
+Every recovery path has a test; none needed a production fix. Unit tests run in `pnpm test`; the process-level ones are the `reconnect` and `host-lifecycle` scenarios of `pnpm e2e:remote`.
 
 | Case | Proof | Result |
 | --- | --- | --- |
@@ -656,4 +674,4 @@ Not verified against each live provider (needs real accounts): the table classif
 - **Turn jump list:** `Transcript` takes a `turns` render prop (the turns plus `jump`, which pages in an earlier turn when needed, scrolls and flashes it); `TurnList.tsx` shows it as a sheet with one row per message you sent and a star per row. Stars are `ui.apply` bookmark/unbookmark, the host's store, so they match the desktop rail.
 - **Visuals:** shown when the Mac's Inline visuals setting is on. `GET /visual/<frameId>/{doc,kit.css,kit.js}` (no auth, no cookies: opaque-origin frames send none; method GET/HEAD; Host check still applies) serves `resources/visual` with `VISUAL_CSP`. The frame is `sandbox="allow-scripts"`, drawn after a tap; a silent frame (no heartbeat for 8 s) is removed and its source shown. `REMOTE_CSP` `frame-src 'self'` already allows it; the service worker skips `/visual/`.
 - **Small things:** answers keep Copy and show their time; tapping your message shows its full time and Copy; links go through `window.open` on the phone.
-- **Verification:** `transcriptChecks` in `pnpm e2e:remote` (shots 22-29) against a seeded "Tools demo" session (bash with ANSI, edit with a long diff line, read, a generic tool, images, a link, a healthy visual and one that stops its heartbeat). Unit tests: `pinch.test.ts`, `visual-frame.test.ts` (`visualRemoteAsset`), `remote-server.test.ts` (frame route).
+- **Verification:** the `mobile-transcript` scenario of `pnpm e2e:remote` (shots 22-29) against a seeded "Tools demo" session (bash with ANSI, edit with a long diff line, read, a generic tool, images, a link, a healthy visual and one that stops its heartbeat). Unit tests: `pinch.test.ts`, `visual-frame.test.ts` (`visualRemoteAsset`), `remote-server.test.ts` (frame route).

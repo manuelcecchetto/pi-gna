@@ -38,7 +38,7 @@
     "release": "node scripts/release.mjs",
     "verify:responsive": "node scripts/verify-responsive-browser.mjs",
     "verify:preview": "node scripts/verify-file-preview.mjs",
-    "e2e:remote": "node scripts/remote-slice-e2e.mjs"
+    "e2e:remote": "node scripts/remote-e2e/run.mjs"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",
