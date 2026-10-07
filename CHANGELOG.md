@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-07
+
 - ATP: a new plan's chat runs in its own git worktree of the project, so the plan's workers and commits stay off your checkout.
 - Setup opens on the first launch even when pi already has a provider signed in.
 - Full-screen photos fit tall images on the screen instead of showing only their top, on the Mac and the phone.
