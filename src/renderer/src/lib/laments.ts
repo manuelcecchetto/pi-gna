@@ -18,6 +18,9 @@ export function worstSeverity(laments: Lament[]): Severity | undefined {
   return SEVERITIES[worst];
 }
 
+/** The text color of a severity's name: the emoji alone read as a mood, not a rank, so the word carries it. */
+export const SEVERITY_TONE: Record<Severity, string> = { annoying: "text-muted", costly: "text-warn", blocking: "text-bad" };
+
 /** The line under a lament's title: its latest report. */
 export function lamentSnippet(lament: Lament): string {
   return markdownText(lament.reports.at(-1)?.text ?? "");
