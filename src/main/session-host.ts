@@ -6,8 +6,8 @@ import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
 import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type ClientPresence, type DialogOutcome, type GlobalEvent, type HostCtx, HostError, type HostEvent, isAllowedRpc, type QueueEdit } from "../shared/host-api";
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
-import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
-import type { Feature } from "../shared/settings";
+import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState } from "../shared/protocol";
+import { type Feature, yoloOption } from "../shared/settings";
 import { attention, createSession, hydrate, isDisposable, isListed, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
 import { applyQueueOp, type Queues } from "../shared/queue";
 import { atpSkills, librarianPath } from "./atp";
@@ -99,7 +99,25 @@ export class SessionHost {
     private readonly atpSessions: string,
     /** Read at spawn: a feature's tools exist only in chats opened while it is on. */
     private readonly features: () => Promise<SessionFeatures> = async () => NONE,
+    /** The yolo setting, read at each approval: on, an approval is allowed without a card (`autoApprove`). */
+    private readonly yolo: () => boolean = () => false,
   ) {}
+
+  /** Yolo: answer an approval from pi as the user would allow it, instead of showing its card. A confirm is a yes, a
+   * select takes its allowing option (yoloOption); a select without one, and inputs, still go to the user. */
+  private autoApprove(pi: PiProcess, tag: string, record: RpcOutput): boolean {
+    if (record.type !== "extension_ui_request") return false;
+    let response: ExtensionUiResponse;
+    if (record.method === "confirm") response = { type: "extension_ui_response", id: record.id, confirmed: true };
+    else if (record.method === "select") {
+      const value = yoloOption(record.options);
+      if (value === undefined) return false;
+      response = { type: "extension_ui_response", id: record.id, value };
+    } else return false;
+    log.info(tag, `yolo approved "${record.title}"`);
+    pi.respondUi(response);
+    return true;
+  }
 
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
   /** @internal exposed for tests */
@@ -181,7 +199,8 @@ export class SessionHost {
       { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) },
       {
         onRecords: (records) => {
-          this.push(handle, records.map((record) => ({ kind: "rpc", record })));
+          const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi, tag, record)) : records;
+          this.push(handle, shown.map((record) => ({ kind: "rpc", record })));
           if (records.some((record) => record.type === "agent_start")) this.started(handle);
           if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
         },
@@ -506,9 +525,14 @@ export class SessionHost {
 
   /** Ask the user to pick one option on this chat's approval card. The id is main's own, so the answer is read here
    * from the window and never forwarded to pi, and nothing holding the bridge token can answer it. Undefined when
-   * the user dismisses it, the wait runs out or the chat ends. */
+   * the user dismisses it, the wait runs out or the chat ends. With yolo on, its allowing option without a card. */
   requestChoice(handle: string, title: string, options: string[]): Promise<string | undefined> {
     if (!this.live.has(handle)) return Promise.resolve(undefined);
+    const allow = this.yolo() ? yoloOption(options) : undefined;
+    if (allow !== undefined) {
+      log.info(`pi·${handle.slice(0, 4)}`, `yolo approved "${title}" (${allow})`);
+      return Promise.resolve(allow);
+    }
     const id = `pigna-choice-${randomUUID()}`;
     return new Promise((resolve) => {
       const timer = setTimeout(() => {

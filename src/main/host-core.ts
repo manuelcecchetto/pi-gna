@@ -606,7 +606,11 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     ),
 
     "settings.get": any("remote", () => settings.get()),
-    "settings.apply": any<{ op: SettingsOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => settings.apply(op, baseRev)),
+    "settings.apply": any<{ op: SettingsOp; baseRev?: number }>("remote", (ctx, { op, baseRev }) => {
+      // Yolo lets every chat act without asking: only the person at the Mac may switch it.
+      if (op?.type === "yolo" && ctx.client !== "desktop") throw new HostError("scope_denied", "yolo can only be changed on the Mac");
+      return settings.apply(op, baseRev);
+    }),
     // PI_CODING_AGENT_DIR can come from the login shell.
     "ui.get": any("remote", () => uiState.get()),
     "ui.apply": any<{ op: UiOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => uiState.apply(op, baseRev)),

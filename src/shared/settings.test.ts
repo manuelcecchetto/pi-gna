@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applySettingsOp, emptySettings, parseSettings, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake } from "./settings";
+import { applySettingsOp, emptySettings, parseSettings, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, yoloOption } from "./settings";
 
 const start = emptySettings();
 
@@ -28,6 +28,19 @@ describe("applySettingsOp", () => {
     expect(applySettingsOp(start, { type: "wallpaperLoop", loop: true }).wallpaperLoop).toBe(true);
     expect(applySettingsOp(start, { type: "visuals", on: false })).toBe(start);
     expect(applySettingsOp(start, { type: "visuals", on: true }).visuals).toBe(true);
+    expect(start.yolo).toBe(false);
+    expect(applySettingsOp(start, { type: "yolo", on: false })).toBe(start);
+    expect(applySettingsOp(start, { type: "yolo", on: true }).yolo).toBe(true);
+    expect(() => applySettingsOp(start, { type: "yolo", on: "yes" } as never)).toThrow(SettingsError);
+  });
+
+  it("picks the option yolo allows with: one-time grants before lasting ones, none without an allowing option", () => {
+    expect(yoloOption(["Allow example.com for this session", "Deny"])).toBe("Allow example.com for this session");
+    expect(yoloOption(["Allow once", "Always allow", "Deny"])).toBe("Allow once");
+    expect(yoloOption(["No", "Yes"])).toBe("Yes");
+    expect(yoloOption(["Approve plan", "Reject"])).toBe("Approve plan");
+    expect(yoloOption(["Deny", "Disallow", "Allowance"])).toBeUndefined();
+    expect(yoloOption(["red", "green"])).toBeUndefined();
   });
 
   it("overrides a task's model and goes back to the default", () => {
@@ -76,6 +89,8 @@ describe("parseSettings", () => {
     expect(parseSettings({ wallpaper: "ink" }).settings.wallpaper).toBe("ink");
     expect(parseSettings({ wallpaperLoop: true }).settings.wallpaperLoop).toBe(true);
     expect(parseSettings({ visuals: true }).settings.visuals).toBe(true);
+    expect(parseSettings({ yolo: true }).settings.yolo).toBe(true);
+    expect(parseSettings({ yolo: "on" })).toMatchObject({ settings: { yolo: false }, dropped: 1 });
     expect(settings.models).toEqual({ triage: { id: "claude-haiku-4-5", thinking: "off" } });
     expect(dropped).toBe(6);
     expect(parseSettings({}).settings).toEqual(start);

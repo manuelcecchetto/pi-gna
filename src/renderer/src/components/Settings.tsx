@@ -513,6 +513,7 @@ function AgentSection({ pi }: { pi: Pi }) {
   /** A row's reset button, while the key is set in the file. */
   const reset = (...keys: PiKey[]) => (keys.some((key) => pi.isSet(key)) ? () => pi.set(Object.fromEntries(keys.map((key) => [key, null]))) : undefined);
   const visuals = useApp((state) => state.settings.visuals);
+  const yolo = useApp((state) => state.settings.yolo);
   const toggle = (key: PiKey) => <Switch on={pi.value(key) === true} onChange={(on) => pi.set({ [key]: on })} />;
   const choice = (key: PiKey, labels: Record<string, string>) => {
     const setting = PI_SETTINGS[key];
@@ -525,6 +526,14 @@ function AgentSection({ pi }: { pi: Pi }) {
   return (
     <>
       <PiFileNote pi={pi} />
+      <Card title="Approvals">
+        <Row
+          title="Yolo"
+          about="Allow everything agents ask for without asking you: browsing any website, Computer Use on any app it may control, and extensions' confirmations, in every chat, including ones already open. Nothing is saved as “Always allow”, and apps Computer Use never controls stay off-limits."
+        >
+          <Switch on={yolo} onChange={(on) => void applySettings({ type: "yolo", on })} />
+        </Row>
+      </Card>
       <Card title="Beta">
         <Row title="Inline visuals" about="Agents may add small interactive HTML visuals (diagrams, comparisons, timelines) to replies. Renders sandboxed, offline. Applies to chats you open afterwards.">
           <Switch on={visuals} onChange={(on) => void applySettings({ type: "visuals", on })} />

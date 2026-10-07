@@ -14,7 +14,7 @@ const deps = {
   tasks: { start: record("tasks.start"), addCard: record("tasks.addCard"), send: record("tasks.send") },
   board: {},
   cardImages: {},
-  settings: { get: record("settings.get") },
+  settings: { get: record("settings.get"), apply: record("settings.apply") },
   plugins: { state: record("plugins.state") },
   uiState: {},
   computerPolicy: {},
@@ -63,6 +63,17 @@ describe("host methods table", () => {
     expect(calls).toEqual([]);
     await dispatch(core, desktop(), "fs.pickFolder", {});
     expect(calls).toEqual([["pickFolder"]]);
+  });
+
+  it("lets only the desktop switch yolo", async () => {
+    calls.length = 0;
+    expect(() => dispatch(core, phone(), "settings.apply", { op: { type: "yolo", on: true } })).toThrow(expect.objectContaining({ code: "scope_denied" }));
+    await dispatch(core, phone(), "settings.apply", { op: { type: "visuals", on: true } });
+    await dispatch(core, desktop(), "settings.apply", { op: { type: "yolo", on: true } });
+    expect(calls).toEqual([
+      ["settings.apply", { type: "visuals", on: true }, undefined],
+      ["settings.apply", { type: "yolo", on: true }, undefined],
+    ]);
   });
 
   it("refuses unknown names, including inherited ones", () => {

@@ -70,6 +70,9 @@ export interface Settings {
   wallpaperLoop: boolean;
   /** Beta: agents may add small sandboxed HTML visuals to replies. Read when a chat starts. */
   visuals: boolean;
+  /** Yolo: every chat's approvals (browser origins, Computer Use apps, extensions' confirms) are allowed without a
+   * card, for this run only. Read at each approval, so live chats follow it. Only the desktop may change it. */
+  yolo: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
   remote: RemoteSettings;
@@ -85,6 +88,7 @@ export type SettingsOp =
   | { type: "wallpaper"; wallpaper: Wallpaper }
   | { type: "wallpaperLoop"; loop: boolean }
   | { type: "visuals"; on: boolean }
+  | { type: "yolo"; on: boolean }
   | { type: "remoteEnabled"; on: boolean }
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
@@ -108,6 +112,7 @@ export const emptySettings = (): Settings => ({
   wallpaper: "sky",
   wallpaperLoop: false,
   visuals: false,
+  yolo: false,
   models: {},
   remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
   openAtLogin: false,
@@ -138,6 +143,10 @@ export const taskModel = (settings: Settings, task: Task): TaskModel => settings
 
 const sameModel = (a: TaskModel | undefined, b: TaskModel | undefined) => a?.provider === b?.provider && a?.id === b?.id && a?.thinking === b?.thinking;
 
+/** The option yolo picks on an approval card: the first that allows (Allow, Approve, Yes), so a one-time grant
+ * ("Allow once", "Allow example.com for this session") wins over a lasting one ("Always allow"). None: ask. */
+export const yoloOption = (options: readonly string[]): string | undefined => options.find((option) => /^(allow|approve|yes)\b/i.test(option.trim()));
+
 /** Returns the same value when nothing changes; throws SettingsError for an invalid op. */
 export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
   switch (op?.type) {
@@ -161,6 +170,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
     case "visuals": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn visuals ${String(op.on)}`);
       return settings.visuals === op.on ? settings : { ...settings, visuals: op.on };
+    }
+    case "yolo": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn yolo ${String(op.on)}`);
+      return settings.yolo === op.on ? settings : { ...settings, yolo: op.on };
     }
     case "remoteEnabled": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
@@ -224,6 +237,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.wallpaperLoop !== undefined) dropped++;
   if (typeof file.visuals === "boolean") settings.visuals = file.visuals;
   else if (file.visuals !== undefined) dropped++;
+  if (typeof file.yolo === "boolean") settings.yolo = file.yolo;
+  else if (file.yolo !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
   if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;

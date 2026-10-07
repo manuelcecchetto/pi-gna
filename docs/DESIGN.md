@@ -210,8 +210,9 @@ tabs close when its session ends. The phone still lists every chat's tabs.
 - **Snapshots** run in an isolated world (shared DOM, separate JS globals) and tag interactive elements with
   `data-pi-ref` numbers that click/type use.
 - **Policy** lives in the extension: loopback and `*.localhost` URLs are allowed; any other origin asks once per
-  session through `ctx.ui.select`, which renders as a pi-gna approval card. Actions that navigate are re-checked
-  afterwards and stepped back if denied. Stagehand's `run`, `snapshot` and `screenshot` are excluded with
+  session through `ctx.ui.select`, which renders as a pi-gna approval card (with Yolo on, `SessionHost` allows it
+  without a card; see Computer Use's policy). Actions that navigate are re-checked afterwards and stepped back if
+  denied. Stagehand's `run`, `snapshot` and `screenshot` are excluded with
   `--exclude-tools` (override with `PIGNA_EXCLUDE_TOOLS`). The extension imports `src/shared/browser.ts`
   directly (pi loads extensions with jiti and aliases `typebox`).
 - **Annotations**: comment mode injects a picker (isolated world, closed shadow root) into the active tab, a web page
@@ -339,7 +340,11 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   Any other app asks once per chat with a card in the renderer: **Allow once** (until the run ends), **Always allow**
   (persisted, listed and revocable in Settings > Computer use) or **Deny** (remembered for the chat). A second chat
   asking for an app another chat is driving gets 409 without an approval card. Run end, chat close, Stop and Esc
-  release the chat's apps and its Allow once grants. Phones answer the same cards (first answer wins) and get a
+  release the chat's apps and its Allow once grants. **Yolo** (`yolo` in `userData/settings.json`, Settings > Agent,
+  switchable from the desktop only) answers approvals in `SessionHost`, read at each one so open chats follow it:
+  main's choices (`requestChoice`) and pi's `confirm`/`select` dialogs get their first Allow/Approve/Yes option
+  (`yoloOption`, so Allow once, never Always allow) or a yes, with no card; selects without one and inputs still
+  ask. The denylist and a chat's earlier Deny still apply. Phones answer the same cards (first answer wins) and get a
   read-only `computer.preview` (one JPEG of an app the chat holds, 1/s per client; `ComputerAgent.preview`); operating
   Mac apps from the phone is a non-goal (docs/REMOTE.md section 8).
 - **Overlay and Esc**: per driven app the helper shows a yellow-glowing pigna hand cursor, coral/yellow/blue

@@ -190,10 +190,37 @@ describe("command semantics", () => {
     fake.responded.length = 0;
     fake.send = async () => undefined;
     const events: { kind: string; [key: string]: unknown }[] = [];
-    const host = new Host((batch) => void events.push(...(batch.events as never[])), bridge, "/atp");
+    const yolo = { on: false };
+    const host = new Host((batch) => void events.push(...(batch.events as never[])), bridge, "/atp", undefined, () => yolo.on);
     const { handle } = await host.open(request);
-    return { host, handle, events, pi: fake.pis[0]! };
+    return { host, handle, events, pi: fake.pis[0]!, yolo };
   }
+
+  it("with yolo on, allows approvals without a card and leaves the rest to the user", async () => {
+    const { host, handle, events, pi, yolo } = await setup();
+    yolo.on = true;
+    pi.handlers.onRecords([
+      { type: "extension_ui_request", id: "c1", method: "confirm", title: "Run rm?" },
+      { type: "extension_ui_request", id: "s1", method: "select", title: "pi wants to browse https://example.com", options: ["Allow example.com for this session", "Deny"] },
+      { type: "extension_ui_request", id: "s2", method: "select", title: "Pick a color", options: ["red", "green"] },
+      { type: "extension_ui_request", id: "i1", method: "input", title: "Name" },
+    ]);
+    expect(fake.responded).toEqual([
+      { type: "extension_ui_response", id: "c1", confirmed: true },
+      { type: "extension_ui_response", id: "s1", value: "Allow example.com for this session" },
+    ]);
+    expect(host.stateOf(handle)!.dialogs.map((dialog) => dialog.id)).toEqual(["s2", "i1"]);
+    // Computer Use's own card: a one-time grant, never "Always allow", and nothing shown.
+    const before = events.length;
+    await expect(host.requestChoice(handle, "pi wants to use Calculator", ["Allow once", "Always allow", "Deny"])).resolves.toBe("Allow once");
+    expect(events.length).toBe(before);
+
+    // Read at each approval: off again, the user is asked.
+    yolo.on = false;
+    pi.handlers.onRecords([{ type: "extension_ui_request", id: "c2", method: "confirm", title: "Run rm?" }]);
+    expect(fake.responded).toHaveLength(2);
+    expect(host.stateOf(handle)!.dialogs.map((dialog) => dialog.id)).toContain("c2");
+  });
 
   it("refuses commands outside the allowlist for remote callers, not the desktop", async () => {
     const { host, handle } = await setup();
