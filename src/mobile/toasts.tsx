@@ -12,7 +12,8 @@ let seq = 0;
 
 export function toast(text: string, level: Toast["level"] = "info"): void {
   const id = ++seq;
-  store.set((toasts) => [...toasts.slice(-2), { id, text, level }]);
+  // Two at most: a third pushes the oldest out, so a burst of actions never builds a wall over the screen.
+  store.set((toasts) => [...toasts.slice(-1), { id, text, level }]);
   setTimeout(() => dismiss(id), level === "error" ? 8000 : 4500);
 }
 
@@ -22,7 +23,9 @@ export function Toasts() {
   const toasts = useStore(store, (state) => state);
   if (!toasts.length) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-4" style={{ top: "calc(env(safe-area-inset-top) + 8px)" }}>
+    // Under the screen's Header (Screens.tsx: 3rem and a hairline below the inset), like the connection banner, so the
+    // back button and the title stay in reach while a toast is up.
+    <div className="pointer-events-none fixed inset-x-0 z-50 flex flex-col items-center gap-2 px-4" style={{ top: "calc(env(safe-area-inset-top) + 3rem + 1px + 8px)" }}>
       {toasts.map((t) => (
         <div
           key={t.id}
