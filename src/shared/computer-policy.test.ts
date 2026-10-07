@@ -5,6 +5,7 @@ import {
   ComputerPolicyError,
   type ComputerSettings,
   DENYLIST,
+  deniedApps,
   denyReason,
   emptyComputerSettings,
   isDenied,
@@ -58,6 +59,12 @@ describe("denylist", () => {
     for (const id of ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "com.github.wez.wezterm", "net.kovidgoyal.kitty", "org.alacritty", "dev.warp.Warp-Stable", "io.github.manuelcecchetto.pigna", "io.github.manuelcecchetto.pigna.computeruse", "com.apple.SecurityAgent", "com.apple.coreservices.uiagent"])
       expect(isDenied(id), id).toBe(true);
     expect(Object.values(DENYLIST).every(Boolean)).toBe(true);
+  });
+  it("names every app for the settings pages, grouped by reason", () => {
+    const groups = deniedApps();
+    expect(groups.flatMap((group) => group.ids).sort()).toEqual(Object.keys(DENYLIST).sort());
+    expect(groups.flatMap((group) => group.names).some((name) => name.includes("."))).toBe(false);
+    expect(groups.find((group) => group.names.includes("Terminal"))?.names).toEqual(["Terminal", "iTerm2", "Ghostty", "WezTerm", "kitty", "Alacritty", "Warp"]);
   });
   it("is case-insensitive and allows ordinary apps", () => {
     expect(isDenied("COM.APPLE.TERMINAL")).toBe(true);

@@ -3,7 +3,7 @@
 // when this section asks (never in the background).
 import { Check, RefreshCw, ShieldAlert, X } from "./icons";
 import { useCallback, useEffect, useState } from "react";
-import { type ComputerOp, type ComputerSettings, DENYLIST, emptyComputerSettings, type Permissions } from "../../../shared/computer";
+import { type ComputerOp, type ComputerSettings, deniedApps, emptyComputerSettings, type Permissions } from "../../../shared/computer";
 import { formatStamp } from "../lib/format";
 import { remoteError, toast } from "../state/app";
 import { Switch } from "./primitives";
@@ -90,6 +90,7 @@ export function ComputerSection() {
             name="Accessibility"
             about="Read app windows and send clicks and keys."
             granted={permissions?.accessibility}
+            unknown={status.state === "error"}
             onRequest={() => void run(() => studio().requestPermissions("accessibility"))}
             onOpen={() => open("accessibility")}
           />
@@ -97,6 +98,7 @@ export function ComputerSection() {
             name="Screen Recording"
             about="Take screenshots of app windows."
             granted={permissions?.screenRecording}
+            unknown={status.state === "error"}
             onRequest={() => void run(() => studio().requestPermissions("screen_recording"))}
             onOpen={() => open("screen_recording")}
           />
@@ -131,10 +133,10 @@ export function ComputerSection() {
         <h2 className="mb-1 text-[13px] font-medium text-fg">Never allowed</h2>
         <p className="mb-2 text-[12.5px] text-muted">No approval unlocks these apps.</p>
         <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
-          {Object.entries(DENYLIST).map(([bundleId, reason]) => (
-            <li key={bundleId} className="flex items-baseline gap-3 px-3 py-1.5">
-              <span className="font-mono text-[11.5px] text-fg/90">{bundleId}</span>
-              <span className="flex-1 text-right text-[11.5px] text-faint">{reason}</span>
+          {deniedApps().map((group) => (
+            <li key={group.reason} className="px-3 py-2" title={group.ids.join("\n")}>
+              <div className="text-[13px] text-fg">{group.names.join(", ")}</div>
+              <div className="text-[11.5px] text-faint">{group.reason}</div>
             </li>
           ))}
         </ul>
@@ -153,7 +155,7 @@ export function ComputerSection() {
   );
 }
 
-function PermissionRow({ name, about, granted, onRequest, onOpen }: { name: string; about: string; granted?: boolean; onRequest: () => void; onOpen: () => void }) {
+function PermissionRow({ name, about, granted, unknown, onRequest, onOpen }: { name: string; about: string; granted?: boolean; unknown?: boolean; onRequest: () => void; onOpen: () => void }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
       <div className="min-w-0 flex-1">
@@ -161,7 +163,7 @@ function PermissionRow({ name, about, granted, onRequest, onOpen }: { name: stri
         <div className="text-[12px] text-faint">{about}</div>
       </div>
       {granted === undefined ? (
-        <span className="text-[12px] text-faint">Checking…</span>
+        <span className="text-[12px] text-faint">{unknown ? "Unknown" : "Checking…"}</span>
       ) : granted ? (
         <span className="flex items-center gap-1 text-[12px] text-muted">
           <Check size={13} />

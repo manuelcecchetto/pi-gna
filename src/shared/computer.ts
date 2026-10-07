@@ -185,6 +185,42 @@ export const DENYLIST: Readonly<Record<string, string>> = {
   "com.apple.loginwindow": SECURITY,
 };
 
+/** What the settings pages call the never-allowed apps; a bundle id means nothing to most people. */
+const DENIED_NAMES: Readonly<Record<string, string>> = {
+  "com.apple.Terminal": "Terminal",
+  "com.googlecode.iterm2": "iTerm2",
+  "com.mitchellh.ghostty": "Ghostty",
+  "com.github.wez.wezterm": "WezTerm",
+  "net.kovidgoyal.kitty": "kitty",
+  "org.alacritty": "Alacritty",
+  "io.alacritty": "Alacritty",
+  "dev.warp.Warp-Stable": "Warp",
+  "dev.warp.Warp": "Warp",
+  ...Object.fromEntries(PIGNA_BUNDLE_IDS.map((id) => [id, "pi-gna"])),
+  [HELPER_BUNDLE_ID]: "pi-gna Computer Use",
+  "com.apple.SecurityAgent": "password prompts",
+  "com.apple.coreauthd": "Touch ID prompts",
+  "com.apple.UserNotificationCenter": "system alerts",
+  "com.apple.coreservices.uiagent": "open-file warnings",
+  "com.apple.CoreServicesUIAgent": "open-file warnings",
+  "com.apple.keychainaccess": "Keychain Access",
+  "com.apple.ScreenSharing": "Screen Sharing",
+  "com.apple.loginwindow": "the login window",
+};
+
+/** The never-allowed apps by name, one group per reason, for the settings pages; DENYLIST is what is enforced. */
+export function deniedApps(): { names: string[]; ids: string[]; reason: string }[] {
+  const groups = new Map<string, { names: string[]; ids: string[]; reason: string }>();
+  for (const [id, reason] of Object.entries(DENYLIST)) {
+    const group = groups.get(reason) ?? { names: [], ids: [], reason };
+    const name = DENIED_NAMES[id] ?? id;
+    if (!group.names.includes(name)) group.names.push(name);
+    group.ids.push(id);
+    groups.set(reason, group);
+  }
+  return [...groups.values()];
+}
+
 const DENIED_LOWER = new Map(Object.entries(DENYLIST).map(([id, reason]) => [id.toLowerCase(), reason]));
 
 /** Why an app is off limits, or undefined. `extra` are runtime bundle ids (pi-gna's own, whatever app.getName() says);
