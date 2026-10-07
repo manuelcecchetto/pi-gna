@@ -33,7 +33,7 @@ interface SectionInfo {
   keywords: string;
 }
 
-const SECTIONS: SectionInfo[] = [
+export const SECTIONS: SectionInfo[] = [
   { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update settings.json file folder setup onboarding install pi welcome first run" },
   { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color colour palette primary secondary accent font typeface size wallpaper background backdrop empty state image logo project custom loop cycle rotate shuffle" },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: Keyboard, group: "pi-gna", about: "Hold ⌘ anywhere to see ⌘1–⌘9 on the chats in the sidebar.", keywords: "keys hotkeys keyboard command" },
@@ -411,6 +411,7 @@ const SHORTCUTS: { title: string; keys: [string, string][] }[] = [
   {
     title: "App",
     keys: [
+      ["⌘K", "Search chats, cards, pages, settings and commands"],
       ["⌘N", "New chat"],
       ["⌘,", "Settings"],
       ["⌘1 … ⌘9", "Open a chat in the sidebar (hold ⌘ to see which), or a section here"],

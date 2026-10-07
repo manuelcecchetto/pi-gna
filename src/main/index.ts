@@ -117,7 +117,7 @@ const send = (channel: string, ...args: unknown[]) => {
   if (window && !window.isDestroyed()) window.webContents.send(channel, ...args);
 };
 // Window-only UI pushes stay direct `send`s (they are the desktop shell, not host state): menu toggles (pageToggle,
-// sidebarToggle, browserToggle), windowFocus, openProject and updateReveal. Everything else goes through the hub.
+// sidebarToggle, paletteToggle, browserToggle), windowFocus, openProject and updateReveal. Everything else goes through the hub.
 const hub = new EventHub();
 const publish = (event: { kind: string; [key: string]: unknown }) => hub.publish("global", event);
 // The desktop window is one hub subscriber, on the same IPC channels and payloads as before the hub.
@@ -572,6 +572,9 @@ function buildMenu(features: Record<Feature, boolean> = emptySettings().features
       {
         label: "View",
         submenu: [
+          // A menu accelerator, not a renderer keydown: it also works while the browser's web view has focus.
+          { label: "Search…", accelerator: "CmdOrCtrl+K", click: () => send(IPC.paletteToggle) },
+          { type: "separator" },
           { label: "Toggle Sidebar", accelerator: "CmdOrCtrl+Shift+S", click: () => send(IPC.sidebarToggle) },
           { label: "Toggle Browser", accelerator: "CmdOrCtrl+B", click: () => send(IPC.browserToggle) },
           ...page("kanban", "Kanban", "CmdOrCtrl+Shift+K", "kanban"),

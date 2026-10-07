@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- ⌘K opens a search over every chat (all projects, newest first before you type), the Kanban board's cards (by title, id or tag), the pages, the Settings sections (by topic too: "theme" finds Appearance), new chats in a project, and app commands with their shortcuts. Pages, settings and commands come before chats that match as well; ↑↓ or ⌃N/⌃P select, ↩ opens, Esc clears the search and then closes. It also works while the browser pane has focus (View > Search…).
+
 ## 0.8.0 - 2026-10-07
 
 - Screenshots in replies show as galleries, like T3 Code: several images in one paragraph or list item become a row of thumbnails, a table of images becomes a borderless grid with each caption under its image, and raw `<img>` tags of local files work too (with their width and height). Clicking an image opens a lightbox that pages through every image in the answer (chevrons, ←/→ and an n / m counter; swipe on the phone).

@@ -49,6 +49,7 @@ const api: StudioApi = {
   windowFocused: () => ipcRenderer.invoke(IPC.windowFocused),
   onWindowFocus: (listener) => subscribe<boolean>(IPC.windowFocus, listener),
   onSidebarToggle: (listener) => subscribe<void>(IPC.sidebarToggle, listener),
+  onPaletteToggle: (listener) => subscribe<void>(IPC.paletteToggle, listener),
   onPageToggle: (listener) => {
     const handler = (_event: unknown, page: Page, section?: SettingsSection) => listener(page, section);
     ipcRenderer.on(IPC.pageToggle, handler);

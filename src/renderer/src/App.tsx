@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AtpPage } from "./components/Atp";
 import { BrowserPane, showFileFinder } from "./components/BrowserPane";
+import { CommandPalette } from "./components/CommandPalette";
 import { GithubPage } from "./components/GitHub";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
@@ -123,6 +124,7 @@ export function App() {
       <CollapsedSidebarControls />
       <Lightbox />
       <UpdateDialog />
+      <CommandPalette />
       <SetupFlow />
     </div>
   );

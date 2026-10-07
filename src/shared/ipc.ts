@@ -77,6 +77,7 @@ export const IPC = {
   browserReadImage: "browser:read-image",
   browserSiteIcon: "browser:site-icon",
   sidebarToggle: "studio:sidebar-toggle",
+  paletteToggle: "studio:palette-toggle",
   pageToggle: "studio:page-toggle",
   openProject: "studio:open-project",
   relaunch: "studio:relaunch",
@@ -564,6 +565,8 @@ export interface StudioApi {
   onWindowFocus(listener: (focused: boolean) => void): () => void;
   /** View > Toggle Sidebar (⌘⇧S). */
   onSidebarToggle(listener: () => void): () => void;
+  /** View > Search… (⌘K): open or close the search over chats, cards, pages and commands. */
+  onPaletteToggle(listener: () => void): () => void;
   /** View > Kanban (⌘⇧K), Laments (⌘⇧L), GitHub (⌘⇧G), ATP (⌘⇧A), pi-gna > Settings… (⌘,) and View > Computer Use
    * (⌘⇧U, Settings at that section): page toggles from the menu. */
   onPageToggle(listener: (page: Page, section?: SettingsSection) => void): () => void;

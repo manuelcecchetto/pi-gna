@@ -1342,5 +1342,5 @@ unrelated npm package). To build and test without rewriting the `out/` a running
    pi-gna sessions; localhost is allowed, other sites ask once.
 3. **Kanban (done):** a board per project of task cards that chats attach to, `kanban_*` tools for agents to take,
    move and report on their card, and card actions that start chats (investigate, resolve, chat about it).
-4. **Polish:** session tree, changed-files review, Cmd-K, usage insights, selection actions, Adjust panel,
+4. **Polish:** session tree, changed-files review, Cmd-K (done: `CommandPalette`, ranked by `lib/palette.ts`), usage insights, selection actions, Adjust panel,
    dictation, task rows for subagents and workflows.
