@@ -205,6 +205,8 @@ describe("chat reads for a phone", () => {
 });
 
 describe("a phone's chat links", () => {
+  // The escapes go through a directory junction: Windows creates one without the symlink privilege
+  // that a file symlink needs, and elsewhere the type is ignored and it is a plain directory symlink.
   it("open only the files of the chat's directory and project, symlinks followed", async () => {
     const { mkdtemp, mkdir, writeFile, symlink, realpath } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
@@ -213,14 +215,15 @@ describe("a phone's chat links", () => {
     const project = join(base, "project");
     const { worktreeCwd } = await import("../shared/board");
     const worktree = worktreeCwd(join(base, "home"), "abc123", project);
-    const outside = join(base, "secret.txt");
+    const outside = join(base, "outside", "secret.txt");
     await mkdir(worktree, { recursive: true });
     await mkdir(project, { recursive: true });
+    await mkdir(join(base, "outside"));
     await writeFile(join(project, "README.md"), "# hi");
     await writeFile(join(worktree, "notes.md"), "notes");
     await writeFile(join(worktree, "shot.png"), "png");
     await writeFile(outside, "secret");
-    await symlink(outside, join(worktree, "escape.txt"));
+    await symlink(join(base, "outside"), join(worktree, "escape"), "junction");
 
     const opened: unknown[] = [];
     const links = createHostCore({
@@ -229,14 +232,14 @@ describe("a phone's chat links", () => {
       browser: () => ({ openPreview: async (path: string, options: unknown) => (opened.push([path, options]), { id: "tab1" }) }),
     } as unknown as HostDeps);
 
-    const resolved = await dispatch(links, phone(), "chat.resolveLinks", { handle: "h1", targets: ["notes.md", join(project, "README.md"), outside, "escape.txt", "/etc/hosts", "missing.md"] });
+    const resolved = await dispatch(links, phone(), "chat.resolveLinks", { handle: "h1", targets: ["notes.md", join(project, "README.md"), outside, join("escape", "secret.txt"), "/etc/hosts", "missing.md"] });
     expect(resolved).toEqual([join(worktree, "notes.md"), join(project, "README.md"), null, null, null, null]);
     await expect(dispatch(links, phone(), "chat.linkImage", { handle: "h1", target: "shot.png" })).resolves.toMatchObject({ mimeType: "image/png" });
     await expect(dispatch(links, phone(), "chat.linkImage", { handle: "h1", target: outside })).resolves.toBeNull();
 
     await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: join(worktree, "notes.md"), line: 3 })).resolves.toEqual({ id: "tab1" });
     expect(opened).toEqual([[join(worktree, "notes.md"), { agent: "h1", root: worktree, line: 3 }]]);
-    await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: join(worktree, "escape.txt") })).rejects.toMatchObject({ code: "scope_denied" });
+    await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: join(worktree, "escape", "secret.txt") })).rejects.toMatchObject({ code: "scope_denied" });
     await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: outside })).rejects.toMatchObject({ code: "scope_denied" });
     expect(opened).toHaveLength(1);
     await expect(dispatch(links, phone(), "chat.resolveLinks", { handle: "gone", targets: [] })).rejects.toMatchObject({ code: "not_found" });
@@ -257,7 +260,7 @@ describe("a phone's chat links", () => {
     await writeFile(join(cwd, "blob.bin"), Buffer.from([0x89, 0x50, 0, 1]));
     await writeFile(join(cwd, "big.txt"), "x".repeat(PREVIEW_LIMITS.text + 10));
     await writeFile(join(outside, "secret.md"), "secret");
-    await symlink(join(outside, "secret.md"), join(cwd, "escape.md"));
+    await symlink(outside, join(cwd, "escape"), "junction");
     const core = createHostCore({ ...deps, host: { cwdOf: (handle: string) => (handle === "h1" ? cwd : undefined) } } as unknown as HostDeps);
     const read = (path: string) => dispatch(core, phone(), "chat.readFile", { handle: "h1", path });
 
@@ -266,7 +269,7 @@ describe("a phone's chat links", () => {
     await expect(read(join(cwd, "blob.bin"))).resolves.toMatchObject({ kind: "other", text: undefined });
     const big = (await read(join(cwd, "big.txt"))) as { text: string; truncated: boolean; size: number };
     expect([big.text.length, big.truncated, big.size]).toEqual([PREVIEW_LIMITS.text, true, PREVIEW_LIMITS.text + 10]);
-    await expect(read(join(cwd, "escape.md"))).rejects.toMatchObject({ code: "scope_denied" });
+    await expect(read(join(cwd, "escape", "secret.md"))).rejects.toMatchObject({ code: "scope_denied" });
     await expect(read(join(outside, "secret.md"))).rejects.toMatchObject({ code: "scope_denied" });
     await expect(read(join(cwd, "missing.md"))).rejects.toMatchObject({ code: "scope_denied" });
     // dispatch checks the arguments before it returns a promise.
