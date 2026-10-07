@@ -1,5 +1,5 @@
 // The first-run Setup flow: a few animated steps in a modal that get pi installed and connected. It opens by itself
-// when pi is missing or broken, or on a first launch with no provider signed in; Settings > General opens it again.
+// when pi is missing or broken, or on the first launch (until you close it once); Settings > General opens it again.
 // The first step asks who you are, the nerd 🤌 or the cool 🤌 (Settings.persona), and every later step speaks your
 // language: commands, versions and npm's log for the nerd, plain words and a friendly progress bar for the other.
 // It installs nothing behind your back: pi only with "Install pi", the rest is the Providers and Plugins sections.
@@ -110,7 +110,8 @@ const STEP_LABELS: Record<Persona, Record<Step, string>> = {
   cool: { who: "You", pi: "Install", model: "Brain", tools: "Superpowers", done: "Done" },
 };
 
-/** Mounted once, in App: opens Setup when pi is not usable, or on a first launch that has no provider yet. */
+/** Mounted once, in App: opens Setup when pi is not usable, or on a first launch: a provider pi already has signed in
+ * still leaves you who-you-are and plugins to see. */
 export function SetupFlow() {
   const open = useSetup((state) => state.open);
   useEffect(() => window.studio.setup.onLine((line) => patchInstall({ lines: [...setupStore.get().install.lines.slice(-199), line] })), []);
@@ -118,10 +119,7 @@ export function SetupFlow() {
     void (async () => {
       const status = await window.studio.setup.status().catch(() => undefined);
       if (!status) return;
-      if (!piReady(status)) return openSetup();
-      if (localStorage.getItem(DONE_KEY)) return;
-      const auth = await window.studio.auth.list().catch(() => undefined);
-      if (auth && !auth.error && !auth.providers.some((provider) => provider.status)) openSetup();
+      if (!piReady(status) || !localStorage.getItem(DONE_KEY)) openSetup();
     })();
   }, []);
   return open ? <SetupDialog /> : null;
