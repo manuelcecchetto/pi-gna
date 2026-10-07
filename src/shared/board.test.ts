@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, checkoutOf, type Column, cardOfChat, cardsOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
+import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, cardLinkLabel, checkoutOf, type Column, cardOfChat, cardsOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
 
 const run = (ops: BoardOp[], board = emptyBoard()) => ops.reduce((current, op, index) => applyOp(current, op, 1000 + index), board);
 const add = (id: string, column: Column = "todo"): Extract<BoardOp, { type: "add" }> => ({
@@ -211,6 +211,22 @@ describe("boardConflict", () => {
     expect(boardConflict(undefined, now, { type: "attach", id: "aaaaaa", chat: { path: "/s", cwd: "/repo" } })).toBe(false);
     expect(boardConflict(undefined, now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(true);
     expect(boardConflict(board(), now, { type: "edit", id: "aaaaaa", title: "Mine" })).toBe(false);
+  });
+});
+
+describe("cardLinkLabel", () => {
+  it("shows the title and puts column and id in the tooltip", () => {
+    expect(cardLinkLabel({ id: "q6ip3j", title: "Fix the composer", column: "in_review" })).toEqual({ text: "Fix the composer", tip: "Fix the composer · In review · q6ip3j" });
+  });
+  it("cuts a long title and keeps it whole in the tooltip", () => {
+    const title = "x".repeat(300);
+    const { text, tip } = cardLinkLabel({ id: "q6ip3j", title, column: "todo" });
+    expect(text).toHaveLength(80);
+    expect(text.endsWith("…")).toBe(true);
+    expect(tip).toBe(`${title} · To do · q6ip3j`);
+  });
+  it("falls back to the id for a blank title", () => {
+    expect(cardLinkLabel({ id: "q6ip3j", title: "  ", column: "done" }).text).toBe("q6ip3j");
   });
 });
 

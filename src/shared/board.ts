@@ -128,6 +128,15 @@ export function cardLinkId(href: string): string | undefined {
   return isCardId(text) ? text : undefined;
 }
 
+const LINK_LABEL_MAX = 80;
+
+/** A chat card link reads as the card's title (cut at 80 characters); the tooltip has the full title, column and id. */
+export function cardLinkLabel(card: Pick<Card, "id" | "title" | "column">): { text: string; tip: string } {
+  const title = card.title.trim() || card.id;
+  const text = title.length > LINK_LABEL_MAX ? `${title.slice(0, LINK_LABEL_MAX - 1).trimEnd()}…` : title;
+  return { text, tip: `${title} · ${COLUMN_LABELS[card.column]} · ${card.id}` };
+}
+
 const WORKTREES = [".pi-gna", "worktrees"];
 // A Windows path: a drive (C:\x, C:/x) or a UNC share (\\server\share).
 const DRIVE = /^([A-Za-z]):/;
