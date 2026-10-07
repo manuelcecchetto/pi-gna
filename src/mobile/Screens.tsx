@@ -147,7 +147,7 @@ export function Projects({ client, homeDir, push }: { client: HostClient; homeDi
       <SearchBox value={query} onChange={setQuery} placeholder="Search projects and chats" />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!items && <div className="p-6 text-center text-[13.5px] text-faint">Loading…</div>}
-        {all?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No sessions yet. Open a folder to start one.</div>}
+        {all?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No chats yet. Open a folder to start one.</div>}
         {all && all.length > 0 && items?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No project matches.</div>}
         {items?.map((item) => (
           <ProjectRow key={item.cwd} item={item} homeDir={homeDir} onOpen={() => push({ screen: "chats", cwd: item.cwd })} onMenu={() => setMenu(item)} />
