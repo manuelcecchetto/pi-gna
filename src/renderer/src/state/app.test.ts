@@ -9,6 +9,7 @@ import { emptySettings } from "../../../shared/settings";
 import {
   activate,
   addCard,
+  applyLament,
   CARD_TASK_STARTED_MS,
   fixLament,
   applySettings,
@@ -26,6 +27,7 @@ import {
   sessionTitle,
   showPage,
   store,
+  taskKey,
   togglePage,
 } from "./app";
 import { cardActions } from "./card-actions";
@@ -137,7 +139,7 @@ describe("chats the host starts for a task", () => {
     startTask.mockReset();
     addCardCall.mockReset();
     vi.stubGlobal("window", { studio: { command, startTask, attachSession, addCard: addCardCall, detachSession: async () => undefined } });
-    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], cardTasks: {} }));
+    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, toasts: [], cardTasks: {}, taskStarts: {} }));
   });
 
   const run = async (id: string, target = card) => {
@@ -212,6 +214,30 @@ describe("chats the host starts for a task", () => {
     expect(startTask).toHaveBeenLastCalledWith({ kind: "fix", lament: "llllll" });
     expect(store.get().sessions.f1).toBeDefined();
     expect(store.get().active).toBe("p1");
+  });
+
+  it("shows a lament's Fix and a pull request's Review starting, then started, and starts one chat per double click", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    startTask.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const lament = { id: "llllll" } as never;
+    void fixLament(lament);
+    void fixLament(lament); // a double click
+    expect(store.get().taskStarts).toEqual({ [taskKey.fix("llllll")]: "starting" });
+    answer({ handle: "f1", snapshot: null, notices: [] });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(startTask).toHaveBeenCalledTimes(1);
+    expect(store.get().taskStarts).toEqual({ [taskKey.fix("llllll")]: "started" });
+    await vi.advanceTimersByTimeAsync(CARD_TASK_STARTED_MS);
+    expect(store.get().taskStarts).toEqual({});
+
+    startTask.mockRejectedValueOnce(new Error("Could not make a git worktree"));
+    const repo = { host: "github.com", repo: "acme/app" };
+    const item = { kind: "pr", number: 7, title: "Fix", state: "open", author: "me", labels: [], createdAt: "", updatedAt: "", url: "u", body: "" } satisfies GithubItem;
+    const review = reviewPullRequest("/repo", repo, item);
+    expect(store.get().taskStarts).toEqual({ [taskKey.review("/repo", repo, item)]: "starting" });
+    expect(await review).toBe(false);
+    expect(store.get().taskStarts).toEqual({}); // and you can try again
+    expect(store.get().toasts.at(-1)).toMatchObject({ level: "error", text: "Could not make a git worktree" });
   });
 
   it("offers QA for cards in review only", () => {
@@ -352,5 +378,51 @@ describe("scopeBrowser", () => {
 
   it("shows no tabs without a chat", () => {
     expect(scopeBrowser(all, undefined).tabs).toEqual([]);
+  });
+});
+
+describe("lament changes", () => {
+  const lament = { id: "llllll", title: "No video", cwd: "/repo", reports: [{ at: 1, text: "body", severity: "costly" }], createdAt: 1, updatedAt: 1 } as const;
+  const laments = { version: 1, laments: [lament], rev: 4 } as const;
+  const apply = vi.fn();
+  const get = vi.fn();
+
+  beforeEach(() => {
+    apply.mockReset();
+    get.mockReset();
+    vi.stubGlobal("window", { studio: { laments: { apply, get } } });
+    store.set((s) => ({ ...s, laments: structuredClone(laments) as never, toasts: [] }));
+  });
+
+  it("marks a lament resolved before main answers, checked against the revision it was made on", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    apply.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    const done = applyLament({ type: "resolve", id: "llllll", resolved: true });
+    expect(store.get().laments.laments[0]?.resolvedAt).toEqual(expect.any(Number));
+    expect(store.get().laments.rev).toBe(4);
+    expect(apply).toHaveBeenCalledExactlyOnceWith({ type: "resolve", id: "llllll", resolved: true }, 4);
+    answer({ ...laments, rev: 5 });
+    expect(await done).toBe(true);
+  });
+
+  it("shows main's laments when main refuses, and the ones from before when main cannot answer", async () => {
+    apply.mockRejectedValue(new Error("Error invoking remote method 'studio:laments-apply': Error: no lament llllll"));
+    get.mockResolvedValueOnce({ version: 1, laments: [], rev: 5 });
+    expect(await applyLament({ type: "resolve", id: "llllll", resolved: true })).toBe(false);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(store.get().laments).toEqual({ version: 1, laments: [], rev: 5 });
+    expect(store.get().toasts.at(-1)).toMatchObject({ level: "error", text: "no lament llllll" });
+
+    store.set((s) => ({ ...s, laments: structuredClone(laments) as never }));
+    get.mockRejectedValueOnce(new Error("gone"));
+    expect(await applyLament({ type: "remove", id: "llllll" })).toBe(false);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(store.get().laments).toEqual(laments);
+  });
+
+  it("refuses a change to a lament this window does not have without asking main", async () => {
+    expect(await applyLament({ type: "resolve", id: "zzzzzz", resolved: true })).toBe(false);
+    expect(apply).not.toHaveBeenCalled();
+    expect(store.get().laments).toEqual(laments);
   });
 });

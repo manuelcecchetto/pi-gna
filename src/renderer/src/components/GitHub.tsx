@@ -14,6 +14,7 @@ import {
   GitPullRequestClosed,
   GitPullRequestDraft,
   Link2,
+  LoaderCircle,
   Plus,
   RefreshCw,
   ScanSearch,
@@ -37,7 +38,7 @@ import {
 } from "../../../shared/github";
 import { formatStamp, relativeTime } from "../lib/format";
 import { cardFromItem, githubProjects, imagesAsLinks, type ItemLook, itemLook, labelColor, linkableCards, linkedCards } from "../lib/github";
-import { applyBoard, type PageState, remoteError, reviewPullRequest, showBoard, showPage, toast, useApp } from "../state/app";
+import { applyBoard, type CardTaskPhase, type PageState, remoteError, reviewPullRequest, showBoard, showPage, taskKey, toast, useApp, useTaskStart } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Markdown } from "./Markdown";
@@ -61,6 +62,7 @@ const REVIEW_HINT = "A new chat reviews it with the pr-review skill";
 export function GithubPage({ page }: { page: PageState }) {
   const board = useApp((state) => state.board);
   const projects = useApp((state) => state.projects);
+  const starts = useApp((state) => state.taskStarts);
   const inset = useApp((state) => state.sidebar.collapsed);
   useNow(60_000); // relative times
   const [project, setProject] = useState<GithubProject>();
@@ -153,7 +155,9 @@ export function GithubPage({ page }: { page: PageState }) {
       ],
       cards.slice(0, 3).map((card) => ({ label: `Open “${card.title}”`, icon: <SquareKanban size={13} />, onSelect: () => showBoard(card.cwd, card.id) })),
       [
-        ...(item.kind === "pr" ? [{ label: "Review in a new chat", icon: <ScanSearch size={13} />, hint: REVIEW_HINT, onSelect: () => review(item) }] : []),
+        ...(item.kind === "pr"
+          ? [{ label: "Review in a new chat", icon: <ScanSearch size={13} />, hint: REVIEW_HINT, busy: starts[taskKey.review(page.cwd, repo, item)] === "starting", onSelect: () => review(item) }]
+          : []),
         { label: "New card from it", icon: <Plus size={13} />, hint: "A To do card linked to it", onSelect: () => void newCard(item) },
         { label: "Link to card…", icon: <Link2 size={13} />, onSelect: () => setMenu({ item, at, link: true }) },
       ],
@@ -278,6 +282,7 @@ export function GithubPage({ page }: { page: PageState }) {
                   onMenu={(at, linking) => setMenu({ item, at, link: linking })}
                   onNewCard={() => void newCard(item)}
                   onReview={() => review(item)}
+                  reviewing={starts[taskKey.review(page.cwd, repo, item)]}
                 />
               ))}
               {listed.more && (
@@ -375,6 +380,7 @@ function ItemView({
   onMenu,
   onNewCard,
   onReview,
+  reviewing,
 }: {
   item: GithubItem;
   cards: Card[];
@@ -383,6 +389,8 @@ function ItemView({
   onMenu: (at: At, linking?: boolean) => void;
   onNewCard: () => void;
   onReview: () => void;
+  /** Its Review chat starting, or just started (reviewPullRequest). */
+  reviewing?: CardTaskPhase;
 }) {
   // gh lists the newest first, so the row says when it was opened; when it last changed is in the tooltip.
   const created = Date.parse(item.createdAt);
@@ -451,7 +459,7 @@ function ItemView({
         </div>
         <ChevronRight size={14} className={`mt-1 shrink-0 text-faint transition-transform ${expanded ? "rotate-90" : ""}`} />
       </button>
-      {expanded && <ItemDetail item={item} cards={cards} onMenu={onMenu} onNewCard={onNewCard} onReview={onReview} />}
+      {expanded && <ItemDetail item={item} cards={cards} onMenu={onMenu} onNewCard={onNewCard} onReview={onReview} reviewing={reviewing} />}
     </article>
   );
 }
@@ -462,12 +470,14 @@ function ItemDetail({
   onMenu,
   onNewCard,
   onReview,
+  reviewing,
 }: {
   item: GithubItem;
   cards: Card[];
   onMenu: (at: At, linking?: boolean) => void;
   onNewCard: () => void;
   onReview: () => void;
+  reviewing?: CardTaskPhase;
 }) {
   const created = Date.parse(item.createdAt);
   const button = "flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised";
@@ -503,8 +513,23 @@ function ItemDetail({
             <ExternalLink size={13} className="text-muted" /> Open on GitHub
           </button>
           {item.kind === "pr" && (
-            <button type="button" onClick={onReview} title={REVIEW_HINT} className={button}>
-              <ScanSearch size={13} className="text-muted" /> Review
+            // A Review the host is starting cannot be started again (a double click would start two chats).
+            <button
+              type="button"
+              onClick={onReview}
+              title={REVIEW_HINT}
+              disabled={reviewing === "starting"}
+              aria-busy={reviewing === "starting" || undefined}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] ${reviewing === "started" ? "border-ok/40 text-ok hover:bg-raised" : reviewing === "starting" ? "cursor-default border-line-strong text-muted" : "border-line-strong text-fg hover:bg-raised"}`}
+            >
+              {reviewing === "starting" ? (
+                <LoaderCircle size={13} className="animate-spin text-muted" />
+              ) : reviewing === "started" ? (
+                <Check size={13} />
+              ) : (
+                <ScanSearch size={13} className="text-muted" />
+              )}
+              {reviewing === "starting" ? "Starting Review…" : reviewing === "started" ? "Review started" : "Review"}
             </button>
           )}
           <button type="button" onClick={onNewCard} title="A To do card linked to it" className={button}>

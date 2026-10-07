@@ -2,13 +2,13 @@
 // needed was missing, unavailable or failing. Worst first, each with the emoji and colored name of its severity; open one to read its
 // reports, open the chat that filed it, have a new chat fix it in a git worktree (Fix), and mark it resolved once
 // the fix is in (a repeat reopens it).
-import { Angry, ChevronRight, CircleCheck, MessagesSquare, RotateCcw, Trash2, Wrench } from "./icons";
+import { Angry, Check, ChevronRight, CircleCheck, LoaderCircle, MessagesSquare, RotateCcw, Trash2, Wrench } from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type Lament, type LamentFix, type LamentReport, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
 import { findSummary } from "../lib/board";
 import { baseName, formatStamp, relativeTime } from "../lib/format";
 import { fixChat, lamentProjects, lamentSnippet, reportChat, SEVERITY_TONE } from "../lib/laments";
-import { applyLament, fixLament, openSession, type PageState, sessionTitle, showPage, useApp } from "../state/app";
+import { applyLament, fixLament, openSession, type PageState, sessionTitle, showPage, taskKey, useApp, useTaskStart } from "../state/app";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Markdown } from "./Markdown";
 import { useNow } from "./primitives";
@@ -23,6 +23,7 @@ const RESOLVE_HINT = "You fixed it: no chat runs, the lament moves to Resolved";
 /** Keyed by project (App), so another project starts on its open laments, none expanded. */
 export function LamentsPage({ page }: { page: PageState }) {
   const laments = useApp((state) => state.laments);
+  const starts = useApp((state) => state.taskStarts);
   const projects = useApp((state) => state.projects);
   const inset = useApp((state) => state.sidebar.collapsed);
   useNow(60_000); // relative times
@@ -52,7 +53,9 @@ export function LamentsPage({ page }: { page: PageState }) {
         ...(fixer ? [{ label: "Open the Fix chat", icon: <Wrench size={13} />, hint: fix?.branch ?? fixer.title, onSelect: () => openSession(fixer) }] : []),
       ],
       [
-        ...(lament.resolvedAt ? [] : [{ label: "Fix", icon: <Wrench size={13} />, hint: FIX_HINT, onSelect: () => void fixLament(lament) }]),
+        ...(lament.resolvedAt
+          ? []
+          : [{ label: "Fix", icon: <Wrench size={13} />, hint: FIX_HINT, busy: starts[taskKey.fix(lament.id)] === "starting", onSelect: () => void fixLament(lament) }]),
         lament.resolvedAt
           ? { label: "Reopen", icon: <RotateCcw size={13} />, onSelect: () => void applyLament({ type: "resolve", id: lament.id, resolved: false }) }
           : { label: "Mark resolved", icon: <CircleCheck size={13} />, hint: RESOLVE_HINT, onSelect: () => void applyLament({ type: "resolve", id: lament.id, resolved: true }) },
@@ -142,6 +145,7 @@ function LamentView({ lament, expanded, onToggle, onMenu }: { lament: Lament; ex
   const severity = lamentSeverity(lament);
   const repeats = lament.reports.length - 1;
   const fixing = lament.resolvedAt ? undefined : lament.fixes?.at(-1);
+  const fixStart = useTaskStart(taskKey.fix(lament.id));
   return (
     <article
       onContextMenu={(event) => {
@@ -167,7 +171,18 @@ function LamentView({ lament, expanded, onToggle, onMenu }: { lament: Lament; ex
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className={`min-w-0 flex-1 text-[13.5px] leading-snug text-fg ${expanded ? "" : "line-clamp-2"}`}>{lament.title}</span>
-            {fixing && (
+            {fixStart === "starting" ? (
+              <span className="flex shrink-0 items-center gap-1 self-center rounded-full bg-raised px-1.5 text-[11px] leading-[18px] text-muted" aria-live="polite">
+                <LoaderCircle size={11} className="animate-spin" />
+                Starting Fix…
+              </span>
+            ) : fixStart === "started" ? (
+              <span className="flex shrink-0 items-center gap-1 self-center rounded-full bg-ok/10 px-1.5 text-[11px] leading-[18px] text-ok" aria-live="polite">
+                <Check size={11} />
+                Fix started
+              </span>
+            ) : null}
+            {fixing && !fixStart && (
               <span className="flex shrink-0 items-center self-center text-muted" title={fixing.branch ? `A Fix chat works on it, on branch ${fixing.branch}` : "A Fix chat works on it"}>
                 <Wrench size={11} />
               </span>
@@ -195,6 +210,8 @@ function LamentView({ lament, expanded, onToggle, onMenu }: { lament: Lament; ex
 
 function LamentDetail({ lament }: { lament: Lament }) {
   const [deleting, setDeleting] = useState(false);
+  // A Fix the host is starting cannot be started again (a double click would start two chats).
+  const fixStart = useTaskStart(taskKey.fix(lament.id));
   useEffect(() => {
     if (!deleting) return;
     const timer = setTimeout(() => setDeleting(false), 4000);
@@ -219,11 +236,13 @@ function LamentDetail({ lament }: { lament: Lament }) {
           <button
             type="button"
             title={FIX_HINT}
+            disabled={fixStart === "starting"}
+            aria-busy={fixStart === "starting" || undefined}
             onClick={() => void fixLament(lament)}
-            className="flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised"
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] ${fixStart === "started" ? "border-ok/40 text-ok hover:bg-raised" : fixStart === "starting" ? "cursor-default border-line-strong text-muted" : "border-line-strong text-fg hover:bg-raised"}`}
           >
-            <Wrench size={13} className="text-muted" />
-            Fix
+            {fixStart === "starting" ? <LoaderCircle size={13} className="animate-spin text-muted" /> : fixStart === "started" ? <Check size={13} /> : <Wrench size={13} className="text-muted" />}
+            {fixStart === "starting" ? "Starting Fix…" : fixStart === "started" ? "Fix started" : "Fix"}
           </button>
         )}
         <button
