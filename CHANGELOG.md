@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Files (⌘P) is now a folder picker: it opens on the project's top folder, folders first, and you click into folders, go back through the path above the list or Backspace, and search finds folders as well as files inside the folder you are in.
 - Windows beta: pi-gna builds an unsigned per-user installer for Windows x64, published by hand as a GitHub prerelease (Actions > Windows beta). pi and npm start through their .cmd shims without a shell; Computer Use and in-app updates stay macOS-only for now. See docs/WINDOWS.md.
 
 ## 0.6.9 - 2026-10-07

@@ -286,7 +286,9 @@ loads `pigna-file://<token>/<path>`. Full decisions, spike evidence and limits: 
   like a card tab, its native view stays hidden and the renderer draws `StartPage`, modelled on the Codex app's new tab:
   the address bar focused, a Tools grid (Files ⌘P, Open file... ⌘O, New page (about:blank), then the enabled pages
   with their menu shortcuts, the rest behind More tools) and Suggested (recent localhost URLs). Files is `FileFinder`, a
-  fuzzy finder over the chat's project files (`listFiles`); ⌘P (`showFileFinder`) opens it in the active start tab or a
+  folder picker over the chat's project files (`listFiles`; folders are derived from the file paths in `lib/file-tree.ts`,
+  so the shared list stays files-only for the composer's @ menu): it browses one folder at a time (folders first,
+  breadcrumbs, Backspace in an empty search goes up) and typing fuzzy-searches the files and folders below it; ⌘P (`showFileFinder`) opens it in the active start tab or a
   new one. Whatever is picked fills that tab: a URL goes through `navigate` (`BrowserManager.load` clears `start`), a file through `openPreview` with
   `into: <tab id>`, which only accepts a start tab. The empty pane (no tabs) shows the same page and opens new tabs.
 - **Verified** end to end by `pnpm verify:preview` (after `pnpm build`).

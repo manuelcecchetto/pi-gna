@@ -23,6 +23,8 @@ import {
   X,
   SquareKanban,
   ChevronDown,
+  ChevronRight,
+  Folder,
   FileText,
   Files,
   Angry,
@@ -37,6 +39,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
+import { entriesBelow, folderEntries, parentDir, type TreeEntry } from "../lib/file-tree";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
 import { openSettings, setPane, showBrowser, showPage, store, toast, useApp } from "../state/app";
@@ -573,19 +576,44 @@ function Tools({ tab, onFiles }: { tab?: BrowserTab; onFiles: () => void }) {
   );
 }
 
-/** The project files of the chat, filtered as you type; Enter or a click previews one. */
+/** Rows a folder shows before the rest wait for a search. */
+const FOLDER_LIMIT = 500;
+
+/**
+ * A picker over the project files of the chat: it browses folders (Enter or a click opens one, Backspace in an empty
+ * search goes up, the path above jumps back), and typing searches the files and folders below the current one.
+ * Picking a file previews it.
+ */
 function FileFinder({ tab, onBack }: { tab?: BrowserTab; onBack: () => void }) {
   const cwd = useApp((s) => (s.active ? s.sessions[s.active]?.cwd : undefined));
   const [all, setAll] = useState<string[] | undefined>();
+  const [dir, setDir] = useState("");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
+  const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setAll(undefined);
+    setDir("");
     if (cwd) void window.studio.listFiles(cwd).then(setAll, () => setAll([]));
   }, [cwd]);
-  const matches = useMemo(() => fuzzyFilter(all ?? [], query.trim(), (file) => file, 50), [all, query]);
-  useEffect(() => setSelected(0), [query]);
-  const open = (relative: string) => cwd && void openPreviewPath(`${cwd}/${relative}`, { into: tab?.id });
+  const searching = query.trim() !== "";
+  const prefix = dir ? `${dir}/` : "";
+  const entries = useMemo(() => {
+    if (!all) return [];
+    if (!searching) return folderEntries(all, dir).slice(0, FOLDER_LIMIT);
+    return fuzzyFilter(entriesBelow(all, dir), query.trim(), (entry) => entry.path.slice(prefix.length), 50);
+  }, [all, dir, prefix, query, searching]);
+  useEffect(() => setSelected(0), [query, dir]);
+  useEffect(() => {
+    list.current?.querySelector(`[data-index="${selected}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+  const enter = (folder: string) => {
+    setDir(folder);
+    setQuery("");
+  };
+  const pick = (entry: TreeEntry) => (entry.folder ? enter(entry.path) : cwd && void openPreviewPath(`${cwd}/${entry.path}`, { into: tab?.id }));
+  const crumbs = dir ? dir.split("/") : [];
+  const project = cwd ? cwd.slice(cwd.lastIndexOf("/") + 1) || cwd : "";
   return (
     <div data-finder className="flex h-full flex-col px-6 py-5">
       <div className="flex shrink-0 items-center gap-2 rounded-xl bg-raised/50 px-2 ring-1 ring-line focus-within:ring-accent/50">
@@ -596,40 +624,70 @@ function FileFinder({ tab, onBack }: { tab?: BrowserTab; onBack: () => void }) {
           autoFocus
           value={query}
           spellCheck={false}
-          placeholder={cwd ? "Search files" : "Open a chat in a project to search its files"}
+          placeholder={cwd ? (dir ? `Search in ${dir}` : "Search files and folders") : "Open a chat in a project to browse its files"}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setSelected((i) => Math.min(matches.length - 1, i + 1));
+              setSelected((i) => Math.min(entries.length - 1, i + 1));
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               setSelected((i) => Math.max(0, i - 1));
-            } else if (event.key === "Enter" && matches[selected]) open(matches[selected]);
-            else if (event.key === "Escape") onBack();
+            } else if (event.key === "Enter" && entries[selected]) pick(entries[selected]);
+            else if (event.key === "Backspace" && !query && dir) {
+              event.preventDefault();
+              setDir(parentDir);
+            } else if (event.key === "Escape") {
+              if (query) setQuery("");
+              else onBack();
+            }
           }}
           className="selectable h-10 min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-faint"
         />
         <Keys keys="⌘P" />
       </div>
-      <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+      {cwd && (
+        <nav data-crumbs className="mt-2 flex shrink-0 flex-wrap items-center gap-0.5 px-1 text-[12.5px]">
+          {[project, ...crumbs].map((name, index) => {
+            const path = crumbs.slice(0, index).join("/");
+            const current = index === crumbs.length;
+            return (
+              <span key={path || "/"} className="flex items-center gap-0.5">
+                {index > 0 && <ChevronRight size={12} className="text-faint" />}
+                <button
+                  type="button"
+                  disabled={current}
+                  onClick={() => enter(path)}
+                  className={`rounded-md px-1.5 py-0.5 ${current ? "text-fg" : "text-muted hover:bg-raised hover:text-fg"}`}
+                >
+                  {name}
+                </button>
+              </span>
+            );
+          })}
+        </nav>
+      )}
+      <div ref={list} className="mt-1 min-h-0 flex-1 overflow-y-auto">
         {all === undefined && cwd && <div className="px-3 py-2 text-[12.5px] text-faint">Listing files…</div>}
-        {all && matches.length === 0 && <div className="px-3 py-2 text-[12.5px] text-faint">No files match.</div>}
-        {matches.map((file, index) => {
-          const Icon = iconForKind(kindFor(file));
-          const slash = file.lastIndexOf("/");
+        {all && entries.length === 0 && <div className="px-3 py-2 text-[12.5px] text-faint">{searching ? "Nothing matches." : "This folder is empty."}</div>}
+        {entries.map((entry, index) => {
+          const Icon = entry.folder ? Folder : iconForKind(kindFor(entry.path));
+          const relative = entry.path.slice(prefix.length);
+          const slash = relative.lastIndexOf("/");
           return (
             <button
-              key={file}
+              key={entry.path}
               type="button"
-              title={file}
-              onClick={() => open(file)}
+              data-index={index}
+              title={entry.path}
+              onClick={() => pick(entry)}
               onMouseMove={() => setSelected(index)}
               className={`flex h-8 w-full items-center gap-3 rounded-lg px-3 text-left ${index === selected ? "bg-raised" : ""}`}
             >
-              <Icon size={14} className="shrink-0 text-muted" />
-              <span className="shrink-0 text-[13px] text-fg">{file.slice(slash + 1)}</span>
-              <span className="truncate text-[12px] text-faint">{slash > 0 ? file.slice(0, slash) : ""}</span>
+              <Icon size={14} className={`shrink-0 ${entry.folder ? "text-accent" : "text-muted"}`} />
+              <span className="shrink-0 text-[13px] text-fg">{relative.slice(slash + 1)}</span>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-faint">{slash > 0 ? relative.slice(0, slash) : ""}</span>
+              {entry.folder && <ChevronRight size={13} className="shrink-0 text-faint" />}
             </button>
           );
         })}
