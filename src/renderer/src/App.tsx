@@ -132,7 +132,7 @@ function Lightbox() {
   const src = useApp((state) => state.lightbox);
   if (!src) return null;
   return (
-    <button type="button" onClick={() => openLightbox(undefined)} className="fixed inset-0 z-50 grid cursor-zoom-out place-items-center bg-black/75 p-10">
+    <button type="button" onClick={() => openLightbox(undefined)} className="fixed inset-0 z-50 grid grid-cols-[100%] grid-rows-[100%] cursor-zoom-out place-items-center bg-black/75 p-10">
       <img alt="" src={src} className="max-h-full max-w-full rounded-lg shadow-2xl" />
     </button>
   );
