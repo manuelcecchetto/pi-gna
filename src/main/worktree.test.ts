@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { projectOf, worktreeCwd } from "../shared/board";
 import { branchName, cardWorktree } from "./worktree";
@@ -33,6 +33,23 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   await rm(root, { recursive: true, force: true });
+});
+
+describe("worktreeCwd", () => {
+  it("mirrors a Windows project's drive or share as a folder, and map back to it", () => {
+    const home = "C:\\Users\\me";
+    for (const project of ["C:\\Users\\me\\Code\\app", "D:\\", "C:/Users/me/app", "\\\\server\\share\\app"]) {
+      const cwd = worktreeCwd(`${home}\\`, "abc123", project);
+      expect(win32.isAbsolute(cwd)).toBe(true);
+      expect(cwd.indexOf(":", 2)).toBe(-1);
+      expect(cwd.startsWith(win32.join(home, ".pi-gna", "worktrees", "abc123"))).toBe(true);
+      expect(projectOf(cwd)).toBe(project);
+    }
+    expect(worktreeCwd(home, "abc123", "C:\\Users\\me\\Code\\app")).toBe(win32.join(home, ".pi-gna", "worktrees", "abc123", "C", "Users", "me", "Code", "app"));
+    expect(worktreeCwd(home, "abc123", "\\\\server\\share")).toBe(win32.join(home, ".pi-gna", "worktrees", "abc123", "UNC", "server", "share"));
+    expect(projectOf("C:\\Users\\me\\Code\\app")).toBe("C:\\Users\\me\\Code\\app");
+    expect(projectOf(win32.join(home, ".pi-gna", "worktrees", "abc123", "notes", "x"))).toBe(win32.join(home, ".pi-gna", "worktrees", "abc123", "notes", "x"));
+  });
 });
 
 describe("cardWorktree", () => {
