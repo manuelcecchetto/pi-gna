@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Phone: going back from a file or the browser opened from a chat returns to where you were reading, instead of jumping to the end of the chat.
+
 ## 0.6.7 - 2026-10-07
 
 - Phone: text files and images open on the phone itself instead of a laggy, letterboxed stream of the Mac's preview. Markdown renders like a chat message and its links work from the file's folder; code, JSON and text are highlighted with line numbers, wrapped, with the linked line marked; CSV opens as a table, images zoom. Rendered/Raw and Copy are on top. PDF, Office, HTML and media still stream from the Mac. Only files in the chat's folder and project open, as before.
