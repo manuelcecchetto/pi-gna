@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.8.0 - 2026-10-07
+
 - Screenshots in replies show as galleries, like T3 Code: several images in one paragraph or list item become a row of thumbnails, a table of images becomes a borderless grid with each caption under its image, and raw `<img>` tags of local files work too (with their width and height). Clicking an image opens a lightbox that pages through every image in the answer (chevrons, ←/→ and an n / m counter; swipe on the phone).
 - Inline visuals look cleaner, after T3 Code's inline charts: text at the chat's size, big sans headline numbers, thicker rounded bars with bold values, section subtitles next to their titles, and boxes without borders. Visuals now show at their full height instead of being cut off at 720 px behind Show all.
 
