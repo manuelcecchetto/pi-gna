@@ -5,6 +5,16 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Phone: text files and images open on the phone itself instead of a laggy, letterboxed stream of the Mac's preview. Markdown renders like a chat message and its links work from the file's folder; code, JSON and text are highlighted with line numbers, wrapped, with the linked line marked; CSV opens as a table, images zoom. Rendered/Raw and Copy are on top. PDF, Office, HTML and media still stream from the Mac. Only files in the chat's folder and project open, as before.
+- ATP: a big plan opens readable at the part being worked on (the running node, else a failed or ready one; a finished plan at its outcome) instead of a fitted map of unlabeled blocks; Fit still shows the whole plan. On the phone the minimap sits above the zoom controls instead of covering them.
+- ATP: when the orchestrator cannot start, the error stays in the dock in plain words, with Try again and a shortcut to the orchestrator's model setting, instead of a raw toast and no composer.
+- Errors explain themselves: the phone says when the Mac's Computer Use helper cannot be reached, the never-allowed apps are listed by name and reason, plugin and provider errors show their commands as code, and a pi that fails to start shows its own error output on the setup screen with Copy the details.
+- Laments show their severity as a colored word (Annoying, Costly, Blocking) on each row and report, on the Mac and the phone.
+- Card and lament rows, the phone's turn list and notification previews show plain text instead of raw Markdown; card reports render as Markdown.
+- With the browser open, the chat keeps at least 400 px instead of being squeezed to a sliver; the browser gives way first, down to 280 px.
+- Phone: toasts sit under the header and at most two show; the turn list button moved into the chat header instead of floating over messages; queued messages take one line each; long paths wrap and the board's column tabs fit the screen; Sign out lives in Settings > Remote access only.
+- Chats are called chats everywhere: "New chat" instead of "New session".
+
 ## 0.6.6 - 2026-10-06
 
 - New icons: pi-gna draws its own set, softer and rounder (2px round strokes, gentle corners), replacing lucide-react everywhere on the Mac and the phone. The sidebar is roomier: 16px icons and 14px labels, and a project's folder opens and closes with it instead of a chevron, with its chats lined up under the name.
