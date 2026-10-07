@@ -2,7 +2,7 @@
 // pi's chats, so what Setup finds is what chats run. One install at a time; npm's output streams to the window.
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { installError, nodeSupported, PI_INSTALL_ARGS, piReady, type SetupInstallResult, type SetupStatus } from "../shared/setup";
 import { resolveCommand } from "./command";
@@ -22,16 +22,23 @@ type Ran = { ok: true; out: string } | { ok: false; missing: boolean; error: str
 function run(command: string, args: string[], timeout: number): Promise<Ran> {
   return new Promise((resolve) => {
     const resolved = resolveCommand(command, args);
-    execFile(resolved.file, resolved.args, { timeout, env: process.env }, (error, stdout, stderr) => {
-      if (!error) return resolve({ ok: true, out: stdout.trim() });
-      const code = (error as NodeJS.ErrnoException).code;
-      const said = stderr.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-6);
-      resolve({
-        ok: false,
-        missing: code === "ENOENT",
-        error: error.killed ? `no answer in ${Math.round(timeout / 1000)} s` : [error.message.split("\n")[0] ?? "failed", ...said].join("\n"),
+    try {
+      execFile(resolved.file, resolved.args, { timeout, env: process.env, windowsHide: true }, (error, stdout, stderr) => {
+        if (!error) return resolve({ ok: true, out: stdout.trim() });
+        const code = (error as NodeJS.ErrnoException).code;
+        const said = stderr.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-6);
+        resolve({
+          ok: false,
+          missing: code === "ENOENT",
+          error: error.killed ? `no answer in ${Math.round(timeout / 1000)} s` : [error.message.split("\n")[0] ?? "failed", ...said].join("\n"),
+        });
       });
-    });
+    } catch (error) {
+      // Windows can throw synchronously for an unsupported .cmd launcher.
+      // Keep the other prerequisite results instead of rejecting the whole check.
+      const failure = error as NodeJS.ErrnoException;
+      resolve({ ok: false, missing: failure.code === "ENOENT", error: failure.message });
+    }
   });
 }
 
@@ -144,8 +151,10 @@ export class PiSetup {
   private async addGlobalBin(): Promise<void> {
     const prefix = await run("npm", ["prefix", "-g"], this.options.checkMs ?? 15_000);
     if (!prefix.ok || !prefix.out) return;
-    const bin = join(prefix.out, "bin");
+    const bin = process.platform === "win32" ? prefix.out : join(prefix.out, "bin");
     const path = process.env.PATH ?? "";
-    if (!path.split(":").includes(bin)) process.env.PATH = path ? `${path}:${bin}` : bin;
+    const normalize = (value: string) => process.platform === "win32" ? value.toLowerCase() : value;
+    if (!path.split(delimiter).some((entry) => normalize(entry) === normalize(bin)))
+      process.env.PATH = path ? `${path}${delimiter}${bin}` : bin;
   }
 }

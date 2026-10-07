@@ -15,6 +15,7 @@ const deps = {
   board: {},
   cardImages: {},
   settings: { get: record("settings.get") },
+  plugins: { state: record("plugins.state") },
   uiState: {},
   computerPolicy: {},
   computerHelper: { call: () => Promise.reject(new Error("Computer Use helper is missing from this build (/x.app)")) },
@@ -105,6 +106,23 @@ describe("host methods table", () => {
     calls.length = 0;
     await expect(dispatch(core, desktop(), "github.project", { cwd: "/r", refresh: true })).resolves.toEqual({ name: "github.project" });
     expect(calls).toEqual([["github.project", "/r", true]]);
+  });
+
+  it.skipIf(process.platform !== "win32")("accepts Windows drive and UNC projects in the plugins page", async () => {
+    for (const cwd of ["C:\\Users\\dev\\my project", "C:/Users/dev/my project", "\\\\server\\share\\project"]) {
+      calls.length = 0;
+      await expect(dispatch(core, desktop(), "plugins.state", { cwd })).resolves.toEqual({ name: "plugins.state" });
+      expect(calls).toEqual([["plugins.state", cwd]]);
+    }
+  });
+
+  it("rejects relative and invalid plugin project paths but permits global settings", async () => {
+    for (const cwd of ["repo", "C:repo", "", "/repo\0bad", 42]) {
+      expect(() => dispatch(core, desktop(), "plugins.state", { cwd })).toThrow("a project is an absolute path");
+    }
+    calls.length = 0;
+    await dispatch(core, desktop(), "plugins.state", {});
+    expect(calls).toEqual([["plugins.state", undefined]]);
   });
 
   it("sends login side effects to the calling client only", async () => {

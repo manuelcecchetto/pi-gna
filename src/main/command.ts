@@ -11,6 +11,8 @@ export interface Command {
 
 /** The script line of an npm (cmd-shim) or pnpm shim: `"%dp0%\node_modules\...\cli.js"` or `"%~dp0\..."`. */
 const SHIM_SCRIPT = /"%~?dp0%?\\([^"%]+\.[cm]?js)"/i;
+/** Node's bundled npm.cmd/npx.cmd set the CLI in a variable, next to npm-prefix.js (a helper, not the entry point). */
+const NPM_CLI_SCRIPT = /^\s*SET\s+"(?:NPM|NPX)_CLI_JS=%~dp0\\([^"%]+\.[cm]?js)"\s*$/im;
 
 /** Windows has no executable bit: any file found by its extension runs. */
 function executable(file: string, win: boolean): boolean {
@@ -46,7 +48,7 @@ export function shimScript(file: string): string | undefined {
   } catch {
     return undefined;
   }
-  const relative = SHIM_SCRIPT.exec(text)?.[1];
+  const relative = NPM_CLI_SCRIPT.exec(text)?.[1] ?? SHIM_SCRIPT.exec(text)?.[1];
   if (!relative) return undefined;
   const script = join(dirname(file), ...relative.split(/[\\/]/).filter(Boolean));
   return existsSync(script) ? script : undefined;
