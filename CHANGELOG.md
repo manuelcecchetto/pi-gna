@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.6.7 - 2026-10-07
+
 - Phone: text files and images open on the phone itself instead of a laggy, letterboxed stream of the Mac's preview. Markdown renders like a chat message and its links work from the file's folder; code, JSON and text are highlighted with line numbers, wrapped, with the linked line marked; CSV opens as a table, images zoom. Rendered/Raw and Copy are on top. PDF, Office, HTML and media still stream from the Mac. Only files in the chat's folder and project open, as before.
 - ATP: a big plan opens readable at the part being worked on (the running node, else a failed or ready one; a finished plan at its outcome) instead of a fitted map of unlabeled blocks; Fit still shows the whole plan. On the phone the minimap sits above the zoom controls instead of covering them.
 - ATP: when the orchestrator cannot start, the error stays in the dock in plain words, with Try again and a shortcut to the orchestrator's model setting, instead of a raw toast and no composer.
