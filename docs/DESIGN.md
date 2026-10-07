@@ -419,7 +419,8 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   and its dialog. Investigate, Resolve and QA start a chat in the background (you stay on the board; `startCardTask`
   keeps `AppState.cardTasks`: the card, its menu item and its dialog button show "Starting …" while main sets the chat
   up, which a worktree makes take seconds, then "… started" for a moment; asking again while it starts does nothing,
-  so a double click starts one chat; the phone's card page disables its button the same way), attach it when
+  so a double click starts one chat; the phone's card page disables its button the same way; a lament's Fix and a
+  pull request's Review go through the same `trackStart`, kept in `AppState.taskStarts` by `taskKey`), attach it when
   pi is ready (a new chat's session file is named before anything is written) and only then send the prompt, so
   the agent's first `kanban_update` finds its card; `set_session_name` names it "Investigate: …". QA (cards in
   In review, `qaPrompt`) reviews, tests and tries the change without fixing it, leaves a passing card in review and
@@ -501,7 +502,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `src/shared/laments.ts`: title 200 / report 8k characters, a known severity, absolute paths; the first report
   and the latest 29 are kept), serialized tmp + rename writes, a file that does not parse moved to
   `laments.corrupt-<ts>.json`. The whole value is pushed after each change (`laments:changed`); the renderer only
-  sends resolve, reopen, remove and fix (`applyLament`) and waits for the push.
+  sends resolve, reopen, remove and fix (`applyLament`), applied locally first like `applyBoard` (checked against
+  the revision it was made on; when main refuses, its laments replace the local ones, or the ones from before when
+  it cannot answer).
 - **The page** (`components/Laments.tsx`, `page.kind === "laments"`, keyed by project) lists open laments worst
   first (a lament is as bad as its worst report), then the most recent, with Open and Resolved tabs. A row shows
   the severity emoji, the title, ×n when it was hit again and the latest report; it expands to every report

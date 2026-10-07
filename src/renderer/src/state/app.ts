@@ -5,7 +5,7 @@ import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, 
 import { formatAnnotations } from "../../../shared/annotations";
 import type { Annotation, BrowserState } from "../../../shared/browser";
 import type { GithubItem, GithubRepo } from "../../../shared/github";
-import { emptyLaments, type Lament, type LamentOp, type Laments } from "../../../shared/laments";
+import { applyLamentOp, emptyLaments, type Lament, LamentError, type LamentOp, type Laments } from "../../../shared/laments";
 import { emptyThemes, type ThemeOp, type Themes } from "../../../shared/themes";
 import type { Look } from "../lib/theme";
 import {
@@ -87,6 +87,8 @@ export interface AppState {
   composerCards: Record<string, string>;
   /** Card tasks (Investigate, Resolve, QA) the host is starting or just started, per card id (startCardTask). */
   cardTasks: Record<string, CardTasks>;
+  /** Other task chats the host is starting or just started (a lament's Fix, a pull request's Review), by taskKey. */
+  taskStarts: Record<string, CardTaskPhase>;
   sidebar: SidebarLayout;
   /** pi's compaction settings, for the context meter's auto-compaction point. */
   compaction: CompactionSettings;
@@ -142,6 +144,7 @@ export const store = createStore<AppState>({
   attachments: {},
   composerCards: {},
   cardTasks: {},
+  taskStarts: {},
   compaction: {},
   sidebar: loadSidebar(),
   board: { ...emptyBoard(), rev: 0 },
@@ -833,12 +836,27 @@ export async function applyTheme(op: ThemeOp): Promise<boolean> {
   }
 }
 
-/** Resolve, reopen or delete a lament, or record its Fix chat. Main applies it and pushes the laments back. */
+/**
+ * Resolve, reopen or delete a lament, or record its Fix chat. Applied here first, like applyBoard, so it moves without
+ * waiting for main; main checks it again, saves it and pushes the laments back. False after a toast.
+ */
 export async function applyLament(op: LamentOp): Promise<boolean> {
+  const before = store.get().laments;
   try {
-    await studio().laments.apply(op);
+    const laments = { ...applyLamentOp(before, op, Date.now()), rev: before.rev };
+    store.set((s) => ({ ...s, laments }));
+    await studio().laments.apply(op, before.rev);
     return true;
   } catch (error) {
+    // Refused here (nothing changed) or by main: main's laments are the truth, or the ones from before when it cannot answer.
+    if (!(error instanceof LamentError)) {
+      void studio()
+        .laments.get()
+        .then(
+          (laments) => store.set((s) => ({ ...s, laments })),
+          () => store.set((s) => ({ ...s, laments: before })),
+        );
+    }
     toast(remoteError(error), "error");
     return false;
   }
@@ -849,13 +867,65 @@ export async function applyLament(op: LamentOp): Promise<boolean> {
  * main, reused by later Fixes), and is recorded on the lament once pi knows its session file. It does not resolve
  * the lament: you mark it resolved once the fix is in.
  */
-export const fixLament = (lament: Lament): Promise<boolean> => startTask({ kind: "fix", lament: lament.id });
+export function fixLament(lament: Lament): Promise<boolean> {
+  const key = taskKey.fix(lament.id);
+  return trackStart(key, (phase) => setTaskStart(key, phase), () => startTask({ kind: "fix", lament: lament.id }));
+}
 
 /**
  * Review a pull request (the GitHub page): a new chat in the project, shown, whose first message asks for a review
  * with pi-gna's pr-review skill. `login`: the gh account pi-gna reads the repository as.
  */
-export const reviewPullRequest = (cwd: string, repo: GithubRepo, item: GithubItem, login?: string): Promise<boolean> => startTask({ kind: "review", cwd, repo, item, login }, true);
+export function reviewPullRequest(cwd: string, repo: GithubRepo, item: GithubItem, login?: string): Promise<boolean> {
+  const key = taskKey.review(cwd, repo, item);
+  return trackStart(key, (phase) => setTaskStart(key, phase), () => startTask({ kind: "review", cwd, repo, item, login }, true));
+}
+
+/** The keys of AppState.taskStarts. */
+export const taskKey = {
+  fix: (lament: string) => `fix ${lament}`,
+  review: (cwd: string, repo: GithubRepo, item: GithubItem) => `review ${cwd} ${repo.host}/${repo.repo}#${item.number}`,
+};
+
+/** Where a task's chat is (taskKey): starting, just started, or neither. */
+export const useTaskStart = (key: string): CardTaskPhase | undefined => useApp((state) => state.taskStarts[key]);
+
+function setTaskStart(key: string, phase: CardTaskPhase | undefined): void {
+  store.set((s) => {
+    if (s.taskStarts[key] === phase) return s;
+    const { [key]: _previous, ...rest } = s.taskStarts;
+    return { ...s, taskStarts: phase ? { ...rest, [key]: phase } : rest };
+  });
+}
+
+const startedTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const startingNow = new Set<string>();
+
+/**
+ * Start something shown as starting (`show`), then started for a moment (CARD_TASK_STARTED_MS), or as nothing when
+ * `run` fails (it toasts why). Asked again while it starts (a double click), it does nothing, so it starts one chat.
+ */
+async function trackStart(key: string, show: (phase: CardTaskPhase | undefined) => void, run: () => Promise<boolean>): Promise<boolean> {
+  if (startingNow.has(key)) return false;
+  startingNow.add(key);
+  clearTimeout(startedTimers.get(key));
+  startedTimers.delete(key);
+  show("starting");
+  const started = await run().finally(() => startingNow.delete(key));
+  if (!started) {
+    show(undefined);
+    return false;
+  }
+  show("started");
+  startedTimers.set(
+    key,
+    setTimeout(() => {
+      startedTimers.delete(key);
+      show(undefined);
+    }, CARD_TASK_STARTED_MS),
+  );
+  return true;
+}
 
 /**
  * Start a task's chat on the host (main sets it up: worktree, link to the card or lament, model, prompt, name) and join
@@ -921,7 +991,6 @@ export type CardTaskPhase = "starting" | "started";
 export type CardTasks = Partial<Record<CardTaskKind, CardTaskPhase>>;
 /** How long a card shows that its task's chat started. */
 export const CARD_TASK_STARTED_MS = 2500;
-const cardTaskTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function setCardTask(id: string, kind: CardTaskKind, phase: CardTaskPhase | undefined): void {
   store.set((s) => {
@@ -937,35 +1006,23 @@ function setCardTask(id: string, kind: CardTaskKind, phase: CardTaskPhase | unde
  * then started for a moment; asking again while it starts (a double click) does nothing, so it starts one chat.
  */
 export async function startCardTask(card: Card, kind: CardTaskKind): Promise<void> {
-  if (store.get().cardTasks[card.id]?.[kind] === "starting") return;
-  const key = `${card.id} ${kind}`;
-  clearTimeout(cardTaskTimers.get(key));
-  cardTaskTimers.delete(key);
-  setCardTask(card.id, kind, "starting");
-  const started = await startTask({ kind, card: card.id });
-  if (!started) return setCardTask(card.id, kind, undefined); // startTask toasted why
-  setCardTask(card.id, kind, "started");
-  cardTaskTimers.set(
-    key,
-    setTimeout(() => {
-      cardTaskTimers.delete(key);
-      setCardTask(card.id, kind, undefined);
-    }, CARD_TASK_STARTED_MS),
-  );
+  await trackStart(`${kind} card ${card.id}`, (phase) => setCardTask(card.id, kind, phase), () => startTask({ kind, card: card.id }));
 }
 
 /** A card task in a chat that is already open (the card tab's default): the prompt goes to it and the chat joins the card. */
 export async function runCardTaskHere(card: Card, kind: CardTaskKind, handle: string): Promise<void> {
-  if (store.get().cardTasks[card.id]?.[kind] === "starting") return;
-  setCardTask(card.id, kind, "starting");
-  const sent = await send(handle, inChatPrompt(card, kind), "followUp");
-  if (!sent) {
-    setCardTask(card.id, kind, undefined);
-    return toast("That chat is not available", "error");
-  }
-  await joinCard(handle, card.id);
-  setCardTask(card.id, kind, "started");
-  setTimeout(() => setCardTask(card.id, kind, undefined), CARD_TASK_STARTED_MS);
+  await trackStart(
+    `${kind} card ${card.id}`,
+    (phase) => setCardTask(card.id, kind, phase),
+    async () => {
+      if (!(await send(handle, inChatPrompt(card, kind), "followUp"))) {
+        toast("That chat is not available", "error");
+        return false;
+      }
+      await joinCard(handle, card.id);
+      return true;
+    },
+  );
 }
 
 /**

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Laments: Mark resolved, Reopen and Delete take effect at once instead of waiting for pi-gna's host, and Fix shows "Starting Fix…" on the lament and its button while the worktree is made, then "Fix started" (a double click starts one chat). A pull request's Review on the GitHub page shows the same starting state.
+
 ## 0.8.0 - 2026-10-07
 
 - Screenshots in replies show as galleries, like T3 Code: several images in one paragraph or list item become a row of thumbnails, a table of images becomes a borderless grid with each caption under its image, and raw `<img>` tags of local files work too (with their width and height). Clicking an image opens a lightbox that pages through every image in the answer (chevrons, ←/→ and an n / m counter; swipe on the phone).
