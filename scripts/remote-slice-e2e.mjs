@@ -1220,7 +1220,11 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
   }
 }
 
-/** Chat links on the phone: a project file opens the Mac's preview, a card the board, a localhost page the Mac's browser; a file outside the chat's folders stays text. Starts in a chat. */
+/**
+ * Chat links on the phone: a Markdown file is drawn on the phone (File screen) and its own links resolve from its folder,
+ * an HTML file streams the Mac's preview, a card opens the board, a localhost page the Mac's browser; a file outside the
+ * chat's folders stays text. Starts in a chat.
+ */
 async function linkChecks({ phone, A, shot, text, exists }) {
   log("mobile chat links");
   const click = (selector) => phone.eval(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true; })()`);
@@ -1228,7 +1232,9 @@ async function linkChecks({ phone, A, shot, text, exists }) {
   const fixture = http.createServer((_req, res) => res.end("<!doctype html><title>Local page</title><h1>Local page</h1>"));
   await new Promise((resolve) => fixture.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${fixture.address().port}/`;
-  writeFileSync(join(project, "notes.md"), "# Notes from the project\n\nA second line.\n");
+  mkdirSync(join(project, "docs"), { recursive: true });
+  writeFileSync(join(project, "docs", "notes.md"), "# Notes from the project\n\nA third line.\n\nThe [page](page.html) beside it.\n");
+  writeFileSync(join(project, "docs", "page.html"), "<!doctype html><title>Page</title><h1>A page</h1>");
   const board = await A.ok("board.get");
   await A.ok("board.apply", { op: { type: "add", id: "lk7q2p", title: "Linked card", cwd: project, column: "todo" }, baseRev: board.rev });
   try {
@@ -1236,7 +1242,7 @@ async function linkChecks({ phone, A, shot, text, exists }) {
     // A prompt sent while the chat runs is queued; the answer must be the next one.
     await until("the chat to be idle", async () => !(await exists('[data-testid="stop"]')), 60_000, 250);
     await phone.eval("document.querySelector('textarea').focus()");
-    await phone.send("Input.insertText", { text: `say: See [the notes](notes.md:2), [the hosts file](/etc/hosts), [the card](lk7q2p) and [the dev page](${url}).` });
+    await phone.send("Input.insertText", { text: `say: See [the notes](docs/notes.md:3), [the hosts file](/etc/hosts), [the card](lk7q2p) and [the dev page](${url}).` });
     await until("Send to enable", () => phone.eval(`!document.querySelector('[data-testid="send"]').disabled`));
     await click('[data-testid="send"]');
     await until("the project file link", () => exists(".prose [data-file][data-resolved]"), 30_000, 200);
@@ -1244,15 +1250,33 @@ async function linkChecks({ phone, A, shot, text, exists }) {
     check(await phone.eval(`[...document.querySelectorAll(".prose .file-missing")].some((e) => e.textContent.includes("the hosts file"))`), "a file outside the chat's folders stays plain text");
     await shot("links-1-answer");
 
+    // Toasts left by the browser checks would cover the File screen's header in the shots (a hidden window's timers lag).
+    await phone.eval(`document.querySelectorAll('[aria-label="Dismiss"]').forEach((b) => b.click())`);
     check(await click(".prose [data-file][data-resolved]"), "the project file link is tappable");
+    await until("the file drawn on the phone", () => exists('[data-testid="file-markdown"] h1'), 20_000, 200);
+    check((await text()).includes("Notes from the project"), "a Markdown file renders on the phone");
+    check(!(await A.ok("browser.state")).tabs.some((t) => t.preview?.path?.endsWith("notes.md")), "a Markdown file opens no preview tab on the Mac");
+    await shot("links-2-file");
+    await click('[data-testid="file-mode-raw"]');
+    await until("the raw lines", () => exists('[data-testid="file-code"] .line'), 10_000, 100);
+    await until("the highlighted lines", () => exists('[data-testid="file-code"] code.hl .line'), 10_000, 100);
+    check(await phone.eval(`document.querySelector('[data-testid="file-code"] .line.target')?.textContent === "A third line."`), "Raw marks the linked line");
+    check((await phone.eval(`document.querySelectorAll('[data-testid="file-code"] .line').length`)) === 5, "Raw numbers each of the file's lines once");
+    await shot("links-2-file-raw");
+    await click('[data-testid="file-mode-rendered"]');
+    // The file's own link resolves from its folder (docs/), not the chat's; an HTML page still streams from the Mac.
+    await until("the file's own link", () => exists('[data-testid="file-markdown"] .prose [data-file][data-resolved]'), 20_000, 200);
+    check(await click('[data-testid="file-markdown"] .prose [data-file][data-resolved]'), "a link inside the file resolves from the file's folder");
     await until("the preview on the browser screen", () => exists('[data-testid="browser-screen"] [data-testid="preview-icon"]'), 20_000, 200);
-    const tabs = (await A.ok("browser.state")).tabs.filter((t) => t.preview?.path?.endsWith("notes.md"));
-    check(tabs.length === 1 && !!tabs[0].agent, "the host opened the file in a preview tab the chat owns", tabs);
-    await until("the phone-sized preview", async () => (await A.ok("browser.state")).tabs.some((t) => t.preview?.path?.endsWith("notes.md") && t.viewport?.width === 393), 10_000, 200);
+    const tabs = (await A.ok("browser.state")).tabs.filter((t) => t.preview?.path?.endsWith("page.html"));
+    check(tabs.length === 1 && !!tabs[0].agent, "the host opened the HTML file in a preview tab the chat owns", tabs);
+    await until("the phone-sized preview", async () => (await A.ok("browser.state")).tabs.some((t) => t.preview?.path?.endsWith("page.html") && t.viewport?.width === 393), 10_000, 200);
     check(true, "the preview is laid out at the phone's size");
     await until("the preview frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
     check(true, "the phone streams the Mac's preview");
     await shot("links-2-preview");
+    await tapBack();
+    await until("the file again", () => exists('[data-testid="file-markdown"]'), 20_000, 200);
     await tapBack();
     await until("the chat again", () => exists(".prose [data-card]"), 20_000, 200);
 

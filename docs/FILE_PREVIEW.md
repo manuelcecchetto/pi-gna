@@ -483,16 +483,33 @@ The agent cites files as Markdown links (`resources/pigna-prompt.md` asks for it
 
 ## Phone
 
-The phone's Browser screen lists tabs and streams them; a preview tab is just a tab, so it streams like a page. The tab
-label shows the file name, the address field the real path. A tapped chat link opens what the Mac would:
+The phone draws text files and images itself and streams the rest. A JPEG stream of the Mac's preview tab lags,
+letterboxes and cannot select text on a phone, so it is only the fallback for what the phone cannot draw. A tapped
+chat link opens:
 
-- **File links, mentions and tool paths**: `chat.openFile { handle, path, line }` opens the preview in a tab the chat
-  owns, and the phone shows it on the Browser screen (`{screen:"browser", handle, tab}`). A tab without a viewport gets
+- **Text files and images** (`drawnOnPhone` in `src/mobile/file-data.ts`: markdown, code, text, JSON, CSV/TSV, images,
+  and unknown extensions) on the File screen, `src/mobile/FileView.tsx` (`{screen:"file", handle, path, line}`).
+  `chat.readFile { handle, path }` returns the first `PREVIEW_LIMITS.text` bytes as text (`PreviewText`; read with a
+  file handle, never the whole file), `text` absent for a binary file, which then offers "Show the Mac's preview".
+  Images come from `chat.linkImage`; a tap opens the lightbox. The views:
+  - **Markdown** renders with the transcript's `<Markdown>`. Its links and embedded images resolve from the file's
+    folder (`fileLinks`: `chat.resolveLinks`/`chat.linkImage` with `from`, which must lie inside the chat's folders).
+    Front matter shows as a small table. A line jumps to the block it falls in (`markdownBlockLines`, as the viewer's
+    comments do).
+  - **Code, text and JSON** show as shiki lines with a gutter, wrapped by default. JSON is pretty-printed in Rendered
+    mode. The linked line is marked and centered.
+  - **CSV** shows as a table (the first `PREVIEW_LIMITS.tableRows` rows).
+
+  The screen has Rendered/Raw where the kind has both, and Copy. Comments (the Browser screen's comment mode) are not
+  offered there yet.
+- **Other files** (PDF, Office, HTML, media): `chat.openFile { handle, path, line }` opens the preview in a tab the chat
+  owns, and the phone shows it on the Browser screen (`{screen:"browser", handle, tab}`). The tab label shows the file
+  name, the address field the real path. A tab without a viewport gets
   the phone's size (width, height, DPR; no mobile User-Agent, which would reload the page) once its first page has
   loaded: sizing it earlier makes `BrowserManager.emulate` load about:blank over it. The Responsive layout is 1280 px
   wide.
 - **Confinement**: a phone never reads files by path (`fs.describePaths` is desktop-only). `chat.resolveLinks`,
-  `chat.linkImage` and `chat.openFile` take the chat's handle, and the host resolves only inside that chat's cwd and its
+  `chat.linkImage`, `chat.readFile` and `chat.openFile` take the chat's handle, and the host resolves only inside that chat's cwd and its
   project (`chatRoots` in `host-core.ts`, `within` in `resolve-targets.ts`, symlinks followed). A link outside them
   renders as muted text, like a missing file. Tested in `host-core.test.ts` ("a phone's chat links").
 - **Embedded images** load through `chat.linkImage`, under the same rule.

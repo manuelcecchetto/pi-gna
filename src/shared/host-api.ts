@@ -11,7 +11,7 @@ import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, GithubProject, GithubRepo } from "./github";
 import type { LamentOp, Laments } from "./laments";
 import type { ThemeOp, Themes } from "./themes";
-import type { PreviewMode, PreviewOpenOptions } from "./preview";
+import type { PreviewMode, PreviewOpenOptions, PreviewText } from "./preview";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
@@ -548,8 +548,11 @@ export interface HostMethods {
   "browser.siteIcon": { args: { url: string }; result: { mimeType: string; data: string } | null };
   "browser.reveal": { args: Record<string, never>; result: null };
   /** A chat's links on a phone, confined to the chat's directory and project (the desktop uses browser.resolveTargets and friends). */
-  "chat.resolveLinks": { args: { handle: string; targets: string[] }; result: (string | null)[] };
-  "chat.linkImage": { args: { handle: string; target: string }; result: { mimeType: string; data: string } | null };
+  /** `from`: resolve against this folder (of a file the phone shows) instead of the chat's directory. */
+  "chat.resolveLinks": { args: { handle: string; targets: string[]; from?: string }; result: (string | null)[] };
+  "chat.linkImage": { args: { handle: string; target: string; from?: string }; result: { mimeType: string; data: string } | null };
+  /** A file of the chat's folders as text, for the phone to draw itself (Markdown, code, JSON, tables). */
+  "chat.readFile": { args: { handle: string; path: string }; result: PreviewText };
   /** Preview a file of the chat's folders in a tab the chat owns; the tab's id. */
   "chat.openFile": { args: { handle: string; path: string; line?: number }; result: { id: string } };
 
@@ -712,6 +715,7 @@ export const READ_ONLY_METHODS = [
   "chat.files",
   "chat.resolveLinks",
   "chat.linkImage",
+  "chat.readFile",
   "chat.compactionSettings",
   "setup.status",
   "board.get",

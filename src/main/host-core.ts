@@ -17,7 +17,7 @@ import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
-import { readPreviewImage, resolvePreviewTargets, within } from "./browser/resolve-targets";
+import { readPreviewImage, readPreviewText, resolvePreviewTargets, within } from "./browser/resolve-targets";
 import { listFiles } from "./files";
 import { siteIcon } from "./site-icons";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
@@ -207,6 +207,18 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     const cwd = host.cwdOf(handle);
     if (!cwd) throw new HostError("not_found", "session is not running");
     return { cwd, roots: [...new Set([cwd, projectOf(cwd)])] };
+  };
+  /** Where a phone's link targets resolve: the chat's cwd, or `from` (the folder of a file it shows) inside its folders. */
+  const linkBase = async (handle: string, from: string | undefined): Promise<{ base: string; roots: string[] }> => {
+    const { cwd, roots } = chatRoots(handle);
+    if (from === undefined) return { base: cwd, roots };
+    if (!(await within(from, roots))) throw new HostError("scope_denied", "the folder is outside this chat's folders");
+    return { base: from, roots };
+  };
+  const linkFrom = (raw: unknown): string | undefined => {
+    if (raw === undefined) return undefined;
+    if (typeof raw !== "string" || !isAbsolute(raw) || raw.length > 4096 || raw.includes("\0")) throw new Error("Invalid from");
+    return raw;
   };
   /** What a send names, as attachments: the caller's own uploads by id, or paths on the host (as the desktop picker gives them). */
   const resolveAttachments = async (ctx: HostContext, refs: AttachmentRef[] | undefined): Promise<PickedPath[]> => {
@@ -438,26 +450,41 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       (_ctx, { url }) => siteIcon(url),
     ),
     // What a chat links to, for a phone: confined to the chat's folders (`chatRoots`), unlike the desktop methods above.
-    "chat.resolveLinks": method<{ handle: string; targets: string[] }>(
+    "chat.resolveLinks": method<{ handle: string; targets: string[]; from?: string }>(
       "remote",
       (raw) => {
         if (!Array.isArray(raw.targets) || (raw.targets as unknown[]).some((t) => typeof t !== "string" || t.length > 4096 || t.includes("\0"))) throw new Error("Invalid targets");
-        return { handle: chatHandle(raw.handle), targets: raw.targets as string[] };
+        return { handle: chatHandle(raw.handle), targets: raw.targets as string[], from: linkFrom(raw.from) };
       },
-      async (_ctx, { handle, targets }) => {
-        const { cwd, roots } = chatRoots(handle);
-        return Promise.all((await resolvePreviewTargets(cwd, targets)).map((path) => within(path, roots)));
+      async (_ctx, { handle, targets, from }) => {
+        const { base, roots } = await linkBase(handle, from);
+        return Promise.all((await resolvePreviewTargets(base, targets)).map((path) => within(path, roots)));
       },
     ),
-    "chat.linkImage": method<{ handle: string; target: string }>(
+    "chat.linkImage": method<{ handle: string; target: string; from?: string }>(
       "remote",
       (raw) => {
         if (typeof raw.target !== "string" || raw.target.length > 4096 || raw.target.includes("\0")) throw new Error("Invalid target");
-        return { handle: chatHandle(raw.handle), target: raw.target };
+        return { handle: chatHandle(raw.handle), target: raw.target, from: linkFrom(raw.from) };
       },
-      (_ctx, { handle, target }) => {
-        const { cwd, roots } = chatRoots(handle);
-        return readPreviewImage(cwd, target, roots);
+      async (_ctx, { handle, target, from }) => {
+        const { base, roots } = await linkBase(handle, from);
+        return readPreviewImage(base, target, roots);
+      },
+    ),
+    // A text file the phone draws itself instead of streaming the Mac's preview tab (docs/FILE_PREVIEW.md, Phone).
+    "chat.readFile": method<{ handle: string; path: string }>(
+      "remote",
+      (raw) => {
+        if (typeof raw.path !== "string" || !isAbsolute(raw.path) || raw.path.length > 4096 || raw.path.includes("\0")) throw new Error("Invalid file path");
+        return { handle: chatHandle(raw.handle), path: raw.path };
+      },
+      async (_ctx, { handle, path }) => {
+        const { roots } = chatRoots(handle);
+        if (!(await within(path, roots))) throw new HostError("scope_denied", "the file is outside this chat's folders");
+        const file = await readPreviewText(path, roots);
+        if (!file) throw new HostError("not_found", "no such file");
+        return file;
       },
     ),
     "chat.openFile": method<{ handle: string; path: string; line?: number }>(

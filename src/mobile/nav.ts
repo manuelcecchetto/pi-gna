@@ -10,6 +10,8 @@ export type Route =
   | { screen: "settings"; section?: MobileSection }
   /** The Mac's browser tabs: those of the chat `handle` (opened from its header or a link), or all of them; `tab` is shown first. */
   | { screen: "browser"; handle?: string; tab?: string }
+  /** A file of the chat `handle`'s folders, drawn on the phone (FileView.tsx); `line` is scrolled to. */
+  | { screen: "file"; handle: string; path: string; line?: number }
   /** A project page (board, laments, GitHub, ATP) the phone shows as it gains them. */
   | { screen: "page"; page: "board" | "laments" | "github" | "atp"; cwd: string; cardId?: string }
   /** `handle`: a live chat to join; otherwise the session file is opened (or joined when already live). */

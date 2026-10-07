@@ -223,4 +223,40 @@ describe("a phone's chat links", () => {
     expect(opened).toHaveLength(1);
     await expect(dispatch(links, phone(), "chat.resolveLinks", { handle: "gone", targets: [] })).rejects.toMatchObject({ code: "not_found" });
   });
+
+  it("read a file of the chat's folders as text for the phone to draw, and resolve its links from its own folder", async () => {
+    const { mkdtemp, mkdir, writeFile, symlink, realpath } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { PREVIEW_LIMITS } = await import("../shared/preview");
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), "pigna-read-")));
+    const outside = await realpath(await mkdtemp(join(tmpdir(), "pigna-outside-")));
+    await mkdir(join(cwd, "docs"));
+    await writeFile(join(cwd, "docs", "guide.md"), "# Guide\n\nSee [setup](setup.md).");
+    await writeFile(join(cwd, "docs", "setup.md"), "setup");
+    await writeFile(join(cwd, "docs", "shot.png"), "png");
+    await writeFile(join(cwd, "LICENSE"), "MIT");
+    await writeFile(join(cwd, "blob.bin"), Buffer.from([0x89, 0x50, 0, 1]));
+    await writeFile(join(cwd, "big.txt"), "x".repeat(PREVIEW_LIMITS.text + 10));
+    await writeFile(join(outside, "secret.md"), "secret");
+    await symlink(join(outside, "secret.md"), join(cwd, "escape.md"));
+    const core = createHostCore({ ...deps, host: { cwdOf: (handle: string) => (handle === "h1" ? cwd : undefined) } } as unknown as HostDeps);
+    const read = (path: string) => dispatch(core, phone(), "chat.readFile", { handle: "h1", path });
+
+    await expect(read(join(cwd, "docs", "guide.md"))).resolves.toEqual({ path: join(cwd, "docs", "guide.md"), name: "guide.md", kind: "markdown", size: 31, text: "# Guide\n\nSee [setup](setup.md).", truncated: false });
+    await expect(read(join(cwd, "LICENSE"))).resolves.toMatchObject({ kind: "text", text: "MIT" });
+    await expect(read(join(cwd, "blob.bin"))).resolves.toMatchObject({ kind: "other", text: undefined });
+    const big = (await read(join(cwd, "big.txt"))) as { text: string; truncated: boolean; size: number };
+    expect([big.text.length, big.truncated, big.size]).toEqual([PREVIEW_LIMITS.text, true, PREVIEW_LIMITS.text + 10]);
+    await expect(read(join(cwd, "escape.md"))).rejects.toMatchObject({ code: "scope_denied" });
+    await expect(read(join(outside, "secret.md"))).rejects.toMatchObject({ code: "scope_denied" });
+    await expect(read(join(cwd, "missing.md"))).rejects.toMatchObject({ code: "scope_denied" });
+    // dispatch checks the arguments before it returns a promise.
+    expect(() => read("relative.md")).toThrow("Invalid file path");
+
+    const docs = join(cwd, "docs");
+    await expect(dispatch(core, phone(), "chat.resolveLinks", { handle: "h1", targets: ["setup.md", "../LICENSE"], from: docs })).resolves.toEqual([join(docs, "setup.md"), join(cwd, "LICENSE")]);
+    await expect(dispatch(core, phone(), "chat.linkImage", { handle: "h1", target: "shot.png", from: docs })).resolves.toMatchObject({ mimeType: "image/png" });
+    await expect(dispatch(core, phone(), "chat.resolveLinks", { handle: "h1", targets: ["secret.md"], from: outside })).rejects.toMatchObject({ code: "scope_denied" });
+  });
 });
