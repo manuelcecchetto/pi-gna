@@ -5,7 +5,7 @@ import type { Card } from "../shared/board";
 import type { Feature } from "../shared/settings";
 
 export type ChatAction = "open" | "show-board" | "add-board" | "close" | "copy-path";
-export type ProjectAction = "new-chat" | "pin" | "unpin" | "board" | "laments" | "github" | "atp" | "copy-path";
+export type ProjectAction = "new-chat" | "pin" | "unpin" | "hide" | "unhide" | "board" | "laments" | "github" | "atp" | "copy-path";
 
 export function chatActions(opts: { kanban: boolean; live: boolean; card?: Card; addable: boolean }): ChatAction[] {
   return [
@@ -16,10 +16,10 @@ export function chatActions(opts: { kanban: boolean; live: boolean; card?: Card;
   ];
 }
 
-export function projectActions(features: Record<Feature, boolean>, pinned: boolean): ProjectAction[] {
+export function projectActions(features: Record<Feature, boolean>, pinned: boolean, hidden = false): ProjectAction[] {
   return [
     "new-chat",
-    pinned ? "unpin" : "pin",
+    ...(hidden ? (["unhide"] as const) : ([pinned ? "unpin" : "pin", "hide"] as const)),
     ...(features.kanban ? (["board"] as const) : []),
     ...(features.laments ? (["laments"] as const) : []),
     ...(features.github ? (["github"] as const) : []),

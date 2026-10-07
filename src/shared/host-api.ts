@@ -190,10 +190,12 @@ export interface AtpPlanThreads {
   workers: Record<string, string[]>;
 }
 
-/** Pins and bookmarks, host-side (they were renderer localStorage); ops in src/shared/ui-state.ts. */
+/** Pins, hidden projects and bookmarks, host-side (they were renderer localStorage); ops in src/shared/ui-state.ts. */
 export interface UiState {
   /** Pinned project folders, in order. */
   pins: string[];
+  /** Project folders left out of the project lists; their chats stay on disk and in the index. */
+  hidden: string[];
   /** Per session file: the timestamps of the bookmarked messages. */
   bookmarks: Record<string, number[]>;
 }

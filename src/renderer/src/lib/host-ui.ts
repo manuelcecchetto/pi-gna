@@ -1,4 +1,4 @@
-// Pinned projects and bookmarked turns, kept by the host so every client sees the same (src/shared/ui-state.ts).
+// Pinned and hidden projects and bookmarked turns, kept by the host so every client sees the same (src/shared/ui-state.ts).
 // This is the window's copy: changes apply here first, then main checks, saves and pushes them back.
 import type { Revved, UiState } from "../../../shared/host-api";
 import { applyUiOp, emptyUiState, type UiOp } from "../../../shared/ui-state";

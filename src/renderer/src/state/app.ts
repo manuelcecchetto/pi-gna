@@ -43,7 +43,7 @@ import {
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
 import { cardBlock, inChatPrompt, pickModel } from "../../../shared/task-prompts";
-import { bootUiState } from "../lib/host-ui";
+import { applyUi, bootUiState, uiStore } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { lightboxAt, lightboxStep, type LightboxView } from "../lib/lightbox";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
@@ -220,6 +220,8 @@ export function openSession(summary: SessionSummary): void {
 }
 
 export function newSession(cwd: string): void {
+  // Starting a chat in a hidden project shows it again.
+  if (uiStore.get().hidden.includes(projectOf(cwd))) applyUi({ type: "unhide", cwd: projectOf(cwd) });
   const { active, sessions } = store.get();
   const current = active ? sessions[active] : undefined;
   if (current && current.cwd === cwd && current.phase !== "exited" && isDraft(current)) {

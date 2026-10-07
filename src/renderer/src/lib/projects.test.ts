@@ -54,6 +54,12 @@ describe("projectViews", () => {
     expect(projectViews(projects, [], ["/c"]).map((v) => v.pinned)).toEqual([true, false, false]);
   });
 
+  it("puts hidden projects last, flagged, even when pinned", () => {
+    const views = projectViews(projects, [], ["/a"], ["/a", "/b"]);
+    expect(order(views)).toEqual(["/c", "/a", "/b"]);
+    expect(views.map((v) => v.hidden)).toEqual([false, true, true]);
+  });
+
   it("ignores pins of folders that have no chats", () => {
     expect(order(projectViews(projects, [], ["/gone", "/b"]))).toEqual(["/b", "/a", "/c"]);
   });

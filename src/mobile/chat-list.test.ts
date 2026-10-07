@@ -18,6 +18,12 @@ describe("project and chat lists", () => {
     expect(projectItems(projects, ["/c"], {}).map((p) => [p.cwd, p.pinned])).toEqual([["/c", true], ["/b", false], ["/a", false]]);
   });
 
+  it("leaves hidden projects out of the list but finds them in a search", () => {
+    const items = projectItems(projects, [], {}, undefined, ["/b"]);
+    expect(searchProjects(items, "").map((p) => p.cwd)).toEqual(["/a", "/c"]);
+    expect(searchProjects(items, "/b").map((p) => [p.cwd, p.hidden])).toEqual([["/b", true]]);
+  });
+
   it("rolls the strongest live mark up to the project and marks the chat row", () => {
     const attention = { h1: live("h1", "/a/1.jsonl", "unread"), h2: live("h2", "/a/2.jsonl", "waiting"), h3: live("h3", "/b/1.jsonl", "idle") };
     const items = projectItems(projects, [], attention);

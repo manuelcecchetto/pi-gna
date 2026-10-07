@@ -964,6 +964,10 @@ Verified live (pi 1.0.0, Oct 2026):
   file times, raised by messages you send from pi-gna so a chat and its project move up right away instead of
   after the run. Opening or switching chats must never reorder projects or chats (opening leaves the file
   untouched, and an opened chat closes again when you leave it, so "open chats first" made projects jump around).
+- Hidden projects ("Hide project" in a project's menu, `UiState.hidden`): left out of the sidebar and the phone's
+  list, their chats untouched on disk and in the index. Hiding unpins. "Show N hidden projects" under the list reveals
+  them, dimmed and last, with "Unhide project"; the phone finds them through search. Starting a new chat in one
+  (`newSession`) shows it again.
 - Sidebar marks: projects (cwd) -> sessions. Each chat's mark is the pi logo (`attention`): spinning while running, and
   one still logo color for what needs you: yellow (pulsing) waiting for you, coral failed (the run errored while you
   were not looking, or pi exited), blue finished but not seen yet. Idle chats get no mark; the highlighted row is
