@@ -41,3 +41,43 @@ html.screen-corners .concentric-sheet {
 html.keyboard .sheet-panel {
   padding-bottom: 0.75rem;
 }
+
+/* The File screen's code (FileView.tsx): lines with a number gutter and a marked jump line, as in the Mac's viewer
+   (src/preview/style.css); wrapped by default, since sideways scrolling on a phone loses the gutter. */
+.file-code .code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  padding: 8px 0;
+  counter-reset: line;
+  font: 12px/1.55 var(--font-mono);
+  tab-size: 2;
+}
+.file-code .line {
+  position: relative;
+  display: block;
+  min-height: 1.55em;
+  padding: 0 12px 0 calc(var(--gutter) + 18px);
+  white-space: pre;
+}
+.file-code .line::before {
+  content: counter(line);
+  counter-increment: line;
+  position: absolute;
+  left: 6px;
+  width: var(--gutter);
+  text-align: right;
+  color: var(--faint);
+  user-select: none;
+}
+.file-code .line.target {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.file-code.wrap .code {
+  width: auto;
+}
+.file-code.wrap .line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

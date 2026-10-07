@@ -31,6 +31,21 @@ export interface PreviewOpenOptions {
   root?: string;
 }
 
+/**
+ * A file a phone draws itself (chat.readFile; docs/FILE_PREVIEW.md, Phone): its first PREVIEW_LIMITS.text bytes as
+ * text, `text` absent for a binary file. `kind` is kindFor's, an unknown extension that reads as text being "text".
+ */
+export interface PreviewText {
+  path: string;
+  name: string;
+  kind: PreviewKind;
+  /** The whole file's size in bytes. */
+  size: number;
+  text?: string;
+  /** Only the first PREVIEW_LIMITS.text bytes are in `text`. */
+  truncated: boolean;
+}
+
 /** Scheme served by main for previews; see docs/FILE_PREVIEW.md. */
 export const PREVIEW_SCHEME = "pigna-file";
 
@@ -76,6 +91,17 @@ const LANGUAGES: Record<string, string> = {
   java: "java", kt: "kotlin", rb: "ruby", c: "c", h: "c", cc: "cpp", cpp: "cpp", hpp: "cpp",
   xml: "xml", svg: "xml", graphql: "graphql", gql: "graphql",
 };
+
+/** Text when the first bytes hold no NUL and decode as UTF-8 (a cut multi-byte tail at the end is tolerated). */
+export function looksLikeText(bytes: Uint8Array): boolean {
+  if (bytes.includes(0)) return false;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** File name of a path (either separator). */
 export function baseName(path: string): string {

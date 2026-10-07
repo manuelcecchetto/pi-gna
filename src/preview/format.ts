@@ -12,16 +12,7 @@ export function formatBytes(bytes: number): string {
   return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
 
-/** Text when the first bytes hold no NUL and decode as UTF-8 (a cut multi-byte tail at the end is tolerated). */
-export function looksLikeText(bytes: Uint8Array): boolean {
-  if (bytes.includes(0)) return false;
-  try {
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { looksLikeText } from "../shared/preview";
 
 export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

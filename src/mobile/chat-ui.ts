@@ -1,9 +1,11 @@
 // The phone's side of the shared transcript components (renderer/src/lib/chat-ui.tsx): expansion state, the board
-// cards a message can name, and the actions that go to the host. Chat links open what the Mac would: a file in a
-// preview tab the chat owns, streamed on the Browser screen; a card on the board; a localhost page in the Mac's
-// browser (the phone cannot reach the Mac's localhost); any other web page in Safari.
+// cards a message can name, and the actions that go to the host. Chat links open what the Mac would: a text file or
+// image on the File screen, drawn on the phone; another file in a preview tab the chat owns, streamed on the Browser
+// screen; a card on the board; a localhost page in the Mac's browser (the phone cannot reach the Mac's localhost); any
+// other web page in Safari.
 import { createStore, useStore } from "../renderer/src/lib/store";
 import type { ChatLinks, ChatUi, ChatUiState } from "../renderer/src/lib/chat-ui";
+import { drawnOnPhone } from "./file-data";
 import { emptyBoard } from "../shared/board";
 import { type BrowserTab, isLocalUrl } from "../shared/browser";
 import type { Route } from "./nav";
@@ -56,19 +58,41 @@ async function showTab(client: HostClient, push: (route: Route) => void, handle:
   await client.call("browser.viewport", { id, request }).catch(() => undefined);
 }
 
-function chatLinks(client: HostClient, push: (route: Route) => void, failed: (what: string, error: unknown) => void): ChatLinks {
+const failed = (what: string, error: unknown) => toast(`${what}: ${error instanceof Error ? error.message : String(error)}`, "error");
+
+/** The file in the Mac's preview tab, streamed on the Browser screen: for what the phone cannot draw. */
+export function streamFile(client: HostClient, push: (route: Route) => void, handle: string, path: string, line?: number): void {
+  client.call("chat.openFile", { handle, path, line }).then(
+    ({ id }) => showTab(client, push, handle, id),
+    (error) => failed("Could not open the file", error),
+  );
+}
+
+/** A file of a chat's folders: drawn on the File screen when the phone can, else streamed (the stream lags on a phone). */
+function openChatFile(client: HostClient, push: (route: Route) => void, handle: string, path: string, line?: number): void {
+  if (drawnOnPhone(path)) push({ screen: "file", handle, path, line });
+  else streamFile(client, push, handle, path, line);
+}
+
+function chatLinks(client: HostClient, push: (route: Route) => void): ChatLinks {
   return {
     cwd: () => showing?.cwd,
     resolve: (targets) => (showing ? client.call("chat.resolveLinks", { handle: showing.handle, targets }) : Promise.resolve(targets.map(() => null))),
     image: (target) => (showing ? client.call("chat.linkImage", { handle: showing.handle, target }) : Promise.resolve(null)),
     openFile(path, { line }) {
-      const chat = showing;
-      if (!chat) return;
-      client.call("chat.openFile", { handle: chat.handle, path, line }).then(
-        ({ id }) => showTab(client, push, chat.handle, id),
-        (error) => failed("Could not open the file", error),
-      );
+      if (showing) openChatFile(client, push, showing.handle, path, line);
     },
+    openCard: (card) => push({ screen: "page", page: "board", cwd: card.cwd, cardId: card.id }),
+  };
+}
+
+/** The links of a Markdown file on the File screen: they resolve from the file's folder `dir`, inside the chat's folders. */
+export function fileLinks(client: HostClient, push: (route: Route) => void, handle: string, dir: string): ChatLinks {
+  return {
+    cwd: () => dir,
+    resolve: (targets) => client.call("chat.resolveLinks", { handle, targets, from: dir }),
+    image: (target) => client.call("chat.linkImage", { handle, target, from: dir }),
+    openFile: (path, { line }) => openChatFile(client, push, handle, path, line),
     openCard: (card) => push({ screen: "page", page: "board", cwd: card.cwd, cardId: card.id }),
   };
 }
@@ -93,7 +117,6 @@ export function createChatUi(client: HostClient, homeDir: string, push: (route: 
   client.store.subscribe(syncBoard);
   syncBoard();
 
-  const failed = (what: string, error: unknown) => toast(`${what}: ${error instanceof Error ? error.message : String(error)}`, "error");
   return {
     store,
     actions: {
@@ -111,7 +134,7 @@ export function createChatUi(client: HostClient, homeDir: string, push: (route: 
           (error) => failed("Could not open the page", error),
         );
       },
-      links: chatLinks(client, push, (what, error) => failed(what, error)),
+      links: chatLinks(client, push),
       async respondDialog(handle, response) {
         try {
           const answer = await client.call("chat.respondDialog", { handle, response });

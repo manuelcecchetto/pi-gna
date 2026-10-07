@@ -1,9 +1,9 @@
 // Which chat file links exist: link targets -> absolute file path or null, with a short-lived cache so a
 // streaming answer's repeated renders stay cheap. Also the bytes of the images an answer embeds (`![alt](path)`).
-import { readFile, realpath, stat } from "node:fs/promises";
+import { open, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { sep } from "node:path";
-import { extensionOf, kindFor, parseLinkTarget } from "../../shared/preview";
+import { baseName, extensionOf, kindFor, looksLikeText, PREVIEW_LIMITS, parseLinkTarget, type PreviewText } from "../../shared/preview";
 
 const TTL_MS = 5000;
 const MAX_ENTRIES = 500;
@@ -65,6 +65,28 @@ export async function within(path: string | null, roots: string[]): Promise<stri
   if (!real) return null;
   const bases = await Promise.all(roots.map((root) => realpath(root).catch(() => null)));
   return bases.some((base) => base && (real === base || real.startsWith(base.endsWith(sep) ? base : base + sep))) ? path : null;
+}
+
+/**
+ * A file inside `roots` for a phone to draw itself: at most PREVIEW_LIMITS.text bytes are read, never the whole file.
+ * Null when it is outside them or not a file.
+ */
+export async function readPreviewText(path: string, roots: string[]): Promise<PreviewText | null> {
+  if (!(await within(path, roots))) return null;
+  const file = await open(path, "r").catch(() => null);
+  if (!file) return null;
+  try {
+    const info = await file.stat();
+    if (!info.isFile()) return null;
+    const buffer = Buffer.alloc(Math.min(info.size, PREVIEW_LIMITS.text));
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    const bytes = buffer.subarray(0, bytesRead);
+    const kind = kindFor(path);
+    const text = looksLikeText(bytes) ? new TextDecoder().decode(bytes, { stream: true }) : undefined;
+    return { path, name: baseName(path), kind: kind === "other" && text !== undefined ? "text" : kind, size: info.size, text, truncated: info.size > bytesRead };
+  } finally {
+    await file.close();
+  }
 }
 
 /** Targets resolve against the chat's cwd (its worktree for worktree chats). */
