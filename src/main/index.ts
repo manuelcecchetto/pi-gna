@@ -482,8 +482,13 @@ function registerIpc(shellEnv: Promise<void>): void {
 async function checkForUpdates(): Promise<void> {
   const box = (options: Electron.MessageBoxOptions) => (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options));
   try {
-    const state = await updater?.check();
-    if (state && state.phase !== "idle") send(IPC.updateReveal);
+    // Releases carry macOS dmgs only; the Windows beta is a prerelease, updated by hand (docs/WINDOWS.md).
+    if (!updater || process.platform !== "darwin") {
+      await shell.openExternal(`https://github.com/manuelcecchetto/pi-gna/releases`);
+      return;
+    }
+    const state = await updater.check();
+    if (state.phase !== "idle") send(IPC.updateReveal);
     else await box({ message: `${app.getName()} is up to date`, detail: `${app.getVersion()} is the newest version.` });
   } catch (error) {
     await box({ type: "warning", message: "Could not check for updates", detail: (error as Error).message });
@@ -670,7 +675,7 @@ function init(): void {
     applySettings(await settings.get());
     await bridge.start();
     createWindow();
-    updater?.start();
+    if (process.platform === "darwin") updater?.start();
   });
 }
 

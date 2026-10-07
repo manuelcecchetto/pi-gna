@@ -140,7 +140,7 @@ export class Updater {
 
   /** Packaged builds check at launch and every few hours; a checkout updates with git. */
   start(): void {
-    if (!app.isPackaged || process.platform !== "darwin") return;
+    if (!app.isPackaged) return;
     const check = () => void this.check().catch((error: Error) => log.warn("updater", `could not check for updates: ${error.message}`));
     setTimeout(check, FIRST_CHECK);
     setInterval(check, CHECK_EVERY);
@@ -148,8 +148,6 @@ export class Updater {
 
   /** Asks GitHub for the latest release. Rejects when GitHub cannot be reached or answers oddly. */
   check(): Promise<UpdateState> {
-    // Releases carry macOS dmgs only; the Windows beta is a prerelease, updated by hand (docs/WINDOWS.md).
-    if (process.platform !== "darwin") return Promise.resolve(this.state);
     this.checking ??= this.fetchLatest().finally(() => (this.checking = undefined));
     return this.checking;
   }

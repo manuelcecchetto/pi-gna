@@ -27,6 +27,10 @@ pnpm start      # builds, then starts Electron from the checkout; logs go to thi
   on them (their output is the Windows to-do list) and publishes a prerelease tagged `windows-beta-<version>-<n>`.
   Prereleases are not `releases/latest`, so macOS updates are unaffected.
 
+Platform checks: CI (`ci.yml`) runs the unit tests on Linux, so a `process.platform` guard inside a unit-tested module
+switches that module off in CI (the updater's tests failed that way). Put guards where the app wires modules up
+(`src/main/index.ts`), or pass the platform in as a parameter, as `command.ts` does.
+
 ## Left, roughly in order
 
 1. **Verify the bootstrap.** Check that `pnpm start` opens the window, Setup finds node/npm/pi, and a chat streams.
