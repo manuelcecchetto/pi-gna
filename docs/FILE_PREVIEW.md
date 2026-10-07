@@ -513,6 +513,11 @@ chat link opens:
   project (`chatRoots` in `host-core.ts`, `within` in `resolve-targets.ts`, symlinks followed). A link outside them
   renders as muted text, like a missing file. Tested in `host-core.test.ts` ("a phone's chat links").
 - **Embedded images** load through `chat.linkImage`, under the same rule.
+- **Back to the chat**: a File or Browser screen of a chat (its `handle`, while that chat is joined) covers the chat
+  instead of replacing it. `App.tsx` keeps the chat mounted, `invisible` and `inert` in the same box, so Back returns
+  to the same transcript, scroll position and draft. Before, the chat unmounted, joined again and opened at its end,
+  so a link tapped higher up lost the reading place. `linkChecks` asserts the same transcript element and scroll
+  offset after Back.
 - **Card links** open the card on the phone's board (`{screen:"page", page:"board", cardId}`).
 - **Web links**: loopback pages (`isLocalUrl`) open in the Mac's browser as a tab of the chat (`browser.newTab { url,
   agent }`), since the phone cannot reach the Mac's localhost; other pages open in Safari.

@@ -9,7 +9,7 @@ import { ThemeRoot } from "./ThemeRoot";
 import { Lightbox } from "./Lightbox";
 import { HostClient, type ConnectionState } from "./client/host-client";
 import { rememberProject } from "./last-project";
-import { useRoute } from "./nav";
+import { type Route, useRoute } from "./nav";
 import { BoardScreen } from "./Board";
 import { LamentsScreen } from "./Laments";
 import { AtpScreen } from "./Atp";
@@ -20,6 +20,9 @@ import { Chats, PageSoon, Projects } from "./Screens";
 import { SettingsScreen } from "./SettingsScreen";
 import { noticeFor } from "./notices";
 import { toast, Toasts } from "./toasts";
+
+type ChatRoute = Extract<Route, { screen: "chat" }>;
+const chatKey = (route: ChatRoute) => `${route.sessionPath ?? ""}:${route.handle ?? ""}`;
 
 const BANNER: Partial<Record<ConnectionState, string>> = {
   connecting: "Connecting…",
@@ -115,23 +118,39 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
 
   const ui = useMemo(() => createChatUi(client, homeDir, push), [client, homeDir, push]);
 
+  // A file or the browser opened from a chat (its link or header) covers the chat instead of replacing it: the chat stays
+  // mounted, hidden in place, so Back returns to the same transcript (scroll position, draft, lease) rather than joining
+  // it again and opening at its end.
+  const [lastChat, setLastChat] = useState<ChatRoute>();
+  if (route.screen === "chat" && route !== lastChat) setLastChat(route);
+  const over = (route.screen === "file" || route.screen === "browser") && route.handle !== undefined ? route.handle : undefined;
+  const joined = useStore(client.store, (s) => (over ? over in s.chats : false));
+  const chat = route.screen === "chat" ? route : joined ? lastChat : undefined;
+
   return (
     <ChatUiProvider ui={ui}>
       <ThemeRoot client={client} ui={ui} cwd={"cwd" in route ? route.cwd : undefined} />
       {/* No top padding: every screen's Header covers the status bar itself. */}
       <div className="safe-area relative flex h-full flex-col bg-canvas pt-0">
         <ConnectionBanner client={client} />
-        {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} />}
-        {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
-        {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
-        {route.screen === "file" && <FileScreen key={`${route.path}:${route.line ?? ""}`} client={client} handle={route.handle} path={route.path} line={route.line} push={push} back={back} />}
-        {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} back={back} />}
-        {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
-        {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
-        {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
-        {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
-        {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
-        {route.screen === "chat" && <ChatScreen key={`${route.sessionPath ?? ""}:${route.handle ?? ""}`} client={client} route={route} back={back} push={push} replace={replace} />}
+        {/* The screen's box: a chat covered by a file or the browser keeps exactly this size, so its scroll position holds. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} />}
+          {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
+          {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
+          {route.screen === "file" && <FileScreen key={`${route.path}:${route.line ?? ""}`} client={client} handle={route.handle} path={route.path} line={route.line} push={push} back={back} />}
+          {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} back={back} />}
+          {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
+          {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
+          {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
+          {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
+          {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
+          {chat && (
+            <div className={route.screen === "chat" ? "contents" : "invisible absolute inset-0 flex flex-col"} inert={route.screen !== "chat"}>
+              <ChatScreen key={chatKey(chat)} client={client} route={chat} back={back} push={push} replace={replace} />
+            </div>
+          )}
+        </div>
       </div>
       <Toasts />
       <Lightbox />

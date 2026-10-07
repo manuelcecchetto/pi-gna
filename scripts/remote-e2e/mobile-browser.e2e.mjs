@@ -191,7 +191,8 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     try {
       await click("comment-send");
       await until("the saved sheet to close after Send fails", async () => !(await exists('[data-testid="comment-sheet"]')), 20_000, 100);
-      check(await phone.eval(`document.querySelectorAll('[data-testid="annotation-chip"]').length === 1`), "failed Send keeps exactly one comment without inviting another pick");
+      // On the Browser screen's own strip: the chat beneath it (kept mounted, hidden) shows the same comment in its composer.
+      check(await phone.eval(`document.querySelectorAll('[data-testid="browser-screen"] [data-testid="annotation-chip"]').length === 1`), "failed Send keeps exactly one comment without inviting another pick");
       check((await text()).includes("Comments kept for your next message."), "failed Send explains how to recover");
       await shot("browser-5-send-failed");
     } finally {
@@ -246,6 +247,10 @@ async function linkChecks({ phone, A, shot, text, exists }) {
 
     // Toasts left by the browser checks would cover the File screen's header in the shots (a hidden window's timers lag).
     await phone.eval(`document.querySelectorAll('[aria-label="Dismiss"]').forEach((b) => b.click())`);
+    // Read the chat off its end, as when a link higher up is tapped: Back from the file must return to that place.
+    const scroller = `[...document.querySelectorAll(".prose [data-file][data-resolved]")].at(-1).closest(".overflow-y-auto")`;
+    const place = await phone.eval(`(() => { const s = ${scroller}; s.dataset.kept = "1"; s.scrollTop = Math.max(0, s.scrollHeight - s.clientHeight - 150); return { top: s.scrollTop, end: s.scrollHeight - s.clientHeight }; })()`);
+    check(place.top > 0 && place.end - place.top >= 100, "the chat is read off its end before the link", place);
     check(await click(".prose [data-file][data-resolved]"), "the project file link is tappable");
     await until("the file drawn on the phone", () => exists('[data-testid="file-markdown"] h1'), 20_000, 200);
     check((await text()).includes("Notes from the project"), "a Markdown file renders on the phone");
@@ -273,6 +278,8 @@ async function linkChecks({ phone, A, shot, text, exists }) {
     await until("the file again", () => exists('[data-testid="file-markdown"]'), 20_000, 200);
     await tapBack();
     await until("the chat again", () => exists(".prose [data-card]"), 20_000, 200);
+    const back = await phone.eval(`(() => { const s = ${scroller}; return { kept: s.dataset.kept === "1", top: s.scrollTop }; })()`);
+    check(back.kept && Math.abs(back.top - place.top) <= 1, "Back from the file keeps the chat's transcript and scroll position", { place, back });
 
     check(await click(".prose [data-card]"), "the card link is tappable");
     await until("the card on the board", () => exists('[data-testid="card-page"]'), 20_000, 200);

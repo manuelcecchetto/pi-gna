@@ -611,7 +611,7 @@ offscreen window of the instance itself (iPhone 15 size, mobile user agent, touc
 | `mobile-projects` | Projects and Chats parity: search, long-press sheets, board from a chat, Kanban off, Close chat, pins, the folder browser. |
 | `mobile-board` | The Kanban board: counts, card edits with conflicts, tags, GitHub links, moves, drag reorder, add card with a photo, task chats. |
 | `mobile-laments`, `mobile-github`, `mobile-atp`, `mobile-settings` | Those pages' parity with the desktop (ATP runs a three-node plan on fake-pi workers; GitHub reads a public repository through the host's `gh`). |
-| `mobile-browser` | The Browser screen driving a local dev page (tap, type, keys, scroll, pinch, comments with crops), then chat links: a Markdown file drawn on the phone's File screen (Raw, the linked line, its own links), an HTML file streaming the Mac's preview, a card on the board, a localhost page in the Mac's browser. |
+| `mobile-browser` | The Browser screen driving a local dev page (tap, type, keys, scroll, pinch, comments with crops), then chat links: a Markdown file drawn on the phone's File screen (Raw, the linked line, its own links; Back keeps the chat's transcript and scroll position), an HTML file streaming the Mac's preview, a card on the board, a localhost page in the Mac's browser. |
 
 The multi-client rules (simultaneous prompts, steer vs. follow-up, one answer per dialog, abort against a steer, serialized queue edits, card edit conflicts and moves, leases and close broadcasts) are unit-tested in `src/main/multi-client.test.ts`; `multi-client` runs the prompt, queue-interrupt and card-edit cases through the real server.
 
