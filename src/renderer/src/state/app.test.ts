@@ -22,6 +22,7 @@ import {
   removeComposerCard,
   respondDialog,
   scopeBrowser,
+  emptiedPanes,
   reviewPullRequest,
   send,
   sessionTitle,
@@ -439,5 +440,28 @@ describe("lament changes", () => {
     expect(await applyLament({ type: "resolve", id: "zzzzzz", resolved: true })).toBe(false);
     expect(apply).not.toHaveBeenCalled();
     expect(store.get().laments).toEqual(laments);
+  });
+});
+
+describe("emptiedPanes", () => {
+  const tab = (id: string, agent: string, surface?: "pane" | "window") =>
+    ({ id, url: "", title: id, loading: false, canGoBack: false, canGoForward: false, agent, surface });
+  const state = (...tabs: ReturnType<typeof tab>[]) => ({ tabs, annotating: false });
+
+  it("names the chat whose last pane tab closed", () => {
+    expect(emptiedPanes(state(tab("a", "chat1"), tab("b", "chat2")), state(tab("b", "chat2")))).toEqual(["chat1"]);
+  });
+
+  it("keeps a pane that still has a tab", () => {
+    expect(emptiedPanes(state(tab("a", "chat1"), tab("c", "chat1")), state(tab("c", "chat1")))).toEqual([]);
+  });
+
+  it("does not count window tabs as keeping the pane", () => {
+    expect(emptiedPanes(state(tab("a", "chat1"), tab("w", "chat1", "window")), state(tab("w", "chat1", "window")))).toEqual(["chat1"]);
+    expect(emptiedPanes(state(tab("a", "chat1")), state(tab("a", "chat1", "window")))).toEqual(["chat1"]);
+  });
+
+  it("ignores chats that had no pane tab", () => {
+    expect(emptiedPanes(state(tab("w", "chat1", "window")), state())).toEqual([]);
   });
 });
