@@ -61,6 +61,7 @@ const api: StudioApi = {
   onEvents: (listener) => subscribe<HostEventBatch>(IPC.events, listener),
   browser: {
     layout: (layout) => ipcRenderer.send(IPC.browserLayout, layout),
+    still: () => ipcRenderer.invoke(IPC.browserStill),
     focus: (chat) => ipcRenderer.send(IPC.browserFocus, chat),
     newTab: (url) => ipcRenderer.send(IPC.browserNewTab, url),
     closeTab: (id) => ipcRenderer.send(IPC.browserCloseTab, id),

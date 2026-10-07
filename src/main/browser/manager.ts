@@ -760,6 +760,12 @@ export class BrowserManager {
     }
   }
 
+  /** A still of the page drawn in the pane, which the renderer shows in its place while a DOM overlay hides it. */
+  async still(): Promise<string | undefined> {
+    const image = await this.attached?.webContents.capturePage().catch(() => undefined);
+    return image && !image.isEmpty() ? `data:image/jpeg;base64,${image.toJPEG(90).toString("base64")}` : undefined;
+  }
+
   private detach(): void {
     if (this.attached) this.window.contentView.removeChildView(this.attached);
     this.attached = undefined;

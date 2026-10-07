@@ -182,7 +182,8 @@ tabs close when its session ends. The phone still lists every chat's tabs.
   storage from the app; no camera, mic, location or notifications). The renderer draws the tab strip and toolbar
   and reports the viewport rect (`browser:layout`); main attaches the active tab's view over it. Native views
   paint above the DOM, so the renderer hides the view while a DOM overlay must cover it (address suggestions,
-  image lightbox, the Kanban card dialog and menus). History lives in `userData/browser-history.json`.
+  image lightbox, the Kanban card dialog and menus); it first takes a still of the page (`browser:still`) and shows
+  that in its place, so the page does not blank out behind a menu. History lives in `userData/browser-history.json`.
 - **Tab icons** (`main/browser/favicon.ts`): on `page-favicon-updated` main fetches the page's own icon through the
   tab's session (so local dev servers get theirs; inline `data:` icons are decoded without the network), shrinks
   bitmaps to 32 px with `nativeImage` (SVG and undecodable ICO stay raw up to 32 KB) and puts the data URL in

@@ -50,6 +50,7 @@ export const IPC = {
   visualKill: "studio:visual-kill",
   events: "studio:events",
   browserLayout: "browser:layout",
+  browserStill: "browser:still",
   browserFocus: "browser:focus",
   browserNewTab: "browser:new-tab",
   browserCloseTab: "browser:close-tab",
@@ -411,6 +412,8 @@ export interface BrowserApi {
   command(id: string, command: BrowserCommand): void;
   annotate(on: boolean): void;
   inspect(id: string): void;
+  /** A still (JPEG data URL) of the page drawn in the pane, or null: shown in its place while a DOM overlay hides it. */
+  still(): Promise<string | null>;
   /** Set a tab's emulated viewport (resolved through resolveViewport) or reset it with null. Rejects invalid input. */
   viewport(id: string, request: ViewportRequest | null): Promise<ViewportSpec | null>;
   /** Move a pane tab into its own window. Rejects at the window limit. */
