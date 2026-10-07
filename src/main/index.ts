@@ -190,7 +190,7 @@ const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`,
   // The Computer Use helper is a macOS app.
   computer: process.platform === "darwin" && (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
-}));
+}), () => current.yolo);
 host.onGlobal(publish);
 const pushService = new PushService(join(app.getPath("userData"), "remote-push.json"), { viewing: (handle) => host.presence(handle).some((client) => client.viewing), preview: (handle) => responsePreview(host.stateOf(handle)?.items ?? []) });
 push = pushService;
