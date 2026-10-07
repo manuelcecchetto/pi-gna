@@ -19,6 +19,7 @@ import type {
   UserMessage,
 } from "./protocol";
 import { parsePartialJson } from "./partial-json";
+import { isTriage } from "./task-prompts";
 import { type StreamClock, tickStream } from "./token-rate";
 
 export interface ToolRun {
@@ -563,6 +564,11 @@ export function isDisposable(session: Pick<SessionState, "prompted" | "running" 
  * A new chat you have not sent anything to yet. It stays out of the sidebar (the "New chat" row stands in for
  * it) until it has a message, runs, or needs you.
  */
+/** Whether the chat lists show this open chat: not an unsent draft, a card triage chat or an ATP chat (reached from the ATP page). */
+export function isListed(session: Pick<SessionState, "fromDisk" | "items" | "prompted" | "running" | "dialogs" | "unread" | "name" | "atp">): boolean {
+  return !isDraft(session) && !isTriage(session.name) && !session.atp;
+}
+
 export function isDraft(session: Pick<SessionState, "fromDisk" | "items" | "prompted" | "running" | "dialogs" | "unread">): boolean {
   // Not sessionPath: pi names a session file as soon as it is ready, before anything is written.
   return !session.fromDisk && !session.items.length && !session.prompted && !session.running && !session.dialogs.length && !session.unread;

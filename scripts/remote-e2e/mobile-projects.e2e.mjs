@@ -78,6 +78,23 @@ async function projectChecks({ phone, A, handle, shot, text, exists, present }) 
   await until("the chat to close on the host", async () => !(await A.ok("chat.live")).some((c) => c.handle === handle));
   check(true, "confirming Close chat stops the chat on the host");
 
+  // A chat started here shows in the lists before pi writes its file (fake-pi never does) and the index catches up.
+  const rowsBefore = await count("chat-row");
+  await click("new-chat");
+  await until("the new chat", () => exists('[data-testid="send"]'));
+  await phone.eval("document.querySelector('textarea').focus()");
+  await phone.send("Input.insertText", { text: "Brand new phone chat" });
+  await until("Send to enable", () => phone.eval(`!document.querySelector('[data-testid="send"]').disabled`));
+  await phone.eval(`document.querySelector('[data-testid="send"]').click()`);
+  await until("the chat to be live on the host", async () => (await A.ok("chat.live")).some((c) => c.listed));
+  const started = (await A.ok("chat.live")).find((c) => c.listed);
+  check(!(await A.ok("chat.list")).some((p) => p.sessions.some((s) => s.path === started.sessionPath)), "the new chat has no index row yet");
+  await tapBack();
+  await until("the chats screen", () => exists('[data-testid="new-chat"]'));
+  await until("the new chat in the list", async () => (await count("chat-row")) === rowsBefore + 1);
+  await shot("10b-new-chat-listed");
+  check(true, "a chat started on the phone shows in Chats before its file is indexed");
+
   // Projects: search, pin, long-press sheet, folder browser.
   await tapBack();
   await until("the projects screen", () => exists('[data-testid="open-folder"]'));

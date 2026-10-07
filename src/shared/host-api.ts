@@ -105,6 +105,8 @@ export interface AttentionSummary {
   /** The session file, once it has one: matches the chat to its row in `chat.list`. */
   sessionPath?: string;
   title: string;
+  /** Shown in the chat lists before its file is indexed, like the desktop sidebar's open chats (`isListed`). */
+  listed: boolean;
   attention: "waiting" | "running" | "failed" | "unread" | "idle";
   running: boolean;
   dialogs: number;

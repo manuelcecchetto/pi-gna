@@ -10,7 +10,7 @@ const projects: ProjectGroup[] = [
   { cwd: "/b", modifiedAt: 80, sessions: [session("/b/1.jsonl", 80)] },
   { cwd: "/c", modifiedAt: 5, sessions: [session("/c/1.jsonl", 5)] },
 ];
-const live = (handle: string, sessionPath: string, level: AttentionSummary["attention"]): AttentionSummary => ({ handle, cwd: "/a", sessionPath, title: handle, attention: level, running: level === "running", dialogs: 0 });
+const live = (handle: string, sessionPath: string, level: AttentionSummary["attention"]): AttentionSummary => ({ handle, cwd: "/a", sessionPath, title: handle, listed: true, attention: level, running: level === "running", dialogs: 0 });
 
 describe("project and chat lists", () => {
   it("orders projects like the sidebar: pins first, then latest activity", () => {
@@ -45,6 +45,35 @@ describe("project and chat lists", () => {
     expect(searchProjects(items, "login").map((p) => p.cwd)).toEqual(["/a/alpha"]);
     expect(searchProjects(items, " ")).toHaveLength(2);
     expect(searchChats(chatItems(named, [], {}, "/a/alpha"), "docs")).toEqual([]);
+  });
+
+  it("shows a started chat before the index has its file, like the desktop sidebar", () => {
+    const started = { ...live("h9", "/a/9.jsonl", "running"), title: "New idea" };
+    const fresh = { ...live("h8", "/d/8.jsonl", "unread"), cwd: "/d" };
+    const attention = { h9: started, h8: fresh };
+    expect(chatItems(projects, [], attention, "/a")).toMatchObject([
+      { path: "/a/9.jsonl", handle: "h9", title: "New idea", attention: "running" },
+      { path: "/a/2.jsonl" },
+      { path: "/a/1.jsonl" },
+    ]);
+    expect(chatItems(projects, [], attention, "/d")).toMatchObject([{ path: "/d/8.jsonl", handle: "h8", attention: "unread" }]);
+    // Projects with a just-started chat lead the unpinned ones; pins stay first.
+    const items = projectItems(projects, ["/c"], attention);
+    expect(items.map((p) => p.cwd)).toEqual(["/c", "/a", "/d", "/b"]);
+    expect(items.find((p) => p.cwd === "/a")).toMatchObject({ chats: 3, attention: "running" });
+    expect(items.find((p) => p.cwd === "/d")).toMatchObject({ chats: 1, attention: "unread", time: undefined, titles: ["h8"] });
+    expect(searchProjects(items, "New idea").map((p) => p.cwd)).toEqual(["/a"]);
+  });
+
+  it("leaves out drafts, triage and ATP chats, and chats without a session file yet", () => {
+    const attention = { h9: { ...live("h9", "/a/9.jsonl", "idle"), listed: false }, h7: { ...live("h7", "", "running"), sessionPath: undefined } };
+    expect(chatItems(projects, [], attention, "/a").map((c) => c.path)).toEqual(["/a/2.jsonl", "/a/1.jsonl"]);
+    expect(projectItems(projects, [], attention).find((p) => p.cwd === "/a")!.chats).toBe(2);
+  });
+
+  it("drops a live chat's extra row once the index has its file", () => {
+    const attention = { h1: live("h1", "/a/1.jsonl", "running") };
+    expect(chatItems(projects, [], attention, "/a").map((c) => c.path)).toEqual(["/a/2.jsonl", "/a/1.jsonl"]);
   });
 });
 

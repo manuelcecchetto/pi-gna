@@ -8,7 +8,7 @@ import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type Cli
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, RpcResponse, RpcSessionState } from "../shared/protocol";
 import type { Feature } from "../shared/settings";
-import { attention, createSession, hydrate, isDisposable, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
+import { attention, createSession, hydrate, isDisposable, isListed, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
 import { applyQueueOp, type Queues } from "../shared/queue";
 import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
@@ -345,6 +345,7 @@ export class SessionHost {
       cwd: chat.cwd,
       sessionPath: state.sessionPath,
       title: state.name ?? state.title ?? basename(chat.cwd),
+      listed: isListed(state),
       attention: attention(state),
       running: state.running,
       dialogs: state.dialogs.length,
