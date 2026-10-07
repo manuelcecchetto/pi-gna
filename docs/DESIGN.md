@@ -343,10 +343,15 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   click ripples, an outward-glowing window frame and a glowing pill ("pi is using App · Esc to cancel"). Three
   click-through, nonactivating, capture-excluded windows stack target → frame → cursor → pill; whatever covers
   the target also covers them. Reduce Motion keeps static glows and fading click feedback, without cursor travel,
-  ring expansion or breathing/flow animations. Cursor travel uses `animator().setFrame(_:display:)`: the origin-only
-  animator setter does not move the window. The fixture smoke checks successive click positions and overlay stacking.
-  For a visual check, `node scripts/computer-use-overlay-preview.mjs [parentDir]` builds a standalone preview and
-  saves idle/ripple/moved PNGs in a new unique subdirectory (requires Screen Recording). Only the preview makes
+  ring expansion or breathing/flow animations. Cursor travel is planned once per move as timed samples
+  (`Motion.swift`, a port of Cua Driver's six motions: signature_arc, spring_settle, magnetic, comet_swoop, adaptive,
+  classic; MIT) and played by a 120 Hz main-run-loop timer that moves the cursor window and leans the hand (at most
+  30°, drawn around the fingertips: `frameCenterRotation` drifts the tip off the hotspot). Moves take about 0.3-1.3 s
+  by distance and element size (Fitts); the action waits only until the tip arrives, a settle keeps playing. The style
+  is `cursorMotion` in the Computer Use policy (Settings > Computer use), sent with `overlay_show` as `motion`.
+  The fixture smoke checks successive click positions and overlay stacking.
+  For a visual check, `node scripts/computer-use-overlay-preview.mjs [parentDir] [motion]` builds a standalone preview and
+  saves idle/ripple/moved/mid-glide PNGs in a new unique subdirectory (requires Screen Recording). Only the preview makes
   overlays capturable; it does not install or replace the helper. A global Esc monitor counts only when the user
   is evidently looking at that run (the app or pi-gna is frontmost, or the pointer is over the window); it hides the
   overlay and notifies main, which stops the run.

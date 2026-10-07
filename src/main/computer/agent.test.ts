@@ -133,7 +133,7 @@ describe("computer route locks and cleanup", () => {
     await t.agent.run("a1", click("Calculator"));
     const shows = t.calls.filter((c) => c.method === "overlay_show");
     expect(shows).toHaveLength(1);
-    expect(shows[0]?.params).toMatchObject({ session_label: "chat a1", session: "a1", app: { bundleId: "com.apple.calculator" } });
+    expect(shows[0]?.params).toMatchObject({ session_label: "chat a1", session: "a1", app: { bundleId: "com.apple.calculator" }, motion: "signature_arc" });
 
     await expect(t.agent.run("b2", click("Calculator"))).rejects.toMatchObject({ status: 409, message: expect.stringContaining("another chat") });
     expect(t.chose.filter((c) => c.startsWith("b2"))).toEqual([]); // busy is reported before bothering the user

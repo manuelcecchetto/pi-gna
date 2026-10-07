@@ -86,7 +86,7 @@ export interface ComputerMethods {
   resolve_app: [{ app: string; launch?: boolean }, { bundleId: string; displayName: string; pid: number }];
   get_app_state: [{ app: string | AppTarget; window_id?: number; disable_diff?: boolean }, AppStateResult];
   screenshot: [{ app: AppRef; window_id?: number }, { jpeg: string; width: number; height: number; scale: number }];
-  overlay_show: [{ app: AppRef; session_label: string; session: string; window_id?: number }, Record<string, unknown>];
+  overlay_show: [{ app: AppRef; session_label: string; session: string; window_id?: number; motion?: CursorMotion }, Record<string, unknown>];
   overlay_hide: [{ app?: AppRef }, Record<string, never>];
   click: [ActionParams & { element_index?: number; x?: number; y?: number; mouse_button?: "left" | "right" | "middle"; click_count?: number }, ActionResult];
   drag: [ActionParams & { from_x: number; from_y: number; to_x: number; to_y: number }, ActionResult];
@@ -135,21 +135,36 @@ export interface AllowedApp {
   at: number;
 }
 
+/** How the agent cursor travels between targets: ports of Cua Driver's six motions (the helper's Motion.swift). */
+export const CURSOR_MOTIONS = {
+  signature_arc: { label: "Signature arc", about: "One confident arc with a small follow-through." },
+  spring_settle: { label: "Spring settle", about: "An arc that lands with one soft bounce." },
+  magnetic: { label: "Magnetic", about: "Slows near the target, then the target pulls it in." },
+  comet_swoop: { label: "Comet swoop", about: "A wide, eased swoop." },
+  adaptive: { label: "Adaptive", about: "Careful for small targets, a swoop for long throws." },
+  classic: { label: "Classic", about: "A near-straight, minimum-jerk glide." },
+} as const;
+export type CursorMotion = keyof typeof CURSOR_MOTIONS;
+export const DEFAULT_CURSOR_MOTION: CursorMotion = "signature_arc";
+export const isCursorMotion = (value: unknown): value is CursorMotion => typeof value === "string" && Object.hasOwn(CURSOR_MOTIONS, value);
+
 export interface ComputerSettings {
   version: 1;
   enabled: boolean;
   alwaysAllowed: AllowedApp[];
+  cursorMotion: CursorMotion;
 }
 
 export type ComputerOp =
   | { type: "enable" }
   | { type: "disable" }
   | { type: "allow-always"; bundleId: string; name: string }
-  | { type: "revoke"; bundleId: string };
+  | { type: "revoke"; bundleId: string }
+  | { type: "cursor-motion"; motion: CursorMotion };
 
 export class ComputerPolicyError extends Error {}
 
-export const emptyComputerSettings = (): ComputerSettings => ({ version: 1, enabled: false, alwaysAllowed: [] });
+export const emptyComputerSettings = (): ComputerSettings => ({ version: 1, enabled: false, alwaysAllowed: [], cursorMotion: DEFAULT_CURSOR_MOTION });
 
 const BUNDLE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$/;
 
@@ -271,6 +286,10 @@ export function applyComputerOp(settings: ComputerSettings, op: ComputerOp, now:
       if (!settings.alwaysAllowed.some((app) => app.bundleId === bundleId)) return settings;
       return { ...settings, alwaysAllowed: settings.alwaysAllowed.filter((app) => app.bundleId !== bundleId) };
     }
+    case "cursor-motion": {
+      if (!isCursorMotion(op.motion)) throw new ComputerPolicyError(`unknown cursor motion ${String(op.motion)}`);
+      return settings.cursorMotion === op.motion ? settings : { ...settings, cursorMotion: op.motion };
+    }
     default:
       throw new ComputerPolicyError(`unknown op ${(op as { type?: unknown })?.type}`);
   }
@@ -278,7 +297,7 @@ export function applyComputerOp(settings: ComputerSettings, op: ComputerOp, now:
 
 /** Read settings back from disk. Throws when the file is not a settings object; skips malformed or denied apps. */
 export function parseComputerSettings(raw: unknown): { settings: ComputerSettings; dropped: number } {
-  const file = raw as { enabled?: unknown; alwaysAllowed?: unknown } | null;
+  const file = raw as { enabled?: unknown; alwaysAllowed?: unknown; cursorMotion?: unknown } | null;
   if (!file || typeof file !== "object" || Array.isArray(file)) throw new ComputerPolicyError("not a Computer Use settings object");
   const list = Array.isArray(file.alwaysAllowed) ? file.alwaysAllowed : [];
   const seen = new Set<string>();
@@ -294,5 +313,6 @@ export function parseComputerSettings(raw: unknown): { settings: ComputerSetting
       dropped++;
     }
   }
-  return { settings: { version: 1, enabled: file.enabled === true, alwaysAllowed }, dropped };
+  const cursorMotion = isCursorMotion(file.cursorMotion) ? file.cursorMotion : DEFAULT_CURSOR_MOTION;
+  return { settings: { version: 1, enabled: file.enabled === true, alwaysAllowed, cursorMotion }, dropped };
 }

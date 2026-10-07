@@ -4,7 +4,7 @@ import Foundation
 let protocolVersion = 1
 /// Bumped only when the helper's own behavior or signature changes (see docs/DESIGN.md, "Computer Use"): main
 /// reinstalls the helper only for a newer version.
-let helperVersion = 5
+let helperVersion = 6
 
 typealias JSON = [String: Any]
 
