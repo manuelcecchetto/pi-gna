@@ -128,24 +128,37 @@ export function cardLinkId(href: string): string | undefined {
   return isCardId(text) ? text : undefined;
 }
 
-const WORKTREES = "/.pi-gna/worktrees/";
+const WORKTREES = [".pi-gna", "worktrees"];
+// A Windows path: a drive (C:\x, C:/x) or a UNC share (\\server\share).
+const DRIVE = /^([A-Za-z]):/;
+const UNC = /^[\\/]{2}[^\\/]/;
 
 /**
  * Where a card's Resolve chat works: the project's folder in the card's git worktree, which mirrors the project's
  * path under ~/.pi-gna/worktrees/<card>. Outside the project, so pi does not load its AGENTS.md twice and its test
- * runner does not find the copy.
+ * runner does not find the copy. On Windows the project's root becomes a folder: C:\x mirrors as <card>\C\x and
+ * \\server\share as <card>\UNC\server\share.
  */
 export function worktreeCwd(home: string, card: string, project: string): string {
-  return `${home.replace(/\/+$/, "")}${WORKTREES}${card}${project}`;
+  const windows = DRIVE.test(project) || UNC.test(project);
+  const sep = windows ? "\\" : "/";
+  const mirror = DRIVE.test(project) ? project.replace(DRIVE, "$1") : UNC.test(project) ? `UNC${project.slice(1)}` : project.replace(/^\/+/, "");
+  return [home.replace(/[\\/]+$/, ""), ...WORKTREES, card, mirror].join(sep);
 }
+
+const IN_WORKTREE = /[\\/]\.pi-gna[\\/]worktrees[\\/]([a-z0-9]{6})([\\/].*)$/;
 
 /** The project a chat belongs to: its cwd, or for a card's worktree (worktreeCwd) the project it is a copy of. */
 export function projectOf(cwd: string): string {
-  const at = cwd.indexOf(WORKTREES);
-  if (at < 0) return cwd;
-  const rest = cwd.slice(at + WORKTREES.length);
-  const slash = rest.indexOf("/");
-  return slash > 0 && ID.test(rest.slice(0, slash)) ? rest.slice(slash) : cwd;
+  const match = IN_WORKTREE.exec(cwd);
+  const rest = match?.[2];
+  if (!rest) return cwd;
+  if (rest[0] === "/") return rest;
+  // Windows: the first folder is the drive letter, or UNC for a network share.
+  const drive = /^\\([A-Za-z])(?=$|[\\/])/.exec(rest);
+  if (drive) return `${drive[1]}:${rest.slice(2) || "\\"}`;
+  if (/^\\UNC[\\/]/.test(rest)) return `${rest[4]}${rest.slice(4)}`;
+  return cwd;
 }
 
 /** A short id that is easy for the model to repeat. */

@@ -5,6 +5,7 @@
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
+import { sep } from "node:path";
 import { worktreeCwd } from "../shared/board";
 import type { CardWorktree } from "../shared/ipc";
 
@@ -38,8 +39,8 @@ async function prepare(project: string, card: { id: string; title: string }, hom
   if (prefix === null) return null;
   // The worktree mirrors the repository, and the chat runs in the project's folder in it. Both are spelled as you
   // opened the project (git's paths are real paths), so projectOf maps the chat back to the card's project.
-  const sub = prefix.replace(/\/$/, "");
-  if (sub && !project.endsWith(`/${sub}`)) throw new Error(`${project} links into its git repository; open the repository's folder itself`);
+  const sub = prefix.replace(/\/$/, "").replaceAll("/", sep);
+  if (sub && !project.endsWith(`${sep}${sub}`)) throw new Error(`${project} links into its git repository; open the repository's folder itself`);
   const top = sub ? project.slice(0, -sub.length - 1) : project;
   const dir = worktreeCwd(home, card.id, top);
   const cwd = worktreeCwd(home, card.id, project);
