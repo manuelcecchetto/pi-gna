@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Search,
   Square,
+  TriangleAlert,
   X,
 } from "./icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -27,7 +28,7 @@ import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, sav
 import type { SessionState } from "../../../shared/session-state";
 import { presentTool } from "../lib/tools";
 import { chatPeek, createRunDeriver, type PeekBubble, type Step } from "../lib/view";
-import { activate, type PageState, prefill, showPage, toast, useApp } from "../state/app";
+import { activate, openSettings, type PageState, prefill, remoteError, showPage, toast, useApp } from "../state/app";
 import {
   discardNewPlanChat,
   liftHold,
@@ -139,7 +140,7 @@ export function AtpPage({ page }: { page: PageState }) {
     try {
       prefill(await orchestrator(page.cwd, undefined), `/skill:${skill} `);
     } catch (error) {
-      toast(`Could not start the architect: ${(error as Error).message}`, "error");
+      toast(`Could not start the architect: ${remoteError(error)}`, "error");
     }
   };
 
@@ -746,16 +747,21 @@ function OrchestratorDock({
   const room = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const [handle, setHandle] = useState<string>();
+  // A start that failed (most often: the orchestrator model is not available) stays in the dock with a way out,
+  // instead of a toast that leaves the page without a composer.
+  const [failed, setFailed] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let current = true;
+    setFailed(undefined);
     orchestrator(cwd, plan).then(
       (started) => current && setHandle(started),
-      (error: Error) => toast(`Could not start the orchestrator: ${error.message}`, "error"),
+      (error: unknown) => current && setFailed(remoteError(error)),
     );
     return () => {
       current = false;
     };
-  }, [cwd, plan]);
+  }, [cwd, plan, attempt]);
   // A new plan's chat moves to the plan once the architect writes it: keep showing it.
   const adopted = useAtp((state) => (plan ? state.orchestrators[plan] : state.orchestrators[`new:${cwd}`]));
   const session = useApp((state) => {
@@ -771,7 +777,7 @@ function OrchestratorDock({
   // Pointing at the chat keeps its bubbles up; going into the composer brings them back for a while.
   const [pointing, setPointing] = useState(false);
   const [woken, setWoken] = useState(0);
-  const present = Boolean(session);
+  const present = Boolean(session) || failed !== undefined;
   // The graph keeps the plan above the composer (the bubbles float over it, like the minimap).
   useLayoutEffect(() => {
     const element = bottom.current;
@@ -785,7 +791,30 @@ function OrchestratorDock({
       onInset(0);
     };
   }, [present, onInset]);
-  if (!session) return null;
+  if (!session) {
+    if (failed === undefined) return null;
+    return (
+      <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-end px-4" style={{ paddingBottom: DOCK_MARGIN }}>
+        <div
+          ref={bottom}
+          role="alert"
+          className="pointer-events-auto flex w-full max-w-[720px] items-start gap-3 rounded-2xl border border-bad/40 bg-panel/90 px-4 py-3 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl"
+        >
+          <TriangleAlert size={15} className="mt-0.5 shrink-0 text-bad" />
+          <div className="min-w-0 flex-1 text-[13px]">
+            <div className="text-fg">The orchestrator could not start</div>
+            <div className="selectable mt-0.5 break-words text-muted">{failed}</div>
+          </div>
+          <button type="button" onClick={() => setAttempt((count) => count + 1)} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised">
+            <RefreshCw size={12} /> Try again
+          </button>
+          <button type="button" onClick={() => openSettings("models")} className="shrink-0 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised">
+            Orchestrator model…
+          </button>
+        </div>
+      </div>
+    );
+  }
   const talked = session.items.length > 0 || session.running;
   return (
     // Only the composer, the bubbles and the panel take the pointer: the plan pans and zooms around them.
