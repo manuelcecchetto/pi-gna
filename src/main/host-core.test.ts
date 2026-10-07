@@ -228,7 +228,7 @@ describe("a phone's chat links", () => {
     const opened: unknown[] = [];
     const links = createHostCore({
       ...deps,
-      host: { cwdOf: (handle: string) => (handle === "h1" ? worktree : undefined) },
+      host: { cwdOf: (handle: string) => (handle === "h1" ? worktree : undefined), stateOf: () => undefined },
       browser: () => ({ openPreview: async (path: string, options: unknown) => (opened.push([path, options]), { id: "tab1" }) }),
     } as unknown as HostDeps);
 
@@ -243,6 +243,37 @@ describe("a phone's chat links", () => {
     await expect(dispatch(links, phone(), "chat.openFile", { handle: "h1", path: outside })).rejects.toMatchObject({ code: "scope_denied" });
     expect(opened).toHaveLength(1);
     await expect(dispatch(links, phone(), "chat.resolveLinks", { handle: "gone", targets: [] })).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("load the images the chat's answers embed wherever they are, and nothing else outside its folders", async () => {
+    const { mkdtemp, mkdir, writeFile, realpath } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const base = await realpath(await mkdtemp(join(tmpdir(), "pigna-shown-")));
+    const cwd = join(base, "chat");
+    const shots = join(base, "shots");
+    await mkdir(cwd);
+    await mkdir(shots);
+    for (const name of ["shown.png", "raw.png", "other.png", "asked.png", "draft.png"]) await writeFile(join(shots, name), "png");
+    await writeFile(join(shots, "notes.txt"), "secret");
+    const answer = (text: string, streaming = false) => ({ kind: "assistant", streaming, message: { role: "assistant", content: [{ type: "text", text }] } });
+    const items = [
+      { kind: "user", message: { role: "user", content: `Show ![](${join(shots, "asked.png")})` } },
+      answer(`Done:\n\n![listed](${join(shots, "shown.png")})\n\n<img src="${join(shots, "raw.png")}">\n\n![](${join(shots, "notes.txt")}) and [a link](${join(shots, "other.png")})`),
+      answer(`\`![](${join(shots, "draft.png")})\``),
+    ];
+    const core = createHostCore({ ...deps, host: { cwdOf: () => cwd, stateOf: () => ({ items }) } } as unknown as HostDeps);
+    const image = (target: string, from?: string) => dispatch(core, phone(), "chat.linkImage", { handle: "h1", target, from });
+
+    const targets = ["shown.png", "raw.png", "notes.txt", "other.png", "asked.png", "draft.png"].map((name) => join(shots, name));
+    await expect(dispatch(core, phone(), "chat.resolveLinks", { handle: "h1", targets })).resolves.toEqual([targets[0], targets[1], null, null, null, null]);
+    await expect(image(join(shots, "shown.png"))).resolves.toMatchObject({ mimeType: "image/png" });
+    await expect(image(`file://${join(shots, "raw.png")}`)).resolves.toMatchObject({ mimeType: "image/png" });
+    // Embedded but not an image, only linked, embedded by the user's message, or in code: still confined.
+    for (const name of ["notes.txt", "other.png", "asked.png", "draft.png"]) await expect(image(join(shots, name))).resolves.toBeNull();
+    // A file the chat shows resolves its own images inside the folders only.
+    await expect(dispatch(core, phone(), "chat.resolveLinks", { handle: "h1", targets: [join(shots, "shown.png")], from: cwd })).resolves.toEqual([null]);
+    await expect(image(join(shots, "shown.png"), cwd)).resolves.toBeNull();
   });
 
   it("read a file of the chat's folders as text for the phone to draw, and resolve its links from its own folder", async () => {

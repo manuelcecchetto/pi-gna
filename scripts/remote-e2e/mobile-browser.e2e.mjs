@@ -4,8 +4,8 @@
 // and the browser.
 import { mkdirSync, writeFileSync } from "node:fs";
 import http from "node:http";
-import { join } from "node:path";
-import { sleep, log, check, until, project, openPhone, scenario } from "./harness.mjs";
+import { dirname, join } from "node:path";
+import { sleep, log, check, until, png, project, openPhone, scenario } from "./harness.mjs";
 
 await scenario("mobile browser and links", async (ctx) => {
   const { A } = ctx;
@@ -218,7 +218,7 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
 /**
  * Chat links on the phone: a Markdown file is drawn on the phone (File screen) and its own links resolve from its folder,
  * an HTML file streams the Mac's preview, a card opens the board, a localhost page the Mac's browser; a file outside the
- * chat's folders stays text. Starts in a chat.
+ * chat's folders stays text, but an image the answer embeds from outside them loads. Starts in a chat.
  */
 async function linkChecks({ phone, A, shot, text, exists }) {
   log("mobile chat links");
@@ -230,6 +230,10 @@ async function linkChecks({ phone, A, shot, text, exists }) {
   mkdirSync(join(project, "docs"), { recursive: true });
   writeFileSync(join(project, "docs", "notes.md"), "# Notes from the project\n\nA third line.\n\nThe [page](page.html) beside it.\n");
   writeFileSync(join(project, "docs", "page.html"), "<!doctype html><title>Page</title><h1>A page</h1>");
+  // Beside the project, as agents save screenshots to /tmp: outside the chat's folders.
+  const outsideShot = join(dirname(project), "outside-shots", "shot.png");
+  mkdirSync(dirname(outsideShot), { recursive: true });
+  writeFileSync(outsideShot, Buffer.from(png(120, 80, [30, 160, 90]), "base64"));
   const board = await A.ok("board.get");
   await A.ok("board.apply", { op: { type: "add", id: "lk7q2p", title: "Linked card", cwd: project, column: "todo" }, baseRev: board.rev });
   try {
@@ -237,12 +241,14 @@ async function linkChecks({ phone, A, shot, text, exists }) {
     // A prompt sent while the chat runs is queued; the answer must be the next one.
     await until("the chat to be idle", async () => !(await exists('[data-testid="stop"]')), 60_000, 250);
     await phone.eval("document.querySelector('textarea').focus()");
-    await phone.send("Input.insertText", { text: `say: See [the notes](docs/notes.md:3), [the hosts file](/etc/hosts), [the card](lk7q2p) and [the dev page](${url}).` });
+    await phone.send("Input.insertText", { text: `say: See [the notes](docs/notes.md:3), [the hosts file](/etc/hosts), [the card](lk7q2p) and [the dev page](${url}).\n\n![outside shot](${outsideShot})` });
     await until("Send to enable", () => phone.eval(`!document.querySelector('[data-testid="send"]').disabled`));
     await click('[data-testid="send"]');
     await until("the project file link", () => exists(".prose [data-file][data-resolved]"), 30_000, 200);
     await until("the card link", () => exists(".prose [data-card][data-checked]"), 10_000, 200);
     check(await phone.eval(`[...document.querySelectorAll(".prose .file-missing")].some((e) => e.textContent.includes("the hosts file"))`), "a file outside the chat's folders stays plain text");
+    await until("the embedded image", () => phone.eval(`(() => { const i = document.querySelector('.prose .chat-image img[alt="outside shot"]'); return !!i && i.complete && i.naturalWidth === 120; })()`), 20_000, 200);
+    check(true, "an image the answer embeds from outside the chat's folders loads on the phone");
     await shot("links-1-answer");
 
     // Toasts left by the browser checks would cover the File screen's header in the shots (a hidden window's timers lag).

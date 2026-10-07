@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import { isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
@@ -10,9 +11,10 @@ import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, Host
 import { type DialogAnswer, IPC, type OpenSessionRequest, type PickedPath } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ThemeOp } from "../shared/themes";
-import type { PreviewMode, PreviewOpenOptions } from "../shared/preview";
+import { kindFor, parseLinkTarget, type PreviewMode, type PreviewOpenOptions } from "../shared/preview";
+import { embeddedImageTargets } from "../shared/markdown-images";
 import { type PackageToggle, type PluginToggle, RESOURCE_TYPES } from "../shared/plugins";
-import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
+import type { AssistantMessage, ExtensionUiResponse, RpcCommand } from "../shared/protocol";
 import type { KeepAwake, SettingsOp } from "../shared/settings";
 import type { UiOp } from "../shared/ui-state";
 import type { ViewportRequest } from "../shared/viewport";
@@ -196,6 +198,9 @@ const explained = <T>(work: Promise<T>): Promise<T> =>
     throw error instanceof HostError ? error : new HostError("unavailable", error instanceof Error ? error.message : String(error));
   });
 
+/** The image targets of each finished answer: a phone's every image would otherwise lex the whole chat again. */
+const answerImages = new WeakMap<AssistantMessage, string[]>();
+
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
   // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
@@ -207,6 +212,28 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     const cwd = host.cwdOf(handle);
     if (!cwd) throw new HostError("not_found", "session is not running");
     return { cwd, roots: [...new Set([cwd, projectOf(cwd)])] };
+  };
+  /**
+   * The image files the chat's own answers embed, as paths, which a phone loads wherever they are: the agent showed
+   * them, and it reads any file a phone could ask it for, so this adds nothing a phone could not already get. Only
+   * the agent's answers count (a phone writes the user's messages) and only images (other embeds are file links,
+   * confined like any link). docs/REMOTE_THREAT_MODEL.md.
+   */
+  const shownImages = (handle: string, cwd: string): Set<string> => {
+    const shown = new Set<string>();
+    for (const item of host.stateOf(handle)?.items ?? []) {
+      if (item.kind !== "assistant") continue;
+      let targets = answerImages.get(item.message);
+      if (!targets) {
+        targets = item.message.content.flatMap((block) => (block.type === "text" ? embeddedImageTargets(block.text) : []));
+        if (!item.streaming) answerImages.set(item.message, targets);
+      }
+      for (const target of targets) {
+        const path = parseLinkTarget(target, cwd, homedir())?.path;
+        if (path && kindFor(path) === "image") shown.add(path);
+      }
+    }
+    return shown;
   };
   /** Where a phone's link targets resolve: the chat's cwd, or `from` (the folder of a file it shows) inside its folders. */
   const linkBase = async (handle: string, from: string | undefined): Promise<{ base: string; roots: string[] }> => {
@@ -450,7 +477,8 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
       (_ctx, { url }) => siteIcon(url),
     ),
-    // What a chat links to, for a phone: confined to the chat's folders (`chatRoots`), unlike the desktop methods above.
+    // What a chat links to, for a phone: confined to the chat's folders (`chatRoots`), unlike the desktop methods above,
+    // except the images the chat's answers embed (`shownImages`).
     "chat.resolveLinks": method<{ handle: string; targets: string[]; from?: string }>(
       "remote",
       (raw) => {
@@ -459,7 +487,12 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
       async (_ctx, { handle, targets, from }) => {
         const { base, roots } = await linkBase(handle, from);
-        return Promise.all((await resolvePreviewTargets(base, targets)).map((path) => within(path, roots)));
+        const paths = await resolvePreviewTargets(base, targets);
+        const confined = await Promise.all(paths.map((path) => within(path, roots)));
+        // Outside the folders, a chat's answer still shows the images it embeds (not those of a file it shows).
+        if (from !== undefined || paths.every((path, index) => !path || confined[index])) return confined;
+        const shown = shownImages(handle, base);
+        return confined.map((path, index) => path ?? (paths[index] && shown.has(paths[index]) ? paths[index] : null));
       },
     ),
     "chat.linkImage": method<{ handle: string; target: string; from?: string }>(
@@ -470,7 +503,8 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
       async (_ctx, { handle, target, from }) => {
         const { base, roots } = await linkBase(handle, from);
-        return readPreviewImage(base, target, roots);
+        const shown = from === undefined && shownImages(handle, base).has(parseLinkTarget(target, base, homedir())?.path ?? "");
+        return readPreviewImage(base, target, shown ? undefined : roots);
       },
     ),
     // A text file the phone draws itself instead of streaming the Mac's preview tab (docs/FILE_PREVIEW.md, Phone).

@@ -6,6 +6,7 @@ import DOMPurify from "dompurify";
 import { Marked } from "marked";
 import { cardLinkId } from "../../../shared/board";
 import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget } from "../../../shared/preview";
+import { IMG_TAG, imgAttributes } from "../../../shared/markdown-images";
 
 const escapeHtml = (text: string) =>
   text.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] as string);
@@ -43,17 +44,10 @@ function localImageChip(href: string, alt: string, size: { width?: string; heigh
   return `<span class="file-link chat-image" role="link" tabindex="0" data-image="${target}" data-file="${target}" data-kind="image"${dims}>${label}</span>`;
 }
 
-const ENTITIES: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", "#39": "'" };
-const IMG_TAG = /<img\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
-const ATTRIBUTE = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
-
 /** Raw `<img>` tags with a local `src` become image chips, like `![alt](src)`; the rest of the HTML is left to DOMPurify. */
 function localImageTags(html: string): string {
   return html.replace(IMG_TAG, (tag, body: string) => {
-    const attributes: Record<string, string> = {};
-    for (const [, name, double, single, bare] of body.matchAll(ATTRIBUTE)) {
-      attributes[name!.toLowerCase()] = (double ?? single ?? bare ?? "").replace(/&(amp|quot|apos|lt|gt|#39);/g, (_, entity: string) => ENTITIES[entity]!);
-    }
+    const attributes = imgAttributes(body);
     const src = attributes.src ?? "";
     if (!isLocalLinkHref(src)) return tag;
     const dimension = (value?: string) => (value && /^\d{1,4}%?$/.test(value) ? value : undefined);

@@ -120,7 +120,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | Method | Scope | Mutates | Replaces / notes |
 |---|---|---|---|
 | `browser.state`, `browser.history` | remote | no | `browserGetState`, `browserHistory`. |
-| `chat.resolveLinks`, `chat.linkImage`, `chat.openFile` | remote | no / no / yes | new. A chat's file links on the phone, confined to the chat's cwd and project (docs/FILE_PREVIEW.md, Phone). `from` resolves the first two from a shown file's folder. |
+| `chat.resolveLinks`, `chat.linkImage`, `chat.openFile` | remote | no / no / yes | new. A chat's file links on the phone, confined to the chat's cwd and project, except the images the chat's answers embed (docs/FILE_PREVIEW.md, Phone). `from` resolves the first two from a shown file's folder. |
 | `chat.readFile` | remote | no | new. A text file of the chat's folders (first 2 MB) for the phone's File screen (docs/FILE_PREVIEW.md, Phone). |
 | `browser.newTab`, `browser.closeTab`, `browser.activate`, `browser.navigate`, `browser.command`, `browser.annotate`, `browser.inspect`, `browser.viewport` | remote | yes | the same-named channels. |
 | `browser.view` | remote | no | new. `{ id, on }` → `{ stream: "/api/browser/view/<id>" }` (null when off or the tab is gone); the frames are the separate stream of section 4. |
