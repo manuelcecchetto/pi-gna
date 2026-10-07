@@ -6,6 +6,11 @@ export const SIDEBAR_MAX = 480;
 /** The chat area never gets narrower than this because of the sidebar. */
 const MAIN_MIN = 520;
 
+/** Beside the browser, the chat keeps this much of the main area and the browser at least BROWSER_MIN: the shared
+ * split alone left a 340 px chat in a 960 px window. When both do not fit, the browser's minimum wins. */
+export const CHAT_BESIDE_BROWSER = { minWidth: "min(400px, 100% - 280px)" } as const;
+export const BROWSER_MIN = 280;
+
 export interface SidebarLayout {
   width: number;
   collapsed: boolean;
