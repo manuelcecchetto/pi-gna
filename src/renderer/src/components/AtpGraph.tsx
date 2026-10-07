@@ -213,8 +213,14 @@ export const AtpGraph = forwardRef<
   // Only the orchestrator resizing places the plan again: a plan that grows keeps your view.
   const refit = useRef({ fit, home });
   refit.current = { fit, home };
+  /** The view's size the resize observer last placed the plan for. */
+  const placedFor = useRef<DOMRect>(undefined);
   useEffect(() => {
-    if (untouched.current) refit.current[untouched.current]();
+    if (!untouched.current) return;
+    refit.current[untouched.current]();
+    // Placed for the current size: when the view resized with it (the orchestrator's chat moving into the side column),
+    // the observer must not shift it again.
+    placedFor.current = viewport.current?.getBoundingClientRect();
   }, [inset]);
 
   // A new plan (or one opened again) starts at its first view; a plan that grows keeps your view.
@@ -232,11 +238,12 @@ export const AtpGraph = forwardRef<
   useEffect(() => {
     const outer = viewport.current;
     if (!outer) return;
-    let size = outer.getBoundingClientRect();
+    placedFor.current = outer.getBoundingClientRect();
     const observer = new ResizeObserver(() => {
       const { width, height } = outer.getBoundingClientRect();
+      const size = placedFor.current ?? outer.getBoundingClientRect();
       const v = { ...view.current, x: view.current.x + (width - size.width) / 2, y: view.current.y + (height - size.height) / 2 };
-      size = outer.getBoundingClientRect();
+      placedFor.current = outer.getBoundingClientRect();
       fitK.current = fitScale(room()?.width ?? width, room()?.height ?? height);
       if (focus.current) return center(focus.current, false);
       const laid = selectedRef.current ? layout.nodes.get(selectedRef.current) : undefined;

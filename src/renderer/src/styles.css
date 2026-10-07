@@ -1161,42 +1161,9 @@ code.hl span {
 .atp-doc .prose > :first-child {
   margin-top: 0;
 }
-/* The orchestrator's chat as bubbles over the graph (Atp.tsx ChatBubbles): compact prose, a new bubble rises in,
-   older ones scroll away under a fade at the top, and the whole list fades away once the chat is quiet. The mask
-   makes the list a backdrop root, so bubbles are nearly opaque instead of blurred glass. */
-.atp-bubbles {
-  scrollbar-width: none;
-  mask-image: linear-gradient(to bottom, transparent, black 2.5rem);
-  transition: opacity 260ms ease-out;
-}
-.atp-bubbles[data-faded] {
-  opacity: 0;
-  transition-duration: 1.4s;
-}
-.atp-bubbles[data-faded] * {
-  pointer-events: none;
-}
-.atp-bubble .prose {
-  font-size: 13px;
-  line-height: 1.55;
-}
-.atp-bubble .prose :is(h1, h2, h3, h4) {
-  margin: 0.8em 0 0.3em;
-  font-size: 13px;
-}
-.bubble-in {
-  animation: bubble-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-@keyframes bubble-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.98);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .atp-node,
-  .atp-edge,
-  .bubble-in {
+  .atp-edge {
     animation: none !important;
   }
 }

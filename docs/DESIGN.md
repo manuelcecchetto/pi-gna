@@ -610,7 +610,7 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   remembers which chat worked which node (`AtpThreads`, `<userData>/atp-threads.json`, `atp.threads`; the window's
   older localStorage copy is merged in once, `atp.importThreads`) and opens them from the node panel. A worker chat
   closes once its node is done, unless you are looking at it.
-- **The orchestrator** is one chat per plan, floating over the graph: you ask it how the plan is going, or have it edit or
+- **The orchestrator** is one chat per plan, on the plan's page: you ask it how the plan is going, or have it edit or
   extend the plan with the librarian (decompose, future patches). It never works a node. Its extension's
   `atp_pause` holds the plan in main (`Atp.setHeld`; the librarian has no pause) so the runner claims no new node,
   and waits up to 4 minutes for running nodes to finish; `atp_resume` lifts it (and so does the page's Resume). The
@@ -628,20 +628,25 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
 - **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a header breadcrumb (project, then
   the plan; `PlanSwitch` opens a menu of the project's plans with their progress, in place of an always-on rail), the
   plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last note), the graph, a
-  docked node panel (instruction, context, report, its chats; closes with its X or Esc) and the orchestrator
-  (`OrchestratorDock`), which floats over the graph: a translucent composer (`Composer floating`) and above it its
-  conversation in one of three views. Bubbles (default for a plan) show the last two turns as chat bubbles
-  (`chatPeek` in `lib/view.ts`: your text and its answers or errors, no work; a live turn shows its latest step), and
-  fade away 12 s after the chat goes quiet, coming back with its next message, while you point at the chat, or when
-  you go into the composer. Full (default for the architect's new-plan chat) is the whole `Transcript` in a floating
-  panel; hidden shows only the composer. Only the bubbles, panel and composer take the pointer, so the graph pans
-  around them; the composer's height goes to `AtpGraph` as `inset`, which fits and centers the plan above it and
-  lifts the zoom controls and minimap. The bubble list's top fade is a mask, which makes it a backdrop root (no
-  `backdrop-filter` inside it works), so bubbles are near-opaque rather than blurred. View > ATP (⌘⇧A) and the
-  sidebar's ATP row open the page. The node panel and the full conversation resize from their inner edge
+  side column and the orchestrator (`OrchestratorDock`). Until you talk to a plan's orchestrator only its translucent
+  composer (`Composer floating`) floats over the graph; its height goes to `AtpGraph` as `inset`, which fits and centers
+  the plan above it and lifts the zoom controls and minimap, and only the composer takes the pointer, so the graph pans
+  around it. Once the chat has a message (or runs) it moves into the side column (`docked`), with the whole `Transcript`
+  and its composer, and the graph gets the rest of the width. The column's tabs: the orchestrator (a pulse while it
+  runs, a dot when it settled while another tab was in front: `useUnread`), the selected node (instruction, context,
+  report, its chats; its X or Esc closes it and the chat comes back; selecting a node brings its tab to the front), and
+  worker chats: the node panel's and the plan bar's worker buttons open the worker as a tab (`threadHandle` in
+  `state/atp.ts` joins or starts it without leaving the page; X closes the tab, and leaving the plan closes them all,
+  `releasePageChat`). The chat tab in front is the one the host is told this window looks at (`showPageChat` in
+  `state/app.ts`), so a finished worker you watch is not closed under you and an answer you see is read. "Open as a
+  chat" leaves the page for that chat; the chevron folds the column to a strip that keeps the pulse and the dot. When
+  the inset refit and the column change the graph's width in one go, the resize observer starts from the size the
+  refit placed it for (`placedFor`), so the plan is not shifted twice. The architect's chat for a new plan is the page
+  until it writes the plan: it stays floating, the whole `Transcript` in a panel above the composer. View > ATP (⌘⇧A)
+  and the sidebar's ATP row open the page. The side column and the architect's panel resize from their inner edge
   (`ResizeHandle`, double-click resets; bounds `ATP_DETAIL`/`ATP_DOCK` in `lib/layout.ts`, persisted as
   `pigna:atp-panels`). A drag stops before the graph gets under `ATP_GRAPH_MIN` (280×160; the conversation stops
-  short of the canvas's top); on a smaller window the remembered sizes give way the same way (the node panel's CSS
+  short of the canvas's top); on a smaller window the remembered sizes give way the same way (the column's CSS
   `clamp`, the conversation panel shrinking) without changing what is remembered.
 - **The graph** (`components/AtpGraph.tsx`, `lib/atp-layout.ts`) is native SVG and HTML, no graph library: a
   layered layout (longest-path layers, barycenter ordering, then straightened), cards positioned in one transformed
@@ -1237,7 +1242,13 @@ scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollT
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
 `PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it), for streaming UI checks without a model; it names a session file
 (never written, so relaunching on the same `PIGNA_USER_DATA` fails to reopen remembered ATP orchestrator chats with
-ENOENT and the page shows no composer: start each run with a fresh profile), so a card's or lament's chats link as with pi. For board checks, seed
+ENOENT and the page shows no composer: start each run with a fresh profile), so a card's or lament's chats link as with pi.
+Under fake-pi the ATP orchestrator and worker defaults do not exist ("… is not available"): point them at it first,
+`window.studio.settings.get().then((s) => window.studio.settings.apply({ type: "model", task: "orchestrator", model: { provider: "fake", id: "fake", thinking: "off" } }, s.rev))`
+(again with `task: "worker"`, and `FAKE_ATP=idle` for a worker that streams). An unfocused (`PIGNA_BACKGROUND=1`) window
+never tells the host it views a chat, so presence-driven behavior (a finished worker closing unless looked at, unread
+marks) cannot be checked there: unit-test what the renderer reports (`studio.viewing`) instead. Close Setup by its
+button, not Esc: Esc reaches a focused composer, and two stop its run. For board checks, seed
 `$PIGNA_USER_DATA/board.json` (`{ "version": 1, "cards": [...] }`) with cards of a throwaway git project under `/tmp`
 (give cards its real path, `/private/tmp/…`: the launch cwd is resolved, so `/tmp/…` cards sit on another board):
 the board's project picker lists every project with cards, and card actions then start fake-pi chats there. Tests with the real
