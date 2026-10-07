@@ -1,4 +1,4 @@
-import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, ImagePlus, MessageSquare, Paperclip, Plus, Square, SquareKanban, X } from "./icons";
+import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, MessageSquare, Plus, Square, SquareKanban, X } from "./icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
@@ -30,7 +30,7 @@ import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QueueCard } from "./QueueCard";
 import { TokenRate } from "./TokenRate";
-import { Kbd, Popover } from "./primitives";
+import { Popover } from "./primitives";
 import { Widget } from "./Widget";
 
 const drafts = new Map<string, string>();
@@ -292,7 +292,7 @@ export function Composer({ session, placeholder, floating = false }: { session: 
         />
 
         <div className="flex items-center gap-1 px-2 pb-2">
-          <AttachMenu handle={handle} disabled={exited} />
+          <AttachButton handle={handle} disabled={exited} />
           <ModelPicker session={session} />
           <ThinkingPicker session={session} />
           <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
@@ -423,36 +423,19 @@ function ThinkingPicker({ session }: { session: SessionState }) {
   );
 }
 
-function AttachMenu({ handle, disabled }: { handle: string; disabled: boolean }) {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  const pick = (kind: "photos" | "files") => {
-    setOpen(false);
-    void pickAttachments(handle, kind);
-  };
+function AttachButton({ handle, disabled }: { handle: string; disabled: boolean }) {
+  // Photos are files: one picker takes files, folders and images (images still go as image content).
   return (
-    <div className="relative">
-      <button
-        type="button"
-        disabled={disabled}
-        title="Add photos and files"
-        onClick={() => setOpen(!open)}
-        className="grid h-7 w-7 place-items-center rounded-lg text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
-      >
-        <Plus size={16} />
-      </button>
-      <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 w-60 p-1">
-        <button type="button" onClick={() => pick("photos")} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-raised">
-          <ImagePlus size={14} className="text-muted" /> Add photos
-        </button>
-        <button type="button" onClick={() => pick("files")} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-raised">
-          <Paperclip size={14} className="text-muted" />
-          <span className="flex-1">Attach files and folders</span>
-          <Kbd>⌘U</Kbd>
-        </button>
-        <div className="px-2.5 pt-1.5 pb-1 text-[11px] text-faint">You can also drop files anywhere or paste with ⌘V.</div>
-      </Popover>
-    </div>
+    <button
+      type="button"
+      disabled={disabled}
+      title={"Attach files and folders (⌘U)\nYou can also drop files anywhere or paste with ⌘V."}
+      aria-label="Attach files and folders"
+      onClick={() => void pickAttachments(handle, "files")}
+      className="grid h-7 w-7 place-items-center rounded-lg text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
+    >
+      <Plus size={16} />
+    </button>
   );
 }
 
