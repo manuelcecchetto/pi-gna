@@ -1,5 +1,7 @@
 // Full-screen image: pinch to zoom, drag to pan once zoomed, double tap to toggle, tap outside or X to close. The image is a
 // plain <img>, so iOS's own long-press menu (Save to Photos, Copy) works on it.
+// The grid's single track is the full box: an auto track would grow to a tall image's natural height, so max-h-full would
+// not bind and only its top would show.
 import { X } from "../renderer/src/components/icons";
 import { useRef, useState } from "react";
 import { closeLightbox, useLightbox } from "./chat-ui";
@@ -70,7 +72,7 @@ function Viewer({ src }: { src: string }) {
     <div
       ref={box}
       data-testid="lightbox"
-      className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-black/90"
+      className="fixed inset-0 z-50 grid grid-cols-[100%] grid-rows-[100%] place-items-center overflow-hidden bg-black/90"
       style={{ touchAction: "none" }}
       onPointerDown={down}
       onPointerMove={move}
