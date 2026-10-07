@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Windows beta: pi-gna builds an unsigned per-user installer for Windows x64, published by hand as a GitHub prerelease (Actions > Windows beta). pi and npm start through their .cmd shims without a shell; Computer Use and in-app updates stay macOS-only for now. See docs/WINDOWS.md.
+
 ## 0.6.9 - 2026-10-07
 
 - Inline visuals can mock UI: when an agent weighs a UI change, it can draw each treatment as a clickable mock in the reply (composer fields, buttons, model chips, banners, menus, popovers that open and close, switches) in the look of the product being changed (its own colors, fonts and corners, read from its code, not pi-gna's theme), so you can compare the options before anything is built.

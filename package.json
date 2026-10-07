@@ -30,6 +30,7 @@
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
     "dist": "node scripts/build-computer-use.mjs && node scripts/build.mjs && electron-builder --mac --publish never",
+    "dist:win": "node scripts/build.mjs && electron-builder --win --publish never",
     "build:computer-use": "node scripts/build-computer-use.mjs",
     "icon": "electron scripts/make-icon.mjs",
     "dmg-background": "electron scripts/make-dmg-background.mjs",

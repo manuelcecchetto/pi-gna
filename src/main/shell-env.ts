@@ -9,6 +9,8 @@ const MARK = "__PIGNA_ENV__";
 const SKIP = new Set(["_", "PWD", "OLDPWD", "SHLVL", "TERM_SESSION_ID"]);
 
 export async function loadShellEnv(): Promise<void> {
+  // Windows apps get the user's full environment from Explorer; there is no login shell to ask.
+  if (process.platform === "win32") return;
   const shell = process.env.SHELL || "/bin/zsh";
   const started = Date.now();
   try {

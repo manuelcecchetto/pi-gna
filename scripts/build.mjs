@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const env = { ...process.env, PIGNA_BUILD: process.env.PIGNA_BUILD ?? Date.now().toString(36) };
 for (const args of [["electron-vite", "build"], ["vite", "build", "-c", "vite.mobile.config.ts"], ["vite", "build", "-c", "vite.preview.config.ts"]]) {
-  const run = spawnSync("pnpm", ["exec", ...args], { cwd: root, env, stdio: "inherit" });
+  // pnpm is a .cmd on Windows, which only starts through a shell (the arguments here are fixed).
+  const run = spawnSync("pnpm", ["exec", ...args], { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
   if (run.status !== 0) process.exit(run.status ?? 1);
 }

@@ -163,6 +163,12 @@ describe("findPiSdk", () => {
     expect(findPiSdk(join(dir, "bin", "pi"), "")).toBe(realpathSync(join(dir, "pkg")));
   });
 
+  it("follows a Windows .cmd shim to the script it runs", () => {
+    mkdirSync(join(dir, "npm"));
+    writeFileSync(join(dir, "npm", "pi.cmd"), `@"%~dp0\\..\\pkg\\dist\\bundle\\cli.js" %*\n`);
+    expect(findPiSdk("pi", `C:\\nowhere;${join(dir, "npm")}`, "win32")).toBe(realpathSync(join(dir, "pkg")));
+  });
+
   it("finds nothing without pi, or when the file is not in pi's package", () => {
     expect(findPiSdk("pi", "/nowhere")).toBeUndefined();
     writeFileSync(join(dir, "pkg", "package.json"), JSON.stringify({ name: "pi-gna" }));

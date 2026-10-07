@@ -187,7 +187,8 @@ const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"
 const DESKTOP = { clientId: "desktop", actor: "desktop" } as const;
 const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`, batch.events).at(-1)?.seq, bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
   ...(await settings.get()).features,
-  computer: (await computerPolicy.get()).enabled,
+  // The Computer Use helper is a macOS app.
+  computer: process.platform === "darwin" && (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
 }));
 host.onGlobal(publish);
@@ -266,8 +267,8 @@ function createWindow(): void {
     minWidth: 760,
     minHeight: 520,
     show: false,
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 18 },
+    // macOS draws its traffic lights into pi-gna's own title band; elsewhere the native frame stays, menu bar on Alt.
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const, trafficLightPosition: { x: 18, y: 18 } } : { autoHideMenuBar: true }),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#161618" : "#f1f1f0",
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),

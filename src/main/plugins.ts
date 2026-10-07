@@ -23,6 +23,7 @@ import {
   type PluginsRequest,
   type PluginsState,
 } from "../shared/plugins";
+import { resolveCommand } from "./command";
 import { log } from "./log";
 import { findPiSdk } from "./pi-auth";
 
@@ -265,7 +266,8 @@ export class PiPlugins {
   }
 
   private spawnPi(args: string[], cwd: string | undefined): ChildProcess {
-    const child = spawn(piBin(), args, { cwd: cwd ?? homedir(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const command = resolveCommand(piBin(), args);
+    const child = spawn(command.file, command.args, { cwd: cwd ?? homedir(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
     this.children.add(child);
     child.on("close", () => this.children.delete(child));
     child.on("error", () => this.children.delete(child));

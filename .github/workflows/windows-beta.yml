@@ -1,0 +1,50 @@
+# Windows beta (docs/WINDOWS.md): run by hand from the Actions tab. Builds the unsigned NSIS installer on Windows and
+# publishes it as a GitHub prerelease tagged windows-beta-<version>-<n>. Prereleases are not releases/latest, so the
+# macOS updater never sees them, and the tag does not match release.yml's v* trigger.
+name: Windows beta
+
+on:
+  workflow_dispatch:
+    inputs:
+      beta:
+        description: Beta number for this version
+        required: true
+        default: "1"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # The suite has never run on Windows: its failures are the to-do list, not a gate (yet).
+      - run: pnpm test
+        continue-on-error: true
+      - run: pnpm dist:win
+      - name: Publish prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BETA: ${{ inputs.beta }}
+        run: |
+          [[ "$BETA" =~ ^[0-9]+$ ]] || { echo "::error::beta must be a number"; exit 1; }
+          version="$(node -p 'require("./package.json").version')"
+          tag="windows-beta-$version-$BETA"
+          cat > "$RUNNER_TEMP/notes.md" <<NOTES
+          **Experimental Windows build of pi-gna $version.** Expect rough edges; please file issues.
+
+          - Unsigned: Windows SmartScreen warns on first run (More info → Run anyway).
+          - Installs per user, no admin rights. No in-app updates yet: download the next beta by hand.
+          - Needs Node and pi (\`npm install -g @earendil-works/pi-coding-agent\`); Setup in the app can install pi.
+          - Not there yet: Computer Use, Ctrl shortcuts (some still expect ⌘), Windows paths in file links.
+          NOTES
+          gh release create "$tag" dist/pi-gna-setup-x64.exe --prerelease --target "$GITHUB_SHA" --title "Windows beta ($version-$BETA)" --notes-file "$RUNNER_TEMP/notes.md"

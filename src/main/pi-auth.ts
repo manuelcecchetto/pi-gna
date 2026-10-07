@@ -3,10 +3,11 @@
 // PATH, the one pi's shebang runs. The helper starts on first use and stops after a minute with nothing to do. One
 // login at a time: a new one cancels the last. Nothing that passes through is logged; answers can be API keys.
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { accessSync, constants, existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import type { AuthMethod, AuthReply, AuthRequest, AuthState, LoginResult, LoginUpdate } from "../shared/auth";
+import { shimScript, which } from "./command";
 import { JsonlSplitter } from "./jsonl";
 import { log } from "./log";
 
@@ -14,9 +15,11 @@ const SDK_PACKAGE = "@earendil-works/pi-coding-agent";
 const STDERR_TAIL = 2000;
 
 /** The folder of the pi package whose `pi` is `bin` (a path, or a name looked up on `path`). */
-export function findPiSdk(bin: string, path = process.env.PATH ?? ""): string | undefined {
-  const file = bin.includes("/") ? resolve(bin) : path.split(":").filter(Boolean).map((dir) => join(dir, bin)).find(executable);
-  if (!file) return undefined;
+export function findPiSdk(bin: string, path = process.env.PATH ?? "", platform = process.platform): string | undefined {
+  const found = which(bin, path, platform);
+  if (!found) return undefined;
+  // On Windows `pi` is a .cmd shim: start from the script it runs.
+  const file = shimScript(found) ?? found;
   let dir: string;
   try {
     dir = dirname(realpathSync(file));
@@ -28,15 +31,6 @@ export function findPiSdk(bin: string, path = process.env.PATH ?? ""): string | 
     const parent = dirname(dir);
     if (parent === dir) return undefined;
     dir = parent;
-  }
-}
-
-function executable(file: string): boolean {
-  try {
-    accessSync(file, constants.X_OK);
-    return true;
-  } catch {
-    return false;
   }
 }
 

@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { installError, nodeSupported, PI_INSTALL_ARGS, piReady, type SetupInstallResult, type SetupStatus } from "../shared/setup";
+import { resolveCommand } from "./command";
 import { log } from "./log";
 import { findPiSdk } from "./pi-auth";
 
@@ -20,7 +21,8 @@ type Ran = { ok: true; out: string } | { ok: false; missing: boolean; error: str
  * failed" alone does not say what to fix. */
 function run(command: string, args: string[], timeout: number): Promise<Ran> {
   return new Promise((resolve) => {
-    execFile(command, args, { timeout, env: process.env }, (error, stdout, stderr) => {
+    const resolved = resolveCommand(command, args);
+    execFile(resolved.file, resolved.args, { timeout, env: process.env }, (error, stdout, stderr) => {
       if (!error) return resolve({ ok: true, out: stdout.trim() });
       const code = (error as NodeJS.ErrnoException).code;
       const said = stderr.split("\n").map((line) => line.trimEnd()).filter(Boolean).slice(-6);
@@ -90,7 +92,8 @@ export class PiSetup {
         this.child = undefined;
         resolve(value);
       };
-      const child = spawn("npm", [...PI_INSTALL_ARGS], {
+      const npm = resolveCommand("npm", [...PI_INSTALL_ARGS]);
+      const child = spawn(npm.file, npm.args, {
         env: { ...process.env, npm_config_color: "false", npm_config_progress: "false" },
         stdio: ["ignore", "pipe", "pipe"],
       });

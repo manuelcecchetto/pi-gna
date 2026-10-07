@@ -1,6 +1,7 @@
 // One `pi --mode rpc` child: LF-only JSONL framing, id-correlated commands, stderr to the terminal.
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcOutput, RpcResponse, SessionEvent } from "../shared/protocol";
+import { resolveCommand } from "./command";
 import { JsonlSplitter } from "./jsonl";
 import { log } from "./log";
 
@@ -55,7 +56,8 @@ export class PiProcess {
     log.info(options.tag, `spawn ${PI_BIN} ${args.join(" ")}  (cwd ${options.cwd})`);
 
     const env = { ...process.env, ...options.env };
-    this.child = spawn(PI_BIN, args, { cwd: options.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+    const command = resolveCommand(PI_BIN, args, env);
+    this.child = spawn(command.file, command.args, { cwd: options.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     this.child.stdout.on("data", (chunk: Buffer) => this.onStdout(this.stdout.push(chunk)));
     this.child.stdout.on("end", () => this.onStdout(this.stdout.end()));
     this.child.stderr.on("data", (chunk: Buffer) => this.onStderr(this.stderr.push(chunk)));

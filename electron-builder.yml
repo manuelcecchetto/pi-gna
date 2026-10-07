@@ -31,11 +31,6 @@ asarUnpack:
   - src/shared/themes.ts
   - src/shared/theme-presets.ts
   - src/shared/viewport.ts
-# The Computer Use helper app (built by `pnpm build:computer-use`, which `pnpm dist` runs first) rides outside the
-# asar in Contents/Resources/computer-use/; main installs it to ~/.pi-gna and launches it from there.
-extraResources:
-  - from: build/computer-use/pi-gna Computer Use.app
-    to: computer-use/pi-gna Computer Use.app
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:
@@ -49,6 +44,11 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
 mac:
   icon: build/icon.icns
+  # The Computer Use helper app (built by `pnpm build:computer-use`, which `pnpm dist` runs first) rides outside the
+  # asar in Contents/Resources/computer-use/; main installs it to ~/.pi-gna and launches it from there.
+  extraResources:
+    - from: build/computer-use/pi-gna Computer Use.app
+      to: computer-use/pi-gna Computer Use.app
   category: public.app-category.developer-tools
   darkModeSupport: true
   target:
@@ -82,3 +82,14 @@ dmg:
       path: /Applications
   # pi-gna's updater downloads the whole dmg, so no .blockmap files.
   writeUpdateInfo: false
+# Windows beta (docs/WINDOWS.md): an unsigned per-user installer, published as a GitHub prerelease by
+# .github/workflows/windows-beta.yml. No in-app updates yet; releases/latest, which the macOS updater reads, skips it.
+win:
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  artifactName: ${name}-setup-${arch}.${ext}
+  oneClick: true
+  perMachine: false
