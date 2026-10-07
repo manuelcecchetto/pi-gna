@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AttentionSummary } from "./host-api";
 import { admitPush, attentionTrigger, DEFAULT_PUSH_PREFS, newLedger, parsePrefs, PUSH_COOLDOWN_MS, PUSH_HOURLY_LIMIT } from "./push-rules";
 
-const chat = (over: Partial<AttentionSummary> = {}): AttentionSummary => ({ handle: "h", cwd: "/p", title: "t", attention: "running", running: true, dialogs: 0, ...over });
+const chat = (over: Partial<AttentionSummary> = {}): AttentionSummary => ({ handle: "h", cwd: "/p", title: "t", listed: true, attention: "running", running: true, dialogs: 0, ...over });
 
 describe("attentionTrigger", () => {
   it("schedules an approval when the first dialog appears and clears it when the last goes", () => {

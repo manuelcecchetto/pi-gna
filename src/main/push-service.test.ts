@@ -7,7 +7,7 @@ import type { AttentionSummary } from "../shared/host-api";
 import { PushService } from "./push-service";
 import type { PushRequest } from "./web-push";
 
-const chat = (over: Partial<AttentionSummary> = {}): AttentionSummary => ({ handle: "h1", cwd: "/p", title: "secret title", attention: "running", running: true, dialogs: 0, ...over });
+const chat = (over: Partial<AttentionSummary> = {}): AttentionSummary => ({ handle: "h1", cwd: "/p", title: "secret title", listed: true, attention: "running", running: true, dialogs: 0, ...over });
 const keyPair = () => {
   const ecdh = createECDH("prime256v1");
   ecdh.generateKeys();

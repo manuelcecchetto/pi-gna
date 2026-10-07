@@ -4,7 +4,7 @@
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { isTriage } from "../../../shared/task-prompts";
-import { isDraft, type SessionState } from "../../../shared/session-state";
+import { isListed, type SessionState } from "../../../shared/session-state";
 import { applyUi, uiStore } from "./host-ui";
 import { useStore } from "./store";
 
@@ -34,7 +34,7 @@ export function projectViews(projects: ProjectGroup[], open: SessionState[], pin
     groups.set(project.cwd, { cwd: project.cwd, activeAt: Math.max(...sessions.map((summary) => summary.modifiedAt)), rows });
   }
   for (const session of open) {
-    if (isDraft(session) || isTriage(session.name) || session.atp) continue;
+    if (!isListed(session)) continue;
     const cwd = projectOf(session.cwd);
     const group = groups.get(cwd) ?? { cwd, activeAt: 0, rows: [] };
     const sent = sentAt(session);

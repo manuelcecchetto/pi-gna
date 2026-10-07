@@ -48,7 +48,7 @@ describe("attachmentCount and cardMark", () => {
   });
   it("takes the strongest mark of the card's open chats", () => {
     const c = card("a", "todo", { chats: [{ path: "/s1", cwd: "/p", at: 1 }, { path: "/s2", cwd: "/p", at: 1 }] });
-    const s = (handle: string, path: string, attention: "running" | "failed" | "idle") => ({ handle, cwd: "/p", sessionPath: path, title: "", attention, running: false, dialogs: 0 });
+    const s = (handle: string, path: string, attention: "running" | "failed" | "idle") => ({ handle, cwd: "/p", sessionPath: path, title: "", listed: true, attention, running: false, dialogs: 0 });
     expect(cardMark(c, { h1: s("h1", "/s1", "running"), h2: s("h2", "/s2", "failed"), h3: s("h3", "/other", "running") })).toBe("running");
     expect(cardMark(c, {})).toBeUndefined();
   });

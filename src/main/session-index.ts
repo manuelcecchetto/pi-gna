@@ -65,8 +65,8 @@ async function summarize(path: string): Promise<SessionSummary | undefined> {
     if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached.summary;
 
     const file = await summarizeSessionFile(path, info.size);
-    // Sessions without a user message or name are empty starts; hide them.
-    const summary: SessionSummary | undefined = file && (file.title || file.name) ? {
+    // Sessions without a user message or name are empty starts; hide them. A first message without text (an image) counts.
+    const summary: SessionSummary | undefined = file && (file.title !== undefined || file.name) ? {
       path,
       id: file.header.id,
       cwd: file.header.cwd,

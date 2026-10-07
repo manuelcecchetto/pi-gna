@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "./protocol";
 import type { HostEvent } from "./host-api";
-import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
+import { attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
 
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -77,6 +77,14 @@ describe("isDraft (kept out of the sidebar)", () => {
     );
     expect(ready.sessionPath).toBe("/s/new.jsonl");
     expect(isDraft(ready)).toBe(true);
+  });
+
+  it("lists sent chats in the chat lists, but not drafts, triage or ATP chats", () => {
+    const sent = { ...createSession("h", "/repo"), prompted: true };
+    expect(isListed(sent)).toBe(true);
+    expect(isListed(createSession("h", "/repo"))).toBe(false);
+    expect(isListed({ ...sent, name: "Triage: login bug" })).toBe(false);
+    expect(isListed({ ...sent, atp: { role: "worker" } })).toBe(false);
   });
 });
 
