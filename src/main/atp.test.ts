@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Atp } from "./atp";
+import { ATP_BRANCHES } from "./worktree";
 
 vi.mock("./log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 // The bundled librarian, from the checkout.
@@ -74,6 +75,45 @@ describe("Atp", () => {
     await vi.waitFor(() => expect(plans.length).toBeGreaterThan(0), { timeout: 3000 });
     await writeFile(draft, JSON.stringify(plan));
     await vi.waitFor(() => expect(plans.at(-1)).toContain(draft), { timeout: 3000 });
+  });
+
+  it("writes a new plan in a worktree of the project, shows its plan but not its copies of the project's, and reuses an empty one", async () => {
+    const home = join(root, "home");
+    const plans: string[][] = [];
+    atp = new Atp(
+      (found) => plans.push(found.plans.map((file) => file.path)),
+      () => undefined,
+      undefined,
+      home,
+    );
+    await atp.watch(repo);
+    const folder = await atp.newPlanCwd(repo);
+    expect(folder).toMatch(new RegExp(`^${home}/\\.pi-gna/worktrees/[a-z0-9]{6}${repo}$`));
+    expect(git(folder, "rev-parse", "--abbrev-ref", "HEAD")).toMatch(new RegExp(`^${ATP_BRANCHES}[a-z0-9]{6}$`));
+    // Nothing written yet: the worktree's committed copy of plans/tiny.atp.json is the project's plan, shown once.
+    expect((await atp.scan(repo)).plans.map((file) => file.path)).toEqual([join(repo, "broken.atp.json"), path]);
+    // An empty worktree is reused, brought up to the checkout's HEAD.
+    await writeFile(join(repo, "later.txt"), "later\n");
+    git(repo, "add", ".");
+    git(repo, "commit", "-qm", "later");
+    expect(await atp.newPlanCwd(repo)).toBe(folder);
+    expect(git(folder, "rev-parse", "HEAD")).toBe(git(repo, "rev-parse", "HEAD"));
+
+    // The architect writes its plan in the worktree: the watched project shows it, and the next new plan gets another worktree.
+    const draft = join(folder, "docs", "plans", "draft", "fresh.atp.json");
+    await mkdir(dirname(draft), { recursive: true });
+    await writeFile(draft, JSON.stringify(plan));
+    await vi.waitFor(() => expect(plans.at(-1)).toContain(draft), { timeout: 3000 });
+    expect((await atp.scan(repo)).plans.map((file) => file.path)).toEqual([join(repo, "broken.atp.json"), path, draft]);
+    const next = await atp.newPlanCwd(repo);
+    expect(next).not.toBe(folder);
+    expect(git(repo, "status", "--porcelain")).toBe("");
+  });
+
+  it("writes a new plan in place outside git", async () => {
+    const plain = join(root, "plain");
+    await mkdir(plain);
+    expect(await new Atp(() => undefined, () => undefined, undefined, join(root, "home")).newPlanCwd(plain)).toBe(plain);
   });
 
   it("activates, claims, gets the same node back for the same agent, and releases it", async () => {

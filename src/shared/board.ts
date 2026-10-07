@@ -161,6 +161,15 @@ export function projectOf(cwd: string): string {
   return cwd;
 }
 
+/** Where work on `path` (a plan, a file) runs for `project`: the project's folder in the worktree `path` lies in, else the project. */
+export function checkoutOf(path: string, project: string): string {
+  const at = path.indexOf(WORKTREES);
+  if (at < 0) return project;
+  const id = path.slice(at + WORKTREES.length, at + WORKTREES.length + 6);
+  const folder = `${path.slice(0, at + WORKTREES.length)}${id}${project}`;
+  return ID.test(id) && path.startsWith(`${folder}/`) ? folder : project;
+}
+
 /** A short id that is easy for the model to repeat. */
 export function freshId(board: Board, random: () => number = Math.random): string {
   const taken = new Set(board.cards.map((card) => card.id));

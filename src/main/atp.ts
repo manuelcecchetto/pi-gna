@@ -1,9 +1,11 @@
 // The ATP page's main side: the project's plans (`*.atp.json`), read and pushed to the window as they change; the
 // bundled librarian CLI, which the runner claims and releases nodes with (plans are never written here); git around
 // each node, for atp-runner's commit-per-node; and the hold an orchestrator puts on a plan while it changes it.
+// A new plan is written in a git worktree of its own (newPlanCwd), so the project's plans include those worktrees'.
 import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, watch } from "node:fs";
 import { appendFile, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
   type AtpBridgeRequest,
@@ -18,9 +20,11 @@ import {
   parsePlan,
   workingNodes,
 } from "../shared/atp";
+import { emptyBoard, freshId, isCardId, worktreeCwd } from "../shared/board";
 import { bridgeError, type Route } from "./bridge";
 import { log } from "./log";
 import { onDisk } from "./resources";
+import { ATP_BRANCHES, atpWorktree } from "./worktree";
 
 const SKILLS = () => onDisk("resources", "atp", "skills");
 const LOCK_PATTERN = "*.atp.json.lock";
@@ -52,8 +56,12 @@ const PAUSE_WAIT = 4 * 60_000;
 /** The folder new plans go to and the folders above it, down from the project root, which may not exist yet. */
 const newPlanDirs = (cwd: string): string[] => [cwd, ...NEW_PLAN_DIR.split("/").map((_, i, parts) => join(cwd, ...parts.slice(0, i + 1)))];
 
+type Watched = { cwd: string; watchers: Map<string, FSWatcher>; timer?: ReturnType<typeof setTimeout> };
+/** The project's plans, and the folders they are looked for in: the project and its new plans' worktrees. */
+type Found = { plans: AtpProjectPlans; roots: string[] };
+
 export class Atp {
-  private project?: { cwd: string; watchers: Map<string, FSWatcher>; timer?: ReturnType<typeof setTimeout> };
+  private project?: Watched;
   /** Plans an orchestrator paused (atp_pause): the runner claims no node of them. */
   private readonly held = new Set<string>();
 
@@ -61,6 +69,7 @@ export class Atp {
     private readonly pushPlans: (plans: AtpProjectPlans) => void,
     private readonly pushHeld: (held: string[]) => void,
     private readonly exec: Run = run,
+    private readonly home = homedir(),
   ) {}
 
   // ── Plans ──────────────────────────────────────────────────────────────────
@@ -69,25 +78,25 @@ export class Atp {
   async watch(cwd: string | null): Promise<AtpProjectPlans | null> {
     this.unwatch();
     if (!cwd) return null;
-    const project: NonNullable<Atp["project"]> = { cwd, watchers: new Map() };
+    const project: Watched = { cwd, watchers: new Map() };
     this.project = project;
-    const plans = await this.scan(cwd);
-    if (this.project === project) this.watchDirs(project, plans);
-    return plans;
+    const found = await this.collect(cwd);
+    if (this.project === project) this.watchDirs(project, found);
+    return found.plans;
   }
 
   /**
    * Plans are replaced (the librarian writes a temp file and renames it), so their folders are watched, not the files.
-   * So is NEW_PLAN_DIR, which the architect may create: each existing folder on the way to it rescans when the next
-   * one appears, and the rescan watches that one.
+   * So is NEW_PLAN_DIR, in the project and in each new plan's worktree, which the architect may create: each existing
+   * folder on the way to it rescans when the next one appears, and the rescan watches that one.
    * A new watcher misses what happens while it starts (macOS starts FSEvents asynchronously, up to tens of ms; the
    * architect may create the folder and the plan in one go), so adding one rescans once more, after the debounce.
    */
-  private watchDirs(project: NonNullable<Atp["project"]>, plans: AtpProjectPlans): void {
-    const chain = newPlanDirs(project.cwd);
-    const next = new Map(chain.slice(0, -1).map((dir, i) => [dir, basename(chain[i + 1] as string)]));
+  private watchDirs(project: Watched, { plans, roots }: Found): void {
+    const chains = roots.map(newPlanDirs);
+    const next = new Map(chains.flatMap((chain) => chain.slice(0, -1).map((dir, i) => [dir, basename(chain[i + 1] as string)] as const)));
     const watched = project.watchers.size;
-    for (const dir of [...chain, ...plans.plans.map((plan) => dirname(plan.path))]) {
+    for (const dir of [...chains.flat(), ...plans.plans.map((plan) => dirname(plan.path))]) {
       if (project.watchers.has(dir) || !existsSync(dir)) continue;
       try {
         const watcher = watch(dir, (_event, name) => {
@@ -113,19 +122,36 @@ export class Atp {
     this.project = undefined;
   }
 
-  private changed(project: NonNullable<Atp["project"]>): void {
+  private changed(project: Watched): void {
     clearTimeout(project.timer);
     project.timer = setTimeout(() => {
-      void this.scan(project.cwd).then((plans) => {
+      void this.collect(project.cwd).then((found) => {
         if (this.project !== project) return;
-        this.watchDirs(project, plans);
-        this.pushPlans(plans);
+        this.watchDirs(project, found);
+        this.pushPlans(found.plans);
       });
     }, 150);
   }
 
-  /** Every `*.atp.json` under the project (rg: hidden and git-ignored files too, not dependencies or build output). */
+  /** The project's plans, and those its new plans' worktrees hold of their own. */
   async scan(cwd: string): Promise<AtpProjectPlans> {
+    return (await this.collect(cwd)).plans;
+  }
+
+  /**
+   * The project's plans, then its new plans' worktrees' that the project has no copy of at the same place: a worktree
+   * starts with the project's committed plans, which are the project's, and a plan merged back is the project's too.
+   */
+  private async collect(cwd: string): Promise<Found> {
+    const [own, roots] = await Promise.all([this.find(cwd), this.planWorktrees(cwd)]);
+    const known = new Set(own.map((path) => path.slice(cwd.length)));
+    const theirs = await Promise.all(roots.map(async (root) => (await this.find(root)).filter((path) => !known.has(path.slice(root.length)))));
+    const paths = [...own, ...theirs.flat()];
+    return { plans: { cwd, plans: await Promise.all(paths.map((path) => this.readFile(path))) }, roots: [cwd, ...roots] };
+  }
+
+  /** Every `*.atp.json` under the folder (rg: hidden and git-ignored files too, not dependencies or build output). */
+  private async find(cwd: string): Promise<string[]> {
     const globs = SKIP_DIRS.flatMap((dir) => ["-g", `!${dir}`]);
     const stdout = await this.exec("rg", ["--files", "--hidden", "--no-ignore-vcs", "--max-depth", MAX_DEPTH, "-g", "*.atp.json", ...globs, cwd], { timeout: 15_000 }).catch(
       (error: Error & { code?: unknown }) => {
@@ -135,8 +161,43 @@ export class Atp {
         return "";
       },
     );
-    const paths = stdout.split("\n").filter(isPlanPath).sort();
-    return { cwd, plans: await Promise.all(paths.map((path) => this.readFile(path))) };
+    return stdout.split("\n").filter(isPlanPath).sort();
+  }
+
+  // ── New plans' worktrees ───────────────────────────────────────────────────
+
+  /** The project's folder in each of its new plans' worktrees (git branches pigna/atp-<id>) that is there. */
+  private async planWorktrees(cwd: string): Promise<string[]> {
+    const list = await this.exec("git", ["-C", cwd, "worktree", "list", "--porcelain"]).catch(() => "");
+    const branches = [...list.matchAll(/^branch refs\/heads\/(.+)$/gm)].map((match) => match[1] as string);
+    const ids = [...new Set(branches.filter((branch) => branch.startsWith(ATP_BRANCHES)).map((branch) => branch.slice(ATP_BRANCHES.length)))].filter(isCardId);
+    return ids.map((id) => worktreeCwd(this.home, id, cwd)).filter((folder) => existsSync(folder));
+  }
+
+  /**
+   * Where a new plan's architect works: a git worktree of the project on a branch of its own, so the plan and what
+   * its runs change stay off the checkout until you merge them. An earlier one that holds no plan and no change is
+   * reused (brought up to the checkout's HEAD); a project outside git, or without a commit, writes in place.
+   */
+  async newPlanCwd(cwd: string): Promise<string> {
+    const head = (await this.exec("git", ["-C", cwd, "rev-parse", "--verify", "-q", "HEAD"]).catch(() => "")).trim();
+    if (!head) return cwd;
+    const { plans, roots } = await this.collect(cwd);
+    for (const root of roots.slice(1)) {
+      if (plans.plans.some((file) => file.path.startsWith(`${root}/`))) continue;
+      const clean = (await this.exec("git", ["-C", root, "status", "--porcelain"]).catch(() => "?")).trim() === "";
+      if (clean && (await this.exec("git", ["-C", root, "merge", "--ff-only", "-q", head]).then(() => true, () => false))) return this.made(cwd, root);
+    }
+    let id = freshId(emptyBoard());
+    while (existsSync(worktreeCwd(this.home, id, ""))) id = freshId(emptyBoard());
+    const made = await atpWorktree(cwd, id, this.home);
+    return made ? this.made(cwd, made.cwd) : cwd;
+  }
+
+  /** A new plan's worktree is ready: the watched project looks in it too. */
+  private made(cwd: string, folder: string): string {
+    if (this.project?.cwd === cwd) this.changed(this.project);
+    return folder;
   }
 
   private async readFile(path: string): Promise<AtpPlanFile> {

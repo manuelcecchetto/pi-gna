@@ -12,6 +12,8 @@ import { AtpThreads } from "./atp-threads";
 vi.mock("./log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const PLAN = "/repo/big.atp.json";
+/** Where a new plan's worktree puts the project. */
+const WORKTREE = "/home/.pi-gna/worktrees/atp123";
 const client = { clientId: "w", actor: "desktop" } as const;
 type Raw = { title: string; instruction: string; dependencies: string[]; status: string; worker_id?: string };
 
@@ -138,6 +140,7 @@ function harness() {
     head: vi.fn(async () => ({ sha: "abc", branch: "main" })),
     commit: vi.fn(async () => ({ kind: "committed" as const, sha: "def4567890" })),
     setHeld: vi.fn(),
+    newPlanCwd: vi.fn(async (cwd: string) => `${WORKTREE}${cwd}`),
   };
   const threads = { get: vi.fn(async () => ({ workers: {} as Record<string, string[]> })), remember: vi.fn(async (_plan: string, _node: string, _path: string) => undefined), setOrchestrator: vi.fn(async (_plan: string, _path: string) => undefined) };
   const runs = new AtpRuns({
@@ -189,6 +192,16 @@ describe("the ATP runner", () => {
     // Every phase went out to the clients as it happened.
     expect(h.published.map((published) => published.runners[PLAN]?.phase)).toEqual(expect.arrayContaining(["starting", "claiming", "working", "committing"]));
     expect(h.published.find((published) => published.runners[PLAN]?.phase === "working")?.runners[PLAN]).toMatchObject({ node: "T1", title: "First", cwd: "/repo" });
+  });
+
+  it("runs a plan written in a new plan's worktree there: its workers and commits stay off the checkout", async () => {
+    const plan = `${WORKTREE}/repo/docs/plans/draft/new.atp.json`;
+    h.runs.start(plan, "/repo");
+    await h.runs.whenIdle(plan);
+    expect(h.launched.map((launch) => launch.cwd)).toEqual([`${WORKTREE}/repo`, `${WORKTREE}/repo`]);
+    expect(h.prompts[0]?.message).toContain(`- working_directory: ${WORKTREE}/repo`);
+    expect(h.atp.head).toHaveBeenCalledWith(`${WORKTREE}/repo`);
+    expect(h.atp.commit).toHaveBeenCalledWith(`${WORKTREE}/repo`, "T1", "First", { sha: "abc", branch: "main" });
   });
 
   it("starting twice runs the plan once", async () => {
@@ -413,6 +426,19 @@ describe("orchestrator chats", () => {
     await h.runs.plansChanged({ cwd: "/repo", plans: [written] });
     expect(h.runs.state().orchestrators).toEqual({ [written.path]: handle });
     expect(h.threads.setOrchestrator).toHaveBeenCalledWith(written.path, `/atp-sessions/${handle}.jsonl`);
+  });
+
+  it("opens a new plan's chat in a worktree of the project, and a worktree plan's orchestrator in its worktree", async () => {
+    await h.runs.orchestrator(client, "/repo", undefined);
+    expect(h.atp.newPlanCwd).toHaveBeenCalledWith("/repo");
+    expect(h.host.open).toHaveBeenLastCalledWith({ cwd: `${WORKTREE}/repo`, atp: { role: "orchestrator" } }, { client });
+    const plan = `${WORKTREE}/repo/docs/plans/draft/new.atp.json`;
+    await h.runs.orchestrator(client, "/repo", plan);
+    expect(h.host.open).toHaveBeenLastCalledWith({ cwd: `${WORKTREE}/repo`, atp: { role: "orchestrator", plan } }, { client });
+    // A plan of the checkout keeps its orchestrator there, with no worktree made for it.
+    await h.runs.orchestrator(client, "/repo", PLAN);
+    expect(h.host.open).toHaveBeenLastCalledWith({ cwd: "/repo", atp: { role: "orchestrator", plan: PLAN } }, { client });
+    expect(h.atp.newPlanCwd).toHaveBeenCalledOnce();
   });
 
   it("drops a new-plan chat so the next one starts fresh", async () => {

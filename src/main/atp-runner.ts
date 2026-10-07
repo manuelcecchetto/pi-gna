@@ -3,8 +3,10 @@
 // with the claim packet (workerMessage), wait for its run, check the node, commit what the worker left, repeat until
 // nothing is READY. Workers complete, fail or decompose their node themselves; nothing here judges them. The runner
 // also owns the plans' orchestrator chats (a client shows a plan: its orchestrator runs; nobody does: it stops) and
-// the threads (which chats worked on what).
+// the threads (which chats worked on what). A new plan's chat works in a git worktree of the project (Atp.newPlanCwd),
+// and a plan's run and orchestrator work where the plan is: in that worktree, or in the project.
 import { ATP_CONFIG, type AtpClaim, type AtpNode, type AtpPlan, type AtpProjectPlans, type AtpSession, nudgeMessage, workerMessage, workingNodes } from "../shared/atp";
+import { checkoutOf } from "../shared/board";
 import type { AtpRunNote, AtpRunner, AtpRunnerState, ClientPresence } from "../shared/host-api";
 import type { RunOutcome } from "../shared/session-state";
 import { type Settings, taskModel } from "../shared/settings";
@@ -17,7 +19,7 @@ import type { SessionHost } from "./session-host";
 export interface AtpRunnerDeps {
   host: Pick<SessionHost, "open" | "attach" | "detach" | "command" | "stateOf" | "presence" | "close" | "interrupt" | "identify" | "onSettled" | "onExit" | "onPresence">;
   tasks: Pick<ChatTasks, "launch" | "useModel">;
-  atp: Pick<Atp, "activate" | "read" | "claim" | "release" | "head" | "commit" | "setHeld">;
+  atp: Pick<Atp, "activate" | "read" | "claim" | "release" | "head" | "commit" | "setHeld" | "newPlanCwd">;
   threads: Pick<AtpThreads, "get" | "remember" | "setOrchestrator">;
   settings: { get(): Promise<Settings> };
   /** The bundled librarian CLI, for the workers' prompts. */
@@ -96,9 +98,10 @@ export class AtpRuns {
 
   // ── The runner ─────────────────────────────────────────────────────────────
 
-  /** Start (or resume) running a plan in its project: activate it, then work through its nodes in the background. */
-  start(plan: string, cwd: string): void {
+  /** Start (or resume) running a plan where it is (its project, or its worktree): activate it, then work through its nodes in the background. */
+  start(plan: string, project: string): void {
     if (this.runners.has(plan)) return;
+    const cwd = checkoutOf(plan, project);
     this.notes.delete(plan);
     this.runners.set(plan, { plan, cwd, phase: "starting", since: Date.now() });
     this.emit();
@@ -322,7 +325,7 @@ export class AtpRuns {
 
   /**
    * The plan's orchestrator chat for this client, started (or resumed from its session file) when it shows the plan.
-   * `plan` undefined: a chat for a new plan, which the architect skills write.
+   * `plan` undefined: a chat for a new plan, which the architect skills write, in a worktree of the project.
    */
   orchestrator(client: ClientPresence, cwd: string, plan: string | undefined): Promise<{ handle: string }> {
     const key = plan ?? newPlanKey(cwd);
@@ -345,7 +348,8 @@ export class AtpRuns {
     const { host, tasks, threads, settings } = this.deps;
     await this.deps.shellEnv;
     const sessionPath = plan ? (await threads.get(plan)).orchestrator : undefined;
-    const { handle } = await host.open({ cwd, ...(sessionPath ? { sessionPath } : {}), atp: { role: "orchestrator", ...(plan ? { plan } : {}) } }, { client });
+    const where = plan ? checkoutOf(plan, cwd) : await this.deps.atp.newPlanCwd(cwd);
+    const { handle } = await host.open({ cwd: where, ...(sessionPath ? { sessionPath } : {}), atp: { role: "orchestrator", ...(plan ? { plan } : {}) } }, { client });
     if (!sessionPath) {
       // A new chat runs on the orchestrator model (Settings > Models); a resumed one keeps its own.
       try {
