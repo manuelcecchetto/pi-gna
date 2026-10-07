@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.6.8 - 2026-10-07
+
 - Phone: going back from a file or the browser opened from a chat returns to where you were reading, instead of jumping to the end of the chat.
 
 ## 0.6.7 - 2026-10-07
