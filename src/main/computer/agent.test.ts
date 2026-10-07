@@ -202,7 +202,8 @@ describe("computer route locks and cleanup", () => {
     await t.agent.run("a1", click("Calculator"));
     await t.agent.run("a1", click("TextEdit"));
     expect(await t.agent.preview("a1")).toEqual({ mimeType: "image/jpeg", data: "AAAA", app: "TextEdit" });
-    expect(t.calls.at(-1)).toEqual({ method: "screenshot", params: { app: { bundleId: "com.apple.TextEdit" } } });
+    // The window the chat last read, not whichever window of the app is largest.
+    expect(t.calls.at(-1)).toEqual({ method: "screenshot", params: { app: { bundleId: "com.apple.TextEdit" }, window_id: 42 } });
     t.policy.apply({ type: "disable" });
     expect(await t.agent.preview("a1")).toBeNull();
   });

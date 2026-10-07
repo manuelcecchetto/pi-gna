@@ -53,6 +53,8 @@ const APP_ACTIONS = new Set(["get_app_state", ...Object.keys(ACTION_PARAMS)]);
 
 interface Held {
   name: string;
+  /** The window of the chat's latest state of this app: what it is looking at, and what a preview shows. */
+  windowId?: number;
   idle?: ReturnType<typeof setTimeout>;
 }
 
@@ -136,7 +138,8 @@ export class ComputerAgent {
     const [bundleId, held] = [...session.apps].at(-1) ?? [];
     if (!bundleId || !held || this.denied(bundleId, held.name) || this.locks.get(bundleId) !== handle) return null;
     try {
-      const shot = await this.service.call("screenshot", { app: { bundleId } });
+      // The window the chat last read, not the app's largest one: Chrome with a second window showed the wrong page.
+      const shot = await this.service.call("screenshot", { app: { bundleId }, ...(held.windowId === undefined ? {} : { window_id: held.windowId }) });
       // The chat may have released the app while the helper was capturing.
       return session.apps.has(bundleId) ? { mimeType: "image/jpeg", data: shot.jpeg, app: held.name } : null;
     } catch {
@@ -222,7 +225,7 @@ export class ComputerAgent {
         }
         await guard(this.begin(handle, session, target));
         this.touch(handle, session, target.bundleId);
-        return await guard(this.act(action, body, target));
+        return await guard(this.act(action, body, target, session.apps.get(target.bundleId)));
       } finally {
         this.touch(handle, session, target.bundleId);
         if (!session.apps.has(target.bundleId) && this.locks.get(target.bundleId) === handle) this.locks.delete(target.bundleId);
@@ -333,7 +336,7 @@ export class ComputerAgent {
     if (this.locks.get(bundleId) === handle) this.locks.delete(bundleId);
   }
 
-  private async act(action: string, body: Record<string, unknown>, target: Target): Promise<ComputerResult> {
+  private async act(action: string, body: Record<string, unknown>, target: Target, held?: Held): Promise<ComputerResult> {
     const app = { bundleId: target.bundleId };
     const info = { name: target.name, bundleId: target.bundleId };
     let summary = "";
@@ -349,6 +352,7 @@ export class ComputerAgent {
       summary = `${action} done${result.method ? ` (${result.method})` : ""}${result.target ? `, keys went to ${result.target}` : ""}${result.settled === false ? "; the app was still busy" : ""}.\n\n`;
     }
     const state = await this.service.call("get_app_state", { app, disable_diff: action === "get_app_state" ? body.disable_diff === true : undefined });
+    if (held) held.windowId = state.windowId;
     const result: ComputerResult = { text: summary + state.text, app: info };
     // The window the tree came from, not the app's largest one (TextEdit with several documents shows the difference).
     if (action === "get_app_state" || body.screenshot === true) {
