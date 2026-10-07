@@ -613,7 +613,13 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   (or resumes from its session file) when a client shows the plan (`atp.orchestrator`, a client lease on the chat),
   without a model call, and idle ones stop when that client leaves (`atp.releaseOrchestrators`; busy ones once they
   finish, unless a client is back in them). New ATP opens the same composer with the architect skills; the chat that writes the plan
-  becomes its orchestrator.
+  becomes its orchestrator. That chat works in a git worktree of its own (`Atp.newPlanCwd`; `atpWorktree` in
+  `worktree.ts`, branch `pigna/atp-<id>`, laid out like a card's under `~/.pi-gna/worktrees/<id>/`), reusing one that
+  holds no plan and no change (fast-forwarded to the checkout's HEAD); outside git or before a first commit it writes in
+  place. The project's plans include those worktrees' plans that the checkout has no copy of at the same relative path
+  (a worktree's copies of committed plans are the checkout's), and their `NEW_PLAN_DIR` is watched too. A plan's run and
+  orchestrator work where the plan is (`checkoutOf` in `shared/board.ts`), so a worktree plan's workers commit on its
+  branch; merging it back is yours.
 - **The page** (`components/Atp.tsx`, `page.kind === "atp"`, keyed by project): a header breadcrumb (project, then
   the plan; `PlanSwitch` opens a menu of the project's plans with their progress, in place of an always-on rail), the
   plan's bar (status counts that cycle through their nodes, Start/Stop/Resume, the run's last note), the graph, a

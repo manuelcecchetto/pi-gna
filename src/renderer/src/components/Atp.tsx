@@ -1040,6 +1040,9 @@ function NewPlanIntro({ cwd, inset }: { cwd: string; inset: number }) {
     const session = handle ? state.sessions[handle] : undefined;
     return Boolean(session && (session.items.length > 0 || session.running));
   });
+  // The architect works in a git worktree of the project (none outside git), so the plan stays off the checkout.
+  const where = useApp((state) => (handle ? state.sessions[handle]?.cwd : undefined));
+  const home = window.studio.homeDir;
   if (talked) return <div className="flex-1" />;
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-10 text-center" style={{ paddingBottom: inset }}>
@@ -1048,7 +1051,13 @@ function NewPlanIntro({ cwd, inset }: { cwd: string; inset: number }) {
         Describe what to build in the composer below. The architect asks what it needs, then writes the plan to{" "}
         <span className="font-mono text-[12px]">
           {baseName(cwd)}/{NEW_PLAN_DIR}/&lt;name&gt;.atp.json
-        </span> as a DRAFT. It shows up here; review it, then start it.
+        </span>{" "}
+        {where && where !== cwd && (
+          <>
+            in its own git worktree (<span className="font-mono text-[12px]">{tildify(where, home)}</span>), where the plan also runs,{" "}
+          </>
+        )}
+        as a DRAFT. It shows up here; review it, then start it.
       </p>
     </div>
   );

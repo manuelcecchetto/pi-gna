@@ -2,6 +2,7 @@
 // off your checkout until you merge it; a lament's Fix chats do the same, keyed by the lament's id (lament and card
 // ids are both six random characters). The worktree lives outside the project (shared/board.ts worktreeCwd) and
 // stays until you remove it (`git worktree remove`): the chat reopens there, and a second Resolve reuses it.
+// A new ATP plan's architect works in one too, on a pigna/atp-<id> branch (atpWorktree; Atp.newPlanCwd).
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -9,6 +10,8 @@ import { worktreeCwd } from "../shared/board";
 import type { CardWorktree } from "../shared/ipc";
 
 const BRANCHES = "pigna/";
+/** The branches of new ATP plans' worktrees: pigna/atp-<id>, which no card's branch (pigna/<card id>-…) can be. */
+export const ATP_BRANCHES = `${BRANCHES}atp-`;
 const SLUG = 40;
 
 const pending = new Map<string, Promise<CardWorktree | null>>();
@@ -19,8 +22,18 @@ const pending = new Map<string, Promise<CardWorktree | null>>();
  * waits for the first to make the worktree and then reuses it.
  */
 export function cardWorktree(project: string, card: { id: string; title: string }, home = homedir()): Promise<CardWorktree | null> {
-  const key = worktreeCwd(home, card.id, project);
-  const run = (pending.get(key) ?? Promise.resolve(null)).catch(() => null).then(() => prepare(project, card, home));
+  return serialized(project, card.id, home, () => prepare(project, card.id, [`${BRANCHES}${card.id}`, `${BRANCHES}${card.id}-*`], branchName(card), home));
+}
+
+/** A worktree for a new ATP plan, keyed by a fresh id (a card's id shape, so projectOf maps its chats back). */
+export function atpWorktree(project: string, id: string, home = homedir()): Promise<CardWorktree | null> {
+  const branch = `${ATP_BRANCHES}${id}`;
+  return serialized(project, id, home, () => prepare(project, id, [branch], branch, home));
+}
+
+function serialized(project: string, id: string, home: string, make: () => Promise<CardWorktree | null>): Promise<CardWorktree | null> {
+  const key = worktreeCwd(home, id, project);
+  const run = (pending.get(key) ?? Promise.resolve(null)).catch(() => null).then(make);
   pending.set(key, run);
   const settle = () => {
     if (pending.get(key) === run) pending.delete(key);
@@ -29,7 +42,8 @@ export function cardWorktree(project: string, card: { id: string; title: string 
   return run;
 }
 
-async function prepare(project: string, card: { id: string; title: string }, home: string): Promise<CardWorktree | null> {
+/** The worktree of `id`, on the first existing branch matching `patterns` (an earlier, removed worktree's), else on `fresh` from HEAD. */
+async function prepare(project: string, id: string, patterns: string[], fresh: string, home: string): Promise<CardWorktree | null> {
   // The project's path below the repository's top folder ("" at the top). In C, so the error reads the same in any language.
   const prefix = await git(project, ["rev-parse", "--show-prefix"], { LC_ALL: "C" }).catch((error: Error) => {
     if (/not a git repository/.test(error.message)) return null;
@@ -41,16 +55,16 @@ async function prepare(project: string, card: { id: string; title: string }, hom
   const sub = prefix.replace(/\/$/, "");
   if (sub && !project.endsWith(`/${sub}`)) throw new Error(`${project} links into its git repository; open the repository's folder itself`);
   const top = sub ? project.slice(0, -sub.length - 1) : project;
-  const dir = worktreeCwd(home, card.id, top);
-  const cwd = worktreeCwd(home, card.id, project);
+  const dir = worktreeCwd(home, id, top);
+  const cwd = worktreeCwd(home, id, project);
   const dirty = (await git(project, ["status", "--porcelain"])) !== "";
 
   if (await isWorktree(dir)) return { cwd, branch: await git(dir, ["rev-parse", "--abbrev-ref", "HEAD"]), created: false, dirty };
-  // Forget worktrees whose folders were deleted: one of them may hold this path or the card's branch.
+  // Forget worktrees whose folders were deleted: one of them may hold this path or the branch.
   await git(project, ["worktree", "prune"]);
-  const branches = await git(project, ["for-each-ref", "--format=%(refname)", `refs/heads/${BRANCHES}${card.id}`, `refs/heads/${BRANCHES}${card.id}-*`]);
+  const branches = await git(project, ["for-each-ref", "--format=%(refname)", ...patterns.map((pattern) => `refs/heads/${pattern}`)]);
   const existing = branches.split("\n").find(Boolean)?.replace(/^refs\/heads\//, "");
-  const branch = existing ?? branchName(card);
+  const branch = existing ?? fresh;
   await git(project, existing ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, "HEAD"]);
   return { cwd, branch, created: true, dirty };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, type Column, cardOfChat, cardsOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
+import { applyOp, type Board, BoardError, type BoardOp, boardConflict, cardLinkId, checkoutOf, type Column, cardOfChat, cardsOfChat, emptyBoard, freshId, LIMITS, parseBoard, projectOf, worktreeCwd } from "./board";
 
 const run = (ops: BoardOp[], board = emptyBoard()) => ops.reduce((current, op, index) => applyOp(current, op, 1000 + index), board);
 const add = (id: string, column: Column = "todo"): Extract<BoardOp, { type: "add" }> => ({
@@ -179,6 +179,15 @@ describe("card worktrees", () => {
     for (const other of ["/Users/me/.pi-gna/worktrees/abc123", "/Users/me/.pi-gna/worktrees/notes/x", "/Users/me/.pi-gna/worktrees//x"]) {
       expect(projectOf(other)).toBe(other);
     }
+  });
+
+  it("run work on a file where the file is: the project's folder in its worktree, else the project", () => {
+    const project = "/Users/me/Code/app";
+    expect(checkoutOf(`/Users/me/.pi-gna/worktrees/abc123${project}/docs/p.atp.json`, project)).toBe(`/Users/me/.pi-gna/worktrees/abc123${project}`);
+    expect(checkoutOf(`${project}/docs/p.atp.json`, project)).toBe(project);
+    // Another project's worktree, or no card id: not this project's.
+    expect(checkoutOf("/Users/me/.pi-gna/worktrees/abc123/Users/me/Code/other/p.atp.json", project)).toBe(project);
+    expect(checkoutOf(`/Users/me/.pi-gna/worktrees/notes${project}/p.atp.json`, project)).toBe(project);
   });
 });
 
