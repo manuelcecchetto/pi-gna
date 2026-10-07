@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { projectOf } from "../../../shared/board";
 import { effectiveTheme, type Themes } from "../../../shared/themes";
+import { dataUrlBlob } from "../lib/theme";
 import { useThemeAppearance } from "../lib/theme-hooks";
 import { store, useApp } from "../state/app";
 
@@ -15,7 +16,8 @@ export const useScreenProject = (): string | undefined =>
     return cwd ? projectOf(cwd) : undefined;
   });
 
-/** A project theme's wallpaper or logo (data: URL), fetched again only when that project's theme changes. */
+/** A project theme's wallpaper or logo as a blob: URL (main sends a data: URL, too long for a CSS variable: see
+ * dataUrlBlob), fetched again only when that project's theme changes and revoked when it does. */
 export function useThemeImage(themes: Themes, project: string | undefined, kind: "wallpaper" | "logo"): string | undefined {
   const theme = project ? themes.projects[project] : undefined;
   const path = kind === "logo" ? theme?.logo?.path : theme?.wallpaper && "path" in theme.wallpaper ? theme.wallpaper.path : undefined;
@@ -25,9 +27,16 @@ export function useThemeImage(themes: Themes, project: string | undefined, kind:
     if (!key || !project) return;
     const request = window.studio.themes.image(project, kind).catch(() => null);
     let live = true;
-    void request.then((url) => live && setLoaded({ key, url: url ?? undefined }));
+    let objectUrl: string | undefined;
+    void request.then((url) => {
+      if (!live) return;
+      const blob = url ? dataUrlBlob(url) : null;
+      objectUrl = blob ? URL.createObjectURL(blob) : undefined;
+      setLoaded({ key, url: objectUrl });
+    });
     return () => {
       live = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [key, project, kind]);
   return key && loaded?.key === key ? loaded.url : undefined;

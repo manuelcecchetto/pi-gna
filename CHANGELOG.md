@@ -7,6 +7,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 - Inline visuals can mock UI: when an agent weighs a UI change, it can draw each treatment as a clickable mock in the reply (composer fields, buttons, model chips, banners, menus, popovers that open and close, switches) in the look of the product being changed (its own colors, fonts and corners, read from its code, not pi-gna's theme), so you can compare the options before anything is built.
 - Computer Use: the agent cursor now travels along hand-tuned curves instead of a straight 0.2 s slide, and leans into its direction of travel. Pick one of six motions (Signature arc, Spring settle, Magnetic, Comet swoop, Adaptive, Classic; ported from Cua Driver) in Settings > Computer use. Moves are timed by distance and target size, and with Reduce Motion on the cursor still jumps.
+- Project wallpapers over about 1.5 MB now show behind a new chat on desktop. The window put the image inline in a CSS variable, which Chromium drops past 2 MiB; it now uses a short blob: URL.
 
 ## 0.6.8 - 2026-10-07
 
