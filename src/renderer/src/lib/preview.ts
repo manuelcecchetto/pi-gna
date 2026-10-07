@@ -1,6 +1,6 @@
 // Renderer side of file previews: opening a path in a preview tab, the Open file dialog, display helpers.
 import { File, FileCode, FileImage, FileSpreadsheet, FileText, Film, Music, Presentation, type IconComponent } from "../components/icons";
-import type { Board } from "../../../shared/board";
+import { type Board, cardLinkLabel } from "../../../shared/board";
 import { kindFor, parseLinkTarget, type PreviewKind, type PreviewOpenOptions } from "../../../shared/preview";
 import { showBrowser, store, toast } from "../state/app";
 import type { ChatLinks } from "./chat-ui";
@@ -227,7 +227,7 @@ export function openFileLink(el: HTMLElement, event: { metaKey: boolean; ctrlKey
   links.openFile(path, { line: target?.line, newTab: event.metaKey || event.ctrlKey });
 }
 
-/** Card links of a rendered answer (`[card x](q6ip3j)`): the card's title and column as tooltip; unknown ids read as missing. */
+/** Card links of a rendered answer (`[card x](q6ip3j)`): the card's title replaces the agent's label, column and id go in the tooltip; unknown ids read as missing. */
 export function resolveCardLinks(root: HTMLElement | null, { cards }: Board): void {
   if (!root) return;
   for (const el of root.querySelectorAll<HTMLElement>("[data-card]:not([data-checked])")) {
@@ -243,7 +243,9 @@ export function resolveCardLinks(root: HTMLElement | null, { cards }: Board): vo
       continue;
     }
     el.dataset.checked = "1";
-    el.title = `${card.title} · ${card.column.replace("_", " ")}`;
+    const { text, tip } = cardLinkLabel(card);
+    el.textContent = text;
+    el.title = tip;
   }
 }
 
