@@ -29,6 +29,11 @@ describe("visual kit vocabulary", () => {
     for (const name of ["c1", "c8", "heat-0", "heat-4", "fg", "accent"]) expect(light, name).toContain(`--${name}:`);
     const js = read("visual/kit.js");
     for (const [, helper] of prompt.matchAll(/kit\.(\w+)\(/g)) expect(js, helper).toMatch(new RegExp(`\\b${helper}: function`));
+    // Mock interactions the prompt promises without a script.
+    for (const hook of ["data-toggle", "data-dismiss", "Escape", '"switch"']) {
+      expect(prompt.includes(hook.replaceAll('"', "")), hook).toBe(true);
+      expect(js, hook).toContain(hook);
+    }
   });
 });
 

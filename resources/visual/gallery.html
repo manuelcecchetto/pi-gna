@@ -56,6 +56,30 @@
       </div>
       <h2>Controls</h2>
       <div class="controls"><label>Size <input type="range" min="0" max="10" value="4" /></label><select><option>One</option><option>Two</option></select><button>Button</button></div>
+      <h2>UI mock (neutral default: not the app theme)</h2>
+      <div class="head"><span>2. One merged banner</span><span class="hint">click the meter, Dismiss, the switch, Send</span></div>
+      <div class="mock">
+        <div class="banner" id="g-banner"><span>Settled</span><span class="muted">273k tokens from earlier</span><span class="end"><button class="btn ghost">Compact</button><button class="btn ghost" data-dismiss>Dismiss</button></span></div>
+        <div class="banner accent" id="g-sent" hidden><span>Compacted</span><span class="muted">sent with a 12k summary</span></div>
+        <textarea class="field" rows="2" placeholder="Ask anything, @tag files, / for commands"></textarea>
+        <div class="row">
+          <span class="chip caret">Opus 5.5</span><span class="chip caret">High · 1M</span>
+          <label class="row hint"><button class="switch on" aria-checked="true"></button>Full access</label>
+          <span class="anchor" style="margin-left:auto"><button class="btn ghost" data-toggle="g-meter">27%</button>
+            <div id="g-meter" class="popover up end" hidden><b>273k / 1M tokens</b><p class="muted">Idle 3h, so the next turn re-reads all of it.</p><button class="btn primary">Compact</button></div></span>
+          <span class="anchor"><button class="btn primary" data-toggle="g-send">Send &#9662;</button>
+            <div id="g-send" class="popover menu up end" hidden>
+              <button class="on" data-toggle="g-send g-sent g-banner">Compact and send<span class="hint">Summarize 273k tokens first</span><span class="kbd">Enter</span></button>
+              <hr />
+              <button data-toggle="g-send">Send with full history<span class="hint">Re-reads everything</span><span class="kbd">&#8997; Enter</span></button>
+            </div></span>
+        </div>
+      </div>
+      <h2>Menu and field (a dark product's values set on the mock)</h2>
+      <div class="mock row" style="flex-direction:row;align-items:flex-start;color-scheme:dark;--canvas:#0f0f12;--panel:#18181c;--raised:#1f1f24;--sunken:#141418;--line:#2a2a31;--fg:#ececf1;--muted:#9a9aa6;--faint:#6b6b76;--accent:#7c5cff;--accent-soft:#7c5cff26;--radius:12px;--font-sans:Georgia,serif">
+        <div class="menu"><button class="on">Open in VS Code<span class="kbd">&#8984;O</span></button><button>Setup worktree</button><hr /><button>Changes<span class="hint">+40 -8</span></button></div>
+        <div class="field" data-placeholder="An empty div field shows its data-placeholder" style="flex:1"></div>
+      </div>
       <h2>SVG</h2>
       <svg viewBox="0 0 240 60" width="240" height="60"><rect x="4" y="10" width="80" height="40" rx="4"/><text x="44" y="35" text-anchor="middle">client</text><path d="M84 30h70"/><rect x="154" y="10" width="80" height="40" rx="4"/><text x="194" y="35" text-anchor="middle">server</text></svg>
     </div>

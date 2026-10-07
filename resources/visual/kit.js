@@ -50,7 +50,14 @@
   var last = -1;
   var pending = false;
   function reportHeight() {
-    var px = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    var px = document.documentElement.getBoundingClientRect().height;
+    // An open popover is out of flow: grow the frame to hold it, or the frame would clip it.
+    var pops = document.querySelectorAll(".popover");
+    for (var i = 0; i < pops.length; i++) {
+      var r = pops[i].getBoundingClientRect();
+      if (r.height) px = Math.max(px, r.bottom + scrollY + 4);
+    }
+    px = Math.ceil(px);
     if (px !== last) {
       last = px;
       send({ type: "height", px: px });
@@ -107,6 +114,51 @@
       }
     }
   }
+
+  // Mock interactions without scripts. data-toggle="a b" flips the hidden state of each id (open a menu, swap a mock between
+  // two states); a click outside an open .popover with an id closes it, as does Escape, but only in the same .mock, so
+  // the states the other treatments show stay as drawn. data-dismiss="id" hides that element, an empty
+  // data-dismiss its nearest banner, popover, menu or card. A .switch flips .on and fires a bubbling "switch" event.
+  function closePopovers(from, except) {
+    var scope = (from && from.closest && from.closest(".mock")) || document;
+    var pops = scope.querySelectorAll(".popover:not([hidden])");
+    for (var i = 0; i < pops.length; i++) if (pops[i].id && pops[i] !== except && !pops[i].contains(from)) pops[i].hidden = true;
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    var toggle = t.closest("[data-toggle]");
+    var dismiss = t.closest("[data-dismiss]");
+    var sw = t.closest(".switch");
+    var opened = null;
+    if (toggle) {
+      var ids = toggle.getAttribute("data-toggle").split(/\s+/);
+      for (var i = 0; i < ids.length; i++) {
+        var el = ids[i] && document.getElementById(ids[i]);
+        if (!el) continue;
+        el.hidden = !el.hidden;
+        if (!el.hidden && el.classList.contains("popover")) opened = el;
+      }
+    }
+    if (dismiss) {
+      var id = dismiss.getAttribute("data-dismiss");
+      var target = id ? document.getElementById(id) : dismiss.closest(".banner, .popover, .menu, .card");
+      if (target) target.hidden = true;
+    }
+    if (sw) {
+      var on = !sw.classList.contains("on");
+      sw.classList.toggle("on", on);
+      sw.setAttribute("aria-checked", String(on));
+      sw.dispatchEvent(new CustomEvent("switch", { bubbles: true, detail: on }));
+    }
+    closePopovers(t, opened);
+    reportHeight(); // a popover opening or closing changes no layout the observer sees
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    closePopovers(document.activeElement, null);
+    reportHeight();
+  });
 
   // Tooltips: any element with data-tip (SVG marks included); the text follows the pointer and stays inside the frame.
   var tip = document.createElement("div");

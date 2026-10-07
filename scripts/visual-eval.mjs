@@ -15,6 +15,7 @@ export const CASES = [
   { id: "S3", should: true, prompt: "Show the timeline of what happens when an ATP plan node fails, from claim to the runner moving on. Read the ATP code in this repo (resources/atp, src/main) for the real states and order." },
   { id: "S4", should: true, prompt: "Show test coverage per module (src/main, src/renderer, src/shared) from real numbers: run the tests with coverage if available, otherwise count test files and tests per module with shell commands." },
   { id: "S5", should: true, prompt: "Draw the state machine of a chat's lifecycle in pi-gna (idle, streaming, tool running, error, etc.). Base it on the code in src/main/session-host.ts and src/renderer." },
+  { id: "S6", should: true, prompt: "The composer in this repo could show how full the context window is. Mock three treatments for where that hint could live (a banner over the composer, a meter in the composer's toolbar with a popover, a choice at send time), based on the real composer in src/renderer, and recommend one. Do not edit files." },
   { id: "N1", should: false, prompt: "What port does the Vite dev server use in this repo? Answer in one line." },
   { id: "N2", should: false, prompt: "Fix this typo in my sentence: 'The quick brown fox jumsp over the lazy dog.'" },
   { id: "N3", should: false, prompt: "Write a TypeScript function debounce(fn, ms) with proper generics." },
@@ -34,7 +35,9 @@ const BAD = [
 export function score(text) {
   const frags = [...text.matchAll(FENCE)].map((m) => m[1]);
   const flags = new Set();
-  for (const f of frags) for (const [re, name] of BAD) if (re.test(f)) flags.add(name);
+  // A UI mock pictures the product being changed, so its own colors, fonts and styles are expected there.
+  const mockOk = new Set(["style block", "inline color/font/bg style", "hardcoded color"]);
+  for (const f of frags) for (const [re, name] of BAD) if (re.test(f) && !(mockOk.has(name) && /class="[^"]*\bmock\b/.test(f))) flags.add(name);
   const prose = text.replace(FENCE, "").trim();
   return { visuals: frags.length, kb: +(frags.join("").length / 1024).toFixed(1), proseChars: prose.length, flags: [...flags], frags };
 }

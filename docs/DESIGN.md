@@ -1160,13 +1160,23 @@ Frame to parent: `ready`, `rendered`, `height { px }` (ResizeObserver, per anima
   iframe whose scheme differs from its document's gets one). Under it, a row of actions appears on hover (always on touch):
   Show all / Collapse, Expand, Source, Copy.
 - Height follows `height` messages from 40 px (sent right after a render too: the observer waits for a frame, which a
-  hidden window never draws). No inner scroll in the shell; the parent clamps at **720 px** (`MAX_H`) with a fade and Show
+  hidden window never draws). The height is the document's, or the bottom of a visible `.popover` when that is lower: an
+  absolute popover is out of flow and would be clipped, and the observer does not see it open, so kit.js re-reports after
+  every click and Escape. No inner scroll in the shell; the parent clamps at **720 px** (`MAX_H`) with a fade and Show
   all. Expand restyles the same iframe to fill the window over a backdrop (Esc, Close or a click outside returns it);
   moving the iframe would reload it and lose its state. Width is the message column.
 - The kit (`kit.css`, `kit.js`) is bundled: pi-gna's theme tokens, a categorical palette (`--c1`…`--c8`) and a heat ramp
   (`--heat-0`…`--heat-4`), both with light variants, and the component vocabulary (`stack row grid card stats stat head tabs
-  bars bar split scale legend badge callout table num steps timeline controls hint muted mono`), so the agent writes
-  structure, not styling. `kit.js` wires `.tabs` (`.on`, `data-show` panels, a `tab` event), `data-tip` tooltips, and
+  bars bar split scale legend badge callout table num steps timeline controls hint muted mono`, plus UI-mock pieces `mock field
+  btn chip kbd banner menu anchor popover switch`), so the agent writes structure, not styling. UI mocks follow T3 Code's
+  in-thread mocks of UI treatments: the prompt asks for one `mock` per treatment of a UI change, with the real copy, so they
+  can be compared and clicked in the reply. A mock pictures the product being changed, not pi-gna, so `.mock` redeclares the
+  kit tokens with a neutral light product look (theme pushes on `:root` never reach inside), and the agent sets the
+  product's real values from its code on the `.mock` (same token names plus `--radius`, `--accent-fg`, `color-scheme`);
+  literal colors and a scoped `<style>` are allowed there only (`visual-eval.mjs` does not flag them in a mock). A
+  `.popover` floats only from an `.anchor`; elsewhere it stays in the flow, so a stray one cannot cover the previous mock. `kit.js` wires `.tabs` (`.on`, `data-show` panels, a `tab` event), mock
+  interactions without script (`data-toggle="id…"` flips `hidden`, an outside click or Escape closes an open `.popover` that
+  has an id, `data-dismiss` hides the nearest banner/popover/menu/card, `.switch` flips `.on` and fires `switch`), `data-tip` tooltips, and
   `window.kit` (`color(i)`, `heat(t)`, `fmt(n)`, `tip(html, x, y)`) for scripted charts. It renders a fragment once: the
   parent re-sends `render` until acked, and a second run would redeclare the fragment's top-level `const`s and throw.
   `resources/visual/gallery.html` shows every component.

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Inline visuals can mock UI: when an agent weighs a UI change, it can draw each treatment as a clickable mock in the reply (composer fields, buttons, model chips, banners, menus, popovers that open and close, switches) in the look of the product being changed (its own colors, fonts and corners, read from its code, not pi-gna's theme), so you can compare the options before anything is built.
+
 ## 0.6.8 - 2026-10-07
 
 - Phone: going back from a file or the browser opened from a chat returns to where you were reading, instead of jumping to the end of the chat.

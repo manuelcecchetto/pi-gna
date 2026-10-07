@@ -3,7 +3,7 @@
   color-scheme: var(--theme-mode, dark light);
   --canvas: #1b1b1d; --panel: #222225; --raised: #2b2b2f; --sunken: #161618;
   --line: rgb(255 255 255 / 0.08); --fg: #ececef; --muted: #a1a1aa; --faint: #6e6e78;
-  --accent: #5b8def; --accent-soft: rgb(91 141 239 / 0.16); --ok: #5fd38d; --bad: #ff6b6b; --warn: #e5c07b;
+  --accent: #5b8def; --accent-fg: #fff; --accent-soft: rgb(91 141 239 / 0.16); --radius: 8px; --ok: #5fd38d; --bad: #ff6b6b; --warn: #e5c07b;
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
   /* Categorical palette (series, groups) and a cool-to-hot ramp (heat maps, intensity). Readable on both themes. */
@@ -116,3 +116,52 @@ svg text { fill: currentColor; stroke: none; }
 .controls input[type="range"] { accent-color: var(--accent); }
 .controls select, .controls input, button { font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
 button { cursor: pointer; }
+/* UI mocks: pictures of the product being changed (a composer, a banner, a menu), so treatments of a UI change can be drawn
+ * and clicked in the thread. A mock is not pi-gna: it drops the app theme for a neutral product look, and the fragment sets
+ * the product's real values (these same token names, --radius, color-scheme) on the .mock. kit.js wires data-toggle,
+ * data-dismiss and .switch. */
+.mock {
+  color-scheme: light;
+  --canvas: #ffffff; --panel: #f7f7f8; --raised: #ffffff; --sunken: #f3f4f6; --line: rgb(0 0 0 / 0.12);
+  --fg: #111827; --muted: #6b7280; --faint: #9ca3af; --accent: #2563eb; --accent-fg: #ffffff; --accent-soft: rgb(37 99 235 / 0.1);
+  --secondary: var(--accent); --ok: #16a34a; --bad: #dc2626; --warn: #d97706; --radius: 8px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --font-mono: ui-monospace, Menlo, Consolas, monospace;
+  position: relative; display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px;
+  background: var(--canvas); color: var(--fg); font-family: var(--font-sans); border: 1px solid var(--line); border-radius: calc(var(--radius) + 2px);
+}
+.field { display: block; width: 100%; min-height: 32px; font: inherit; color: var(--fg); background: var(--sunken); border: 1px solid var(--line); border-radius: var(--radius, 8px); padding: 6px 10px; resize: none; outline: none; }
+.field:focus { border-color: var(--accent); }
+.field::placeholder, .field:empty::before { color: var(--faint); }
+.field:empty::before { content: attr(data-placeholder); }
+.btn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1.4; padding: 3px 9px; border-radius: calc(var(--radius, 8px) - 2px); white-space: nowrap; }
+.btn:hover { border-color: var(--faint); }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--accent-fg, #fff); }
+.btn.ghost { background: none; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--fg); background: var(--raised); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); background: none; white-space: nowrap; }
+.chip.caret::after { content: "\25BE"; font-size: 9px; color: var(--faint); }
+.kbd { display: inline-block; font: 10px/1.5 var(--font-mono); color: var(--faint); padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; }
+.banner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius, 8px); background: var(--panel); }
+.banner > :first-child { font-weight: 600; }
+.banner > .end { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.banner.ok { border-color: color-mix(in oklab, var(--ok) 40%, transparent); } .banner.bad { border-color: color-mix(in oklab, var(--bad) 40%, transparent); }
+.banner.warn { border-color: color-mix(in oklab, var(--warn) 40%, transparent); } .banner.accent { border-color: transparent; background: var(--accent-soft); }
+/* Menu: rows of a title, an optional hint under it and an optional kbd on the right; .on marks the highlighted row. */
+.menu { display: flex; flex-direction: column; min-width: 180px; padding: 4px; font-size: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius, 8px); }
+.menu > * { display: grid; grid-template-columns: 1fr auto; column-gap: 12px; align-items: baseline; text-align: left; padding: 5px 8px; border: 0; border-radius: 5px; background: none; color: var(--fg); }
+.menu > * > .hint, .menu > * > .muted { grid-column: 1; }
+.menu > * > .kbd { grid-column: 2; grid-row: 1; }
+.menu > :hover, .menu > .on { background: var(--accent-soft); }
+.menu > hr { display: block; height: 0; padding: 0; margin: 4px 0; border-top: 1px solid var(--line); }
+/* Popover: a child of an .anchor floats from it, below by default, .up above, .end aligned right. Anywhere else it sits in
+ * the flow where it is written, so a stray one cannot float over the previous mock. */
+.anchor { position: relative; display: inline-flex; }
+.popover { min-width: 200px; max-width: min(320px, 90vw); padding: 8px 10px; font-size: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: var(--radius, 8px); box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); }
+.popover.menu { padding: 4px; }
+.anchor > .popover { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; width: max-content; }
+.anchor > .popover.up { top: auto; bottom: calc(100% + 6px); }
+.anchor > .popover.end { left: auto; right: 0; }
+.switch { position: relative; width: 28px; height: 16px; padding: 0; border-radius: 999px; background: var(--raised); border: 1px solid var(--line); vertical-align: middle; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); transition: left 0.12s; }
+.switch.on { background: var(--accent); border-color: transparent; }
+.switch.on::after { left: 14px; background: var(--accent-fg, #fff); }

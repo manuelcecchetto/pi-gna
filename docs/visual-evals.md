@@ -20,6 +20,7 @@ Outputs land in `/tmp/vis-eval/<label>/` (one `.md` per case). The script scores
 | S3 | visual | Timeline of a failed ATP plan node, from the real ATP code |
 | S4 | visual | Test coverage per module from real numbers (`@vitest/coverage-v8` is not installed, so models count tests) |
 | S5 | visual | State machine of a chat's lifecycle |
+| S6 | visual | Three UI mocks of a context-window hint in the real composer (kit mock classes, `data-toggle`) |
 | N1 | none | One-line question (Vite port) |
 | N2 | none | Fix a typo |
 | N3 | none | `debounce` snippet |
@@ -60,3 +61,10 @@ Changes to `resources/pigna-visual-prompt.md`:
 Kit CSS was not changed. Known cosmetic issue: `steps` items that wrap onto their own line still show a trailing arrow (seen in S1 for both models).
 
 Residual variance: one model run per case; a different seed may flip a borderline case (S2, S4 were the flaky ones for Sonnet before the second edit).
+
+## UI mocks (S6)
+
+Sonnet 5.5, medium, after the mock vocabulary was added: one 3 to 3.7 KB visual with three treatments of the real composer and a recommendation in prose, no flags. Two runs drove kit changes rather than prompt rules:
+
+1. A first prompt let mocks follow pi-gna's theme. A mock pictures the product being changed, so `.mock` now resets the tokens to a neutral product look and the agent sets the product's values; the second run read them from `src/renderer/src/styles.css` and set them on each mock.
+2. Both runs drew popovers shown open, once with `popover up` outside any `anchor`: it floated over the previous treatment, and an outside click in one mock closed another mock's open popover. A `popover` now floats only from an `anchor`, and outside clicks and Escape close popovers only within the same `mock`.
