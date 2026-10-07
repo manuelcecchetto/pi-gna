@@ -1,5 +1,6 @@
 // The Projects and Chats lists, from the host's session index and the live chats' attention summaries. Order is the
-// desktop sidebar's (renderer/src/lib/projects.ts): pinned folders first, then by latest activity.
+// desktop sidebar's (renderer/src/lib/projects.ts): pinned folders first, then by latest activity. Hidden projects
+// show only in search results.
 import type { AttentionSummary } from "../shared/host-api";
 import type { ProjectGroup } from "../shared/ipc";
 import type { Attention } from "../shared/session-state";
@@ -14,6 +15,7 @@ const RANK: Record<Attention, number> = { waiting: 4, running: 3, failed: 2, unr
 export interface ProjectItem {
   cwd: string;
   pinned: boolean;
+  hidden: boolean;
   chats: number;
   /** The strongest mark among the project's live chats; absent when none needs you. */
   attention?: Attention;
@@ -46,11 +48,12 @@ const strongest = (levels: (Attention | undefined)[]): Attention | undefined =>
 
 const bySessionPath = (attention: Record<string, AttentionSummary>) => new Map(Object.values(attention).flatMap((s) => (s.sessionPath ? [[s.sessionPath, s] as const] : [])));
 
-export function projectItems(projects: ProjectGroup[], pins: string[], attention: Record<string, AttentionSummary>, seen?: SeenMarks): ProjectItem[] {
+export function projectItems(projects: ProjectGroup[], pins: string[], attention: Record<string, AttentionSummary>, seen?: SeenMarks, hidden: string[] = []): ProjectItem[] {
   const live = bySessionPath(attention);
-  return projectViews(projects, [], pins).map((view) => ({
+  return projectViews(projects, [], pins, hidden).map((view) => ({
     cwd: view.cwd,
     pinned: view.pinned,
+    hidden: view.hidden,
     chats: view.rows.length,
     attention: strongest(view.rows.map((row) => marked(row.summary && live.get(row.summary.path), seen))),
     titles: view.rows.flatMap((row) => (row.summary ? [row.summary.title] : [])),
@@ -68,9 +71,9 @@ export function chatItems(projects: ProjectGroup[], pins: string[], attention: R
   });
 }
 
-/** Projects whose name, path or any chat title matches; the unfiltered list for an empty query. */
+/** Projects whose name, path or any chat title matches; for an empty query, all but the hidden ones. */
 export function searchProjects(items: ProjectItem[], query: string): ProjectItem[] {
-  if (!query.trim()) return items;
+  if (!query.trim()) return items.filter((item) => !item.hidden);
   return fuzzyFilter(items, query, (item: ProjectItem) => `${item.cwd} ${item.titles.join(" ")}`, items.length);
 }
 

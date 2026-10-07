@@ -89,6 +89,8 @@ export function ProjectSheet({ title, actions, onAction, onClose }: { title: str
     "new-chat": <Item key="new" testId="act-new-chat" icon={<SquarePen size={17} />} label="New chat" onClick={() => onAction("new-chat")} />,
     pin: <Item key="pin" testId="act-pin" icon={<Pin size={17} />} label="Pin project" onClick={() => onAction("pin")} />,
     unpin: <Item key="unpin" testId="act-unpin" icon={<PinOff size={17} />} label="Unpin project" onClick={() => onAction("unpin")} />,
+    hide: <Item key="hide" testId="act-hide" icon={<EyeOff size={17} />} label="Hide project" onClick={() => onAction("hide")} />,
+    unhide: <Item key="unhide" testId="act-unhide" icon={<Eye size={17} />} label="Unhide project" onClick={() => onAction("unhide")} />,
     board: <Item key="board" testId="act-board" icon={<SquareKanban size={17} />} label="Kanban board" onClick={() => onAction("board")} />,
     laments: <Item key="laments" testId="act-laments" icon={<Angry size={17} />} label="Laments" onClick={() => onAction("laments")} />,
     github: <Item key="github" testId="act-github" icon={<GitPullRequest size={17} />} label="GitHub issues and PRs" onClick={() => onAction("github")} />,

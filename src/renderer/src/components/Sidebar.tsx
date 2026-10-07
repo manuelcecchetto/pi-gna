@@ -1,4 +1,4 @@
-import { Angry, Copy, Folder, FolderOpen, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "./icons";
+import { Angry, Copy, Eye, EyeOff, Folder, FolderOpen, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "./icons";
 import { useMemo, useRef, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
@@ -7,7 +7,7 @@ import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, attention, isDraft, strongestAttention } from "../../../shared/session-state";
 import { worstSeverity } from "../lib/laments";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
-import { type ProjectRow, type ProjectView, projectViews, togglePinnedProject, usePinnedProjects } from "../lib/projects";
+import { type ProjectRow, type ProjectView, projectViews, setProjectHidden, togglePinnedProject, useHiddenProjects, usePinnedProjects } from "../lib/projects";
 import {
   activate,
   addChatToBoard,
@@ -55,13 +55,20 @@ export function Sidebar() {
   const active = useApp((state) => (state.page ? undefined : state.active));
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
+  const hidden = useHiddenProjects();
+  const [showHidden, setShowHidden] = useState(false);
   const [dragging, setDragging] = useState(false);
   const { open: openMenu, menu } = useContextMenu();
   const home = window.studio.homeDir;
   const activeChat = active ? sessions[active]?.cwd : undefined;
   const activeCwd = activeChat && projectOf(activeChat);
 
-  const groups = useMemo(() => projectViews(projects, Object.values(sessions), pinned), [projects, sessions, pinned]);
+  const all = useMemo(() => projectViews(projects, Object.values(sessions), pinned, hidden), [projects, sessions, pinned, hidden]);
+  // Hidden projects come last and only show while you ask for them.
+  const hiddenCount = all.filter((group) => group.hidden).length;
+  // Once nothing is hidden, the next project you hide leaves the list again.
+  if (showHidden && !hiddenCount) setShowHidden(false);
+  const groups = showHidden ? all : all.filter((group) => !group.hidden);
   // You are in an empty new chat: highlight "New chat" instead of a row.
   const activeSession = active ? sessions[active] : undefined;
   const inDraft = Boolean(activeSession && isDraft(activeSession));
@@ -223,6 +230,12 @@ export function Sidebar() {
                   onMenu={openMenu}
                 />
               ))}
+              {hiddenCount > 0 && (
+                <button type="button" onClick={() => setShowHidden(!showHidden)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-faint hover:bg-raised/50 hover:text-muted">
+                  {showHidden ? <EyeOff size={14} className="shrink-0" /> : <Eye size={14} className="shrink-0" />}
+                  <span>{showHidden ? "Leave out hidden projects" : `Show ${hiddenCount} hidden project${hiddenCount === 1 ? "" : "s"}`}</span>
+                </button>
+              )}
             </nav>
             <UpdateRow />
             <div className="shrink-0 px-2 py-2">
@@ -312,7 +325,7 @@ function ProjectSection({
         <button type="button" onClick={() => onOpen(!open)} title={tildify(group.cwd, home)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left">
           {/* The folder is the disclosure mark: open while the project's chats show. */}
           {logo ? <img src={logo} alt="" className="size-4 shrink-0 object-contain" /> : open ? <FolderOpen size={16} className="shrink-0 text-muted" /> : <Folder size={16} className="shrink-0 text-muted" />}
-          <span className="truncate text-[14px] font-medium text-fg/90">{baseName(group.cwd) || "/"}</span>
+          <span className={`truncate text-[14px] font-medium ${group.hidden ? "text-faint" : "text-fg/90"}`}>{baseName(group.cwd) || "/"}</span>
           {rollup && <Indicator level={rollup} />}
         </button>
         {features.kanban && (
@@ -325,7 +338,17 @@ function ProjectSection({
             <SquareKanban size={12} />
           </button>
         )}
-        {/* Pinned projects keep their pin visible; hovering it offers to unpin. */}
+        {/* Pinned projects keep their pin visible; hovering it offers to unpin. A hidden project offers to show it again instead. */}
+        {group.hidden ? (
+          <button
+            type="button"
+            title="Unhide project"
+            onClick={() => setProjectHidden(group.cwd, false)}
+            className="rounded-md p-1 text-faint opacity-0 hover:bg-raised hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <Eye size={12} />
+          </button>
+        ) : (
         <button
           type="button"
           title={group.pinned ? "Unpin project" : "Pin project"}
@@ -342,6 +365,7 @@ function ProjectSection({
             <Pin size={12} />
           )}
         </button>
+        )}
         <button
           type="button"
           title="New chat here"
@@ -388,9 +412,14 @@ function projectMenu(group: ProjectView, features: Record<Feature, boolean>): Me
       ...(features.github ? [{ label: "GitHub issues and PRs", icon: <GitPullRequest size={13} />, onSelect: () => showPage("github", group.cwd) }] : []),
     ],
     [
-      group.pinned
-        ? { label: "Unpin project", icon: <PinOff size={13} />, onSelect: () => togglePinnedProject(group.cwd) }
-        : { label: "Pin project", icon: <Pin size={13} />, onSelect: () => togglePinnedProject(group.cwd) },
+      ...(group.hidden
+        ? [{ label: "Unhide project", icon: <Eye size={13} />, onSelect: () => setProjectHidden(group.cwd, false) }]
+        : [
+            group.pinned
+              ? { label: "Unpin project", icon: <PinOff size={13} />, onSelect: () => togglePinnedProject(group.cwd) }
+              : { label: "Pin project", icon: <Pin size={13} />, onSelect: () => togglePinnedProject(group.cwd) },
+            { label: "Hide project", icon: <EyeOff size={13} />, hint: "Its chats stay on disk", onSelect: () => setProjectHidden(group.cwd, true) },
+          ]),
       { label: "Copy path", icon: <Copy size={13} />, onSelect: () => void navigator.clipboard.writeText(group.cwd) },
     ],
   ];

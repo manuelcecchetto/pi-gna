@@ -14,7 +14,8 @@ describe("long-press actions", () => {
   });
 
   it("offers only the project pages whose feature is on", () => {
-    expect(projectActions(features({}), false)).toEqual(["new-chat", "pin", "copy-path"]);
-    expect(projectActions(features({ kanban: true, github: true, atp: true }), true)).toEqual(["new-chat", "unpin", "board", "github", "atp", "copy-path"]);
+    expect(projectActions(features({}), false)).toEqual(["new-chat", "pin", "hide", "copy-path"]);
+    expect(projectActions(features({ kanban: true, github: true, atp: true }), true)).toEqual(["new-chat", "unpin", "hide", "board", "github", "atp", "copy-path"]);
+    expect(projectActions(features({}), false, true)).toEqual(["new-chat", "unhide", "copy-path"]);
   });
 });

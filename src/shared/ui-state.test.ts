@@ -24,6 +24,20 @@ describe("pins", () => {
   });
 });
 
+describe("hidden projects", () => {
+  it("hides once, unpinning, and unhides", () => {
+    const state = run([{ type: "pin", cwd: "/a" }, { type: "pin", cwd: "/b" }, { type: "hide", cwd: "/a" }]);
+    expect(state).toMatchObject({ pins: ["/b"], hidden: ["/a"] });
+    expect(applyUiOp(state, { type: "hide", cwd: "/a" })).toBe(state);
+    expect(applyUiOp(state, { type: "unhide", cwd: "/a" }).hidden).toEqual([]);
+    expect(applyUiOp(state, { type: "unhide", cwd: "/zzz" })).toBe(state);
+  });
+  it("rejects a relative path and pinning a hidden project", () => {
+    expect(() => applyUiOp(emptyUiState(), { type: "hide", cwd: "rel" })).toThrow();
+    expect(() => run([{ type: "hide", cwd: "/a" }, { type: "pin", cwd: "/a" }])).toThrow("hidden");
+  });
+});
+
 describe("bookmarks", () => {
   it("adds per session by message time and removes the entry with its last turn", () => {
     let state = run([{ type: "bookmark", session: "/s.jsonl", at: 5 }, { type: "bookmark", session: "/s.jsonl", at: 9 }, { type: "bookmark", session: "/s.jsonl", at: 5 }]);
@@ -41,7 +55,7 @@ describe("bookmarks", () => {
 describe("parseUiState", () => {
   it("keeps well-formed entries and counts the rest", () => {
     const { value, dropped } = parseUiState({ pins: ["/a", "/a", 3, "rel"], bookmarks: { "/s": [1, "x", 1, 2], rel: [1], "/t": [] } });
-    expect(value).toEqual({ pins: ["/a"], bookmarks: { "/s": [1, 2] } });
+    expect(value).toEqual({ pins: ["/a"], hidden: [], bookmarks: { "/s": [1, 2] } });
     expect(dropped).toBe(5);
   });
   it("starts empty for anything else", () => {

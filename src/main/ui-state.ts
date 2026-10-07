@@ -1,4 +1,4 @@
-// Pinned projects and bookmarked turns on disk (userData/ui-state.json), the same on every client (src/shared/ui-state.ts).
+// Pinned and hidden projects and bookmarked turns on disk (userData/ui-state.json), the same on every client (src/shared/ui-state.ts).
 import type { UiState } from "../shared/host-api";
 import type { Revved } from "../shared/host-api";
 import { applyUiOp, emptyUiState, parseUiState, type UiOp } from "../shared/ui-state";

@@ -156,13 +156,13 @@ describe("calls", () => {
 
 describe("stream", () => {
   it("takes a snapshot method's bare answer as the value (the host does not stamp a seq)", async () => {
-    const t = setup((call) => (call.path === "ui.get" ? ok({ rev: 2, pins: ["/p"], bookmarks: {} }) : reads()(call)));
+    const t = setup((call) => (call.path === "ui.get" ? ok({ rev: 2, pins: ["/p"], hidden: [], bookmarks: {} }) : reads()(call)));
     t.client.start();
     t.src().hello();
     await flush();
     t.src().emit("resync", { reason: "no_id" });
     await flush();
-    expect(t.client.store.get().global.ui).toEqual({ rev: 2, pins: ["/p"], bookmarks: {} });
+    expect(t.client.store.get().global.ui).toEqual({ rev: 2, pins: ["/p"], hidden: [], bookmarks: {} });
   });
 
   it("goes live on hello, loads snapshots and applies only newer global events", async () => {

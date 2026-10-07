@@ -1,5 +1,5 @@
-// The user data that is not layout, the same on every client (userData/ui-state.json): pinned projects and bookmarked
-// turns. Main owns the file and applies every change through applyUiOp. A turn is identified by its message's
+// The user data that is not layout, the same on every client (userData/ui-state.json): pinned and hidden projects and
+// bookmarked turns. Main owns the file and applies every change through applyUiOp. A turn is identified by its message's
 // timestamp, since item keys are assigned per load. Layout (sidebar width, panel sizes) and "seen" marks stay
 // per client.
 import type { UiState } from "./host-api";
@@ -10,12 +10,15 @@ export type UiOp =
   | { type: "unpin"; cwd: string }
   /** Move a pinned project to `index` among the pins. */
   | { type: "reorder"; cwd: string; index: number }
+  /** Hiding a project also unpins it. */
+  | { type: "hide"; cwd: string }
+  | { type: "unhide"; cwd: string }
   | { type: "bookmark"; session: string; at: number }
   | { type: "unbookmark"; session: string; at: number };
 
 export class UiStateError extends Error {}
 
-export const emptyUiState = (): UiState => ({ pins: [], bookmarks: {} });
+export const emptyUiState = (): UiState => ({ pins: [], hidden: [], bookmarks: {} });
 
 const isPath = (value: unknown): value is string => typeof value === "string" && value.startsWith("/") && value.length <= 4096;
 const isAt = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -24,10 +27,16 @@ const isAt = (value: unknown): value is number => typeof value === "number" && N
 export function parseUiState(raw: unknown): { value: UiState; dropped: number } {
   const value = emptyUiState();
   let dropped = 0;
-  const file = raw && typeof raw === "object" ? (raw as { pins?: unknown; bookmarks?: unknown }) : {};
+  const file = raw && typeof raw === "object" ? (raw as { pins?: unknown; hidden?: unknown; bookmarks?: unknown }) : {};
+  if (Array.isArray(file.hidden)) {
+    for (const cwd of file.hidden) {
+      if (isPath(cwd) && !value.hidden.includes(cwd)) value.hidden.push(cwd);
+      else dropped++;
+    }
+  }
   if (Array.isArray(file.pins)) {
     for (const pin of file.pins) {
-      if (isPath(pin) && !value.pins.includes(pin)) value.pins.push(pin);
+      if (isPath(pin) && !value.pins.includes(pin) && !value.hidden.includes(pin)) value.pins.push(pin);
       else dropped++;
     }
   }
@@ -46,6 +55,7 @@ export function applyUiOp(state: UiState, op: UiOp): UiState {
   switch (op.type) {
     case "pin":
       if (!isPath(op.cwd)) throw new UiStateError("A pinned project is an absolute path");
+      if (state.hidden.includes(op.cwd)) throw new UiStateError("That project is hidden");
       return state.pins.includes(op.cwd) ? state : { ...state, pins: [...state.pins, op.cwd] };
     case "unpin":
       return state.pins.includes(op.cwd) ? { ...state, pins: state.pins.filter((cwd) => cwd !== op.cwd) } : state;
@@ -58,6 +68,11 @@ export function applyUiOp(state: UiState, op: UiOp): UiState {
       pins.splice(op.index, 0, op.cwd);
       return { ...state, pins };
     }
+    case "hide":
+      if (!isPath(op.cwd)) throw new UiStateError("A hidden project is an absolute path");
+      return state.hidden.includes(op.cwd) ? state : { ...state, pins: state.pins.filter((cwd) => cwd !== op.cwd), hidden: [...state.hidden, op.cwd] };
+    case "unhide":
+      return state.hidden.includes(op.cwd) ? { ...state, hidden: state.hidden.filter((cwd) => cwd !== op.cwd) } : state;
     case "bookmark": {
       if (!isPath(op.session) || !isAt(op.at)) throw new UiStateError("A bookmark is a session file and a message time");
       const current = state.bookmarks[op.session] ?? [];

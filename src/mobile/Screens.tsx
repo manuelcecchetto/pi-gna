@@ -1,5 +1,5 @@
 // Projects and Chats: the two list screens above a chat.
-import { ChevronLeft, ChevronRight, FolderOpen, Pin, Search, Settings, SquarePen } from "../renderer/src/components/icons";
+import { ChevronLeft, ChevronRight, EyeOff, FolderOpen, Pin, Search, Settings, SquarePen } from "../renderer/src/components/icons";
 import { useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
 import { relativeTime, tildify } from "../renderer/src/lib/format";
@@ -96,6 +96,7 @@ function ProjectRow({ item, homeDir, onOpen, onMenu }: { item: ProjectItem; home
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-[15px] text-fg">
           {item.pinned && <Pin size={12} className="shrink-0 text-faint" />}
+          {item.hidden && <EyeOff size={12} className="shrink-0 text-faint" />}
           <span className="truncate">{name(item.cwd)}</span>
         </div>
         <div className="truncate font-mono text-[11px] text-faint">{tildify(item.cwd, homeDir)}</div>
@@ -110,20 +111,21 @@ function ProjectRow({ item, homeDir, onOpen, onMenu }: { item: ProjectItem; home
 export function Projects({ client, homeDir, push }: { client: HostClient; homeDir: string; push: (route: Route) => void }) {
   const projects = useStore(client.store, (s) => s.global.projects);
   const pins = useStore(client.store, (s) => s.global.ui?.pins);
+  const hidden = useStore(client.store, (s) => s.global.ui?.hidden);
   const attention = useStore(client.store, (s) => s.global.attention);
   const features = useFeatures(client);
   const seen = useSeen();
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState<ProjectItem>();
   const [picking, setPicking] = useState(false);
-  const all = projects ? projectItems(projects, pins ?? [], attention, seen) : undefined;
+  const all = projects ? projectItems(projects, pins ?? [], attention, seen, hidden ?? []) : undefined;
   const items = all && searchProjects(all, query);
 
   const newChat = (cwd: string) => push({ screen: "chat", cwd: projectOf(cwd) });
   const act = (item: ProjectItem, action: ProjectAction) => {
     setMenu(undefined);
     if (action === "new-chat") newChat(item.cwd);
-    else if (action === "pin" || action === "unpin") {
+    else if (action === "pin" || action === "unpin" || action === "hide" || action === "unhide") {
       client.call("ui.apply", { op: { type: action, cwd: item.cwd } }).catch((e) => toast(message(e), "error"));
     } else if (action === "copy-path") copy(item.cwd);
     else push({ screen: "page", page: action, cwd: item.cwd });
@@ -148,12 +150,12 @@ export function Projects({ client, homeDir, push }: { client: HostClient; homeDi
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!items && <div className="p-6 text-center text-[13.5px] text-faint">Loading…</div>}
         {all?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No chats yet. Open a folder to start one.</div>}
-        {all && all.length > 0 && items?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No project matches.</div>}
+        {all && all.length > 0 && items?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">{query.trim() ? "No project matches." : "Every project is hidden. Search to find one."}</div>}
         {items?.map((item) => (
           <ProjectRow key={item.cwd} item={item} homeDir={homeDir} onOpen={() => push({ screen: "chats", cwd: item.cwd })} onMenu={() => setMenu(item)} />
         ))}
       </div>
-      {menu && <ProjectSheet title={name(menu.cwd)} actions={projectActions(features, menu.pinned)} onAction={(action) => act(menu, action)} onClose={() => setMenu(undefined)} />}
+      {menu && <ProjectSheet title={name(menu.cwd)} actions={projectActions(features, menu.pinned, menu.hidden)} onAction={(action) => act(menu, action)} onClose={() => setMenu(undefined)} />}
       {picking && (
         <FolderPicker
           client={client}
