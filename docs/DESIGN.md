@@ -1193,6 +1193,8 @@ it: put the wrapper in `<dir>/bin/pi` with `<dir>/package.json` naming `@earendi
 `pi mcp login` that prints a URL and waits). Point `PI_CODING_AGENT_DIR` at a scratch folder for anything that
 writes pi's settings, and launch from the project folder you want as the page's project (`launchCwd`).
 Chromium pauses `requestAnimationFrame` while the window is occluded, so the store also flushes on a 250 ms timer.
+Timers are throttled in those windows too: a toast (4.5-9 s `setTimeout`) can stay in screenshot after screenshot of a
+background instance or the e2e's offscreen phone window, which is the test window, not a toast that never dismisses.
 A `PIGNA_BACKGROUND=1` instance never paints for `scripts/cdp.mjs shot` (it hangs); start it with `--inspect=<port>`
 too and use `capture`, and wait a few seconds after opening a page (its enter animation captures blank).
 The same starvation hits CDP tests of background windows: mouse moves are dispatched with the next frame (hover
