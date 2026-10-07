@@ -6,7 +6,7 @@ import type { AtpProjectPlans, AtpSession } from "../../../shared/atp";
 import type { AtpPlanThreads, AtpRunNote, AtpRunner, AtpRunnerState } from "../../../shared/host-api";
 import { createStore, useStore } from "../lib/store";
 import { useEffect } from "react";
-import { activate, adopt, remoteError, startAtpChat, store as app, toast } from "./app";
+import { adopt, remoteError, startAtpChat, store as app, toast } from "./app";
 
 export type Runner = AtpRunner;
 export type RunNote = AtpRunNote;
@@ -141,11 +141,10 @@ async function call(run: () => Promise<unknown>): Promise<void> {
 
 // ── Chats ────────────────────────────────────────────────────────────────────
 
-/** Open a chat of the plan (a node's worker, its orchestrator) from its session file, as the active chat. */
-export function openThread(cwd: string, path: string, title: string, atp: AtpSession): void {
+/** A chat of the plan (a node's worker, its orchestrator) from its session file, joined or started without showing it. */
+export function threadHandle(cwd: string, path: string, title: string, atp: AtpSession): string {
   const live = Object.values(app.get().sessions).find((session) => session.sessionPath === path);
-  if (live) return activate(live.handle);
-  activate(startAtpChat(cwd, atp, { path, title }));
+  return live ? live.handle : startAtpChat(cwd, atp, { path, title });
 }
 
 /**

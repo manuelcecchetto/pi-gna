@@ -25,6 +25,7 @@ import {
   send,
   sessionTitle,
   showPage,
+  showPageChat,
   store,
   togglePage,
 } from "./app";
@@ -333,6 +334,20 @@ describe("the Settings page", () => {
     expect(await applySettings({ type: "theme", theme: "dark" })).toBe(false);
     await vi.runAllTimersAsync();
     expect(store.get().settings).toEqual(before);
+  });
+});
+
+describe("a chat a page shows beside itself (the ATP side column)", () => {
+  it("is the chat the host is told this window looks at while the page is open, and is read", () => {
+    const viewing = vi.fn();
+    vi.stubGlobal("window", { studio: { command, viewing } });
+    const worker: SessionState = { ...createSession("w1", "/repo"), unread: "done" };
+    store.set((s) => ({ ...s, sessions: { w1: worker }, active: undefined, page: { kind: "atp", cwd: "/repo" } }));
+    showPageChat("w1");
+    expect(viewing).toHaveBeenLastCalledWith("w1", true);
+    expect(store.get().sessions.w1?.unread).toBeUndefined();
+    showPageChat(undefined);
+    expect(viewing).toHaveBeenLastCalledWith("w1", false);
   });
 });
 

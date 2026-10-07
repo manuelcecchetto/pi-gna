@@ -4,11 +4,9 @@
 // floating over the graph: a chat to ask how it is going, change the plan, or write a new one with the architect skills.
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   FileWarning,
-  Maximize2,
-  MessageCircle,
-  MessageCircleOff,
   MessagesSquare,
   Network,
   Pause,
@@ -17,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Square,
+  SquareArrowOutUpRight,
   TriangleAlert,
   X,
 } from "./icons";
@@ -26,20 +25,18 @@ import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
 import type { SessionState } from "../../../shared/session-state";
-import { presentTool } from "../lib/tools";
-import { chatPeek, createRunDeriver, type PeekBubble, type Step } from "../lib/view";
-import { activate, openSettings, type PageState, prefill, remoteError, showPage, toast, useApp } from "../state/app";
+import { activate, openSettings, type PageState, prefill, releasePageChat, remoteError, showPage, showPageChat, toast, useApp } from "../state/app";
 import {
   discardNewPlanChat,
   liftHold,
   orchestrator,
-  openThread,
   releaseInterrupted,
   releaseOrchestrators,
   type Runner,
   type RunNote,
   startPlan,
   stopPlan,
+  threadHandle,
   useAtp,
   useThreads,
   watchProject,
@@ -71,6 +68,25 @@ export function AtpPage({ page }: { page: PageState }) {
   const inset = useApp((state) => state.sidebar.collapsed);
   const [selected, setSelectedState] = useState(() => lastSelected.get(page.cwd));
   const [node, setNode] = useState<string>();
+  /** The side column's tab in front: "chat" (the orchestrator), "node", or `worker:<handle>`. */
+  const [front, setFront] = useState("chat");
+  const [collapsed, setCollapsed] = useState(false);
+  /** Worker chats opened as tabs of the side column. */
+  const [workers, setWorkers] = useState<string[]>([]);
+  const showNode = useCallback((id: string | undefined) => {
+    setNode(id);
+    setFront(id ? "node" : "chat");
+    if (id) setCollapsed(false);
+  }, []);
+  const openWorker = useCallback((handle: string) => {
+    setWorkers((open) => (open.includes(handle) ? open : [...open, handle]));
+    setFront(`worker:${handle}`);
+    setCollapsed(false);
+  }, []);
+  const closeWorker = (handle: string) => {
+    setWorkers((open) => open.filter((other) => other !== handle));
+    releasePageChat(handle);
+  };
   const [query, setQuery] = useState("");
   const graph = useRef<GraphHandle>(null);
   const graphArea = useRef<HTMLDivElement>(null);
@@ -96,9 +112,9 @@ export function AtpPage({ page }: { page: PageState }) {
     (path: string | undefined) => {
       if (path) lastSelected.set(page.cwd, path);
       setSelectedState(path);
-      setNode(undefined);
+      showNode(undefined);
     },
-    [page.cwd],
+    [page.cwd, showNode],
   );
   // By default the plan that runs, else the one changed last.
   const fallback = files.find((file) => runners[file.path]) ?? [...files].sort((a, b) => b.modifiedAt - a.modifiedAt)[0];
@@ -131,7 +147,7 @@ export function AtpPage({ page }: { page: PageState }) {
     if (!ids.length) return;
     const id = ids[matchIndex.current++ % ids.length] as string;
     graph.current?.reveal(id);
-    setNode(id);
+    showNode(id);
   };
 
   const newPlan = async (skill: string) => {
@@ -144,12 +160,41 @@ export function AtpPage({ page }: { page: PageState }) {
     }
   };
 
-  const dock = (selected === "new" || plan) && (
-    <OrchestratorDock cwd={page.cwd} plan={selected === "new" ? undefined : plan?.path} height={panels.dock} onResize={resize("dock")} onInset={setCovered} />
-  );
-
   const switchable = useMemo(() => [...new Set([page.cwd, ...projects.map((other) => other.cwd)])].map((cwd) => ({ cwd, open: 0 })), [projects, page.cwd]);
   const selectedNode = node && plan?.nodes.find((other) => other.id === node);
+  const chatPlan = selected === "new" ? undefined : plan?.path;
+  const chat = useOrchestrator(page.cwd, chatPlan, selected === "new" || Boolean(plan));
+  const session = chat.session;
+  // A plan's orchestrator floats over the graph until you talk to it; then its chat is the side column's.
+  const docked = Boolean(plan && session && (session.items.length > 0 || session.running));
+  useEffect(() => {
+    if (!docked) return;
+    setFront("chat");
+    setCollapsed(false);
+  }, [docked]);
+  const dock = (selected === "new" || plan) && !docked && (
+    <OrchestratorDock chat={chat} plan={chatPlan} height={panels.dock} onResize={resize("dock")} onInset={setCovered} />
+  );
+  // The worker tabs whose chats this window still has (the host closes a finished worker nobody looks at).
+  const kept = useApp((state) => workers.filter((handle) => state.sessions[handle]).join(" "));
+  const tabs = [...(docked ? ["chat"] : []), ...(selectedNode ? ["node"] : []), ...(kept ? kept.split(" ").map((handle) => `worker:${handle}`) : [])];
+  const showing = tabs.includes(front) ? front : selectedNode ? "node" : tabs[0];
+  const unread = useUnread(docked ? session : undefined, docked && !collapsed && showing === "chat");
+  const shownChat = collapsed ? undefined : showing === "chat" ? session?.handle : showing?.startsWith("worker:") ? showing.slice("worker:".length) : undefined;
+  useEffect(() => {
+    showPageChat(shownChat);
+    return () => showPageChat(undefined);
+  }, [shownChat]);
+  // Leaving the page (or the plan) closes its worker tabs.
+  const open = useRef(workers);
+  open.current = workers;
+  useEffect(() => {
+    if (!plan?.path) return;
+    return () => {
+      for (const handle of open.current) releasePageChat(handle);
+      setWorkers([]);
+    };
+  }, [plan?.path]);
 
   return (
     <div className="page-enter flex h-full min-w-0 flex-col">
@@ -205,34 +250,86 @@ export function AtpPage({ page }: { page: PageState }) {
                 stalled={stalled}
                 held={held.includes(plan.path)}
                 note={notes[plan.path]}
-                onReveal={(id) => (graph.current?.reveal(id), setNode(id))}
+                onReveal={(id) => (graph.current?.reveal(id), showNode(id))}
+                onOpenChat={openWorker}
               />
               <div className="flex flex-1" style={{ minHeight: ATP_GRAPH_MIN.height }}>
                 <div ref={graphArea} className="relative min-w-0 flex-1">
                   {plan.nodes.length ? (
-                    <AtpGraph ref={graph} plan={plan} selected={node} stalled={stalled} matches={matches} onSelect={setNode} inset={covered} />
+                    <AtpGraph ref={graph} plan={plan} selected={node} stalled={stalled} matches={matches} onSelect={showNode} inset={covered} />
                   ) : (
                     <p className="p-10 text-center text-[12.5px] text-faint">This plan has no nodes yet.</p>
                   )}
                   {dock}
                 </div>
-                {selectedNode && (
-                  <NodePanel
-                    plan={plan}
-                    node={selectedNode}
-                    cwd={page.cwd}
-                    runner={runners[plan.path]}
-                    stalled={selectedNode.id === stalled}
-                    onSelect={(id) => {
-                      setNode(id);
-                      graph.current?.reveal(id);
-                    }}
-                    onClose={() => setNode(undefined)}
-                    width={panels.detail}
-                    giver={() => graphArea.current}
-                    onResize={resize("detail")}
-                  />
-                )}
+                {tabs.length > 0 &&
+                  (collapsed ? (
+                    <button
+                      type="button"
+                      onClick={() => setCollapsed(false)}
+                      title="Show the side panel"
+                      className="flex w-9 shrink-0 flex-col items-center gap-2.5 border-l border-line bg-panel pt-2.5 text-faint hover:text-fg"
+                    >
+                      <ChevronLeft size={14} />
+                      <MessagesSquare size={14} />
+                      {session?.running ? <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+                    </button>
+                  ) : (
+                    <aside
+                      className="relative flex shrink-0 flex-col overflow-hidden border-l border-line bg-panel"
+                      // Narrowed when the window is too small to leave the graph its minimum; the remembered width stays.
+                      style={{ width: `clamp(${ATP_DETAIL.min}px, ${panels.detail}px, calc(100% - ${ATP_GRAPH_MIN.width}px))` }}
+                    >
+                      <ResizeHandle edge="left" bounds={ATP_DETAIL} giver={() => graphArea.current} keep={ATP_GRAPH_MIN.width} onResize={resize("detail")} />
+                      <div className="dashed-b flex items-center gap-1 overflow-x-auto px-2 py-1.5 [scrollbar-width:none]">
+                        {docked && session && (
+                          <ColumnTab active={showing === "chat"} onClick={() => setFront("chat")}>
+                            <MessagesSquare size={12} /> Orchestrator
+                            {session.running ? <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+                          </ColumnTab>
+                        )}
+                        {selectedNode && (
+                          <ColumnTab active={showing === "node"} onClick={() => setFront("node")}>
+                            <StatusIcon node={selectedNode} stalled={selectedNode.id === stalled} size={11} />
+                            <span className="min-w-0 truncate font-mono">{selectedNode.id}</span>
+                          </ColumnTab>
+                        )}
+                        {tabs
+                          .filter((tab) => tab.startsWith("worker:"))
+                          .map((tab) => (
+                            <WorkerTab key={tab} handle={tab.slice("worker:".length)} active={showing === tab} onClick={() => setFront(tab)} onClose={() => closeWorker(tab.slice("worker:".length))} />
+                          ))}
+                        <div className="flex-1" />
+                        {shownChat && (
+                          <button type="button" onClick={() => activate(shownChat)} title="Open as a chat" className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
+                            <SquareArrowOutUpRight size={13} />
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setCollapsed(true)} title="Hide the side panel" className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                      {showing === "node" && selectedNode ? (
+                        <NodePanel
+                          plan={plan}
+                          node={selectedNode}
+                          cwd={page.cwd}
+                          runner={runners[plan.path]}
+                          stalled={selectedNode.id === stalled}
+                          onSelect={(id) => {
+                            showNode(id);
+                            graph.current?.reveal(id);
+                          }}
+                          onClose={() => showNode(undefined)}
+                          onOpenChat={openWorker}
+                        />
+                      ) : showing === "chat" ? (
+                        session && <SideChat session={session} placeholder={PLAN_PLACEHOLDER} />
+                      ) : (
+                        showing && <WorkerChat key={showing} handle={showing.slice("worker:".length)} />
+                      )}
+                    </aside>
+                  ))}
               </div>
             </>
           ) : current ? (
@@ -396,6 +493,7 @@ function PlanBar({
   held,
   note,
   onReveal,
+  onOpenChat,
 }: {
   plan: AtpPlan;
   cwd: string;
@@ -404,6 +502,7 @@ function PlanBar({
   held: boolean;
   note?: RunNote;
   onReveal: (id: string) => void;
+  onOpenChat: (handle: string) => void;
 }) {
   const home = window.studio.homeDir;
   const worker = useApp((state) => taskModel(state.settings, "worker"));
@@ -430,7 +529,7 @@ function PlanBar({
         )}
         {runner ? (
           <>
-            <RunnerState runner={runner} onReveal={onReveal} />
+            <RunnerState runner={runner} onReveal={onReveal} onOpenChat={onOpenChat} />
             <button
               type="button"
               disabled={runner.phase === "stopping"}
@@ -537,7 +636,7 @@ const PHASES: Record<Runner["phase"], string> = {
   stopping: "Stopping",
 };
 
-function RunnerState({ runner, onReveal }: { runner: Runner; onReveal: (id: string) => void }) {
+function RunnerState({ runner, onReveal, onOpenChat }: { runner: Runner; onReveal: (id: string) => void; onOpenChat: (handle: string) => void }) {
   const session = useApp((state) => (runner.handle ? state.sessions[runner.handle] : undefined));
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted">
@@ -554,7 +653,7 @@ function RunnerState({ runner, onReveal }: { runner: Runner; onReveal: (id: stri
         </span>
       )}
       {session && (
-        <button type="button" onClick={() => activate(session.handle)} title="Open the worker's chat" className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
+        <button type="button" onClick={() => onOpenChat(session.handle)} title="Open the worker's chat" className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
           <MessagesSquare size={13} />
         </button>
       )}
@@ -572,9 +671,7 @@ function NodePanel({
   stalled,
   onSelect,
   onClose,
-  width,
-  giver,
-  onResize,
+  onOpenChat,
 }: {
   plan: AtpPlan;
   node: AtpNode;
@@ -583,9 +680,8 @@ function NodePanel({
   stalled: boolean;
   onSelect: (id: string) => void;
   onClose: () => void;
-  width: number;
-  giver: () => Element | null;
-  onResize: (width: number, done: boolean) => void;
+  /** Opens a worker chat as a tab of the side column. */
+  onOpenChat: (handle: string) => void;
 }) {
   useNow(60_000);
   const threads = useThreads(plan.path);
@@ -627,12 +723,7 @@ function NodePanel({
     );
 
   return (
-    <aside
-      className="relative flex shrink-0 flex-col overflow-hidden border-l border-line bg-panel"
-      // Narrowed when the window is too small to leave the graph its minimum; the remembered width stays.
-      style={{ width: `clamp(${ATP_DETAIL.min}px, ${width}px, calc(100% - ${ATP_GRAPH_MIN.width}px))` }}
-    >
-      <ResizeHandle edge="left" bounds={ATP_DETAIL} giver={giver} keep={ATP_GRAPH_MIN.width} onResize={onResize} />
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="dashed-b flex items-center gap-2 px-3.5 py-2.5">
         <StatusIcon node={node} stalled={stalled} />
         <span className="text-[12px] text-muted">{node.closed ? `${LOOK_LABEL.closed} · ${node.closed.toLowerCase()}` : LOOK_LABEL[lookOf(node, stalled)]}</span>
@@ -655,7 +746,7 @@ function NodePanel({
             {live && (
               <button
                 type="button"
-                onClick={() => activate(live.handle)}
+                onClick={() => onOpenChat(live.handle)}
                 className="flex items-center gap-1.5 rounded-lg border border-accent/50 px-2 py-1 text-[12px] text-accent hover:bg-accent-soft"
               >
                 <MessagesSquare size={12} /> Open the running worker
@@ -667,7 +758,7 @@ function NodePanel({
                 <button
                   key={path}
                   type="button"
-                  onClick={() => openThread(cwd, path, `ATP ${node.id}: ${node.title}`, { role: "worker", plan: plan.path, node: node.id })}
+                  onClick={() => onOpenChat(threadHandle(cwd, path, `ATP ${node.id}: ${node.title}`, { role: "worker", plan: plan.path, node: node.id }))}
                   className="flex items-center gap-1.5 rounded-lg border border-line-strong px-2 py-1 text-[12px] text-muted hover:bg-raised hover:text-fg"
                 >
                   <MessagesSquare size={12} /> Worker chat{chats.length > 1 ? ` ${index + 1}` : ""}
@@ -716,43 +807,30 @@ function NodePanel({
           </section>
         )}
       </div>
-    </aside>
+    </div>
   );
 }
 
 // ── The orchestrator ─────────────────────────────────────────────────────────
 
-type ChatView = "bubbles" | "full" | "hidden";
+const PLAN_PLACEHOLDER = "How is it going? Add, split or rewire nodes…";
 
-/** The last turns the bubbles show. */
-const PEEK_TURNS = 2;
+interface Orchestrator {
+  session?: SessionState;
+  /** A start that failed (most often: the orchestrator model is not available). */
+  failed?: string;
+  retry: () => void;
+}
 
-/**
- * The plan's orchestrator floats over the graph: its composer at the bottom, and its conversation above it, either
- * as bubbles of the last few turns (the plan stays in view around them) or whole, in a floating panel.
- */
-function OrchestratorDock({
-  cwd,
-  plan,
-  height,
-  onResize,
-  onInset,
-}: {
-  cwd: string;
-  plan?: string;
-  height: number;
-  onResize: (height: number, done: boolean) => void;
-  onInset: (height: number) => void;
-}) {
-  const room = useRef<HTMLDivElement>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+/** The plan's orchestrator (without a plan: the architect's chat for a new one), started while the page shows it. */
+function useOrchestrator(cwd: string, plan: string | undefined, shown: boolean): Orchestrator {
   const [handle, setHandle] = useState<string>();
-  // A start that failed (most often: the orchestrator model is not available) stays in the dock with a way out,
-  // instead of a toast that leaves the page without a composer.
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (!shown) return;
     let current = true;
+    setHandle(undefined);
     setFailed(undefined);
     orchestrator(cwd, plan).then(
       (started) => current && setHandle(started),
@@ -761,24 +839,100 @@ function OrchestratorDock({
     return () => {
       current = false;
     };
-  }, [cwd, plan, attempt]);
+  }, [cwd, plan, attempt, shown]);
   // A new plan's chat moves to the plan once the architect writes it: keep showing it.
   const adopted = useAtp((state) => (plan ? state.orchestrators[plan] : state.orchestrators[`new:${cwd}`]));
   const session = useApp((state) => {
     const current = adopted ?? handle;
     return current ? state.sessions[current] : undefined;
   });
-  // The architect's chat is the page until it writes the plan: it opens whole.
-  const [view, setView] = useState<ChatView>(plan === undefined ? "full" : "bubbles");
-  const running = Boolean(session?.running);
+  const retry = useCallback(() => setAttempt((count) => count + 1), []);
+  return shown ? { session, failed, retry } : { retry };
+}
+
+/** A chat you are not looking at settled with something new (an answer streams into an item it already has). */
+function useUnread(session: SessionState | undefined, looking: boolean): boolean {
+  const handle = session?.handle;
+  const mark = session ? `${session.items.length}:${session.running}` : "";
+  const [seen, setSeen] = useState({ handle, mark });
+  // Another chat (another plan's) starts out read.
+  const fresh = seen.handle !== handle;
   useEffect(() => {
-    if (running) setView((current) => (current === "hidden" ? "bubbles" : current));
-  }, [running]);
-  // Pointing at the chat keeps its bubbles up; going into the composer brings them back for a while.
-  const [pointing, setPointing] = useState(false);
-  const [woken, setWoken] = useState(0);
+    if (looking || fresh) setSeen({ handle, mark });
+  }, [looking, fresh, handle, mark]);
+  return Boolean(session && !looking && !fresh && !session.running && mark !== seen.mark);
+}
+
+function ColumnTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised hover:text-fg"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A chat in the side column (the orchestrator once you talked to it, a worker): the whole conversation and its composer. */
+function SideChat({ session, placeholder }: { session: SessionState; placeholder?: string }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <Transcript session={session} />
+      <div className="px-3 pb-3">
+        <Composer key={session.handle} session={session} floating placeholder={placeholder} />
+      </div>
+    </div>
+  );
+}
+
+function WorkerChat({ handle }: { handle: string }) {
+  const session = useApp((state) => state.sessions[handle]);
+  return session ? <SideChat session={session} /> : null;
+}
+
+function WorkerTab({ handle, active, onClick, onClose }: { handle: string; active: boolean; onClick: () => void; onClose: () => void }) {
+  const node = useApp((state) => state.sessions[handle]?.atp?.node);
+  const running = useApp((state) => Boolean(state.sessions[handle]?.running));
+  return (
+    <span className={`group flex min-w-0 shrink-0 items-center rounded-md ${active ? "bg-raised text-fg" : "text-muted hover:bg-raised hover:text-fg"}`}>
+      <button type="button" aria-pressed={active} onClick={onClick} title={node ? `Worker chat of ${node}` : "Worker chat"} className="flex min-w-0 items-center gap-1.5 py-1 pl-2 text-[12px]">
+        <MessagesSquare size={12} />
+        <span className="max-w-32 truncate font-mono">{node ?? "Worker"}</span>
+        {running && <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" />}
+      </button>
+      <button type="button" onClick={onClose} title="Close" className="rounded p-1 text-faint hover:text-fg">
+        <X size={11} />
+      </button>
+    </span>
+  );
+}
+
+/**
+ * The orchestrator's composer floating over the graph, before you talk to a plan's orchestrator (then it moves to the
+ * side column). The architect's chat for a new plan is the page until it writes the plan, so it stays here, its
+ * conversation in a floating panel above the composer.
+ */
+function OrchestratorDock({
+  chat,
+  plan,
+  height,
+  onResize,
+  onInset,
+}: {
+  chat: Orchestrator;
+  plan?: string;
+  height: number;
+  onResize: (height: number, done: boolean) => void;
+  onInset: (height: number) => void;
+}) {
+  const room = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
+  const { session, failed, retry } = chat;
   const present = Boolean(session) || failed !== undefined;
-  // The graph keeps the plan above the composer (the bubbles float over it, like the minimap).
+  // The graph keeps the plan above the composer.
   useLayoutEffect(() => {
     const element = bottom.current;
     if (!element) return;
@@ -793,6 +947,7 @@ function OrchestratorDock({
   }, [present, onInset]);
   if (!session) {
     if (failed === undefined) return null;
+    // A failed start stays in the dock with a way out, instead of a toast that leaves the page without a composer.
     return (
       <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-end px-4" style={{ paddingBottom: DOCK_MARGIN }}>
         <div
@@ -805,7 +960,7 @@ function OrchestratorDock({
             <div className="text-fg">The orchestrator could not start</div>
             <div className="selectable mt-0.5 break-words text-muted">{failed}</div>
           </div>
-          <button type="button" onClick={() => setAttempt((count) => count + 1)} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised">
+          <button type="button" onClick={retry} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised">
             <RefreshCw size={12} /> Try again
           </button>
           <button type="button" onClick={() => openSettings("models")} className="shrink-0 rounded-lg border border-line-strong px-2.5 py-1 text-[12.5px] text-fg hover:bg-raised">
@@ -817,16 +972,11 @@ function OrchestratorDock({
   }
   const talked = session.items.length > 0 || session.running;
   return (
-    // Only the composer, the bubbles and the panel take the pointer: the plan pans and zooms around them.
+    // Only the panel and the composer take the pointer: the plan pans and zooms around them.
     <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center px-4" style={{ paddingBottom: DOCK_MARGIN }}>
       <div ref={room} className="min-h-6 flex-1" />
-      <div
-        className="flex min-h-0 w-full max-w-[720px] flex-col gap-2"
-        onPointerEnter={() => setPointing(true)}
-        onPointerLeave={() => setPointing(false)}
-        onFocus={() => setWoken((count) => count + 1)}
-      >
-        {talked && view === "full" && (
+      <div className="flex min-h-0 w-full max-w-[720px] flex-col gap-2">
+        {talked && (
           <div
             className="pointer-events-auto relative flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-line-strong bg-canvas/90 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl"
             style={{ height }}
@@ -835,39 +985,13 @@ function OrchestratorDock({
             <Transcript session={session} />
           </div>
         )}
-        {talked && view === "bubbles" && <ChatBubbles session={session} pointing={pointing} woken={woken} onExpand={() => setView("full")} />}
-        <div ref={bottom} className="flex flex-col gap-1.5">
-          {talked && (
-            <div className="flex justify-end px-1 text-faint">
-              <span className="pointer-events-auto flex shrink-0 items-center gap-0.5 rounded-full border border-line bg-panel/80 p-0.5 shadow-[0_6px_16px_-10px_rgb(0_0_0/0.5)] backdrop-blur-md">
-                <ViewButton
-                  title="The last messages, as bubbles over the plan; they fade once it goes quiet, and point here or at the composer to bring them back"
-                  active={view === "bubbles"}
-                  onClick={() => (setView("bubbles"), setWoken((count) => count + 1))}
-                >
-                  <MessageCircle size={12} />
-                </ViewButton>
-                <ViewButton title="The whole conversation" active={view === "full"} onClick={() => setView("full")}>
-                  <Maximize2 size={12} />
-                </ViewButton>
-                <ViewButton title="Hide the conversation" active={view === "hidden"} onClick={() => setView("hidden")}>
-                  <MessageCircleOff size={12} />
-                </ViewButton>
-                <span className="mx-0.5 h-3 w-px bg-line-strong" />
-                <ViewButton title="Open as a chat" onClick={() => activate(session.handle)}>
-                  <MessagesSquare size={12} />
-                </ViewButton>
-              </span>
-            </div>
-          )}
-          <div className="pointer-events-auto">
-            <Composer
-              key={session.handle}
-              session={session}
-              floating
-              placeholder={plan ? "How is it going? Add, split or rewire nodes…" : "/skill:atp-architect or atp-micro-architect, then what to build…"}
-            />
-          </div>
+        <div ref={bottom} className="pointer-events-auto">
+          <Composer
+            key={session.handle}
+            session={session}
+            floating
+            placeholder={plan ? PLAN_PLACEHOLDER : "/skill:atp-architect or atp-micro-architect, then what to build…"}
+          />
         </div>
       </div>
     </div>
@@ -876,160 +1000,6 @@ function OrchestratorDock({
 
 /** The gap under the floating composer. */
 const DOCK_MARGIN = 16;
-
-function ViewButton({ title, active = false, onClick, children }: { title: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`grid h-6 w-6 place-items-center rounded-full ${active ? "bg-raised text-fg" : "text-faint hover:bg-raised hover:text-fg"}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** How long the bubbles stay after the orchestrator goes quiet (or you leave them), before they fade away. */
-const FADE_AFTER = 12_000;
-
-/**
- * The last turns as chat bubbles over the plan, like a game's chat: yours on the right, the orchestrator's answers on
- * the left. While it works, a bubble says what it does; long answers clip and open the whole conversation. Once it is
- * quiet they fade away, and come back with its next message, while you point at the chat, or when you go into the
- * composer.
- */
-function ChatBubbles({ session, pointing, woken, onExpand }: { session: SessionState; pointing: boolean; woken: number; onExpand: () => void }) {
-  const derive = useMemo(() => createRunDeriver(), []);
-  const peek = chatPeek(derive(session), PEEK_TURNS);
-  const scroller = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  /** At the end, so new messages and streaming keep it there; only scrolling up leaves it. */
-  const pinned = useRef(true);
-  const lastTop = useRef(0);
-  const shown = peek.bubbles.length > 0 || peek.working;
-  // On every size change, not render: a bubble learns that it clips (and grows "Show all") after this renders.
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (!element || !content.current) return;
-    const follow = () => {
-      if (pinned.current) element.scrollTop = element.scrollHeight;
-    };
-    follow();
-    const observer = new ResizeObserver(follow);
-    observer.observe(content.current);
-    return () => observer.disconnect();
-  }, [shown]);
-
-  const latest = peek.bubbles.at(-1);
-  const change = `${peek.bubbles.length}:${latest?.key}:${latest?.text.length}:${peek.working}`;
-  const awake = peek.working || pointing;
-  const [faded, setFaded] = useState(false);
-  useEffect(() => {
-    setFaded(false);
-    if (awake) return;
-    const timer = setTimeout(() => setFaded(true), FADE_AFTER);
-    return () => clearTimeout(timer);
-  }, [change, awake, woken]);
-
-  if (!shown) return null;
-  const count = peek.bubbles.length;
-  return (
-    <div
-      ref={scroller}
-      onWheel={(event) => {
-        if (event.deltaY < 0) pinned.current = false;
-      }}
-      onScroll={(event) => {
-        const element = event.currentTarget;
-        if (element.scrollHeight - element.scrollTop - element.clientHeight < 8) pinned.current = true;
-        else if (element.scrollTop < lastTop.current) pinned.current = false;
-        lastTop.current = element.scrollTop;
-      }}
-      data-faded={faded || undefined}
-      className="atp-bubbles max-h-[min(42vh,420px)] min-h-0 overflow-y-auto px-1 pt-10"
-    >
-      <div ref={content} className="flex flex-col gap-2">
-        {peek.bubbles.map((bubble, index) => (
-          <Bubble key={bubble.key} bubble={bubble} old={count - index > 2} onExpand={onExpand} />
-        ))}
-        {peek.working && <WorkingBubble step={peek.step} cwd={session.cwd} />}
-      </div>
-    </div>
-  );
-}
-
-// Nearly opaque rather than blurred glass: the list's fade (a mask) leaves backdrop-filter nothing to blur.
-const BUBBLE_SURFACE = "pointer-events-auto shadow-[0_10px_28px_-14px_rgb(0_0_0/0.6)]";
-
-/** `old`: an earlier turn's bubble, dimmed until you point at it. */
-function Bubble({ bubble, old, onExpand }: { bubble: PeekBubble; old: boolean; onExpand: () => void }) {
-  const user = bubble.from === "user";
-  const tone = user
-    ? "rounded-br-md bg-raised/95 text-fg"
-    : bubble.error
-      ? "rounded-bl-md border border-bad/30 bg-panel/95 text-bad"
-      : "rounded-bl-md border border-line bg-panel/95 text-fg";
-  return (
-    <div className={`bubble-in flex ${user ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`atp-bubble max-w-[85%] min-w-0 rounded-[18px] px-3.5 py-2 text-[13px] leading-relaxed transition-colors ${old ? "text-muted! hover:text-fg!" : ""} ${BUBBLE_SURFACE} ${tone}`}
-      >
-        <Clipped tail={bubble.streaming} onExpand={onExpand}>
-          {user || bubble.error ? <div className="selectable break-words whitespace-pre-wrap">{bubble.text}</div> : <Markdown text={bubble.text} streaming={bubble.streaming} />}
-        </Clipped>
-      </div>
-    </div>
-  );
-}
-
-const CLIP = 168;
-
-/** A bubble's text up to CLIP px; a longer one fades out (at the top while it streams, to show the newest text). */
-function Clipped({ tail, onExpand, children }: { tail: boolean; onExpand: () => void; children: React.ReactNode }) {
-  const inner = useRef<HTMLDivElement>(null);
-  const [over, setOver] = useState(false);
-  useLayoutEffect(() => {
-    const element = inner.current;
-    if (element) setOver(element.offsetHeight > CLIP + 1);
-  });
-  const fade = tail ? "linear-gradient(to bottom, transparent, black 3em)" : "linear-gradient(to top, transparent, black 3em)";
-  return (
-    <>
-      <div className={`overflow-hidden ${tail ? "flex flex-col justify-end" : ""}`} style={{ maxHeight: CLIP, maskImage: over ? fade : undefined }}>
-        <div ref={inner} className="shrink-0">
-          {children}
-        </div>
-      </div>
-      {over && !tail && (
-        <button type="button" onClick={onExpand} className="mt-1 text-[11.5px] text-muted hover:text-fg">
-          Show all
-        </button>
-      )}
-    </>
-  );
-}
-
-function WorkingBubble({ step, cwd }: { step?: Step; cwd: string }) {
-  const doing =
-    step?.kind === "tool"
-      ? (() => {
-          const tool = presentTool(step.call.name, step.call.arguments, cwd, undefined, window.studio.homeDir);
-          return [tool.activeVerb, tool.target].filter(Boolean).join(" ");
-        })()
-      : step?.kind === "thinking"
-        ? "Thinking"
-        : "Working";
-  return (
-    <div className="bubble-in flex justify-start">
-      <div className={`flex max-w-[85%] min-w-0 items-center gap-2 rounded-full border border-line bg-panel/95 px-3 py-1.5 text-[12px] text-muted ${BUBBLE_SURFACE}`}>
-        <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-        <span className="shimmer truncate">{doing}</span>
-      </div>
-    </div>
-  );
-}
 
 // ── Empty and broken ─────────────────────────────────────────────────────────
 

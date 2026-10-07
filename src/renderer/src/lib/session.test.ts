@@ -3,7 +3,7 @@ import type { HostEvent } from "../../../shared/host-api";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
 import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "../../../shared/session-state";
 import { liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "./tools";
-import { chatPeek, createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
+import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop"): AssistantMessage => ({
@@ -271,47 +271,6 @@ describe("layoutRun (Working/Worked accordion)", () => {
     const plain = layoutRun(run([...userTurn("hi"), { type: "message_end", message: assistant([{ type: "text", text: "Hello" }]) }]));
     expect(plain.work).toEqual([]);
     expect(plain.settled).toBe(true);
-  });
-});
-
-describe("chatPeek (the ATP orchestrator's bubbles)", () => {
-  const answered = (question: string, answer: string): SessionEvent[] => [
-    ...userTurn(question),
-    { type: "message_end", message: assistant([{ type: "text", text: answer }]) },
-  ];
-
-  it("shows your messages and the answers of the last turns, without your attachments", () => {
-    const withFiles = "how is it going?\n\n# Files mentioned by the user:\n\n## plan.atp.json: /repo/plan.atp.json";
-    const runs = deriveRuns(play([...answered("one", "first"), ...answered("two", "second"), ...answered(withFiles, "third")]));
-    expect(chatPeek(runs, 2)).toEqual({
-      working: false,
-      bubbles: [
-        expect.objectContaining({ from: "user", text: "two" }),
-        expect.objectContaining({ from: "agent", text: "second", error: false }),
-        expect.objectContaining({ from: "user", text: "how is it going?" }),
-        expect.objectContaining({ from: "agent", text: "third" }),
-      ],
-    });
-  });
-
-  it("leaves the work out and reports the live turn's latest step until its answer settles", () => {
-    const working = deriveRuns(
-      play([
-        { type: "agent_start" },
-        ...userTurn("split n3"),
-        { type: "message_end", message: assistant([{ type: "text", text: "Let me look." }, readCall], "toolUse") },
-        { type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: {} },
-      ]),
-    );
-    const peek = chatPeek(working, 3);
-    expect(peek.bubbles.map((bubble) => bubble.text)).toEqual(["split n3"]);
-    expect(peek.working).toBe(true);
-    expect(peek.step).toMatchObject({ kind: "tool", call: { name: "read" } });
-  });
-
-  it("shows a failed turn's error as the agent's bubble", () => {
-    const runs = deriveRuns(play([...userTurn("go"), { type: "message_end", message: { ...assistant([], "error"), errorMessage: "rate limited" } }]));
-    expect(chatPeek(runs, 1).bubbles.at(-1)).toMatchObject({ from: "agent", text: "rate limited", error: true });
   });
 });
 

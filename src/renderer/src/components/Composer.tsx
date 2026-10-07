@@ -52,7 +52,7 @@ const ESC_ARM_MS = 2500;
 
 /**
  * `placeholder`: what the empty composer suggests while pi is idle (the ATP page's orchestrator has its own).
- * `floating`: it floats over something (the ATP graph): no page padding, a translucent, blurred box.
+ * `floating`: no page padding, a translucent, blurred box (the ATP page: over the graph, or in its side column).
  */
 export function Composer({ session, placeholder, floating = false }: { session: SessionState; placeholder?: string; floating?: boolean }) {
   const { handle } = session;

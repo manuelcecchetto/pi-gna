@@ -264,7 +264,7 @@ async function load(handle: string, cwd: string, sessionPath: string | undefined
 let windowFocused = true;
 
 /** The chat is on screen: active, no page over it, and the window focused. */
-const viewing = (handle: string) => store.get().active === handle && !store.get().page && windowFocused;
+const viewing = (handle: string) => (store.get().page ? pageChat === handle : store.get().active === handle) && windowFocused;
 
 /** You are looking at this chat: clear its unread mark. */
 function markRead(handle: string | undefined): void {
@@ -313,11 +313,26 @@ function onAttention(chats: AttentionSummary[], removed: string[]): void {
   for (const chat of chats) if (chat.attention !== "idle" && !store.get().sessions[chat.handle]) void adopt(chat.handle);
 }
 
+/** A chat a page shows beside itself (the ATP page's side column): looked at while that page is open. */
+let pageChat: string | undefined;
+export function showPageChat(handle: string | undefined): void {
+  pageChat = handle;
+  if (windowFocused) markRead(handle);
+  syncViewing();
+}
+
+/** A page stopped showing a chat it opened beside itself: drop it from this window unless something needs it. */
+export function releasePageChat(handle: string): void {
+  const session = store.get().sessions[handle];
+  if (session && store.get().active !== handle && isDisposable(session)) void detachSession(handle);
+}
+
 // Which chat the host is told this window is looking at.
 let reportedViewing: string | undefined;
 function syncViewing(): void {
   const { active, page, sessions } = store.get();
-  const now = !page && windowFocused && active && sessions[active] ? active : undefined;
+  const shown = page ? pageChat : active;
+  const now = windowFocused && shown && sessions[shown] ? shown : undefined;
   if (now === reportedViewing) return;
   if (reportedViewing) studio().viewing(reportedViewing, false);
   if (now) studio().viewing(now, true);
@@ -1026,7 +1041,7 @@ export function boot(): void {
   studio().onWindowFocus((focused) => {
     windowFocused = focused;
     syncViewing();
-    if (focused && !store.get().page) markRead(store.get().active);
+    if (focused) markRead(store.get().page ? pageChat : store.get().active);
   });
   // A phone asked to pair: show the approval prompt (Settings > Remote access).
   studio().remote.onPairing((pairing) => pairing.state === "pending_approval" && openSettings("remote"));
