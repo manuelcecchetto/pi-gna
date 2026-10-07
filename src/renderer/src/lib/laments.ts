@@ -2,6 +2,7 @@
 // what a lament's Fix chat is asked to do (src/shared/task-prompts.ts).
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { type Lament, type LamentFix, type LamentReport, type Laments, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
+import { markdownText } from "../../../shared/markdown-text";
 import { chatSummary } from "./board";
 
 /** Projects the laments page can switch to: the sidebar's, then others that have laments; `current` always. */
@@ -19,7 +20,7 @@ export function worstSeverity(laments: Lament[]): Severity | undefined {
 
 /** The line under a lament's title: its latest report. */
 export function lamentSnippet(lament: Lament): string {
-  return (lament.reports.at(-1)?.text ?? "").replace(/\s+/g, " ").trim();
+  return markdownText(lament.reports.at(-1)?.text ?? "");
 }
 
 /** What opens the chat that filed a report. */

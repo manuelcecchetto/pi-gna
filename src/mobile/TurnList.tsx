@@ -3,6 +3,7 @@
 import { ListTree, Star } from "../renderer/src/components/icons";
 import { useMemo, useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
+import { markdownText } from "../shared/markdown-text";
 import type { TurnNav } from "../renderer/src/components/Transcript";
 import type { HostClient } from "./client/host-client";
 import { Sheet } from "./Sheets";
@@ -58,7 +59,7 @@ export function TurnList({ client, nav }: { client: HostClient; nav: TurnNav }) 
                   className="flex min-h-12 min-w-0 flex-1 flex-col justify-center rounded-xl px-3 text-left active:bg-raised"
                 >
                   <span className="truncate text-[14.5px] text-fg">{item.label}</span>
-                  {item.preview && <span className="truncate text-[12px] text-faint">{item.preview.replace(/\s+/g, " ").slice(0, 120)}</span>}
+                  {item.preview && <span className="truncate text-[12px] text-faint">{markdownText(item.preview).slice(0, 120)}</span>}
                 </button>
                 <button
                   type="button"
