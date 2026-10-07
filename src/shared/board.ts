@@ -163,11 +163,11 @@ export function projectOf(cwd: string): string {
 
 /** Where work on `path` (a plan, a file) runs for `project`: the project's folder in the worktree `path` lies in, else the project. */
 export function checkoutOf(path: string, project: string): string {
-  const at = path.indexOf(WORKTREES);
-  if (at < 0) return project;
-  const id = path.slice(at + WORKTREES.length, at + WORKTREES.length + 6);
-  const folder = `${path.slice(0, at + WORKTREES.length)}${id}${project}`;
-  return ID.test(id) && path.startsWith(`${folder}/`) ? folder : project;
+  const match = IN_WORKTREE.exec(path);
+  const card = match?.[1];
+  if (!match || !card) return project;
+  const folder = worktreeCwd(path.slice(0, match.index), card, project);
+  return path.startsWith(folder) && /^[\\/]/.test(path.slice(folder.length)) ? folder : project;
 }
 
 /** A short id that is easy for the model to repeat. */

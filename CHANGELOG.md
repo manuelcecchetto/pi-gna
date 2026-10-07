@@ -5,6 +5,11 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- ATP: a new plan's chat runs in its own git worktree of the project, so the plan's workers and commits stay off your checkout.
+- Setup opens on the first launch even when pi already has a provider signed in.
+- Full-screen photos fit tall images on the screen instead of showing only their top, on the Mac and the phone.
+- Composer: + opens the files-and-folders picker directly (it takes images too); the separate Add photos item is gone.
+- Windows beta: Node's bundled npm.cmd runs through its CLI (no more spawn EINVAL), npm's global folder joins PATH after installing pi, C:\ projects are accepted, and card worktrees of a C:\ or \\server\share project get a valid path.
 - Files (⌘P) is now a folder picker: it opens on the project's top folder, folders first, and you click into folders, go back through the path above the list or Backspace, and search finds folders as well as files inside the folder you are in.
 - Windows beta: pi-gna builds an unsigned per-user installer for Windows x64, published by hand as a GitHub prerelease (Actions > Windows beta). pi and npm start through their .cmd shims without a shell; Computer Use and in-app updates stay macOS-only for now. See docs/WINDOWS.md.
 

@@ -188,6 +188,8 @@ describe("card worktrees", () => {
     // Another project's worktree, or no card id: not this project's.
     expect(checkoutOf("/Users/me/.pi-gna/worktrees/abc123/Users/me/Code/other/p.atp.json", project)).toBe(project);
     expect(checkoutOf(`/Users/me/.pi-gna/worktrees/notes${project}/p.atp.json`, project)).toBe(project);
+    // Windows: the drive is a folder in the worktree (worktreeCwd).
+    expect(checkoutOf("C:\\Users\\me\\.pi-gna\\worktrees\\abc123\\C\\app\\p.atp.json", "C:\\app")).toBe("C:\\Users\\me\\.pi-gna\\worktrees\\abc123\\C\\app");
   });
 });
 
