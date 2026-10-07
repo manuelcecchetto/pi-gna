@@ -282,6 +282,7 @@ export const LayoutGrid = icon(
 );
 export const PanelLeftClose = icon("panel-left-close", <>{tile}<path d="M9 3v18M16 9.5L13.5 12l2.5 2.5" /></>);
 export const PanelLeftOpen = icon("panel-left-open", <>{tile}<path d="M9 3v18M14 9.5l2.5 2.5-2.5 2.5" /></>);
+export const PanelRight = icon("panel-right", <>{tile}<path d="M15 3v18" /></>);
 export const PanelTop = icon("panel-top", <>{tile}<path d="M3 9h18" /></>);
 export const SquareKanban = icon("square-kanban", <>{tile}<path d="M8 8v6M12 8v8.5M16 8v3" /></>);
 export const AppWindow = icon("app-window", <>{win}<path d="M3 9h18M7 6.5h.01M10 6.5h.01" /></>);

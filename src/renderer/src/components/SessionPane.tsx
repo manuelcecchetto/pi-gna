@@ -1,4 +1,4 @@
-import { Globe, ListChevronsDownUp, ListChevronsUpDown, Paperclip, SquareKanban } from "./icons";
+import { ListChevronsDownUp, ListChevronsUpDown, PanelRight, Paperclip, SquareKanban } from "./icons";
 import { useRef, useState } from "react";
 import { cardsOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../../../shared/session-state";
@@ -63,7 +63,7 @@ export function SessionPane({ session }: { session: SessionState }) {
           title={browserOpen ? "Hide browser (⌘B)" : "Show browser (⌘B)"}
           className={`rounded-md p-1.5 hover:bg-raised hover:text-fg ${browserOpen ? "text-accent" : "text-faint"}`}
         >
-          <Globe size={15} />
+          <PanelRight size={15} />
         </button>
         <button
           type="button"
