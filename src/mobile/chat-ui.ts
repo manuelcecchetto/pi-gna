@@ -5,6 +5,7 @@
 // other web page in Safari.
 import { createStore, useStore } from "../renderer/src/lib/store";
 import type { ChatLinks, ChatUi, ChatUiState } from "../renderer/src/lib/chat-ui";
+import { lightboxAt, lightboxStep, type LightboxView } from "../renderer/src/lib/lightbox";
 import { drawnOnPhone } from "./file-data";
 import { emptyBoard } from "../shared/board";
 import { type BrowserTab, isLocalUrl } from "../shared/browser";
@@ -14,10 +15,12 @@ import type { HostClient } from "./client/host-client";
 import { Sheet } from "./Sheets";
 import { toast } from "./toasts";
 
-const lightbox = createStore<string | undefined>(undefined);
-export const useLightbox = (): string | undefined => useStore(lightbox, (src) => src);
+const lightbox = createStore<LightboxView | undefined>(undefined);
+export const useLightbox = (): LightboxView | undefined => useStore(lightbox, (view) => view);
 export const toggleExpandAll = (ui: ChatUi): void => ui.store.set((state) => ({ ...state, expandAll: !state.expandAll, expanded: {} }));
 export const closeLightbox = (): void => lightbox.set(() => undefined);
+/** The lightbox `delta` images on (a swipe); stops at the ends. */
+export const stepLightbox = (delta: number): void => lightbox.set((view) => view && lightboxStep(view, delta));
 
 /** The chat on screen, whose folders its links open from; ChatScreen sets it before the transcript's effects run. */
 let showing: { handle: string; cwd: string } | undefined;
@@ -125,7 +128,7 @@ export function createChatUi(client: HostClient, homeDir: string, push: (route: 
       // Frames come from the host's /visual path (sandboxed, opaque origin, the desktop's frame CSP).
       visualFrames: { src: (frameId) => `/visual/${frameId}/doc`, tapToRender: true },
       setExpanded: (key, open) => store.set((state) => ({ ...state, expanded: { ...state.expanded, [key]: open } })),
-      openLightbox: (src) => lightbox.set(() => src),
+      openLightbox: (src, images) => lightbox.set(() => (src ? lightboxAt(src, images) : undefined)),
       openExternal(url) {
         const chat = showing;
         if (!chat || !/^https?:/i.test(url) || !isLocalUrl(url)) return void window.open(url, "_blank", "noopener,noreferrer");

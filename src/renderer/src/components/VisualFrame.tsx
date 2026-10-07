@@ -4,7 +4,6 @@ import { THEME_EVENT } from "../lib/theme";
 import { CodeView } from "./Markdown";
 
 const MIN_H = 40;
-const MAX_H = 720;
 const WATCHDOG_MS = 8000;
 
 const TOKEN_NAMES = ["--theme-mode", "--app-font-size", "--canvas", "--panel", "--sunken", "--raised", "--fg", "--muted", "--faint", "--accent", "--accent-soft", "--secondary", "--highlight", "--ok", "--bad", "--warn", "--line"];
@@ -51,7 +50,6 @@ function LiveFrame({ source }: { source: string }) {
   const [frameId] = useState(newFrameId);
   const src = visualFrames ? visualFrames.src(frameId) : `pigna-visual://${frameId}/doc`;
   const [height, setHeight] = useState(MIN_H);
-  const [expanded, setExpanded] = useState(false);
   // Full window: the same iframe restyled (moving it in the DOM would reload it and lose its state).
   const [full, setFull] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -138,9 +136,8 @@ function LiveFrame({ source }: { source: string }) {
     setTimeout(() => setCopied(false), 1200);
   }, [source]);
 
-  const clamped = height > MAX_H;
-  const shown = clamped && !expanded && !full ? MAX_H : height;
-  // No box around the frame: the visual reads as part of the reply, and its actions sit under it, shown on hover.
+  // No box around the frame and no clamp: the visual reads as part of the reply at its full height, and its actions sit
+  // under it, shown on hover.
   return (
     <>
       {full && <div className="visual-backdrop" onClick={() => setFull(false)} />}
@@ -150,20 +147,15 @@ function LiveFrame({ source }: { source: string }) {
         {!(error && visualFrames) && (
           <iframe
             ref={frameRef}
-            className={clamped && !expanded && !full ? "visual-frame clamped" : "visual-frame"}
+            className="visual-frame"
             title="Visual"
             sandbox="allow-scripts"
             referrerPolicy="no-referrer"
             src={src}
-            style={{ height: full ? undefined : shown, display: error ? "none" : undefined }}
+            style={{ height: full ? undefined : height, display: error ? "none" : undefined }}
           />
         )}
         <footer className="visual-actions">
-          {clamped && !error && !full && (
-            <button type="button" className={expanded ? undefined : "visual-more"} onClick={() => setExpanded((on) => !on)}>
-              {expanded ? "Collapse" : "Show all"}
-            </button>
-          )}
           {!error && (
             <button type="button" onClick={() => setFull((on) => !on)} title={full ? "Close (Esc)" : "Open in the full window"}>
               {full ? "Close" : "Expand"}

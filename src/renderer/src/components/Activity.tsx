@@ -184,7 +184,7 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
   const open = useExpanded(step.key, false);
   const [withoutFiles, mentions] = splitFileMentions(userText(step.message));
   const shown = stripStudioBlocks(withoutFiles);
-  const images = typeof step.message.content === "string" ? [] : step.message.content.filter((block) => block.type === "image");
+  const images = typeof step.message.content === "string" ? [] : step.message.content.flatMap((block) => (block.type === "image" ? [imageSrc(block)] : []));
   const long = shown.length > 280 || shown.split("\n").length > 4;
   return (
     <div title="You steered" className="my-1.5 flex gap-2.5 rounded-xl border border-line bg-raised/50 px-3 py-2">
@@ -198,13 +198,11 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
         )}
         {(images.length > 0 || mentions.length > 0) && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {images.map((image, index) =>
-              image.type === "image" ? (
-                <button key={index} type="button" onClick={() => openLightbox(imageSrc(image))} className="cursor-zoom-in">
-                  <img alt="" loading="lazy" decoding="async" src={imageSrc(image)} className="h-12 max-w-28 rounded-md border border-line object-cover" />
-                </button>
-              ) : null,
-            )}
+            {images.map((src, index) => (
+              <button key={index} type="button" onClick={() => openLightbox(src, images)} className="cursor-zoom-in">
+                <img alt="" loading="lazy" decoding="async" src={src} className="h-12 max-w-28 rounded-md border border-line object-cover" />
+              </button>
+            ))}
             {mentions.map((mention) => (
               <span key={mention.path} title={mention.path} className="max-w-56 truncate rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">
                 {mention.label}
@@ -352,14 +350,11 @@ function InlineImages({ images }: { images: ReturnType<typeof resultImages> }) {
   if (!images.length) return null;
   return (
     <div className="mt-1 mb-1.5 flex flex-wrap gap-2 pl-7">
-      {images.map((image, index) => {
-        const src = imageSrc(image);
-        return (
-          <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
-            <img alt="" loading="lazy" decoding="async" src={src} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
-          </button>
-        );
-      })}
+      {images.map(imageSrc).map((src, index, all) => (
+        <button key={index} type="button" onClick={() => openLightbox(src, all)} className="cursor-zoom-in">
+          <img alt="" loading="lazy" decoding="async" src={src} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
+        </button>
+      ))}
     </div>
   );
 }

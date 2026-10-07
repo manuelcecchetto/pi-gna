@@ -8,7 +8,7 @@ import { decorateWebLinks, loadChatImages, openCardLink, openFileLink, resolveCa
 
 interface ProseActions {
   openExternal(url: string): void;
-  openLightbox(src: string): void;
+  openLightbox(src: string, images: string[]): void;
   links?: ChatLinks;
   homeDir: string;
   board: ChatUiState["board"];
@@ -26,10 +26,10 @@ function onProseClick(event: MouseEvent<HTMLElement>, { openExternal, openLightb
     }, 1200);
     return;
   }
-  // An embedded image opens full screen, like tool-result images.
+  // An embedded image opens full screen, like tool-result images, and pages through the answer's other images.
   const image = target.closest<HTMLElement>("[data-image]")?.querySelector("img");
   if (image) {
-    openLightbox(image.src);
+    openLightbox(image.src, [...event.currentTarget.querySelectorAll<HTMLImageElement>("[data-image] img")].map((img) => img.src));
     return;
   }
   const card = target.closest<HTMLElement>("[data-card]");

@@ -1172,17 +1172,19 @@ Frame to parent: `ready`, `rendered`, `height { px }` (ResizeObserver, per anima
 - Presentation follows T3 Code's in-thread visualizations: no box, header or label around the frame, so a visual reads as
   part of the reply. The iframe inherits the app's `color-scheme` (with `normal` it painted an opaque canvas, because an
   iframe whose scheme differs from its document's gets one). Under it, a row of actions appears on hover (always on touch):
-  Show all / Collapse, Expand, Source, Copy.
+  Expand, Source, Copy.
 - Height follows `height` messages from 40 px (sent right after a render too: the observer waits for a frame, which a
   hidden window never draws). The height is the document's, or the bottom of a visible `.popover` when that is lower: an
   absolute popover is out of flow and would be clipped, and the observer does not see it open, so kit.js re-reports after
-  every click and Escape. No inner scroll in the shell; the parent clamps at **720 px** (`MAX_H`) with a fade and Show
-  all. Expand restyles the same iframe to fill the window over a backdrop (Esc, Close or a click outside returns it);
+  every click and Escape. No inner scroll in the shell and no clamp in the parent: like T3 Code's inline HTML, a visual
+  shows at its full height (a 720 px clamp with a fade and Show all was removed on request). Expand restyles the same iframe to fill the window over a backdrop (Esc, Close or a click outside returns it);
   moving the iframe would reload it and lose its state. Width is the message column.
 - The kit (`kit.css`, `kit.js`) is bundled: pi-gna's theme tokens, a categorical palette (`--c1`…`--c8`) and a heat ramp
   (`--heat-0`…`--heat-4`), both with light variants, and the component vocabulary (`stack row grid card stats stat head tabs
   bars bar split scale legend badge callout table num steps timeline controls hint muted mono`, plus UI-mock pieces `mock field
-  btn chip kbd banner menu anchor popover switch`), so the agent writes structure, not styling. UI mocks follow T3 Code's
+  btn chip kbd banner menu anchor popover switch`), so the agent writes structure, not styling. Its look follows T3 Code's
+  `html_render` guide: text at the app's font size, sans tabular numbers (28 px headline stats), 10 px rounded bars, section
+  subtitles inline after the title, and filled boxes without borders; nothing frames the whole visual. UI mocks follow T3 Code's
   in-thread mocks of UI treatments: the prompt asks for one `mock` per treatment of a UI change, with the real copy, so they
   can be compared and clicked in the reply. A mock pictures the product being changed, not pi-gna, so `.mock` redeclares the
   kit tokens with a neutral light product look (theme pushes on `:root` never reach inside), and the agent sets the
@@ -1285,7 +1287,7 @@ it and restore it afterwards.
 
 `FAKE_FIXTURE=<name>` makes `scripts/fake-pi.mjs` reply with a fixed text from `scripts/fake-pi-visuals.mjs`, `FAKE_CHUNK`
 characters per delta every `FAKE_DELAY` ms: `architecture`, `comparison`, `dashboard` (the richer kit: stats, tabs, a scripted
-treemap and heat grid with tooltips, bars, split, table; over 720 px, so it clamps), `slider`, `two` (two visuals), `stream` (use a small
+treemap and heat grid with tooltips, bars, split, table; the tallest fixture), `slider`, `two` (two visuals), `stream` (use a small
 `FAKE_CHUNK`, 25, to watch the placeholder), `oversized` (70 KB, use `FAKE_CHUNK=2000`), `hostile` (nine fences: fetch, `<img>`,
 `top.location`, `window.open`, form submit, `alert`, `parent.studio`, a `javascript:` link, an http link; they point at
 `http://127.0.0.1:$FAKE_HOSTILE_PORT`) and `loop` (`while(true){}`). Start a test instance as above, with fresh

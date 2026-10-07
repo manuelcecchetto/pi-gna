@@ -367,6 +367,44 @@ body,
   border-radius: 8px;
   cursor: zoom-in;
 }
+/*
+ * A gallery, as on GitHub: images that share a paragraph or list item sit side by side as thumbnails, and a table that
+ * holds images is a borderless grid of equal columns, each image fitted to its cell with its caption under it.
+ * The lightbox pages through all of an answer's images (Markdown.tsx).
+ */
+.prose :is(p, li):has(> .chat-image ~ .chat-image) > .chat-image:has(img) {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 0.5em 0.5em 0;
+}
+.prose :is(p, li):has(> .chat-image ~ .chat-image) > .chat-image img {
+  max-width: min(100%, 18rem);
+  max-height: 16rem;
+}
+.prose table:has(.chat-image) {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+.prose table:has(.chat-image) :is(th, td) {
+  border: 0;
+  background: none;
+  padding: 0.3em 0.75em 0.6em 0;
+  vertical-align: top;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.prose :is(th, td) .chat-image:has(img) {
+  margin: 0 0 0.35em;
+}
+/* The image is a block already: the `<br>` before its caption would leave a blank line. */
+.prose :is(th, td) .chat-image:has(img) + br {
+  display: none;
+}
+.prose :is(th, td) .chat-image img {
+  max-width: 100%;
+  max-height: 22rem;
+}
 .prose code.file-link {
   text-decoration: underline dotted;
 }
@@ -515,10 +553,6 @@ body,
   background: transparent;
   /* Inherit the app's scheme: an iframe whose scheme differs from the frame document's gets an opaque canvas. */
 }
-/* A clamped frame scrolls inside; the fade says there is more below. */
-.visual-frame.clamped {
-  mask-image: linear-gradient(#000 calc(100% - 48px), transparent);
-}
 .visual-actions {
   display: flex;
   justify-content: flex-end;
@@ -528,8 +562,7 @@ body,
   transition: opacity 120ms;
 }
 .visual:hover .visual-actions,
-.visual:focus-within .visual-actions,
-.visual-actions:has(.visual-more) {
+.visual:focus-within .visual-actions {
   opacity: 1;
 }
 @media (pointer: coarse) {
@@ -546,10 +579,6 @@ body,
 .visual-actions button:hover {
   background: var(--raised);
   color: var(--fg);
-}
-.visual-actions .visual-more {
-  margin-right: auto;
-  color: var(--muted);
 }
 /* Expand: the frame fills the window above a backdrop; Esc, Close or a click outside returns it. */
 .visual-box.full {

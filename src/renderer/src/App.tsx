@@ -4,6 +4,7 @@ import { BrowserPane, showFileFinder } from "./components/BrowserPane";
 import { GithubPage } from "./components/GitHub";
 import { KanbanPage } from "./components/Kanban";
 import { LamentsPage } from "./components/Laments";
+import { ChevronLeft, ChevronRight } from "./components/icons";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
 import { SettingsPage } from "./components/Settings";
@@ -14,7 +15,7 @@ import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
 import { BROWSER_MIN, CHAT_BESIDE_BROWSER } from "./lib/layout";
-import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, showBrowser, store, toggleExpandAll, useApp } from "./state/app";
+import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, showBrowser, stepLightbox, store, toggleExpandAll, useApp } from "./state/app";
 
 export function App() {
   useEffect(() => {
@@ -36,6 +37,9 @@ export function App() {
         newChat();
       } else if (key === "escape" && store.get().lightbox) {
         openLightbox(undefined);
+      } else if ((key === "arrowleft" || key === "arrowright") && store.get().lightbox) {
+        event.preventDefault();
+        stepLightbox(key === "arrowright" ? 1 : -1);
       } else if (key === "escape" && store.get().page?.kind === "settings" && !event.defaultPrevented && !editing(event.target)) {
         closeSettings();
       }
@@ -128,13 +132,39 @@ export function App() {
 const editing = (target: EventTarget | null): boolean =>
   (target instanceof HTMLInputElement && target.value !== "") || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable);
 
+/** Full-size image; with several (an answer's screenshots) the arrows and ←/→ page through them. */
 function Lightbox() {
-  const src = useApp((state) => state.lightbox);
-  if (!src) return null;
-  return (
-    <button type="button" onClick={() => openLightbox(undefined)} className="fixed inset-0 z-50 grid grid-cols-[100%] grid-rows-[100%] cursor-zoom-out place-items-center bg-black/75 p-10">
-      <img alt="" src={src} className="max-h-full max-w-full rounded-lg shadow-2xl" />
+  const view = useApp((state) => state.lightbox);
+  if (!view) return null;
+  const { images, index } = view;
+  const pager = (delta: number, label: string, Icon: typeof ChevronLeft, side: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={!images[index + delta]}
+      onClick={(event) => {
+        event.stopPropagation();
+        stepLightbox(delta);
+      }}
+      className={`absolute top-1/2 ${side} grid h-10 w-10 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-black/55 text-white hover:bg-black/75 disabled:cursor-default disabled:opacity-30`}
+    >
+      <Icon size={20} />
     </button>
+  );
+  return (
+    // A click anywhere but the arrows closes it, as Esc does.
+    <div role="dialog" aria-label="Image" onClick={() => openLightbox(undefined)} className="fixed inset-0 z-50 grid grid-cols-[100%] grid-rows-[100%] cursor-zoom-out place-items-center bg-black/75 p-10">
+      <img alt="" src={images[index]} className="max-h-full max-w-full rounded-lg shadow-2xl" />
+      {images.length > 1 && (
+        <>
+          {pager(-1, "Previous image", ChevronLeft, "left-3")}
+          {pager(1, "Next image", ChevronRight, "right-3")}
+          <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-2.5 py-0.5 text-[12px] tabular-nums text-white">
+            {index + 1} / {images.length}
+          </span>
+        </>
+      )}
+    </div>
   );
 }
 

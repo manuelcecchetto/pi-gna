@@ -30,6 +30,12 @@ export function zoomAt(view: View, scale: number, focus: { x: number; y: number 
 export const distance = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 export const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
+/** A one-finger drag at fit size that pages the lightbox: +1 (next) for a swipe left, -1 for right, 0 when it is not one. */
+export function swipeStep(dx: number, dy: number): -1 | 0 | 1 {
+  if (Math.abs(dx) < 60 || Math.abs(dx) < 1.5 * Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
 /** A double tap: back to fit when zoomed, else 2.5x around the tap. */
 export function doubleTap(view: View, focus: { x: number; y: number }): View {
   return view.scale > 1.01 ? FIT : zoomAt(view, 2.5, focus);

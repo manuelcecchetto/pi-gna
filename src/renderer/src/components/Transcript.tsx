@@ -450,14 +450,11 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {images.length > 0 && (
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!text && stamp}
-          {images.map((image, index) => {
-            const src = imageSrc(image);
-            return (
-              <button key={index} type="button" onClick={() => openLightbox(src)} className="cursor-zoom-in">
-                <img alt="" loading="lazy" decoding="async" className="h-24 max-w-56 rounded-xl border border-line object-cover" src={src} />
-              </button>
-            );
-          })}
+          {images.map(imageSrc).map((src, index, all) => (
+            <button key={index} type="button" onClick={() => openLightbox(src, all)} className="cursor-zoom-in">
+              <img alt="" loading="lazy" decoding="async" className="h-24 max-w-56 rounded-xl border border-line object-cover" src={src} />
+            </button>
+          ))}
         </div>
       )}
       {text && (

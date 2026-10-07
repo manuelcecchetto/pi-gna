@@ -40,7 +40,8 @@ export interface ChatUiActions {
   Sheet?: ComponentType<{ title: string; onClose: () => void; children: ReactNode }>;
   visualFrames?: VisualFrames;
   setExpanded(key: string, open: boolean): void;
-  openLightbox(src: string | undefined): void;
+  /** Full-screen image; `images` (holding `src`) are the ones it pages through, an answer's or a message's. */
+  openLightbox(src: string | undefined, images?: string[]): void;
   /** Open a card on the board; absent where there is no board view. */
   showBoard?(cwd: string, card: string): void;
   openExternal(url: string): void;

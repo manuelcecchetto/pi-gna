@@ -161,6 +161,9 @@ export async function loadChatImages(root: HTMLElement | null, api: ChatLinks | 
       img.alt = el.textContent ?? "";
       img.decoding = "async";
       img.src = `data:${image.mimeType};base64,${image.data}`;
+      // A raw `<img>`'s authored size (markdown.ts keeps only plain numbers and percentages).
+      if (el.dataset.width) img.setAttribute("width", el.dataset.width);
+      if (el.dataset.height) img.setAttribute("height", el.dataset.height);
       // Now an image, not a file link: a click opens the lightbox (Markdown.tsx).
       el.classList.remove("file-link");
       for (const name of ["role", "tabindex", "data-file", "title"]) el.removeAttribute(name);

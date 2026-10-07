@@ -45,6 +45,7 @@ import type { CompactionSettings } from "../../../shared/compaction";
 import { cardBlock, inChatPrompt, pickModel } from "../../../shared/task-prompts";
 import { bootUiState } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
+import { lightboxAt, lightboxStep, type LightboxView } from "../lib/lightbox";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
 import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
 import { createStore, useStore } from "../lib/store";
@@ -89,8 +90,8 @@ export interface AppState {
   sidebar: SidebarLayout;
   /** pi's compaction settings, for the context meter's auto-compaction point. */
   compaction: CompactionSettings;
-  /** Full-size image overlay (data URL). Hides the native browser view while open. */
-  lightbox?: string;
+  /** Full-size image overlay (data URLs) and the images it pages through. Hides the native browser view while open. */
+  lightbox?: LightboxView;
   /** Every project's Kanban cards. Main owns them (agents change them too) and pushes each change. */
   board: Revved<Board>;
   /** Every project's laments, which agents file; main owns them and pushes each change. */
@@ -611,8 +612,13 @@ export function newChat(): void {
   newSession((cwd && projectOf(cwd)) || studio().launchCwd || studio().homeDir);
 }
 
-export function openLightbox(src: string | undefined): void {
-  store.set((s) => ({ ...s, lightbox: src }));
+export function openLightbox(src: string | undefined, images?: string[]): void {
+  store.set((s) => ({ ...s, lightbox: src ? lightboxAt(src, images) : undefined }));
+}
+
+/** The lightbox `delta` images on (arrow keys); stops at the ends. */
+export function stepLightbox(delta: number): void {
+  store.set((s) => (s.lightbox ? { ...s, lightbox: lightboxStep(s.lightbox, delta) } : s));
 }
 
 /** Edit pi's queues (trash, steer now, defer, take out to edit); the host does it atomically per chat. */

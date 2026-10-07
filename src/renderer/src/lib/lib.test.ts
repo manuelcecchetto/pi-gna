@@ -8,6 +8,7 @@ import { cacheHitRate, summarizeContext } from "./context";
 import { resolveReserveTokens } from "../../../shared/compaction";
 import { attachmentImages, formatFileMentions, fromImageData, fromPicked, mergeAttachments, splitFileMentions } from "./attachments";
 import { parsePartialJson } from "../../../shared/partial-json";
+import { lightboxAt, lightboxStep } from "./lightbox";
 
 describe("parsePartialJson", () => {
   it("closes an open string so streaming paths are visible early", () => {
@@ -146,10 +147,45 @@ describe("markdown file links", () => {
     expect(markdownToHtml("![pic](pic.png)")).toBe('<p><img src="pic.png" alt="pic"></p>\n');
   });
 
+  it("loads a raw <img> with a local src like ![](), keeping a plain width and height, and leaves the rest of the HTML", () => {
+    const html = markdownToHtml(
+      '<table><tr><td><img src="shots/01 welcome.png" alt="Welcome" width="180" height="40%"><br><sub>Welcome</sub></td>' +
+        "<td><img src='/abs/b.png' width=\"calc(1px)\" onerror=\"alert(1)\"/></td><td><img src=\"https://x.com/a.png\"></td>" +
+        '<td><img alt="x&amp;y" src="a&quot;b.png"></td><td><img src="notes.md" alt="notes"></td></tr></table>\n\nText <img src="/abs/c.png"> inline.',
+      { localImages: true },
+    );
+    expect(html).toContain('data-image="shots/01 welcome.png" data-file="shots/01 welcome.png" data-kind="image" data-width="180" data-height="40%">Welcome</span><br><sub>Welcome</sub>');
+    expect(html).toContain('data-image="/abs/b.png" data-file="/abs/b.png" data-kind="image">b.png</span>');
+    expect(html).toContain('<img src="https://x.com/a.png">');
+    expect(html).toContain('data-image="a&quot;b.png" data-file="a&quot;b.png" data-kind="image">x&amp;y</span>');
+    expect(html).toContain('data-file="notes.md" data-kind="markdown">notes</span>');
+    expect(html).toContain('Text <span class="file-link chat-image" role="link" tabindex="0" data-image="/abs/c.png"');
+    expect(html).not.toMatch(/onerror|calc/);
+    // The file viewer keeps raw images as they are.
+    expect(markdownToHtml('<img src="pic.png">')).toBe('<img src="pic.png">');
+  });
+
   it("marks path-like inline code as candidates only", () => {
     const html = markdownToHtml("`src/a.ts:3` `1.2.3` `and/or` `a.b` `https://x.com/a.ts` `foo()`");
     expect(html).toContain('<code data-path="src/a.ts:3">');
     expect(html.match(/data-path/g)).toHaveLength(1);
+  });
+});
+
+describe("lightbox paging", () => {
+  it("opens on the clicked image within its set, or alone when it is not in one", () => {
+    expect(lightboxAt("b", ["a", "b", "c"])).toEqual({ images: ["a", "b", "c"], index: 1 });
+    expect(lightboxAt("z", ["a", "b"])).toEqual({ images: ["z"], index: 0 });
+    expect(lightboxAt("z")).toEqual({ images: ["z"], index: 0 });
+  });
+
+  it("steps through the set and stops at the ends", () => {
+    const view = lightboxAt("b", ["a", "b", "c"]);
+    expect(lightboxStep(view, 1).index).toBe(2);
+    expect(lightboxStep(view, -1).index).toBe(0);
+    expect(lightboxStep(lightboxStep(view, 1), 1).index).toBe(2);
+    const first = lightboxAt("a", ["a", "b"]);
+    expect(lightboxStep(first, -1)).toBe(first);
   });
 });
 
