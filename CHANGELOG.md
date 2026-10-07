@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.9.0 - 2026-10-08
+
 - Laments: Mark resolved, Reopen and Delete take effect at once instead of waiting for pi-gna's host, and Fix shows "Starting Fix…" on the lament and its button while the worktree is made, then "Fix started" (a double click starts one chat). A pull request's Review on the GitHub page shows the same starting state.
 - ⌘K opens a search over every chat (all projects, newest first before you type), the Kanban board's cards (by title, id or tag), the pages, the Settings sections (by topic too: "theme" finds Appearance), new chats in a project, and app commands with their shortcuts. Pages, settings and commands come before chats that match as well; ↑↓ or ⌃N/⌃P select, ↩ opens, Esc clears the search and then closes. It also works while the browser pane has focus (View > Search…).
 - Phone: images a chat's answers embed now show on the phone wherever the file is (a screenshot in /tmp, say), not only inside the chat's folders. Only images the chat's own answers show load; other paths outside its folders are still refused.
