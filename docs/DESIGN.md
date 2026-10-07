@@ -852,8 +852,8 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
 The first-run flow (`components/Setup.tsx`, `src/main/setup.ts`, `src/shared/setup.ts`): a native `<dialog>` (modal,
 `setOverlay` so the browser view does not draw over it) with five animated steps: You, pi, Providers, Plugins & MCP,
 Done. It opens by itself when pi is missing or broken (`piReady`), or on a first launch (localStorage
-`pigna:setup-done` unset) with no provider signed in; Settings > General > Run setup opens it again. Step one picks a
-persona by clicking a card, the nerd 🤌 or the cool 🤌 (`Settings.persona`; only Setup reads it so far): the nerd sees
+`pigna:setup-done` unset until you close it), even when pi already has a provider signed in; Settings > General > Run
+setup opens it again. Step one picks a persona by clicking a card, the nerd 🤌 or the cool 🤌 (`Settings.persona`; only Setup reads it so far): the nerd sees
 commands, versions and npm's log, the cool one plain words, a progress bar and funny lines, and the `simple` Providers
 (no file or environment notes, no "(legacy)" logins, API keys behind a button) and Plugins (app connections only).
 Not installed yet is a dashed to-do check; red is for a Node.js that is too old, a broken pi or a failed install.
