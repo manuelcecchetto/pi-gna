@@ -290,7 +290,7 @@ loads `pigna-file://<token>/<path>`. Full decisions, spike evidence and limits: 
   so the shared list stays files-only for the composer's @ menu): it browses one folder at a time (folders first,
   breadcrumbs, Backspace in an empty search goes up) and typing fuzzy-searches the files and folders below it; ⌘P (`showFileFinder`) opens it in the active start tab or a
   new one. Whatever is picked fills that tab: a URL goes through `navigate` (`BrowserManager.load` clears `start`), a file through `openPreview` with
-  `into: <tab id>`, which only accepts a start tab. The empty pane (no tabs) shows the same page and opens new tabs.
+  `into: <tab id>`, which only accepts a start tab. Closing a chat's last pane tab (user, agent or pop-out to a window) closes its pane (`emptiedPanes` in `syncBrowser`); ⌘B on an empty pane opens it with a start tab.
 - **Verified** end to end by `pnpm verify:preview` (after `pnpm build`).
 
 ## Computer Use

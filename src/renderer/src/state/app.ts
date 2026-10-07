@@ -566,6 +566,14 @@ export function scopeBrowser(all: BrowserState, chat: string | undefined): Brows
   return { ...all, tabs, activeId: tabs.some((tab) => tab.id === all.activeId) ? all.activeId : undefined };
 }
 
+/** The chats whose last pane tab is gone from `before` to `after` (window tabs live in their own window and do not count). */
+export function emptiedPanes(before: BrowserState, after: BrowserState): string[] {
+  const owners = (state: BrowserState) =>
+    new Set(state.tabs.filter((tab) => tab.agent && (tab.surface ?? "pane") === "pane").map((tab) => tab.agent as string));
+  const left = owners(after);
+  return [...owners(before)].filter((chat) => !left.has(chat));
+}
+
 /** The agent works in `chat`'s browser: its pane opens, whether or not the chat is on screen. */
 function revealBrowser(chat: string | undefined): void {
   if (!chat) return;
@@ -580,6 +588,7 @@ function syncBrowser(): void {
   if (shownBrowser.chat === active && shownBrowser.all === browserAll) return;
   const switched = shownBrowser.chat !== active;
   const previous = shownBrowser.chat;
+  const emptied = shownBrowser.all ? emptiedPanes(shownBrowser.all, browserAll) : [];
   shownBrowser = { chat: active, all: browserAll };
   if (switched) {
     window.studio.browser.focus(active);
@@ -593,6 +602,13 @@ function syncBrowser(): void {
   } else {
     store.set((s) => ({ ...s, browser: scopeBrowser(browserAll, active) }));
   }
+  // Closing a chat's last pane tab closes its pane, rather than leaving an empty start page.
+  if (emptied.length === 0) return;
+  store.set((s) => {
+    const panes = { ...s.panes };
+    for (const chat of emptied) if (panes[chat]) panes[chat] = { ...panes[chat], open: false, full: false };
+    return { ...s, panes, pane: active && emptied.includes(active) ? { ...s.pane, open: false, full: false } : s.pane };
+  });
 }
 
 // ── Sidebar ──────────────────────────────────────────────────────────────────
