@@ -716,11 +716,11 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
 - **Not on the phone:** operating Mac apps (Computer Use is a view-only preview with approvals and Stop), pop-out browser
   windows, native pickers, `update.restart`, enabling remote access, pairing, Shortcuts, `pi --pigna`. No native iOS app.
 - **Verifying.** `pnpm typecheck` and `pnpm test` (HostCore, EventHub, RemoteServer, security, multi-client, push and the
-  mobile helpers have vitest tests). `pnpm e2e:remote` (`scripts/remote-slice-e2e.mjs`, about 4 minutes) launches a test
-  instance as 'Verifying the UI' describes (own `PIGNA_USER_DATA`, `PIGNA_BACKGROUND=1`, `scripts/fake-pi.mjs`) behind a
-  proxy that fakes an https origin, pairs a device, and drives the phone screens at the iPhone 15 preset; `--screens-only
-  --keep --shots <dir>` for screenshots (it always reports one known failure, the last-answer check, because the full
-  scenario is skipped). `scripts/remote-browser-check.mjs` covers the browser stream.
+  mobile helpers have vitest tests). `pnpm e2e:remote` (`scripts/remote-e2e/`, small scenarios that each launch their
+  own test instance as 'Verifying the UI' describes: own `PIGNA_USER_DATA`, `PIGNA_BACKGROUND=1`, `scripts/fake-pi.mjs`)
+  pairs devices behind a proxy that fakes an https origin and drives the phone screens at the iPhone 15 preset; name
+  scenarios to run only those (`pnpm e2e:remote mobile-board --keep --shots <dir>`), see docs/REMOTE.md "Automated
+  end-to-end tests". `scripts/remote-browser-check.mjs` covers the browser stream.
   Everything a real iPhone adds (pinch, long-press, push, Home Screen behavior) is the runbook in
   `docs/REMOTE_VERIFICATION.md`.
 
@@ -758,7 +758,7 @@ on the `pigna-theme` event, so existing sandboxed inline visuals update without 
 
 Regression lesson: use explicit theme mode rather than only `prefers-color-scheme`: a phone's OS
 mode can differ from a project's mode. Keep the host allowlist, mobile snapshot/event handling and
-frame token propagation covered together (`scripts/remote-slice-e2e.mjs`).
+frame token propagation covered together (the `themes` scenario in `scripts/remote-e2e/`).
 
 ## Settings
 
@@ -1087,7 +1087,9 @@ style: 24-unit grid, 2px round strokes and joins, 3-4 unit corner radii, the few
 12-16px. Exports keep the names of the lucide-react icons they replaced (`X`, `SquareKanban`, `Settings`), each
 renders `<svg class="icon icon-<name>">`, and props pass through, so `fill="currentColor"` fills a Square or Play
 and `strokeWidth` thickens one. A new icon is a new `icon()` entry drawn in that style, not a dependency. The
-markdown link icons in `styles.css` (`--file-icon` data URIs) reuse the same paths.
+markdown link icons in `styles.css` (`--file-icon` data URIs) reuse the same paths. That class is what scripts select
+an icon by (`svg.icon-pin` in the remote e2e): renaming an icon means grepping `scripts/` too, which typecheck does not
+cover (the pin check still looked for `svg.lucide-pin` after the switch).
 
 ## Visuals
 
