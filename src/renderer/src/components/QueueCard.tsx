@@ -8,7 +8,7 @@ import type { SessionState } from "../../../shared/session-state";
 import { useChatActions } from "../lib/chat-ui";
 import { Popover } from "./primitives";
 
-/** `touch`: rows stack their actions as full-size buttons (Steer now, Edit, Remove) instead of icons and a menu. */
+/** `touch`: every action on the row with touch-size targets (Steer or Later, Edit, Remove) instead of a hover menu. */
 export function QueueCard({ session, onEdit, touch = false }: { session: SessionState; onEdit: (text: string) => void; touch?: boolean }) {
   const [busy, setBusy] = useState(false);
   const { editQueue } = useChatActions();
@@ -75,32 +75,33 @@ function QueueRow({
   const shown = stripStudioBlocks(withoutFiles) || (files.length ? "(attachments)" : text);
   const steering = kind === "steering";
   if (touch) {
-    const action = "flex min-h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] text-fg disabled:opacity-50";
+    // One line per message, like the desktop's: the kind's icon, the text, the main move as a short pill, and Edit and
+    // Remove as icons with full-size touch targets. Three full buttons per row took ~100 px a message above the composer.
+    const icon = "grid h-10 w-10 shrink-0 place-items-center rounded-lg text-muted active:bg-panel disabled:opacity-50";
     return (
-      <div className="flex min-w-0 flex-col gap-2 rounded-lg px-2 py-2" data-testid="queue-row" data-kind={kind}>
-        <div className="flex min-w-0 items-center gap-2.5">
-          {steering ? <CornerDownRight size={15} className="shrink-0 text-accent" /> : <ListEnd size={15} className="shrink-0 text-faint" />}
-          <span className="min-w-0 flex-1 truncate text-[14px] text-fg">{shown}</span>
-          {files.length > 0 && <span className="shrink-0 text-[11.5px] text-faint">+{files.length} {files.length === 1 ? "file" : "files"}</span>}
-          <span className="shrink-0 text-[12px] text-faint">{steering ? "Steering" : "After the run"}</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {steering ? (
-            <button type="button" disabled={busy} onClick={onDefer} className={action} data-testid="queue-defer">
-              <ListEnd size={14} /> After the run
-            </button>
-          ) : (
-            <button type="button" disabled={busy} onClick={onSteer} className={action} data-testid="queue-steer">
-              <CornerDownRight size={14} /> Steer now
-            </button>
-          )}
-          <button type="button" disabled={busy} onClick={onEdit} className={action} data-testid="queue-edit">
-            <Pencil size={14} /> Edit
+      <div className="flex min-h-11 min-w-0 items-center gap-1 rounded-lg pl-2" data-testid="queue-row" data-kind={kind}>
+        {steering ? (
+          <CornerDownRight size={15} className="shrink-0 text-accent" aria-label="Steering" />
+        ) : (
+          <ListEnd size={15} className="shrink-0 text-faint" aria-label="After the run" />
+        )}
+        <span className="ml-1.5 min-w-0 flex-1 truncate text-[14px] text-fg">{shown}</span>
+        {files.length > 0 && <span className="shrink-0 text-[11.5px] text-faint">+{files.length}</span>}
+        {steering ? (
+          <button type="button" disabled={busy} onClick={onDefer} aria-label="Send after the run instead" className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-line px-2.5 text-[12.5px] text-fg disabled:opacity-50" data-testid="queue-defer">
+            <ListEnd size={13} /> Later
           </button>
-          <button type="button" disabled={busy} onClick={onDelete} className={`${action} text-bad`} data-testid="queue-delete">
-            <Trash2 size={14} /> Remove
+        ) : (
+          <button type="button" disabled={busy} onClick={onSteer} aria-label="Steer now" className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-line px-2.5 text-[12.5px] text-fg disabled:opacity-50" data-testid="queue-steer">
+            <CornerDownRight size={13} /> Steer
           </button>
-        </div>
+        )}
+        <button type="button" disabled={busy} onClick={onEdit} aria-label="Edit in composer" className={icon} data-testid="queue-edit">
+          <Pencil size={15} />
+        </button>
+        <button type="button" disabled={busy} onClick={onDelete} aria-label="Remove" className={`${icon} text-bad`} data-testid="queue-delete">
+          <Trash2 size={15} />
+        </button>
       </div>
     );
   }
