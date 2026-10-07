@@ -1058,8 +1058,8 @@ Verified live (pi 1.0.0, Oct 2026):
 - `.prose` (Markdown) is plain CSS in `styles.css`, outside Tailwind's layers, so it beats any utility: a
   `text-[13px]` on a wrapper or `[&_.prose]:` variant does not resize it. Size it with a contextual rule beside it
   (`.thinking .prose`, `.lament-report .prose`).
-- Attachments (Codex-style, verified against the Codex app bundle): "+" menu with "Add photos" and "Attach files
-  and folders" (⌘U, native picker with files and folders), drop anywhere on the session pane, ⌘V. Files and
+- Attachments (Codex-style, verified against the Codex app bundle): "+" button (⌘U) opens one native picker for
+  files and folders (no separate "Add photos": photos are files, images among the picks still go as images), drop anywhere on the session pane, ⌘V. Files and
   folders are sent by path in a `# Files mentioned by the user:` block of `## name: /path` lines (pi reads them
   with its tools); images also go as image content (pi resizes them, `images.autoResize`). Dropped/pasted Files
   get their path through `webUtils.getPathForFile` in the preload; in-memory clipboard images are read at paste
