@@ -112,6 +112,8 @@ export interface AppState {
   update: UpdateState;
   /** The update dialog is open. */
   updateOpen: boolean;
+  /** The ⌘K search is open. */
+  palette: boolean;
 }
 
 /** A page of one project (its Kanban board, maybe with a card open, its laments, ...), or the Settings page. */
@@ -154,6 +156,7 @@ export const store = createStore<AppState>({
   overlay: false,
   update: { phase: "idle" },
   updateOpen: false,
+  palette: false,
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
@@ -963,6 +966,11 @@ export function showUpdate(open: boolean): void {
   store.set((s) => (s.updateOpen === open ? s : { ...s, updateOpen: open }));
 }
 
+/** ⌘K: open or close the search over chats, cards, pages and commands (`open` sets it). */
+export function togglePalette(open = !store.get().palette): void {
+  store.set((s) => (s.palette === open ? s : { ...s, palette: open }));
+}
+
 export function setOverlay(overlay: boolean): void {
   store.set((s) => (s.overlay === overlay ? s : { ...s, overlay }));
 }
@@ -1093,6 +1101,7 @@ export function boot(): void {
       windowFocused = focused;
     });
   studio().onSidebarToggle(toggleSidebar);
+  studio().onPaletteToggle(() => togglePalette());
   studio().onPageToggle(togglePage);
   studio().onOpenProject(newSession);
   studio().onWindowFocus((focused) => {
