@@ -66,7 +66,7 @@ describe("which", () => {
     expect(which("pi.ps1", dir, "win32", ".EXE;.CMD")).toBe(join(dir, "pi.ps1"));
   });
 
-  it("needs the executable bit elsewhere", () => {
+  it.skipIf(process.platform === "win32")("needs the executable bit elsewhere", () => {
     expect(which("pi", dir, "darwin")).toBeUndefined();
     chmodSync(join(dir, "pi"), 0o755);
     expect(which("pi", `/nowhere:${dir}`, "darwin")).toBe(join(dir, "pi"));
@@ -74,6 +74,17 @@ describe("which", () => {
 });
 
 describe("shimScript", () => {
+  it.each(["npm", "npx"])("reads Node's bundled %s launcher without mistaking the prefix helper for its CLI", (name) => {
+    const script = join(dir, "node_modules", "npm", "bin", `${name}-cli.js`);
+    mkdirSync(join(script, ".."), { recursive: true });
+    writeFileSync(script, "");
+    writeFileSync(join(dir, "node_modules", "npm", "bin", "npm-prefix.js"), "");
+    const variable = `${name.toUpperCase()}_CLI_JS`;
+    writeFileSync(join(dir, `${name}.cmd`), `@ECHO OFF\r\nSET "NPM_PREFIX_JS=%~dp0\\node_modules\\npm\\bin\\npm-prefix.js"\r\nSET "${variable}=%~dp0\\node_modules\\npm\\bin\\${name}-cli.js"\r\n"%NODE_EXE%" "%${variable}%" %*\r\n`);
+    expect(shimScript(join(dir, `${name}.cmd`))).toBe(script);
+    expect(resolveCommand(name, ["--version"], { PATH: dir }, "win32")).toEqual({ file: "node", args: [script, "--version"] });
+  });
+
   it("reads pnpm's %~dp0 form, and gives up on shims it cannot read or whose script is gone", () => {
     writeFileSync(join(dir, "tool.cmd"), `@"%~dp0\\node_modules\\@earendil-works\\pi-coding-agent\\dist\\cli.js" %*\n`);
     expect(shimScript(join(dir, "tool.cmd"))).toBe(cli);

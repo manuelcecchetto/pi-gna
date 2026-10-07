@@ -16,7 +16,14 @@ pnpm start      # builds, then starts Electron from the checkout; logs go to thi
 
 - `src/main/command.ts`: npm puts commands like `pi` and `npm` on Windows as `.cmd` shims, which Node's `spawn` refuses
   without a shell. `resolveCommand` reads the shim and starts its script with node instead. Every `pi`/`npm` spawn
-  goes through it (`pi-process.ts`, `setup.ts`, `plugins.ts`), and so does `findPiSdk` (`pi-auth.ts`).
+  goes through it (`pi-process.ts`, `setup.ts`, `plugins.ts`), and so does `findPiSdk` (`pi-auth.ts`). Node's
+  bundled `npm.cmd`/`npx.cmd` name their CLI in `SET "NPM_CLI_JS=..."` (`NPM_CLI_SCRIPT`), next to `npm-prefix.js`,
+  which is a helper and must not be picked.
+- Setup (`setup.ts`): a spawn that throws synchronously (`EINVAL` on an unreadable `.cmd`) fails that one check
+  instead of rejecting the whole status, which had also skipped automatic onboarding. After installing pi it adds the
+  npm prefix root to PATH (Windows has no `prefix\bin`) with `;`. Verified in the Windows UI (patched windows-beta-0.6.9-1).
+- `host-core.ts` `project()` takes any `isAbsolute` path (`C:\...`, UNC), so the Plugins page accepts Windows
+  projects. Unit-tested on Windows; not yet checked in the Windows UI.
 - `shell-env.ts` skips the login-shell environment read: Explorer already gives apps the user's environment.
 - The window keeps the native frame and hides the menu bar until Alt (`index.ts`, macOS-only `hiddenInset`).
 - Computer Use is off on anything but macOS (its helper is a macOS app).
@@ -33,8 +40,11 @@ switches that module off in CI (the updater's tests failed that way). Put guards
 
 ## Left, roughly in order
 
-1. **Verify the bootstrap.** Check that `pnpm start` opens the window, Setup finds node/npm/pi, and a chat streams.
-   If a spawn fails with `EINVAL`, a `.cmd` shim did not match `SHIM_SCRIPT` in `command.ts`.
+1. **Verify the bootstrap.** Onboarding and Setup (node/npm/pi/SDK, provider list) work in a patched Windows beta; check
+   that a chat streams and that the Plugins page loads for a `C:\` project. If a spawn fails with `EINVAL`, a `.cmd`
+   shim matched neither `SHIM_SCRIPT` nor `NPM_CLI_SCRIPT` in `command.ts`. Known Windows test failures:
+   `worktreeCwd` builds a path with an embedded `C:` drive, and a file-symlink test in `host-core.test.ts` hits
+   `EPERM` without symlink privileges.
 2. **pi's child processes on close.** `PiProcess.close()` sends SIGTERM/SIGKILL, which on Windows kills only pi itself.
    Check whether pi's own children (bash tool, MCP servers) are left running; if so, use `taskkill /T /F /PID`.
 3. **Path handling.** About 45 places treat `/` as the separator or as a sign of an absolute path:

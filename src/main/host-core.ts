@@ -154,7 +154,7 @@ const chatHandle = (handle: unknown): string => {
 };
 
 export const project = (cwd: unknown): string => {
-  if (typeof cwd !== "string" || !cwd.startsWith("/")) throw new Error("a project is an absolute path");
+  if (typeof cwd !== "string" || cwd.includes("\0") || !isAbsolute(cwd)) throw new Error("a project is an absolute path");
   return cwd;
 };
 
