@@ -141,14 +141,16 @@ describe("session registry", () => {
         expect(globals.some((event) => event.kind === "chat.opened")).toBe(false);
         expect(host.attentionAll()).toEqual([]);
         read.finish([old]);
-        const [a, b] = await Promise.all([first, second]);
-        expect(b).toEqual({ handle: a.handle, reused: true });
+        // Either open may start pi (their checks before it race on the file system); the other joins it.
+        const results = await Promise.all([first, second]);
+        const a = results.find((result) => !result.reused)!;
+        expect(results.find((result) => result.reused)).toEqual({ handle: a.handle, reused: true });
         expect(a).toEqual({ handle: a.handle });
         expect(read.reads).toBe(1);
         expect(fake.pis).toHaveLength(1);
         expect(host.stateOf(a.handle)!.items.map((item) => item.kind)).toEqual(["user"]);
         expect(host.stateOf(a.handle)!.phase).toBe("ready");
-        expect(host.presence(a.handle).map((c) => c.clientId)).toEqual(["a", "b"]);
+        expect(host.presence(a.handle).map((c) => c.clientId).sort()).toEqual(["a", "b"]);
       } finally {
         afterRead();
       }
