@@ -24,8 +24,8 @@ import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, NEW_PLAN_DIR,
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
-import type { SessionState } from "../../../shared/session-state";
-import { activate, earlierTurns, openSettings, type PageState, prefill, releasePageChat, remoteError, showPage, showPageChat, toast, useApp } from "../state/app";
+import { activate, earlierTurns, openSettings, type PageState, prefill, releasePageChat, remoteError, showPage, showPageChat, toast, useApp, useAppShallow } from "../state/app";
+import { type ChatGlance, chatGlance } from "../lib/projects";
 import {
   discardNewPlanChat,
   liftHold,
@@ -164,9 +164,9 @@ export function AtpPage({ page }: { page: PageState }) {
   const selectedNode = node && plan?.nodes.find((other) => other.id === node);
   const chatPlan = selected === "new" ? undefined : plan?.path;
   const chat = useOrchestrator(page.cwd, chatPlan, selected === "new" || Boolean(plan));
-  const session = chat.session;
+  const glance = useAppShallow((state) => chatGlance(chat.handle ? state.sessions[chat.handle] : undefined));
   // A plan's orchestrator floats over the graph until you talk to it; then its chat is the side column's.
-  const docked = Boolean(plan && session && (session.items.length > 0 || session.running));
+  const docked = Boolean(plan && glance?.talked);
   useEffect(() => {
     if (!docked) return;
     setFront("chat");
@@ -179,8 +179,8 @@ export function AtpPage({ page }: { page: PageState }) {
   const kept = useApp((state) => workers.filter((handle) => state.sessions[handle]).join(" "));
   const tabs = [...(docked ? ["chat"] : []), ...(selectedNode ? ["node"] : []), ...(kept ? kept.split(" ").map((handle) => `worker:${handle}`) : [])];
   const showing = tabs.includes(front) ? front : selectedNode ? "node" : tabs[0];
-  const unread = useUnread(docked ? session : undefined, docked && !collapsed && showing === "chat");
-  const shownChat = collapsed ? undefined : showing === "chat" ? session?.handle : showing?.startsWith("worker:") ? showing.slice("worker:".length) : undefined;
+  const unread = useUnread(docked ? chat.handle : undefined, docked ? glance : undefined, docked && !collapsed && showing === "chat");
+  const shownChat = collapsed ? undefined : showing === "chat" ? chat.handle : showing?.startsWith("worker:") ? showing.slice("worker:".length) : undefined;
   useEffect(() => {
     showPageChat(shownChat);
     return () => showPageChat(undefined);
@@ -272,7 +272,7 @@ export function AtpPage({ page }: { page: PageState }) {
                     >
                       <ChevronLeft size={14} />
                       <MessagesSquare size={14} />
-                      {session?.running ? <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+                      {glance?.running ? <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
                     </button>
                   ) : (
                     <aside
@@ -282,10 +282,10 @@ export function AtpPage({ page }: { page: PageState }) {
                     >
                       <ResizeHandle edge="left" bounds={ATP_DETAIL} giver={() => graphArea.current} keep={ATP_GRAPH_MIN.width} onResize={resize("detail")} />
                       <div className="dashed-b flex items-center gap-1 overflow-x-auto px-2 py-1.5 [scrollbar-width:none]">
-                        {docked && session && (
+                        {docked && glance && (
                           <ColumnTab active={showing === "chat"} onClick={() => setFront("chat")}>
                             <MessagesSquare size={12} /> Orchestrator
-                            {session.running ? <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+                            {glance.running ? <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
                           </ColumnTab>
                         )}
                         {selectedNode && (
@@ -324,9 +324,9 @@ export function AtpPage({ page }: { page: PageState }) {
                           onOpenChat={openWorker}
                         />
                       ) : showing === "chat" ? (
-                        session && <SideChat session={session} placeholder={PLAN_PLACEHOLDER} />
+                        chat.handle && <SideChat handle={chat.handle} placeholder={PLAN_PLACEHOLDER} />
                       ) : (
-                        showing && <WorkerChat key={showing} handle={showing.slice("worker:".length)} />
+                        showing && <SideChat key={showing} handle={showing.slice("worker:".length)} />
                       )}
                     </aside>
                   ))}
@@ -637,7 +637,8 @@ const PHASES: Record<Runner["phase"], string> = {
 };
 
 function RunnerState({ runner, onReveal, onOpenChat }: { runner: Runner; onReveal: (id: string) => void; onOpenChat: (handle: string) => void }) {
-  const session = useApp((state) => (runner.handle ? state.sessions[runner.handle] : undefined));
+  // Whether the worker's chat is open here, not the chat: it streams while the runner works.
+  const chat = useApp((state) => (runner.handle && state.sessions[runner.handle] ? runner.handle : undefined));
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted">
       <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
@@ -652,8 +653,8 @@ function RunnerState({ runner, onReveal, onOpenChat }: { runner: Runner; onRevea
           <Elapsed since={runner.since} plain />
         </span>
       )}
-      {session && (
-        <button type="button" onClick={() => onOpenChat(session.handle)} title="Open the worker's chat" className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
+      {chat && (
+        <button type="button" onClick={() => onOpenChat(chat)} title="Open the worker's chat" className="rounded-md p-1 text-faint hover:bg-raised hover:text-fg">
           <MessagesSquare size={13} />
         </button>
       )}
@@ -685,7 +686,9 @@ function NodePanel({
 }) {
   useNow(60_000);
   const threads = useThreads(plan.path);
-  const live = useApp((state) => (runner?.node === node.id && runner.handle ? state.sessions[runner.handle] : undefined));
+  // The running worker's chat by handle and session file, not the chat: it streams while the runner works.
+  const live = useApp((state) => (runner?.node === node.id && runner.handle && state.sessions[runner.handle] ? runner.handle : undefined));
+  const livePath = useApp((state) => (live ? state.sessions[live]?.sessionPath : undefined));
   const neededBy = plan.nodes.filter((other) => other.dependencies.includes(node.id));
   const scope = plan.nodes.find((other) => other.scope && other.children.includes(node.id));
   const chats = threads?.workers[node.id] ?? [];
@@ -746,14 +749,14 @@ function NodePanel({
             {live && (
               <button
                 type="button"
-                onClick={() => onOpenChat(live.handle)}
+                onClick={() => onOpenChat(live)}
                 className="flex items-center gap-1.5 rounded-lg border border-accent/50 px-2 py-1 text-[12px] text-accent hover:bg-accent-soft"
               >
                 <MessagesSquare size={12} /> Open the running worker
               </button>
             )}
             {chats
-              .filter((path) => path !== live?.sessionPath)
+              .filter((path) => path !== livePath)
               .map((path, index) => (
                 <button
                   key={path}
@@ -816,7 +819,8 @@ function NodePanel({
 const PLAN_PLACEHOLDER = "How is it going? Add, split or rewire nodes…";
 
 interface Orchestrator {
-  session?: SessionState;
+  /** The chat while this window has it. Its session streams: the parts that show it select it (SideChat, OrchestratorDock). */
+  handle?: string;
   /** A start that failed (most often: the orchestrator model is not available). */
   failed?: string;
   retry: () => void;
@@ -842,25 +846,24 @@ function useOrchestrator(cwd: string, plan: string | undefined, shown: boolean):
   }, [cwd, plan, attempt, shown]);
   // A new plan's chat moves to the plan once the architect writes it: keep showing it.
   const adopted = useAtp((state) => (plan ? state.orchestrators[plan] : state.orchestrators[`new:${cwd}`]));
-  const session = useApp((state) => {
+  const open = useApp((state) => {
     const current = adopted ?? handle;
-    return current ? state.sessions[current] : undefined;
+    return current && state.sessions[current] ? current : undefined;
   });
   const retry = useCallback(() => setAttempt((count) => count + 1), []);
-  return shown ? { session, failed, retry } : { retry };
+  return shown ? { handle: open, failed, retry } : { retry };
 }
 
 /** A chat you are not looking at settled with something new (an answer streams into an item it already has). */
-function useUnread(session: SessionState | undefined, looking: boolean): boolean {
-  const handle = session?.handle;
-  const mark = session ? `${session.items.length}:${session.running}` : "";
+function useUnread(handle: string | undefined, glance: ChatGlance | undefined, looking: boolean): boolean {
+  const mark = glance?.mark ?? "";
   const [seen, setSeen] = useState({ handle, mark });
   // Another chat (another plan's) starts out read.
   const fresh = seen.handle !== handle;
   useEffect(() => {
     if (looking || fresh) setSeen({ handle, mark });
   }, [looking, fresh, handle, mark]);
-  return Boolean(session && !looking && !fresh && !session.running && mark !== seen.mark);
+  return Boolean(glance && !looking && !fresh && !glance.running && mark !== seen.mark);
 }
 
 function ColumnTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -876,8 +879,13 @@ function ColumnTab({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-/** A chat in the side column (the orchestrator once you talked to it, a worker): the whole conversation and its composer. */
-function SideChat({ session, placeholder }: { session: SessionState; placeholder?: string }) {
+/**
+ * A chat in the side column (the orchestrator once you talked to it, a worker): the whole conversation and its composer.
+ * It selects the chat itself, so its streaming renders this column, not the page.
+ */
+function SideChat({ handle, placeholder }: { handle: string; placeholder?: string }) {
+  const session = useApp((state) => state.sessions[handle]);
+  if (!session) return null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <Transcript session={session} earlier={earlierTurns(session)} />
@@ -886,11 +894,6 @@ function SideChat({ session, placeholder }: { session: SessionState; placeholder
       </div>
     </div>
   );
-}
-
-function WorkerChat({ handle }: { handle: string }) {
-  const session = useApp((state) => state.sessions[handle]);
-  return session ? <SideChat session={session} /> : null;
 }
 
 function WorkerTab({ handle, active, onClick, onClose }: { handle: string; active: boolean; onClick: () => void; onClose: () => void }) {
@@ -930,7 +933,8 @@ function OrchestratorDock({
 }) {
   const room = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
-  const { session, failed, retry } = chat;
+  const { handle, failed, retry } = chat;
+  const session = useApp((state) => (handle ? state.sessions[handle] : undefined));
   const present = Boolean(session) || failed !== undefined;
   // The graph keeps the plan above the composer.
   useLayoutEffect(() => {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { worktreeCwd } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
-import { projectViews as viewsOfChats } from "./projects";
+import { chatGlance, projectViews as viewsOfChats } from "./projects";
+import { shallow } from "./store";
 import { createSession, type SessionState } from "../../../shared/session-state";
 import { openChat } from "../state/app";
 
@@ -123,3 +124,25 @@ describe("openChat", () => {
   });
 });
 
+describe("chatGlance", () => {
+  const running: SessionState = { ...createSession("cg1", "/a"), prompted: true, running: true, items: [user("plan it", 500)] };
+  const answer = (text: string) => ({ kind: "assistant" as const, key: "a1", message: { role: "assistant" as const, content: [{ type: "text" as const, text }] } }) as unknown as SessionState["items"][number];
+
+  it("stays shallow-equal while an answer streams into its item, so the ATP page does not render", () => {
+    const first = { ...running, items: [...running.items, answer("one")] };
+    const later = { ...first, items: [...running.items, answer("one two three")] };
+    expect(shallow(chatGlance(first), chatGlance(later))).toBe(true);
+    expect(chatGlance(later)).toEqual({ talked: true, running: true, mark: "2:true" });
+  });
+
+  it("changes when an item is added or the run ends", () => {
+    expect(shallow(chatGlance(running), chatGlance({ ...running, items: [...running.items, answer("one")] }))).toBe(false);
+    expect(chatGlance({ ...running, running: false })).toEqual({ talked: true, running: false, mark: "1:false" });
+  });
+
+  it("is not talked to before anything was sent, and undefined without a chat", () => {
+    expect(chatGlance(createSession("cg2", "/a"))).toEqual({ talked: false, running: false, mark: "0:false" });
+    expect(chatGlance({ ...createSession("cg3", "/a"), running: true })?.talked).toBe(true);
+    expect(chatGlance(undefined)).toBeUndefined();
+  });
+});

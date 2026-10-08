@@ -2,7 +2,7 @@
 // and what they reported. They show in a native <dialog> on the board (CardDialog) and in a preview tab (CardTab).
 // New cards are added on the board (AddCard), with their screenshots.
 import { Check, ChevronDown, Link2, LoaderCircle, MessagesSquare, Trash2, Unlink, X } from "./icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { type Card, COLUMN_LABELS, COLUMNS, githubKey, LIMITS } from "../../../shared/board";
 import { refLabel } from "../../../shared/github";
@@ -10,8 +10,7 @@ import type { PickedPath } from "../../../shared/ipc";
 import { chatSummary, chatTitle } from "../lib/board";
 import { splitAttachments } from "../../../shared/task-prompts";
 import { formatStamp, relativeTime } from "../lib/format";
-import { attention } from "../../../shared/session-state";
-import { applyBoard, boardRev, openSession, remoteError, sessionTitle, setOverlay, useApp, useFeature } from "../state/app";
+import { applyBoard, boardRev, openSession, remoteError, setOverlay, useApp, useFeature, useOpenChats } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { ColumnIcon } from "./ColumnIcon";
 import { RefIcon } from "./GitHub";
@@ -79,11 +78,11 @@ export function CardDetails({
 }) {
   const here = useApp((state) => (chat && state.sessions[chat]?.phase !== "exited" ? chat : undefined));
   const [elsewhere, setElsewhere] = useState<{ at: { x: number; y: number }; run: () => void }>();
-  const sessions = useApp((state) => state.sessions);
+  // Their titles and attention, not the chats: the card does not render for every streaming frame.
+  const chats = useOpenChats();
   const projects = useApp((state) => state.projects);
   const github = useFeature("github");
   const tasks = useApp((state) => state.cardTasks[card.id]);
-  const live = useMemo(() => Object.values(sessions), [sessions]);
   const [title, setTitle] = useState(card.title);
   const [notes, setNotes] = useState(card.notes);
   const [deleting, setDeleting] = useState(false);
@@ -128,7 +127,7 @@ export function CardDetails({
   useEffect(() => () => {
     if (!removed.current) latestSave.current();
   }, []);
-  const titleOf = (path: string) => chatTitle(path, card, projects, live, sessionTitle);
+  const titleOf = (path: string) => chatTitle(path, card, projects, chats);
 
   return (
     <>
@@ -236,8 +235,7 @@ export function CardDetails({
             <section className="mt-5">
               <h3 className="mb-1.5 text-[12px] font-medium text-faint">Chats</h3>
               {[...card.chats].reverse().map((ref) => {
-                const open = live.find((session) => session.sessionPath === ref.path);
-                const level = open ? attention(open) : undefined;
+                const level = chats.find((chat) => chat.sessionPath === ref.path)?.attention;
                 return (
                   <div key={ref.path} className="group flex items-center rounded-lg hover:bg-raised/60">
                     <button type="button" onClick={() => openSession(chatSummary(projects, ref))} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left">

@@ -8,7 +8,7 @@ import { type Lament, type LamentFix, type LamentReport, lamentSeverity, project
 import { findSummary } from "../lib/board";
 import { baseName, formatStamp, relativeTime } from "../lib/format";
 import { fixChat, lamentProjects, lamentSnippet, reportChat, SEVERITY_TONE } from "../lib/laments";
-import { applyLament, fixLament, openSession, type PageState, sessionTitle, showPage, taskKey, useApp, useTaskStart } from "../state/app";
+import { applyLament, fixLament, openSession, type PageState, showPage, taskKey, useApp, useOpenChats, useTaskStart } from "../state/app";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { Markdown } from "./Markdown";
 import { useNow } from "./primitives";
@@ -277,15 +277,14 @@ function LamentDetail({ lament }: { lament: Lament }) {
 /** A chat the lament's Fix started: open it, with its branch. */
 function FixView({ fix }: { fix: LamentFix }) {
   const projects = useApp((state) => state.projects);
-  const sessions = useApp((state) => state.sessions);
-  const live = Object.values(sessions).find((session) => session.sessionPath === fix.chat.path);
+  const live = useOpenChats().find((open) => open.sessionPath === fix.chat.path);
   const chat = fixChat(projects, fix);
   return (
     <li className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11.5px] text-faint">
       <Wrench size={11} />
       <span>Fix started {formatStamp(fix.at)}</span>
       <button type="button" onClick={() => openSession(chat)} className="flex min-w-0 items-center gap-1 rounded px-1 hover:bg-raised hover:text-fg" title="Open this chat">
-        · <MessagesSquare size={11} /> <span className="max-w-64 truncate">{live ? sessionTitle(live) : chat.title}</span>
+        · <MessagesSquare size={11} /> <span className="max-w-64 truncate">{live ? live.title : chat.title}</span>
       </button>
       {fix.branch && <span className="selectable font-mono text-[11px]">· {fix.branch}</span>}
     </li>
@@ -294,10 +293,10 @@ function FixView({ fix }: { fix: LamentFix }) {
 
 function ReportView({ report, first }: { report: LamentReport; first: boolean }) {
   const projects = useApp((state) => state.projects);
-  const sessions = useApp((state) => state.sessions);
+  const chats = useOpenChats();
   const chat = reportChat(projects, report);
-  const live = report.chat && Object.values(sessions).find((session) => session.sessionPath === report.chat?.path);
-  const title = live ? sessionTitle(live) : report.chat && (findSummary(projects, report.chat.path)?.title ?? "a chat");
+  const live = report.chat && chats.find((open) => open.sessionPath === report.chat?.path);
+  const title = live ? live.title : report.chat && (findSummary(projects, report.chat.path)?.title ?? "a chat");
   return (
     <li className="min-w-0">
       <div className="flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-faint">

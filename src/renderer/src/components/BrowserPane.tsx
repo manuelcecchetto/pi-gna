@@ -57,7 +57,6 @@ export function BrowserPane() {
   const lightbox = useApp((s) => s.lightbox);
   const overlay = useApp((s) => s.overlay);
   const sidebar = useApp((s) => s.sidebar);
-  const sessions = useApp((s) => s.sessions);
   const active = state.tabs.find((tab) => tab.id === state.activeId);
   const [suggesting, setSuggesting] = useState(false);
   const { open: openMenu, menu } = useContextMenu();
@@ -145,7 +144,6 @@ export function BrowserPane() {
               key={tab.id}
               tab={tab}
               active={tab.id === state.activeId}
-              agentRunning={Boolean(tab.agent && sessions[tab.agent]?.running)}
               onContextMenu={(event) => openMenu(event, tabMenu(tab, state.tabs))}
             />
           ))}
@@ -328,17 +326,9 @@ function tabMenu(tab: BrowserTab, tabs: BrowserTab[]): MenuItem[][] {
   ];
 }
 
-function TabPill({
-  tab,
-  active,
-  agentRunning,
-  onContextMenu,
-}: {
-  tab: BrowserTab;
-  active: boolean;
-  agentRunning: boolean;
-  onContextMenu: (event: React.MouseEvent) => void;
-}) {
+function TabPill({ tab, active, onContextMenu }: { tab: BrowserTab; active: boolean; onContextMenu: (event: React.MouseEvent) => void }) {
+  // Whether the tab's agent runs, not its chat: the pane does not render for every streaming frame.
+  const agentRunning = useApp((s) => Boolean(tab.agent && s.sessions[tab.agent]?.running));
   const card = useApp((s) => (tab.card ? s.board.cards.find((entry) => entry.id === tab.card) : undefined));
   const label = tab.card ? (card?.title ?? tab.card) : tab.start ? "New tab" : tab.url === "about:blank" && (!tab.title || tab.title === tab.url) ? "New page" : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
   const FileIcon = tab.preview ? iconForKind(tab.preview.kind) : undefined;

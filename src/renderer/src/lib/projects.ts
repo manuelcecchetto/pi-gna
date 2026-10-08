@@ -4,7 +4,7 @@
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { isTriage } from "../../../shared/task-prompts";
-import type { Attention } from "../../../shared/session-state";
+import type { Attention, SessionState } from "../../../shared/session-state";
 import { applyUi, uiStore } from "./host-ui";
 import { useStore } from "./store";
 
@@ -24,6 +24,19 @@ export interface OpenChat {
   listed: boolean;
   draft: boolean;
   exited: boolean;
+}
+
+/** What a page shows of a chat it does not render (the ATP page's orchestrator): select it with useAppShallow. */
+export interface ChatGlance {
+  /** Something was sent: the chat has items or runs. */
+  talked: boolean;
+  running: boolean;
+  /** Changes when an item is added or the run starts or ends, not while an answer streams into its item (unread). */
+  mark: string;
+}
+
+export function chatGlance(session: SessionState | undefined): ChatGlance | undefined {
+  return session && { talked: session.items.length > 0 || session.running, running: session.running, mark: `${session.items.length}:${session.running}` };
 }
 
 export interface ProjectRow {

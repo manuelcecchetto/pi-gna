@@ -3,9 +3,10 @@ import { applyOp, type Board, type BoardOp, emptyBoard } from "../../../shared/b
 import type { ProjectGroup } from "../../../shared/ipc";
 import { splitCardBlock, stripStudioBlocks } from "./attachments";
 import type { Model } from "../../../shared/protocol";
-import { boardColumns, boardProjects, cardAttention, cardSnippet, findSummary } from "./board";
+import { boardColumns, boardProjects, cardAttention, cardSnippet, chatTitle, findSummary } from "./board";
 import { cardBlock, cardNotes, draftTitle, investigatePrompt, triagePrompt } from "../../../shared/task-prompts";
 import { createSession, type SessionState } from "../../../shared/session-state";
+import { openChat } from "../state/app";
 
 const ops: BoardOp[] = [
   { type: "add", id: "aaaaaa", title: "Fix the flaky login test", notes: "Fails on CI\nabout 1 in 5 runs", cwd: "/repo", before: null },
@@ -31,9 +32,21 @@ describe("Kanban view", () => {
   });
 
   it("marks a card with what its open chats need", () => {
-    const sessions = [live("/s/b1.jsonl", { unread: "done" }), live("/s/b2.jsonl", { running: true }), live("/s/x.jsonl", { dialogs: [{} as never] })];
-    expect(cardAttention(card("bbbbbb"), sessions)).toBe("running");
-    expect(cardAttention(card("aaaaaa"), sessions)).toBeUndefined();
+    const chats = [live("/s/b1.jsonl", { unread: "done" }), live("/s/b2.jsonl", { running: true }), live("/s/x.jsonl", { dialogs: [{} as never] })].map(openChat);
+    expect(cardAttention(card("bbbbbb"), chats)).toBe("running");
+    expect(cardAttention(card("bbbbbb"), chats.slice(0, 1))).toBe("unread");
+    expect(cardAttention(card("bbbbbb"), [live("/s/b1.jsonl", {})].map(openChat))).toBeUndefined();
+    expect(cardAttention(card("aaaaaa"), chats)).toBeUndefined();
+  });
+
+  it("names a card's chat after the open chat, else the session index, else its label on the card", () => {
+    const labelled = applyOp(board, { type: "attach", id: "aaaaaa", chat: { path: "/s/a1.jsonl", cwd: "/repo", label: "On the card" } }, 11).cards.find((c) => c.id === "aaaaaa")!;
+    const projects = [{ cwd: "/repo", modifiedAt: 0, sessions: [{ path: "/s/a1.jsonl", id: "a1", cwd: "/repo", title: "Indexed", named: false, createdAt: 0, modifiedAt: 0 }] }] as ProjectGroup[];
+    const chats = [live("/s/a1.jsonl", { name: "Open now" })].map(openChat);
+    expect(chatTitle("/s/a1.jsonl", labelled, projects, chats)).toBe("Open now");
+    expect(chatTitle("/s/a1.jsonl", labelled, projects, [])).toBe("Indexed");
+    expect(chatTitle("/s/a1.jsonl", labelled, [], [])).toBe("On the card");
+    expect(chatTitle("/s/zz.jsonl", labelled, [], chats)).toBe("a chat");
   });
 
   it("shows the latest report under the title, else the notes", () => {

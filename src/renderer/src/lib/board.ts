@@ -4,7 +4,8 @@ import { type Board, COLUMNS, type Card, type ChatRef, type Column, projectCards
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { markdownText } from "../../../shared/markdown-text";
 import { splitAttachments } from "../../../shared/task-prompts";
-import { type Attention, type SessionState, strongestAttention } from "../../../shared/session-state";
+import { type Attention, strongestLevel } from "../../../shared/session-state";
+import type { OpenChat } from "./projects";
 
 export function boardColumns(board: Board, cwd: string): Record<Column, Card[]> {
   const columns = Object.fromEntries(COLUMNS.map((column) => [column, [] as Card[]])) as Record<Column, Card[]>;
@@ -12,15 +13,13 @@ export function boardColumns(board: Board, cwd: string): Record<Column, Card[]> 
   return columns;
 }
 
-/** The card's chats that are open in pi-gna. */
-export function liveChats(card: Card, sessions: SessionState[]): SessionState[] {
+/**
+ * What the card's chats need from you, strongest first (running, waiting, failed, unread), from the open chats as the
+ * lists show them (useOpenChats): streaming into a chat does not change those, so the board does not render for it.
+ */
+export function cardAttention(card: Card, chats: OpenChat[]): Attention | undefined {
   const paths = new Set(card.chats.map((chat) => chat.path));
-  return sessions.filter((session) => session.sessionPath !== undefined && paths.has(session.sessionPath));
-}
-
-/** What the card's chats need from you, strongest first (running, waiting, failed, unread). */
-export function cardAttention(card: Card, sessions: SessionState[]): Attention | undefined {
-  return strongestAttention(liveChats(card, sessions));
+  return strongestLevel(chats.flatMap((chat) => (chat.sessionPath !== undefined && paths.has(chat.sessionPath) ? [chat.attention] : [])));
 }
 
 /** The line under a card's title: its latest report, else its notes (without their attachments). */
@@ -52,9 +51,9 @@ export function chatSummary(projects: ProjectGroup[], ref: ChatRef): SessionSumm
 }
 
 /** A chat's title: the open chat's, else the session index's, else its label on the card. */
-export function chatTitle(path: string, card: Card, projects: ProjectGroup[], live: SessionState[], titleOf: (session: SessionState) => string): string {
-  const open = live.find((session) => session.sessionPath === path);
-  if (open) return titleOf(open);
+export function chatTitle(path: string, card: Card, projects: ProjectGroup[], chats: OpenChat[]): string {
+  const open = chats.find((chat) => chat.sessionPath === path);
+  if (open) return open.title;
   return findSummary(projects, path)?.title ?? card.chats.find((ref) => ref.path === path)?.label ?? "a chat";
 }
 

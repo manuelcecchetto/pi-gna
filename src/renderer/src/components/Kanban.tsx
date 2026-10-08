@@ -8,7 +8,7 @@ import { refLabel } from "../../../shared/github";
 import { boardColumns, boardProjects, cardAttention, cardSnippet, chatSummary, chatTitle } from "../lib/board";
 import { splitAttachments } from "../../../shared/task-prompts";
 import { baseName, relativeTime } from "../lib/format";
-import { applyBoard, type CardTasks, openCard, openSession, type PageState, sessionTitle, showBoard, useApp, useFeature } from "../state/app";
+import { applyBoard, type CardTasks, openCard, openSession, type PageState, showBoard, useApp, useFeature, useOpenChats } from "../state/app";
 import { cardActions } from "../state/card-actions";
 import { CardDialog } from "./CardDialog";
 import { ColumnIcon } from "./ColumnIcon";
@@ -24,13 +24,13 @@ type Menu = { card: Card; at: { x: number; y: number }; confirmDelete?: boolean 
 
 export function KanbanPage({ page }: { page: PageState }) {
   const board = useApp((state) => state.board);
-  const sessions = useApp((state) => state.sessions);
+  // The open chats' titles and attention, not the chats: the board does not render for every streaming frame.
+  const openChats = useOpenChats();
   const projects = useApp((state) => state.projects);
   const tasks = useApp((state) => state.cardTasks);
   const inset = useApp((state) => state.sidebar.collapsed);
   useNow(60_000); // relative times
   const columns = useMemo(() => boardColumns(board, page.cwd), [board, page.cwd]);
-  const live = useMemo(() => Object.values(sessions), [sessions]);
   const switchable = useMemo(() => boardProjects(board, projects, page.cwd), [board, projects, page.cwd]);
   const [dragging, setDragging] = useState<string>();
   const [drop, setDrop] = useState<Drop>();
@@ -76,7 +76,7 @@ export function KanbanPage({ page }: { page: PageState }) {
       .slice(-3)
       .reverse()
       .map((ref) => ({
-        label: `Open “${chatTitle(ref.path, card, projects, live, sessionTitle)}”`,
+        label: `Open “${chatTitle(ref.path, card, projects, openChats)}”`,
         icon: <MessagesSquare size={13} />,
         onSelect: () => openSession(chatSummary(projects, ref)),
       }));
@@ -143,7 +143,7 @@ export function KanbanPage({ page }: { page: PageState }) {
                   {drop?.column === column && drop.before === card.id && <DropLine />}
                   <CardView
                     card={card}
-                    attention={cardAttention(card, live)}
+                    attention={cardAttention(card, openChats)}
                     dragging={dragging === card.id}
                     onDrag={setDragging}
                     onMenu={(at) => setMenu({ card, at })}
