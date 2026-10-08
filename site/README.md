@@ -25,8 +25,8 @@ npx wrangler dev   # serve dist/ the way Cloudflare will: redirects, 404, _heade
 | `public/` | `_headers`, `robots.txt`, icons, `og/` share images |
 | `tools/mascot/` | How the mascot art was made and cleaned ([README](tools/mascot/README.md)) |
 
-The changelog page and the download page's version come from `CHANGELOG.md`, so rebuild and redeploy the site after
-each release.
+The changelog page and the download page's version come from `CHANGELOG.md`, so pushing a release to `main`
+redeploys the site (see Deploy).
 
 ### Demos
 
@@ -38,22 +38,25 @@ browser has no agent cursor.
 
 ## Deploy
 
-`wrangler.jsonc` uploads `dist/` as static assets; there is no Worker script.
+Pushing to `main` deploys: [`.github/workflows/site.yml`](../.github/workflows/site.yml) runs when `site/`,
+`CHANGELOG.md` or the workflow change (so pushing a release refreshes the changelog and download pages), then checks,
+builds and runs `wrangler deploy`. It needs the repo secret `CLOUDFLARE_API_TOKEN`: a Cloudflare API token made from
+the "Edit Cloudflare Workers" template, limited to this account and the pi-gna.com zone. Run it by hand with
+`gh workflow run site.yml`.
+
+From your machine, in `site/`:
 
 ```bash
 npx wrangler login     # once
 pnpm run deploy        # astro build && wrangler deploy
 ```
 
-Use `pnpm run deploy`: plain `pnpm deploy` is pnpm's own workspace command. To deploy from git instead, connect the
-repo in Workers & Pages with root directory `site`, build command `pnpm build` and deploy command
-`npx wrangler deploy`.
+Use `pnpm run deploy`: plain `pnpm deploy` is pnpm's own workspace command.
 
-Then, in the Cloudflare dashboard:
-
-- Add `pi-gna.com` as a Custom Domain on the `pi-gna-site` Worker (Settings › Domains & Routes).
-- Send `www.pi-gna.com` to the apex with a Redirect Rule (the "Redirect from WWW to root" template, 301, keep the
-  path and query). The `www` name needs a proxied DNS record for the rule to run.
+`wrangler.jsonc` uploads `dist/` as static assets (there is no Worker script) and attaches pi-gna.com as the Worker's
+Custom Domain, DNS record included. workers.dev and preview URLs are off, so the site has one address.
+`www.pi-gna.com` is a Redirect Rule in the Cloudflare dashboard (www to the apex, 301, path and query kept) on a
+proxied `www` DNS record; wrangler's login cannot manage rules.
 
 URLs end in a slash (`trailingSlash: 'always'`, and every link and canonical uses it). Cloudflare's
 `auto-trailing-slash` redirects `/download` to `/download/`; unknown paths get `404.html` with a 404 status.
