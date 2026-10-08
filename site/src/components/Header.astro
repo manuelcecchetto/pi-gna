@@ -56,9 +56,9 @@ const current = (href: string) => path === href || (href !== '/' && path.startsW
 </header>
 
 <style>
-  /* Solid, with no backdrop-filter: Safari 26 on iPhone paints a sticky top bar's color into its own minimized
-     toolbar only when it can sample it (a backdrop-filter stops that, WebKit bug 319479). A frosted header let the
-     page scroll by above it. */
+  /* Solid, with no backdrop-filter: Safari 26 paints a sticky top bar's color into its own toolbar only when it can
+     sample it (a backdrop-filter stops that, WebKit bug 319479). On phones the header is not sticky at all: under
+     iOS 26's shrinking address bar a sticky bar floated below it with the page scrolling past above. */
   .header {
     position: sticky;
     top: 0;
@@ -232,6 +232,10 @@ const current = (href: string) => path === href || (href !== '/' && path.startsW
   }
 
   @media (max-width: 860px) {
+    .header {
+      position: relative;
+    }
+
     nav,
     .gh {
       display: none;
