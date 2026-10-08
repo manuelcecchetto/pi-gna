@@ -82,8 +82,45 @@
       </div>
       <h2>SVG</h2>
       <svg viewBox="0 0 240 60" width="240" height="60"><rect x="4" y="10" width="80" height="40" rx="4"/><text x="44" y="35" text-anchor="middle">client</text><path d="M84 30h70"/><rect x="154" y="10" width="80" height="40" rx="4"/><text x="194" y="35" text-anchor="middle">server</text></svg>
+      <h2>Player (kit.player, kit.along)</h2>
+      <div class="legend"><span style="--c:var(--accent)">in progress</span><span style="--c:var(--bad)">sent back</span><span style="--c:var(--ok)">approved</span></div>
+      <div id="flow">
+        <svg viewBox="0 0 520 120" style="width:100%">
+          <path id="wire" d="M20 80H500" stroke="var(--line)" stroke-width="3" />
+          <path id="done" d="M20 80H500" stroke="var(--accent)" stroke-width="3" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1" />
+          <path id="loop" d="M180 80C180 20 320 20 320 80" stroke="var(--line)" stroke-width="2" stroke-dasharray="4 4" />
+          <text x="250" y="22" text-anchor="middle" font-size="11" id="round" fill="var(--muted)">up to 3 rounds</text>
+          <g id="nodes"></g>
+          <circle id="tok" r="6" fill="var(--accent)" stroke="none" />
+        </svg>
+      </div>
     </div>
     <script src="kit.js"></script>
+    <script>
+        (function () {
+          var N = [["Ticket", 20], ["Architect", 180], ["Critic", 320], ["Merge", 500]];
+          var g = document.getElementById("nodes");
+          var dots = N.map(function (n) {
+            g.insertAdjacentHTML("beforeend", '<circle cx="' + n[1] + '" cy="80" r="8" fill="var(--canvas)" stroke-width="2.5"/><text x="' + n[1] + '" y="106" text-anchor="middle" font-size="12">' + n[0] + "</text>");
+            return g.lastElementChild.previousElementSibling;
+          });
+          var wire = document.getElementById("wire"), loop = document.getElementById("loop"), tok = document.getElementById("tok");
+          var put = function (path, f) { var q = kit.along(path, f); tok.setAttribute("cx", q.x); tok.setAttribute("cy", q.y); };
+          kit.player(document.getElementById("flow"), [{ name: "Intake", ms: 900 }, { name: "Design", ms: 3000 }, { name: "Merge", ms: 1200 }], function (s) {
+            var d = s.at(1), back = d > 0.35 && d < 0.6;
+            document.getElementById("done").style.strokeDashoffset = 1 - (s.at(0) * 160 + Math.min(d * 2, 1) * 140 + s.at(2) * 180) / 480;
+            loop.style.stroke = d >= 0.6 ? "var(--bad)" : back ? "var(--bad)" : "var(--line)";
+            document.getElementById("round").textContent = d === 0 ? "up to 3 rounds" : d < 0.6 ? "round 1 of 3" : d < 1 ? "round 2 of 3" : "approved in round 2";
+            dots.forEach(function (c, i) {
+              var st = [s.at(0), d, d, s.at(2)][i], cur = (i === 0 && s.stage === 0) || (i === 3 && s.stage === 2) || (s.stage === 1 && (i === 1 ? d < 0.25 || back : i === 2 && !back));
+              c.style.stroke = back && i === 2 ? "var(--bad)" : st >= 1 || (i === 1 && d > 0.6) ? "var(--ok)" : cur ? "var(--accent)" : "var(--fg)";
+            });
+            if (s.stage === 0) put(wire, s.p * 160 / 480);
+            else if (s.stage === 1) put(back ? loop : wire, back ? 1 - (d - 0.35) / 0.25 : (160 + 140 * Math.min(1, d < 0.35 ? d / 0.35 : (d - 0.6) / 0.4)) / 480);
+            else put(wire, (300 + 180 * s.p) / 480);
+          });
+        })();
+    </script>
     <script>
       var t = new URLSearchParams(location.search).get("theme");
       if (t === "light" || t === "dark") document.documentElement.style.colorScheme = t;

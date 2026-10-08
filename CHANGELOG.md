@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Inline visuals can animate: agents can draw a flow that plays through its stages (work handed off, sent back, built in parallel) with Pause, Restart, speed and clickable stage chips. It plays once and stops on its last frame; with reduced motion it opens on the last frame. The visual prompt no longer sets a size budget beyond the 64 KB cap.
+
 ## 0.9.0 - 2026-10-08
 
 - Laments: Mark resolved, Reopen and Delete take effect at once instead of waiting for pi-gna's host, and Fix shows "Starting Fix…" on the lament and its button while the worktree is made, then "Fix started" (a double click starts one chat). A pull request's Review on the GitHub page shows the same starting state.

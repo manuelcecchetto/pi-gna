@@ -121,6 +121,19 @@ svg text { fill: currentColor; stroke: none; }
 .controls input[type="range"] { accent-color: var(--accent); }
 .controls select, .controls input, button { font: inherit; color: var(--fg); background: var(--raised); border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; }
 button { cursor: pointer; }
+/* Animation player (kit.player): a toolbar before the drawing, numbered stage chips after it (done, on = current). */
+.player { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.player-bar, .player-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.player-bar button { padding: 1px 8px; border-radius: 6px; }
+.player-bar .play { min-width: 62px; background: var(--fg); color: var(--canvas); border-color: transparent; font-weight: 600; }
+.player-bar .speeds { display: inline-flex; gap: 2px; }
+.player-bar .speeds > button { font-family: var(--font-mono); font-size: 11px; color: var(--muted); background: none; border-color: transparent; }
+.player-bar .speeds > button.on { color: var(--fg); background: var(--raised); }
+.player-stages > button { display: inline-flex; align-items: center; gap: 6px; padding: 1px 9px 1px 3px; border-radius: 999px; background: none; color: var(--muted); }
+.player-stages > button > b { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; background: var(--raised); color: var(--muted); }
+.player-stages > button.done > b { background: var(--ok); color: #fff; }
+.player-stages > button.on { color: var(--fg); border-color: var(--accent); }
+.player-stages > button.on > b { background: var(--accent); color: #fff; }
 /* UI mocks: pictures of the product being changed (a composer, a banner, a menu), so treatments of a UI change can be drawn
  * and clicked in the thread. A mock is not pi-gna: it drops the app theme for a neutral product look, and the fragment sets
  * the product's real values (these same token names, --radius, color-scheme) on the .mock. kit.js wires data-toggle,

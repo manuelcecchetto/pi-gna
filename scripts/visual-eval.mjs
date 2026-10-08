@@ -16,6 +16,7 @@ export const CASES = [
   { id: "S4", should: true, prompt: "Show test coverage per module (src/main, src/renderer, src/shared) from real numbers: run the tests with coverage if available, otherwise count test files and tests per module with shell commands." },
   { id: "S5", should: true, prompt: "Draw the state machine of a chat's lifecycle in pi-gna (idle, streaming, tool running, error, etc.). Base it on the code in src/main/session-host.ts and src/renderer." },
   { id: "S6", should: true, prompt: "The composer in this repo could show how full the context window is. Mock three treatments for where that hint could live (a banner over the composer, a meter in the composer's toolbar with a popover, a choice at send time), based on the real composer in src/renderer, and recommend one. Do not edit files." },
+  { id: "S7", should: true, prompt: "Walk me through a multi-agent coding pipeline as it runs: an architect writes a design and a critic grades it (sending it back up to 3 times), two implementer/tester pairs build packages in parallel, then a review fans out to several reviewers before a human merges. Show the work moving, including one design sent back. No need to look at the repo." },
   { id: "N1", should: false, prompt: "What port does the Vite dev server use in this repo? Answer in one line." },
   { id: "N2", should: false, prompt: "Fix this typo in my sentence: 'The quick brown fox jumsp over the lazy dog.'" },
   { id: "N3", should: false, prompt: "Write a TypeScript function debounce(fn, ms) with proper generics." },
@@ -25,7 +26,7 @@ export const CASES = [
 
 const FENCE = /```visual\n([\s\S]*?)```/g;
 const BAD = [
-  [/https?:\/\/|\/\/cdn|@import|<link\b|<img\b[^>]*src|fetch\(|XMLHttpRequest|<iframe/i, "network/resource"],
+  [/https?:\/\/(?!www\.w3\.org\/2000\/svg)|\/\/cdn|@import|<link\b|<img\b[^>]*src|fetch\(|XMLHttpRequest|<iframe/i, "network/resource"],
   [/<style\b/i, "style block"],
   [/style="[^"]*(?<![-\w])(color|background|font-family|font-size|box-shadow|text-shadow|gradient)\s*:/i, "inline color/font/bg style"],
   [/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i, "hardcoded color"],

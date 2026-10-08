@@ -1210,7 +1210,11 @@ Frame to parent: `ready`, `rendered`, `height { px }` (ResizeObserver, per anima
   `.popover` floats only from an `.anchor`; elsewhere it stays in the flow, so a stray one cannot cover the previous mock. `kit.js` wires `.tabs` (`.on`, `data-show` panels, a `tab` event), mock
   interactions without script (`data-toggle="id…"` flips `hidden`, an outside click or Escape closes an open `.popover` that
   has an id, `data-dismiss` hides the nearest banner/popover/menu/card, `.switch` flips `.on` and fires `switch`), `data-tip` tooltips, and
-  `window.kit` (`color(i)`, `heat(t)`, `fmt(n)`, `tip(html, x, y)`) for scripted charts. It renders a fragment once: the
+  `window.kit` (`color(i)`, `heat(t)`, `fmt(n)`, `tip(html, x, y)`) for scripted charts, plus `along(path, f)` and
+  `player(el, stages, draw, opts)` for animated flows: one `requestAnimationFrame` clock per player with a toolbar (pause,
+  restart, 0.5/1/2x) before `el`'s content and numbered stage chips (jump) after it. `draw` receives the time as `{ ms, stage,
+  p, at(i), done }` and owns no state, so seeking is a redraw. It plays once (`opts.loop` repeats), so a transcript does not
+  keep animating, and under `prefers-reduced-motion` it opens paused on the last frame. It renders a fragment once: the
   parent re-sends `render` until acked, and a second run would redeclare the fragment's top-level `const`s and throw.
   `resources/visual/gallery.html` shows every component.
 - A runaway fragment (`for(;;){}`) cannot freeze the transcript (the frame has its own process), but it keeps burning a core

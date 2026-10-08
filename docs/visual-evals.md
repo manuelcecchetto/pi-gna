@@ -21,6 +21,7 @@ Outputs land in `/tmp/vis-eval/<label>/` (one `.md` per case). The script scores
 | S4 | visual | Test coverage per module from real numbers (`@vitest/coverage-v8` is not installed, so models count tests) |
 | S5 | visual | State machine of a chat's lifecycle |
 | S6 | visual | Three UI mocks of a context-window hint in the real composer (kit mock classes, `data-toggle`) |
+| S7 | visual | Animated walkthrough of an agent pipeline with a revise loop and parallel builders (`kit.player`) |
 | N1 | none | One-line question (Vite port) |
 | N2 | none | Fix a typo |
 | N3 | none | `debounce` snippet |
@@ -68,3 +69,11 @@ Sonnet 5.5, medium, after the mock vocabulary was added: one 3 to 3.7 KB visual 
 
 1. A first prompt let mocks follow pi-gna's theme. A mock pictures the product being changed, so `.mock` now resets the tokens to a neutral product look and the agent sets the product's values; the second run read them from `src/renderer/src/styles.css` and set them on each mock.
 2. Both runs drew popovers shown open, once with `popover up` outside any `anchor`: it floated over the previous treatment, and an outside click in one mock closed another mock's open popover. A `popover` now floats only from an `anchor`, and outside clicks and Escape close popovers only within the same `mock`.
+
+## Animated flows (S7)
+
+Sonnet 5.5, medium, after `kit.player` and `kit.along` were added: one 5.6 KB visual, a 10-stage player (draft, grade 5/10,
+sent back, revise, approved 8/10, split, parallel build, join and fan out, review, merge) moving tokens along the paths, with
+the findings also in prose and no flags. Two harness fixes came out of it: `visual-eval-page.mjs` now inlines `kit.js` before
+the fragments (scripted visuals threw `kit is not defined`), and the network flag ignores the SVG namespace that
+`createElementNS` needs.
