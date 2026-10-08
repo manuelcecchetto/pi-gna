@@ -25,7 +25,7 @@ import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
 import type { SessionState } from "../../../shared/session-state";
-import { activate, openSettings, type PageState, prefill, releasePageChat, remoteError, showPage, showPageChat, toast, useApp } from "../state/app";
+import { activate, earlierTurns, openSettings, type PageState, prefill, releasePageChat, remoteError, showPage, showPageChat, toast, useApp } from "../state/app";
 import {
   discardNewPlanChat,
   liftHold,
@@ -880,7 +880,7 @@ function ColumnTab({ active, onClick, children }: { active: boolean; onClick: ()
 function SideChat({ session, placeholder }: { session: SessionState; placeholder?: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Transcript session={session} />
+      <Transcript session={session} earlier={earlierTurns(session)} />
       <div className="px-3 pb-3">
         <Composer key={session.handle} session={session} floating placeholder={placeholder} />
       </div>
@@ -982,7 +982,7 @@ function OrchestratorDock({
             style={{ height }}
           >
             <ResizeHandle edge="top" bounds={ATP_DOCK} giver={() => room.current} keep={24} onResize={onResize} />
-            <Transcript session={session} />
+            <Transcript session={session} earlier={earlierTurns(session)} />
           </div>
         )}
         <div ref={bottom} className="pointer-events-auto">

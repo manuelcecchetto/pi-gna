@@ -14,7 +14,7 @@ await scenario("chat sync", async (ctx) => {
   let handle = opened.handle;
   const topic = `chat:${handle}`;
   check(!opened.reused && /^[a-z0-9]{6,32}$/.test(handle), "A opens the session file and gets a host handle", opened);
-  check(Array.isArray(opened.entries) && opened.entries.length === 0, "a remote open returns no entries (the phone reads chat.snapshot)");
+  check(opened.entries === undefined && opened.snapshot === undefined, "a remote open returns no transcript (the phone reads chat.snapshot)", opened);
   const openedB = await B.ok("chat.open", { request: { cwd, sessionPath: sessionFile } });
   check(openedB.reused === true && openedB.handle === handle, "B opening the same file attaches to the same handle", openedB);
   const snapshotA = await A.ok("chat.snapshot", { handle });

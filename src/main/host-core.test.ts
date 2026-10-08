@@ -216,23 +216,34 @@ describe("starting a chat for a task", () => {
 
 describe("chat reads for a phone", () => {
   const snapshots: unknown[][] = [];
+  const opens: unknown[] = [];
   const host = {
-    open: async () => ({ handle: "h1", reused: false, entries: [{ id: "e1" }] }),
+    open: async (_request: unknown, _lease: unknown, page?: unknown) => (opens.push(page), { handle: "h1", reused: false, ...(page ? { snapshot: { seq: 7, state: { handle: "h1" }, turns: { total: 90, from: 50 } } } : {}) }),
+    attach: () => undefined,
     snapshot: (handle: string, page: unknown) => (snapshots.push([handle, page]), handle === "gone" ? undefined : { seq: 7, state: { handle }, turns: { total: 90, from: 50 } }),
     attentionAll: () => [],
   };
   const chats = createHostCore({ ...deps, host, app: { homeDir: "/Users/me", launchCwd: "/p", version: "1.0.0", buildId: "b" } } as unknown as HostDeps);
 
-  it("sends the session's entries to the window only; a phone reads the snapshot", async () => {
+  it("answers the window's open with its first page and the outline of earlier turns; a phone reads the snapshot", async () => {
     const request = { cwd: "/p", sessionPath: "/s.jsonl" };
-    expect(await dispatch(chats, desktop(), "chat.open", { request })).toMatchObject({ entries: [{ id: "e1" }] });
-    expect(await dispatch(chats, phone(), "chat.open", { request })).toEqual({ handle: "h1", reused: false, entries: [] });
+    opens.length = 0;
+    expect(await dispatch(chats, desktop(), "chat.open", { request })).toMatchObject({ handle: "h1", snapshot: { seq: 7 } });
+    expect(await dispatch(chats, phone(), "chat.open", { request })).toEqual({ handle: "h1", reused: false });
+    expect(opens).toEqual([{ turns: 40, bytes: 2_000_000, outline: true }, undefined]);
+  });
+
+  it("attaches the window with its first page, a phone with only the seq", () => {
+    snapshots.length = 0;
+    expect(dispatch(chats, desktop(), "chat.attach", { handle: "h1" })).toMatchObject({ seq: 7, state: { handle: "h1" } });
+    expect(dispatch(chats, phone(), "chat.attach", { handle: "h1" })).toEqual({ seq: 7 });
+    expect(snapshots).toEqual([["h1", { turns: 40, bytes: 2_000_000, outline: true }], ["h1", { turns: 1 }]]);
   });
 
   it("pages snapshots by turn cursor and nests the seq beside the value", async () => {
     snapshots.length = 0;
     expect(await dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: 50 })).toEqual({ seq: 7, value: { state: { handle: "h1" }, turns: { total: 90, from: 50 } } });
-    expect(snapshots).toEqual([["h1", { turns: 40, beforeTurn: 50 }]]);
+    expect(snapshots).toEqual([["h1", { turns: 40, beforeTurn: 50, bytes: 2_000_000 }]]);
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "gone" })).toThrow(expect.objectContaining({ code: "not_found" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: -1 })).toThrow(expect.objectContaining({ code: "bad_request" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { before: 1 })).toThrow(expect.objectContaining({ code: "bad_request" }));

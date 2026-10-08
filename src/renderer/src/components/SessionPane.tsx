@@ -2,7 +2,7 @@ import { ListChevronsDownUp, ListChevronsUpDown, PanelRight, Paperclip, SquareKa
 import { useRef, useState } from "react";
 import { cardsOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../../../shared/session-state";
-import { addChatToBoard, attachFiles, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
+import { addChatToBoard, attachFiles, earlierTurns, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -81,7 +81,7 @@ function ChatPane({ session }: { session: SessionState }) {
         </button>
       </header>
       {session.phase === "exited" && <ExitBanner session={session} />}
-      <Transcript session={session} />
+      <Transcript session={session} earlier={earlierTurns(session)} />
       <Composer session={session} />
     </div>
   );

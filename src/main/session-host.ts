@@ -8,8 +8,9 @@ import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type Cli
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState, type SessionEntry } from "../shared/protocol";
 import { type Feature, yoloOption } from "../shared/settings";
-import { attention, createSession, hydrate, isDisposable, isListed, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
+import { attention, createSession, hydrate, isDisposable, isListed, type Item, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
 import { applyQueueOp, type Queues } from "../shared/queue";
+import { turnOutline } from "../shared/turn-outline";
 import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
 import { KeyedMutex } from "./command-layer";
@@ -67,6 +68,30 @@ export interface ChatPage {
   /** Turns (user prompts) wanted, counting back from `beforeTurn` (default: the end). */
   turns: number;
   beforeTurn?: number;
+  /** At most about this much JSON: fewer turns when they are big (tool output, screenshots), but always one. */
+  bytes?: number;
+  /** Also a line for each turn before the page (the desktop's turn rail). */
+  outline?: boolean;
+}
+
+/** About the JSON size of a turn: its items and the runs of its tool calls (results, screenshots). */
+function turnBytes(items: Item[], tools: SessionState["tools"]): number {
+  let size = 0;
+  for (const item of items) {
+    size += jsonBytes(item);
+    if (item.kind === "assistant") for (const block of item.message.content) if (block.type === "toolCall") size += jsonBytes(tools[block.id]);
+  }
+  return size;
+}
+
+/** About the JSON size of a value, from its strings and keys: cheap next to serializing it. */
+function jsonBytes(value: unknown): number {
+  if (typeof value === "string") return value.length + 2;
+  if (value === null || typeof value !== "object") return 8;
+  let size = 2;
+  if (Array.isArray(value)) for (const entry of value) size += jsonBytes(entry) + 1;
+  else for (const [key, entry] of Object.entries(value)) size += key.length + 4 + jsonBytes(entry);
+  return size;
 }
 
 export class SessionHost {
@@ -167,15 +192,17 @@ export class SessionHost {
   }
 
   /**
-   * Open a chat, or join the live one when `sessionPath` is already open (the existing handle comes back, with no
-   * entries: the live state is newer than the file, and the joiner reads it through `chat.attach`).
+   * Open a chat, or join the live one when `sessionPath` is already open (the existing handle comes back; the file is
+   * not read again, the live state is newer). With `page` the result carries that snapshot of the chat, taken once its
+   * history is in and before what pi said meanwhile: those events follow it. Without, the caller reads the chat
+   * through `chat.attach` or `chat.snapshot`.
    * `request.handle` is honored only while the desktop still picks its own; the host issues one otherwise.
    * The caller gets a lease: `client` (attach/detach) or `hold` (released by `release`).
    */
-  async open(request: OpenSessionRequest, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
+  async open(request: OpenSessionRequest, lease?: { client?: ClientPresence; hold?: string }, page?: ChatPage): Promise<OpenSessionResult> {
     const { cwd, sessionPath, atp } = request;
     const existing = sessionPath ? this.byFile.get(sessionPath) : undefined;
-    if (existing && this.live.has(existing)) return this.join(existing, lease);
+    if (existing && this.live.has(existing)) return this.join(existing, lease, page);
     if (request.handle !== undefined && (!HANDLE.test(request.handle) || this.live.has(request.handle))) throw new Error("invalid session handle");
     const handle = request.handle ?? this.newHandle();
     if (atp && ((atp.role !== "worker" && atp.role !== "orchestrator") || (atp.plan !== undefined && !isPlanPath(atp.plan)))) throw new Error("invalid ATP session");
@@ -192,7 +219,7 @@ export class SessionHost {
     if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
     // A second open of the same file may have started its pi while this one resolved trust and features.
     const raced = sessionPath ? this.byFile.get(sessionPath) : undefined;
-    if (raced && this.live.has(raced)) return this.join(raced, lease);
+    if (raced && this.live.has(raced)) return this.join(raced, lease, page);
     // pi boots (seconds) while the session file is read below; a failed read stops it without a trace.
     let abandoned = false;
     const pi = new PiProcess(
@@ -255,16 +282,19 @@ export class SessionHost {
     this.lease(handle, lease);
     this.publishGlobal({ kind: "chat.opened", handle, cwd, sessionPath });
     this.touch(handle);
+    // Before the held events and the exit: a pi that could not start still leaves the history to read.
+    const snapshot = page && this.snapshot(handle, page);
     if (held.length) this.push(handle, held);
     exit?.();
-    return { handle, entries: history };
+    return { handle, ...(snapshot && { snapshot }) };
   }
 
   /** Join the chat that has the file open, once its history is in; the file is not read again. */
-  private async join(handle: string, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
+  private async join(handle: string, lease?: { client?: ClientPresence; hold?: string }, page?: ChatPage): Promise<OpenSessionResult> {
     await this.live.get(handle)?.loading?.entries;
     this.lease(handle, lease);
-    return { handle, reused: true, entries: [] };
+    const snapshot = page && this.snapshot(handle, page);
+    return { handle, reused: true, ...(snapshot && { snapshot }) };
   }
 
   /** pi's process ended: settle what waited on it and forget the chat. */
@@ -381,6 +411,7 @@ export class SessionHost {
   /**
    * The chat's state paged by user turns: the last `turns` before `beforeTurn` (default the end). `seq` is the
    * last event the state reflects; a client applies only events after it. Earlier pages carry just their items.
+   * `outline` adds a line for each turn before the page.
    */
   snapshot(handle: string, page: ChatPage): (ChatSnapshot & { seq: number }) | undefined {
     const chat = this.live.get(handle);
@@ -389,11 +420,23 @@ export class SessionHost {
     const starts = items.flatMap((item, index) => (item.kind === "user" && !item.steer ? [index] : []));
     const total = starts.length;
     const end = Math.min(page.beforeTurn ?? total, total);
-    const from = Math.max(0, end - Math.max(1, page.turns));
+    const bounds = (turn: number): [number, number] => [turn === 0 ? 0 : starts[turn]!, turn + 1 >= total ? items.length : starts[turn + 1]!];
+    let from = Math.max(0, end - Math.max(1, page.turns));
+    if (page.bytes !== undefined) {
+      let size = 0;
+      for (let turn = end - 1; turn >= from; turn--) {
+        size += turnBytes(items.slice(...bounds(turn)), chat.state.tools);
+        if (size > page.bytes && turn < end - 1) {
+          from = turn + 1;
+          break;
+        }
+      }
+    }
     const slice = items.slice(from === 0 ? 0 : starts[from], end >= total ? items.length : starts[end]);
     const called = new Set(slice.flatMap((item) => (item.kind === "assistant" ? item.message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])) : [])));
     const tools = Object.fromEntries(Object.entries(chat.state.tools).filter(([id]) => called.has(id)));
-    return { seq: chat.seq, state: { ...chat.state, items: slice, tools }, turns: { total, from } };
+    const outline = page.outline ? starts.slice(0, from).map((index) => turnOutline(items[index] as Extract<Item, { kind: "user" }>)) : undefined;
+    return { seq: chat.seq, state: { ...chat.state, items: slice, tools }, turns: { total, from }, ...(outline && { outline }) };
   }
 
   /** The authoritative state, whole (tests, host-side decisions). */

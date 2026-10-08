@@ -17,6 +17,7 @@ import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
+import type { TurnOutline } from "./turn-outline";
 import type { UiOp } from "./ui-state";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { DialogAnswer, OpenSessionRequest, OpenSessionResult, PickedPath, ProjectGroup, UpdateState } from "./ipc";
@@ -374,6 +375,8 @@ export interface ChatSnapshot {
   state: SessionStateJson;
   /** Turns in the session and the first one `state` holds (earlier ones come from `chat.snapshot({ before })`). */
   turns: { total: number; from: number };
+  /** The turns before `turns.from`, one line each, when asked for: the desktop's turn rail shows them before they load. */
+  outline?: TurnOutline[];
 }
 
 /** An attachment a send names: an upload, or a path on the host. */

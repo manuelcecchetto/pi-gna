@@ -32,6 +32,7 @@ export const IPC = {
   closeSession: "studio:close-session",
   detachSession: "studio:detach-session",
   attachSession: "studio:attach-session",
+  pageSession: "studio:page-session",
   viewing: "studio:viewing",
   liveChats: "studio:live-chats",
   attention: "studio:attention",
@@ -487,8 +488,11 @@ export interface OpenSessionResult {
   handle: string;
   /** The file was already live: this joined its chat instead of spawning pi. */
   reused?: boolean;
-  /** Active branch of the session file (root -> leaf); empty for new sessions and when `reused` (attach for the live state). */
-  entries: SessionEntry[];
+  /**
+   * The desktop's view of the chat: its last page of turns and a line for each earlier one (the window pages those in
+   * through `pageSession`). Events after its `seq` apply on top. A phone reads the chat through `chat.snapshot` instead.
+   */
+  snapshot?: ChatSnapshot & { seq: number };
 }
 
 /** Everything the main process pushes to the renderer for one session handle (src/shared/host-api.ts). */
@@ -529,6 +533,8 @@ export interface StudioApi {
   detachSession(handle: string): Promise<void>;
   /** Join a live chat (one another client started, or one this window had before a reload); null when it ended. */
   attachSession(handle: string): Promise<(ChatSnapshot & { seq: number }) | null>;
+  /** The `turns` turns before turn `before` of a live chat (an earlier page, or one turn for the rail's preview). */
+  pageSession(handle: string, before: number, turns: number): Promise<{ seq: number; value: ChatSnapshot }>;
   /** This window shows (or stops showing) the chat in the foreground. */
   viewing(handle: string, viewing: boolean): void;
   /** Attention summaries of every live chat. */

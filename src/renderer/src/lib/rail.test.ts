@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UserMessage } from "../../../shared/protocol";
-import { adjacentTurn, nearDistance, railItems } from "./rail";
+import { createSession, type Item } from "../../../shared/session-state";
+import { adjacentTurn, nearDistance, outlineItems, pagePreview, railItems } from "./rail";
 import type { Block, Run } from "./view";
 
 const user = (content: UserMessage["content"], timestamp = 1): Run["user"] => ({ key: `u${timestamp}`, message: { role: "user", content, timestamp } });
@@ -36,6 +37,31 @@ describe("railItems", () => {
   it("reuses items of unchanged runs", () => {
     const run: Run = { key: "r1", user: user("go"), live: false, blocks: [] };
     expect(railItems([run])[0]).toBe(railItems([run])[0]);
+  });
+});
+
+describe("turns the client has not loaded", () => {
+  it("are markers from the outline, the same items each time, whose preview comes from the host", async () => {
+    const outline = [{ key: "i0", at: 5, label: "first" }, { key: "i3", at: 9, label: "second" }];
+    const asked: number[] = [];
+    const items = outlineItems(outline, async (index) => (asked.push(index), `answer ${index}`));
+    expect(items.map(({ key, at, label, preview, live }) => ({ key, at, label, preview, live }))).toEqual([
+      { key: "i0", at: 5, label: "first", preview: "", live: false },
+      { key: "i3", at: 9, label: "second", preview: "", live: false },
+    ]);
+    expect(outlineItems(outline)).toBe(items);
+    expect(await items[1]!.loadPreview!()).toBe("answer 1");
+    expect(asked).toEqual([1]);
+  });
+
+  it("previews the turn a one-turn page holds as a loaded turn's card would", () => {
+    const items: Item[] = [
+      { kind: "user", key: "i4", message: { role: "user", content: "go", timestamp: 1 } },
+      { kind: "assistant", key: "i5", streaming: false, message: { role: "assistant", content: [{ type: "text", text: "Let me look" }, { type: "toolCall", id: "t1", name: "read", arguments: {} }], stopReason: "toolUse", timestamp: 2 } as never },
+      { kind: "assistant", key: "i6", streaming: false, message: { role: "assistant", content: [{ type: "text", text: "Done." }], stopReason: "stop", timestamp: 3 } as never },
+    ];
+    expect(pagePreview({ ...createSession("h", "/p"), items })).toBe("Done.");
+    expect(pagePreview({ ...createSession("h", "/p"), items: [] })).toBe("");
   });
 });
 

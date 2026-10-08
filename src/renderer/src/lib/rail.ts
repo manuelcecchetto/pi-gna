@@ -1,8 +1,8 @@
 // Turn rail model (Codex's "user message navigation rail"): one marker per message you sent, with a
 // hover preview of that turn's answer.
-import type { TextContent } from "../../../shared/protocol";
-import { splitFileMentions, stripStudioBlocks } from "./attachments";
-import { layoutRun, type Run } from "./view";
+import type { SessionState } from "../../../shared/session-state";
+import { type TurnOutline, turnLabel } from "../../../shared/turn-outline";
+import { deriveRuns, layoutRun, type Run } from "./view";
 
 export interface RailItem {
   /** The run key (`data-run` on its section). */
@@ -13,6 +13,8 @@ export interface RailItem {
   label: string;
   /** The final answer's markdown, an error or "Interrupted"; empty while there is none yet. */
   preview: string;
+  /** A turn on a page the client has not loaded: its preview comes from the host when the card shows. */
+  loadPreview?: () => Promise<string>;
   live: boolean;
 }
 
@@ -27,22 +29,29 @@ export function railItems(runs: Run[]): RailItem[] {
     if (!run.user) return [];
     let item = cache.get(run);
     if (!item) {
-      item = { key: run.key, at: run.user.message.timestamp, label: railLabel(run), preview: railPreview(run), live: run.live };
+      item = { key: run.key, at: run.user.message.timestamp, label: turnLabel(run.user.message.content), preview: railPreview(run), live: run.live };
       cache.set(run, item);
     }
     return [item];
   });
 }
 
-function railLabel(run: Run): string {
-  const content = run.user?.message.content ?? "";
-  const raw = typeof content === "string" ? content : content.filter((block): block is TextContent => block.type === "text").map((block) => block.text).join("\n");
-  const text = stripStudioBlocks(raw).replace(/\s+/g, " ").trim();
-  if (text) return text;
-  const mentions = splitFileMentions(raw)[1];
-  if (mentions.length) return mentions.map((mention) => mention.label).join(", ");
-  const images = typeof content === "string" ? 0 : content.filter((block) => block.type === "image").length;
-  return images > 1 ? `${images} images` : images ? "Image" : "(No content)";
+const outlined = new WeakMap<TurnOutline[], RailItem[]>();
+
+/** Markers for the turns before the loaded ones (`SessionState.earlier`); `preview` fetches the answer of turn `index`. */
+export function outlineItems(outline: TurnOutline[], preview?: (index: number) => Promise<string>): RailItem[] {
+  let items = outlined.get(outline);
+  if (!items) {
+    items = outline.map((turn, index) => ({ key: turn.key, at: turn.at, label: turn.label, preview: "", loadPreview: preview && (() => preview(index)), live: false }));
+    outlined.set(outline, items);
+  }
+  return items;
+}
+
+/** The preview of the turn a one-turn page holds (`pageSession(handle, index + 1, 1)`). */
+export function pagePreview(page: Pick<SessionState, "items" | "tools">): string {
+  const run = deriveRuns({ ...page, running: false }).findLast((candidate) => candidate.user);
+  return run ? railPreview(run) : "";
 }
 
 function railPreview(run: Run): string {

@@ -1,7 +1,7 @@
 // Composer attachments. Like Codex's local agent, files and folders are sent as paths in a
 // "# Files mentioned by the user:" block (pi reads them with its own tools); images also travel as
 // image content so the model sees them. pi resizes images itself (images.autoResize).
-import { FILE_MENTIONS_HEADER, formatFileMentions } from "../../../shared/file-mentions";
+import { type FileMention, formatFileMentions, splitFileMentions, stripStudioBlocks } from "../../../shared/file-mentions";
 import type { PickedPath } from "../../../shared/ipc";
 import type { ImageContent } from "../../../shared/protocol";
 
@@ -9,7 +9,6 @@ export type Attachment =
   | { id: string; kind: "image"; name: string; mimeType: string; data: string; path?: string }
   | { id: string; kind: "file"; name: string; path: string; isDir: boolean };
 
-const HEADER = FILE_MENTIONS_HEADER;
 let seq = 0;
 const nextId = () => `a${++seq}`;
 
@@ -32,37 +31,7 @@ export function attachmentImages(attachments: Attachment[]): ImageContent[] {
   return attachments.flatMap((a) => (a.kind === "image" ? [{ type: "image" as const, data: a.data, mimeType: a.mimeType }] : []));
 }
 
-export { formatFileMentions };
-
-export interface FileMention {
-  label: string;
-  path: string;
-  isDir: boolean;
-  image: boolean;
-}
-
-/**
- * Pull the mention block back out of a sent message so the transcript can show chips instead.
- * The block ends at the first line that is not a mention: pi can append text after it (for example a
- * note that an image was omitted), which is kept.
- */
-export function splitFileMentions(text: string): [string, FileMention[]] {
-  const index = text.lastIndexOf(HEADER);
-  if (index === -1) return [text, []];
-  const lines = text.slice(index + HEADER.length).split("\n");
-  const mentions: FileMention[] = [];
-  let consumed = 0;
-  for (const line of lines) {
-    const match = line.match(/^## (.+?): (\/.*?)( \(image attached\))?$/);
-    if (match?.[1] && match[2]) mentions.push({ label: match[1], path: match[2], isDir: match[2].endsWith("/"), image: Boolean(match[3]) });
-    else if (line.trim() && mentions.length) break;
-    else if (line.trim()) return [text, []]; // a quoted header, not our block
-    consumed++;
-  }
-  if (!mentions.length) return [text, []];
-  const rest = lines.slice(consumed).join("\n").trim();
-  return [[text.slice(0, index).trimEnd(), rest].filter(Boolean).join("\n\n"), mentions];
-}
+export { type FileMention, formatFileMentions, splitFileMentions, stripStudioBlocks };
 
 export interface CardMention {
   id: string;
@@ -75,9 +44,4 @@ export function splitCardBlock(text: string): [string, CardMention | undefined] 
   const head = block?.[1]?.match(/^Card (\S+): (.*)$/m);
   if (!block || !head?.[1]) return [text, undefined];
   return [text.replace(block[0], "\n\n").trim(), { id: head[1], title: head[2] ?? "" }];
-}
-
-/** Message text without the blocks pi-gna adds (file mentions, browser comments, a Kanban card's details). */
-export function stripStudioBlocks(text: string): string {
-  return splitFileMentions(text)[0].replace(/\n*<(browser-comments|kanban-card)>[\s\S]*?<\/\1>\n*/g, "\n").trim();
 }

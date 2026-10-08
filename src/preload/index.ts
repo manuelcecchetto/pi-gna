@@ -33,6 +33,7 @@ const api: StudioApi = {
   command: (handle, command) => ipcRenderer.invoke(IPC.command, handle, command),
   detachSession: (handle) => ipcRenderer.invoke(IPC.detachSession, handle),
   attachSession: (handle) => ipcRenderer.invoke(IPC.attachSession, handle),
+  pageSession: (handle, before, turns) => ipcRenderer.invoke(IPC.pageSession, handle, before, turns),
   viewing: (handle, viewing) => ipcRenderer.send(IPC.viewing, handle, viewing),
   liveChats: () => ipcRenderer.invoke(IPC.liveChats),
   onAttention: (listener) => subscribe(IPC.attention, listener),

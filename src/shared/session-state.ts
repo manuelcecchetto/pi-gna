@@ -3,6 +3,7 @@
 // alone mutates the fresh state it builds.
 import type { AtpSession } from "./atp";
 import type { HostEvent } from "./host-api";
+import type { TurnOutline } from "./turn-outline";
 import type {
   AgentMessage,
   AssistantMessage,
@@ -121,6 +122,8 @@ export interface SessionState {
   fromDisk: boolean;
   /** Opened from the sidebar and its history is still being read: the sidebar's title stands in meanwhile. */
   loading?: { title: string };
+  /** A client's paged view of the chat: one line for each turn before `items` that the host has and it has not loaded. */
+  earlier?: TurnOutline[];
   /** Set once the user prompts from pi-gna; such sessions stay alive when switching away. */
   prompted: boolean;
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */

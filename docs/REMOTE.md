@@ -67,13 +67,13 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | Method | Scope | Mutates | Replaces / notes |
 |---|---|---|---|
 | `chat.list` | remote | no | `listSessions`. Projects with sessions (`ProjectGroup[]`). |
-| `chat.open` | remote | yes | `openSession`. Args `{ request: OpenSessionRequest }`. **Host issues the handle.** Opening a session file already live attaches to its handle (`reused: true`); otherwise spawns pi. Takes a lease. Returns `{ handle, reused, entries }`; a remote caller gets `entries: []` and reads the chat with `chat.snapshot` (the whole branch would only cost bandwidth). ATP sessions via `request.atp`. |
-| `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). Returns the flat `ChatSnapshot & { seq }` to the desktop and only `{ seq }` to a remote caller (which pages through `chat.snapshot`), or null when the chat ended. |
+| `chat.open` | remote | yes | `openSession`. Args `{ request: OpenSessionRequest }`. **Host issues the handle.** Opening a session file already live attaches to its handle (`reused: true`); otherwise spawns pi. Takes a lease. Returns `{ handle, reused }`; the desktop also gets `snapshot` (its first page with the outline of earlier turns, see DESIGN.md), a remote caller reads the chat with `chat.snapshot`. ATP sessions via `request.atp`. |
+| `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). Returns the flat `ChatSnapshot & { seq }` (the first page and the outline) to the desktop and only `{ seq }` to a remote caller (which pages through `chat.snapshot`), or null when the chat ended. |
 | `chat.viewing` | remote | yes | new. This client shows (or stops showing) the chat in the foreground; showing it clears the chat's unread mark. |
 | `chat.live` | remote | no | new. `AttentionSummary[]` of every live chat (first paint of the marks; `global` `attention` events carry the deltas). A summary carries the chat's `sessionPath`, which matches it to its row in `chat.list`, and `listed` (`isListed`: not a draft, triage or ATP chat), so the phone's lists show it before the index has its file. |
 | `chat.detach` | remote | yes | new. Releases the lease; the host may then dispose (section 5). |
 | `chat.close` | remote | yes | `closeSession`. Explicit stop of pi; broadcast to all clients. Mobile asks for confirmation. |
-| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last `turns` turns (1 to 40, default 40; the phone opens with 6 and pages 20); `before` (a turn index, the previous page's `turns.from`) pages earlier ones, whose `state` carries just their items and tools. |
+| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last `turns` turns (1 to 40, default 40; the phone opens with 6 and pages 20), fewer when they pass about 2 MB (never none); `before` (a turn index, the previous page's `turns.from`) pages earlier ones, whose `state` carries just their items and tools. The desktop pages through it too (`pageSession`). |
 | `chat.send` | remote | yes | the `send` action in `state/app.ts` plus `command(prompt)`. Args: text, mode (`send`/`followUp`), `attachments` (upload ids or host paths), `annotationIds`, `cardId`. Host composes the message (card block, annotations, file mentions, images), picks `streamingBehavior`, marks the chat prompted. |
 | `chat.command` | remote | yes | `command`, restricted to the RPC allowlist (section 7). Result `RpcResponse`. |
 | `chat.interrupt` | remote | yes | `interrupt` (`app.ts:560`): clear_queue then abort under the chat mutex; returns the restored queued texts (`string[]`). |
@@ -560,8 +560,8 @@ so about 40 MB crossed Tailscale before "Opening…" cleared. Now:
   evicted id is a 404 until the next snapshot or event names it again. The host's state and the desktop are untouched;
   the renderer reads `imageSrc(block)` (`url` or a data URL) and lazy-loads.
 - **Short first page:** the phone opens with `chat.snapshot { turns: 6 }` and pages 20 at a time.
-- **Attach without the transcript:** for a remote caller `chat.attach` returns `{ seq }`; the desktop still gets the
-  snapshot over IPC.
+- **Attach without the transcript:** for a remote caller `chat.attach` returns `{ seq }`; the desktop gets its first
+  page over IPC.
 
 ### Mobile composer parity (T26, `src/mobile/MobileComposer.tsx`)
 
@@ -601,7 +601,7 @@ offscreen window of the instance itself (iPhone 15 size, mobile user agent, touc
 | Scenario | What it proves |
 | --- | --- |
 | `pairing` | The Mac issues a code through the window's `studio.remote`, each phone claims it, the Mac's Allow is `pairDecide` (no test hook in the app), the cookie comes from the long-poll. An unpaired client gets 401. |
-| `chat-sync` | A opens the session file (host handle, empty `entries`), B gets the same handle (`reused`), the desktop shows the same live chat. A prompt with `ask-confirm` raises a `confirm` dialog: A answers, B and the desktop drop the card on `dialog_resolved` (naming A's device), B's later answer is `already_answered`, pi saw one answer, and lines 1..40 arrive once each on A, B and in the desktop's DOM. B then interrupts a long run started by A: `aborted` everywhere with identical partial text. |
+| `chat-sync` | A opens the session file (host handle, no transcript), B gets the same handle (`reused`), the desktop shows the same live chat. A prompt with `ask-confirm` raises a `confirm` dialog: A answers, B and the desktop drop the card on `dialog_resolved` (naming A's device), B's later answer is `already_answered`, pi saw one answer, and lines 1..40 arrive once each on A, B and in the desktop's DOM. B then interrupts a long run started by A: `aborted` everywhere with identical partial text. |
 | `multi-client` | Two simultaneous prompts: one runs, one queues, B's interrupt hands the queued one back. Two card edits from one revision: one lands, the other gets 409 `conflict`; concurrent moves both succeed. |
 | `reconnect` | A's stream is dropped mid-run and reopened with `Last-Event-ID` (replay, no `resync`, `seq` contiguous, lines 1..250 once); the same prompt retried with the same `Idempotency-Key` returns the first result and adds no turn; the same key with another body is `400`. Then with A away more than 2000 events pass: the reconnect gets `resync` and no replay, and the snapshot plus later events leave no gap. |
 | `host-lifecycle` | A and B detach mid-run and the run goes on to the end. The host process is paused (SIGSTOP on the test instance only) and resumed: calls hang, the stream stays, then carries every line once. A real restart: new boot id, an old idempotency key fails `host_restarted`, a stream resuming the old boot gets `resync(new_boot)`. |

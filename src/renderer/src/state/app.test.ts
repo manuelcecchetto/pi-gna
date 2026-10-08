@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenSessionResult, SessionSummary } from "../../../shared/ipc";
-import type { RpcCommand, RpcSessionState, SessionEntry } from "../../../shared/protocol";
-import { createSession, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
+import type { RpcCommand, RpcSessionState } from "../../../shared/protocol";
+import { createSession, type Item, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
+import type { SessionStateJson } from "../../../shared/host-api";
 import type { Card } from "../../../shared/board";
 import type { GithubItem } from "../../../shared/github";
 import { cardBlock } from "../../../shared/task-prompts";
@@ -15,6 +16,7 @@ import {
   applySettings,
   closeSettings,
   composerCard,
+  earlierTurns,
   handleBatch,
   interrupt,
   openSession,
@@ -109,25 +111,89 @@ describe("answering a dialog", () => {
 
 describe("opening a chat from the sidebar", () => {
   const summary: SessionSummary = { path: "/s/a.jsonl", id: "a", cwd: "/repo", title: "Fix the flash", named: false, createdAt: 0, modifiedAt: 0 };
-  const entry = { type: "message", id: "u1", parentId: null, timestamp: "", message: { role: "user", content: "fix the flash please", timestamp: 1 } } as SessionEntry;
+  const user = (n: number, text = `q${n}`): Item => ({ kind: "user", key: `i${n}`, message: { role: "user", content: text, timestamp: n } });
+  const answer = (n: number): Item => ({ kind: "assistant", key: `a${n}`, streaming: false, message: { role: "assistant", content: [{ type: "text", text: `answer ${n}` }], stopReason: "stop", timestamp: n } as never });
+  /** The host's state with turns `from`..`to` (exclusive). */
+  const turns = (handle: string, from: number, to: number): SessionState => ({
+    ...createSession(handle, "/repo", summary.path),
+    items: Array.from({ length: to - from }, (_, i) => [user(from + i), answer(from + i)]).flat(),
+  });
+  const outline = (count: number) => Array.from({ length: count }, (_, n) => ({ key: `i${n}`, at: n, label: `q${n}` }));
+  const snapshotOf = (state: SessionState, seq: number, earlier: number) => ({ seq, state: state as unknown as SessionStateJson, turns: { total: earlier + 1, from: earlier }, outline: outline(earlier) });
 
-  it("is loading under the sidebar's title until its history arrives, not an empty chat", async () => {
+  /** Open the summary; returns the window's handle and the answer to give the open. */
+  function opening() {
     let read!: (result: OpenSessionResult) => void;
     const open = vi.fn(() => new Promise<OpenSessionResult>((resolve) => (read = resolve)));
-    vi.stubGlobal("window", { studio: { command, openSession: open } });
+    const pageSession = vi.fn(async (handle: string, before: number, count: number) => ({ seq: 9, value: { state: turns(handle, before - count, before) as unknown as SessionStateJson, turns: { total: 50, from: before - count } } }));
+    vi.stubGlobal("window", { studio: { command, openSession: open, pageSession } });
+    store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined }));
     openSession(summary);
-    const handle = store.get().active ?? "";
+    return { handle: store.get().active ?? "", read, pageSession };
+  }
+
+  it("is loading under the sidebar's title until the host's snapshot arrives, not an empty chat", async () => {
+    const { handle, read } = opening();
     const opened = store.get().sessions[handle];
     expect(opened?.sessionPath).toBe(summary.path);
     expect(opened?.loading).toEqual({ title: "Fix the flash" });
     expect(opened && sessionTitle(opened)).toBe("Fix the flash");
 
-    read({ handle, entries: [entry] });
+    read({ handle, snapshot: snapshotOf(turns(handle, 0, 1), 3, 0) });
     await vi.runAllTimersAsync();
     const loaded = store.get().sessions[handle];
     expect(loaded?.loading).toBeUndefined();
-    expect(loaded?.items.map((item) => item.kind)).toEqual(["user"]);
-    expect(loaded && sessionTitle(loaded)).toBe("fix the flash please");
+    expect(loaded?.earlier).toBeUndefined();
+    expect(loaded?.items.map((item) => item.kind)).toEqual(["user", "assistant"]);
+    expect(loaded && sessionTitle(loaded)).toBe("q0");
+  });
+
+  it("applies what pi said during the read after the snapshot, and not what the snapshot already has", async () => {
+    const { handle, read } = opening();
+    const ready = { kind: "ready", state: { sessionFile: summary.path, messageCount: 2 } as RpcSessionState } as const;
+    // The snapshot (seq 3) already has turn 0's prompt; pi got ready after it.
+    handleBatch({ handle, events: [{ kind: "rpc", record: { type: "message_end", message: { role: "user", content: "q0", timestamp: 0 } } as never }], seq: 3 });
+    handleBatch({ handle, events: [ready], seq: 4 });
+    expect(store.get().sessions[handle]?.phase).toBe("starting");
+    command.mockClear();
+    read({ handle, snapshot: snapshotOf(turns(handle, 0, 1), 3, 0) });
+    await vi.runAllTimersAsync();
+    expect(store.get().sessions[handle]?.phase).toBe("ready");
+    expect(store.get().sessions[handle]?.items.map((item) => item.kind)).toEqual(["user", "assistant"]);
+    expect(command.mock.calls.map(([, cmd]) => cmd.type)).toContain("get_commands");
+  });
+
+  it("pages earlier turns in from the host: a page at a time, or down to the turn a jump asks for", async () => {
+    const { handle, read, pageSession } = opening();
+    read({ handle, snapshot: snapshotOf(turns(handle, 50, 51), 3, 50) });
+    await vi.runAllTimersAsync();
+    const session = () => store.get().sessions[handle]!;
+    expect(session().earlier).toHaveLength(50);
+    expect(earlierTurns(session())?.count).toBe(50);
+    expect(sessionTitle(session())).toBe("q0");
+
+    await earlierTurns(session())!.load();
+    expect(pageSession.mock.calls).toEqual([[handle, 50, 40]]);
+    expect(session().earlier).toHaveLength(10);
+    expect(session().items.filter((item) => item.kind === "user")).toHaveLength(41);
+
+    // A jump to turn 2 and a scroll to the top at once: one request after the other, no page twice.
+    const earlier = earlierTurns(session())!;
+    await Promise.all([earlier.reach!("i2"), earlier.load()]);
+    expect(pageSession.mock.calls.slice(1)).toEqual([[handle, 10, 8], [handle, 2, 2]]);
+    expect(session().earlier).toBeUndefined();
+    expect(session().items.filter((item) => item.kind === "user").map((item) => item.key)).toEqual(Array.from({ length: 51 }, (_, n) => `i${n}`));
+    expect(earlierTurns(session())).toBeUndefined();
+  });
+
+  it("fetches the answer of a turn it has not loaded once, for the turn rail's card", async () => {
+    const { handle, read, pageSession } = opening();
+    read({ handle, snapshot: snapshotOf(turns(handle, 5, 6), 3, 5) });
+    await vi.runAllTimersAsync();
+    const earlier = earlierTurns(store.get().sessions[handle]!)!;
+    expect(await earlier.preview!(3)).toBe("answer 3");
+    expect(await earlier.preview!(3)).toBe("answer 3");
+    expect(pageSession.mock.calls).toEqual([[handle, 4, 1]]);
   });
 });
 
@@ -276,7 +342,7 @@ describe("chatting about a card", () => {
   /** Click "Chat about it" and let pi start; returns the new chat's handle. */
   async function discuss(): Promise<string> {
     vi.stubGlobal("window", {
-      studio: { command, openSession: async () => ({ entries: [] }), listSessions: async () => [], closeSession: async () => undefined, board: { apply } },
+      studio: { command, openSession: async () => ({}), listSessions: async () => [], closeSession: async () => undefined, board: { apply } },
     });
     store.set((s) => ({ ...s, sessions: {}, open: [], active: undefined, composerCards: {}, board: { version: 1, cards: [card], rev: 0 } }));
     cardActions(card).find((action) => action.id === "discuss")?.run(card);

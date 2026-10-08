@@ -20,9 +20,10 @@ import type { ImageContent, TextContent, UserMessage } from "../../../shared/pro
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { previewClick } from "../lib/preview";
-import { type RailItem, railItems } from "../lib/rail";
+import { outlineItems, type RailItem, railItems } from "../lib/rail";
 import { distanceToEnd, END_SLACK, followsAfterScroll } from "../lib/turn-scroll";
 import type { SessionState } from "../../../shared/session-state";
+import type { TurnOutline } from "../../../shared/turn-outline";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
 import { loopWallpaper, wallpaperStyle } from "../lib/wallpapers";
 import { imageWallpaperStyle } from "../lib/theme";
@@ -37,10 +38,16 @@ import { findRun, flash, rendered, TurnRail } from "./TurnRail";
 
 const PAGE = 30;
 
-/** Turns the host holds beyond the ones in `session` (a remote client pages them in); `load` fetches the next page. */
+/** Turns the host holds beyond the ones in `session` (a client pages them in); `load` fetches the next page. */
 export interface EarlierTurns {
   count: number;
   load: () => Promise<void>;
+  /** One line per earlier turn (the desktop): the turn rail shows them before they are loaded. */
+  outline?: TurnOutline[];
+  /** Load the earlier turns down to this one (a jump to it). */
+  reach?: (key: string) => Promise<void>;
+  /** The answer of earlier turn `index`, for the rail's card. */
+  preview?: (index: number) => Promise<string>;
 }
 
 /** What a client with its own turn navigation (the phone's jump list) gets: the turns and a way to scroll to one. */
@@ -54,6 +61,13 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
   const derive = useMemo(() => createRunDeriver(), []);
   const runs = derive(session);
   const [limit, setLimit] = useState(PAGE);
+  // Turns paged in from the host before the first one stay in view: the limit grows by as many runs.
+  const [first, setFirst] = useState(runs[0]?.key);
+  if (runs[0]?.key !== first) {
+    setFirst(runs[0]?.key);
+    const prepended = runs.findIndex((run) => run.key === first);
+    if (prepended > 0) setLimit((value) => value + prepended);
+  }
   const hidden = Math.max(0, runs.length - limit);
   const visible = hidden ? runs.slice(hidden) : runs;
   const { homeDir: home } = useChatActions();
@@ -62,14 +76,29 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
   const content = useRef<HTMLDivElement>(null);
   const { viewport, jumped, restoreFromBottom, pageAnchor, below, onScroll, onWheel, onTouchStart, onTouchMove, jumpToLatest } = useTurnScroll(scroller, content, runs);
   const [paging, setPaging] = useState(false);
+  /** A turn a jump paged in from the host: rendered once it is among the runs. */
+  const revealing = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const key = revealing.current;
+    const index = key === undefined ? -1 : runs.findIndex((run) => run.key === key);
+    if (index < 0) return;
+    revealing.current = undefined;
+    if (index < runs.length - limit) setLimit(runs.length - index);
+  });
 
   if (session.loading) return <div className="flex-1" />; // not the empty state: this chat has a history
   if (!runs.length && !session.running) return <EmptyTranscript session={session} onPickProject={onPickProject} />;
 
-  /** Render a turn from an earlier page, for the turn rail to scroll to. */
-  const reveal = (key: string) => {
+  /** Render a turn from an earlier page, for the turn rail to scroll to; one the host still holds is paged in first. */
+  const reveal = async (key: string) => {
     const index = runs.findIndex((run) => run.key === key);
-    if (index >= 0 && index < hidden) setLimit(runs.length - index);
+    if (index >= 0) {
+      if (index < hidden) setLimit(runs.length - index);
+      return;
+    }
+    if (!earlier?.reach) return;
+    revealing.current = key;
+    await earlier.reach(key);
   };
 
   /** The host's earlier turns: the view keeps its place once they are in the transcript (the store notifies a frame later). */
@@ -94,7 +123,7 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
     let section = findRun(root, key);
     let behavior: ScrollBehavior = "smooth";
     if (!section) {
-      reveal(key);
+      await reveal(key);
       section = await rendered(root, key);
       behavior = "instant";
     }
@@ -103,6 +132,7 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
     flash(section);
   };
 
+  const rail = earlier?.outline?.length ? [...outlineItems(earlier.outline, earlier.preview), ...railItems(runs)] : railItems(runs);
   const last = visible.at(-1);
   // The newest turn gets at least a screen of height, so your message can sit at the top while the
   // answer streams in below it. Sessions opened from disk keep their natural height until you send.
@@ -160,8 +190,8 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
           ))}
         </div>
       </div>
-      {turns?.({ items: railItems(runs), jump, sessionPath: session.sessionPath })}
-      <TurnRail items={railItems(runs)} scroller={scroller} column={content} topGap={TOP_GAP} reveal={reveal} sessionPath={session.sessionPath} />
+      {turns?.({ items: rail, jump, sessionPath: session.sessionPath })}
+      <TurnRail items={rail} scroller={scroller} column={content} topGap={TOP_GAP} reveal={reveal} sessionPath={session.sessionPath} />
       {below && (
         <button
           type="button"

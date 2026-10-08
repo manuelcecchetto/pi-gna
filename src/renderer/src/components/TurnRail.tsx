@@ -23,8 +23,8 @@ interface Props {
   column: React.RefObject<HTMLDivElement | null>;
   /** Where a jump puts the message: this far below the top, like sending one does. */
   topGap: number;
-  /** Render a turn from an earlier page so it can be scrolled to. */
-  reveal: (key: string) => void;
+  /** Render a turn from an earlier page so it can be scrolled to (paging it in from the host first). */
+  reveal: (key: string) => Promise<void>;
   sessionPath?: string;
 }
 
@@ -39,7 +39,7 @@ export function TurnRail({ items, scroller, column, topGap, reveal, sessionPath 
       const ticket = ++latest.current;
       let section = findRun(root, key);
       if (!section) {
-        reveal(key);
+        await reveal(key);
         section = await rendered(root, key);
         behavior = "instant";
       }
@@ -255,8 +255,10 @@ function Rail({
 
 /** Your message on one line, then the first lines of the answer (Codex's tooltip). */
 function RailCard({ item, bookmarked, onBookmark }: { item: RailItem; bookmarked: boolean; onBookmark?: (on: boolean) => void }) {
+  const loaded = useLoadedPreview(item);
+  const preview = item.preview || loaded;
   // Only the first lines show; long answers are cut before rendering.
-  const html = useMemo(() => (item.preview ? renderMarkdown(item.preview.slice(0, 1500)) : ""), [item.preview]);
+  const html = useMemo(() => (preview ? renderMarkdown(preview.slice(0, 1500)) : ""), [preview]);
   return (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -281,6 +283,23 @@ function RailCard({ item, bookmarked, onBookmark }: { item: RailItem; bookmarked
       ) : null}
     </>
   );
+}
+
+/** The answer of a turn on a page the client has not loaded, from the host once its card shows. */
+function useLoadedPreview(item: RailItem): string {
+  const [loaded, setLoaded] = useState({ key: "", text: "" });
+  useEffect(() => {
+    if (!item.loadPreview) return;
+    let current = true;
+    item.loadPreview().then(
+      (text) => current && setLoaded({ key: item.key, text }),
+      () => undefined,
+    );
+    return () => {
+      current = false;
+    };
+  }, [item]);
+  return loaded.key === item.key ? loaded.text : "";
 }
 
 /** Whether the transcript column leaves room for the rail on its left. */

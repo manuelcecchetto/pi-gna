@@ -126,9 +126,12 @@ const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown)
 /** Minimum gap between `computer.preview` calls of one client. */
 const PREVIEW_INTERVAL_MS = 1000;
 
-/** Turns a snapshot holds; earlier ones come page by page (`before`). */
 /** Turns in a snapshot page unless the caller asks for fewer (the phone opens a chat with a short first page). */
 const SNAPSHOT_TURNS = 40;
+/** About the most a page holds: a few turns of screenshots or big tool output are megabytes (a long chat, 100 MB). */
+const PAGE_BYTES = 2_000_000;
+/** The desktop's view of a chat: the last page and a line for each earlier turn (its turn rail pages them in). */
+const DESKTOP_PAGE = { turns: SNAPSHOT_TURNS, bytes: PAGE_BYTES, outline: true };
 
 const tabId = (raw: { id: unknown }) => {
   if (typeof raw.id !== "string") throw new Error("Invalid browser tab");
@@ -271,9 +274,8 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "chat.list": any("remote", async () => (await piDirs(), listSessions())),
     "chat.open": any<{ request: OpenSessionRequest }>("remote", async (ctx, { request }) => {
       await env();
-      const opened = await host.open(request, { client: presence(ctx) });
-      // A phone reads the chat through chat.snapshot (paged); the session file's whole branch would only cost bandwidth.
-      return ctx.client === "desktop" ? opened : { ...opened, entries: [] };
+      // The window gets its first page with the answer; a phone reads the chat through chat.snapshot (a shorter page).
+      return host.open(request, { client: presence(ctx) }, ctx.client === "desktop" ? DESKTOP_PAGE : undefined);
     }),
     "chat.snapshot": method<{ handle: string; before?: number; turns?: number }>(
       "remote",
@@ -284,7 +286,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         return { handle: raw.handle, before: raw.before as number | undefined, turns: raw.turns as number | undefined };
       },
       (_ctx, { handle, before, turns }) => {
-        const snapshot = host.snapshot(handle, { turns: turns ?? SNAPSHOT_TURNS, beforeTurn: before });
+        const snapshot = host.snapshot(handle, { turns: turns ?? SNAPSHOT_TURNS, beforeTurn: before, bytes: PAGE_BYTES });
         if (!snapshot) throw new HostError("not_found", "session is not running");
         const { seq, ...value } = snapshot;
         return { seq, value };
@@ -299,9 +301,9 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       } catch {
         return null; // it ended meanwhile
       }
-      // Attach and snapshot in one turn: the snapshot's seq says which events the client must still apply. A phone
-      // pages the transcript in through chat.snapshot, so it gets only the seq: the whole chat cost it megabytes.
-      const snapshot = host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER });
+      // Attach and snapshot in one turn: the snapshot's seq says which events the client must still apply. Both page
+      // the transcript in through chat.snapshot: the window gets its first page here, a phone only the seq.
+      const snapshot = host.snapshot(handle, ctx.client === "desktop" ? DESKTOP_PAGE : { turns: 1 });
       if (!snapshot) return null;
       return ctx.client === "desktop" ? snapshot : { seq: snapshot.seq };
     }),
@@ -803,6 +805,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.command, "chat.command", (handle, command) => ({ handle, command })),
   route(IPC.detachSession, "chat.detach", (handle) => ({ handle })),
   route(IPC.attachSession, "chat.attach", (handle) => ({ handle })),
+  route(IPC.pageSession, "chat.snapshot", (handle, before, turns) => ({ handle, before, turns })),
   route(IPC.viewing, "chat.viewing", (handle, viewing) => ({ handle, viewing }), true),
   route(IPC.liveChats, "chat.live"),
   route(IPC.interrupt, "chat.interrupt", (handle) => ({ handle })),

@@ -106,7 +106,7 @@ describe("session registry", () => {
       const { handle } = await host.open(request, { client: A });
       fake.pis[0]!.handlers.onRecords(assistantTurn(1));
       const second = await host.open(request, { client: B });
-      expect(second).toEqual({ handle, reused: true, entries: [] });
+      expect(second).toEqual({ handle, reused: true });
       expect(reads).toBe(1);
       expect(host.presence(handle).map((c) => c.clientId)).toEqual(["a", "b"]);
       expect(host.stateOf(handle)!.items.map((item) => item.kind)).toEqual(["user", "assistant"]);
@@ -142,8 +142,8 @@ describe("session registry", () => {
         expect(host.attentionAll()).toEqual([]);
         read.finish([old]);
         const [a, b] = await Promise.all([first, second]);
-        expect(b).toEqual({ handle: a.handle, reused: true, entries: [] });
-        expect(a.entries).toEqual([old]);
+        expect(b).toEqual({ handle: a.handle, reused: true });
+        expect(a).toEqual({ handle: a.handle });
         expect(read.reads).toBe(1);
         expect(fake.pis).toHaveLength(1);
         expect(host.stateOf(a.handle)!.items.map((item) => item.kind)).toEqual(["user"]);
@@ -192,6 +192,48 @@ describe("session registry", () => {
         expect(seen.flatMap((batch) => batch.events.map((e) => e.kind)).at(-1)).toBe("exit");
         expect(host.stateOf(handle)).toBeUndefined();
         expect(host.size).toBe(0);
+      } finally {
+        afterRead();
+      }
+    });
+
+    it("answers a paged open with the snapshot taken before what pi said during the read, which follows it", async () => {
+      const { host, seen } = await setup();
+      const read = slowFile();
+      try {
+        const opening = host.open(request, { client: A }, { turns: 1, outline: true });
+        await vi.waitFor(() => expect(fake.pis).toHaveLength(1));
+        await Promise.resolve();
+        fake.pis[0]!.handlers.onRecords(assistantTurn(1));
+        read.finish([old]);
+        const { handle, snapshot } = await opening;
+        expect(snapshot!.state.phase).toBe("starting");
+        expect((snapshot!.state.items as Item[]).map((item) => item.kind)).toEqual(["user"]);
+        expect(snapshot!.outline).toEqual([]);
+        // Replaying what came after the snapshot gives the host's state.
+        const { reduceHostEvent } = await import("../shared/session-state");
+        let replay = snapshot!.state as unknown as SessionState;
+        for (const batch of seen.filter((b) => b.handle === handle && b.seq > snapshot!.seq)) for (const event of batch.events) replay = reduceHostEvent(replay, event as never, 0);
+        expect(replay.items.map((item) => item.kind)).toEqual(["user", "user", "assistant"]);
+        expect(replay.phase).toBe("ready");
+      } finally {
+        afterRead();
+      }
+    });
+
+    it("keeps the history in the snapshot of a chat whose pi exits during the read", async () => {
+      const { host, seen } = await setup();
+      const read = slowFile();
+      try {
+        const opening = host.open(request, { client: A }, { turns: 5, outline: true });
+        await vi.waitFor(() => expect(fake.pis).toHaveLength(1));
+        await fake.pis[0]!.close();
+        read.finish([old]);
+        const { handle, snapshot } = await opening;
+        expect((snapshot!.state.items as Item[]).map((item) => item.kind)).toEqual(["user"]);
+        const exit = seen.find((batch) => batch.handle === handle && batch.events.some((event) => event.kind === "exit"))!;
+        expect(exit.seq).toBeGreaterThan(snapshot!.seq);
+        expect(host.stateOf(handle)).toBeUndefined();
       } finally {
         afterRead();
       }
@@ -284,6 +326,54 @@ describe("session registry", () => {
       for (const event of batch.events) replay = reduceHostEvent(replay, event as never, 0);
     }
     expect(replay.items.map((i) => i.kind)).toEqual(host.stateOf(handle)!.items.map((i) => i.kind));
+  });
+
+  it("makes a page fewer turns when they are big, but never none", async () => {
+    const { host } = await setup();
+    const { handle } = await host.open(request, { client: A });
+    const big = (n: number, size: number) => [
+      rec("agent_start"),
+      userStart(n),
+      rec("message_end", { message: { role: "assistant", content: [{ type: "toolCall", id: `t${n}`, name: "read", arguments: {} }], stopReason: "toolUse", timestamp: n } }),
+      rec("tool_execution_end", { toolCallId: `t${n}`, toolName: "read", result: { content: [{ type: "text", text: "x".repeat(size) }] }, isError: false }),
+      rec("agent_end", { messages: [] }),
+      rec("agent_settled"),
+    ];
+    fake.pis[0]!.handlers.onRecords([...big(1, 50_000), ...big(2, 10), ...big(3, 30_000), ...big(4, 10), ...big(5, 10)]);
+    expect(host.snapshot(handle, { turns: 10 })!.turns).toEqual({ total: 5, from: 0 });
+    // The third turn's 30 kB result does not fit in 20 kB beside the last two; in 40 kB only the first turn's does not.
+    expect(host.snapshot(handle, { turns: 10, bytes: 20_000 })!.turns).toEqual({ total: 5, from: 3 });
+    expect(host.snapshot(handle, { turns: 10, bytes: 40_000 })!.turns).toEqual({ total: 5, from: 1 });
+    // The turn right before the cursor comes even when it alone is too big.
+    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 3 })!.turns).toEqual({ total: 5, from: 2 });
+    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 1 })!.turns).toEqual({ total: 5, from: 0 });
+  });
+
+  it("outlines the turns before a page, one line each, and a paged join gets the live state", async () => {
+    const { host } = await setup();
+    const { handle } = await host.open(request, { client: A });
+    const pi = fake.pis[0]!;
+    const mentions = "look at this\n\n# Files mentioned by the user:\n\n## a.ts: /tmp/a.ts";
+    pi.handlers.onRecords([rec("agent_start"), rec("message_end", { message: { role: "user", content: mentions, timestamp: 1 } }), rec("agent_end", { messages: [] }), rec("agent_settled")]);
+    pi.handlers.onRecords([...assistantTurn(2), ...assistantTurn(3), ...assistantTurn(4)]);
+    const keys = host.stateOf(handle)!.items.flatMap((item) => (item.kind === "user" ? [item.key] : []));
+    const page = host.snapshot(handle, { turns: 1, outline: true })!;
+    expect(page.turns).toEqual({ total: 4, from: 3 });
+    // pi-gna's mention block is not part of the line.
+    expect(page.outline).toEqual([
+      { key: keys[0], at: 1, label: "look at this" },
+      { key: keys[1], at: 2, label: "q2" },
+      { key: keys[2], at: 3, label: "q3" },
+    ]);
+    expect(host.snapshot(handle, { turns: 2, beforeTurn: 3, outline: true })!.outline).toEqual([{ key: keys[0], at: 1, label: "look at this" }]);
+    expect(host.snapshot(handle, { turns: 4, outline: true })!.outline).toEqual([]);
+    expect(host.snapshot(handle, { turns: 1 })!.outline).toBeUndefined();
+
+    const joined = await host.open(request, { client: B }, { turns: 2, outline: true });
+    expect(joined.reused).toBe(true);
+    expect(joined.snapshot!.turns).toEqual({ total: 4, from: 2 });
+    expect(joined.snapshot!.outline!.map((turn) => turn.label)).toEqual(["look at this", "q2"]);
+    expect((joined.snapshot!.state.items as Item[]).filter((item) => item.kind === "assistant")).toHaveLength(2);
   });
 
   it("marks a run that ends unseen as unread, and viewing clears it; attention is published on change", async () => {

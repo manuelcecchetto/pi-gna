@@ -708,7 +708,9 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   events past its snapshot. One ring (2000 events or 8 MiB). A reconnect sends `Last-Event-ID`; a gap, a new `bootId` or
   backpressure (1 MiB queued, closed at 4 MiB after 10 s) ends in a `resync` and the client refetches snapshots. The
   reducer runs in main (`src/shared/session-state.ts`), so `chat.snapshot` (last 40 turns, older ones paged) is always
-  authoritative. Browser frames and `computer.preview` never enter the ring.
+  authoritative. A page is also about 2 MB at most (`PAGE_BYTES`, sized from the strings of its turns; at least one
+  turn): a few turns of screenshots or big tool output can be most of a 100 MB chat. Browser frames and
+  `computer.preview` never enter the ring.
 - **Leases.** `chat.open` and `chat.attach` take a lease `(handle, clientId)`; the desktop is `desktop`, a phone is its
   stream id. A lease whose stream closed lives 60 s. pi stops only with no leases and a disposable chat (not prompted,
   running, compacting, holding a dialog or unread), or on an explicit `chat.close`: closing or suspending a client never
@@ -717,8 +719,15 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   session file, so pi's boot no longer waits behind the read. Until the history is in, the chat is registered (one pi
   per file) but holds what pi says, including its exit, and applies it after the history in the old order; a second
   open of the file waits for that same read and joins. A failed read stops the booting pi without publishing anything.
-  Joining a live chat never reads the file: it returns no entries, and the joiner takes the host's state (newer than
-  the file) through `chat.attach`, as the desktop's `adopt` and the phone already do.
+  Joining a live chat never reads the file: the joiner gets the host's state (newer than the file).
+- **The desktop pages a chat like the phone.** `chat.open` and `chat.attach` answer the window with the host's last
+  page and an outline of the earlier turns (`ChatSnapshot.outline`: key, time and one line each,
+  `src/shared/turn-outline.ts`), never the session file's entries; a 71 MB chat now crosses IPC as 22 KB. The open's
+  snapshot is taken once the history is in and before what pi said during the read, so the window buffers those
+  events and applies the ones past its `seq`, and a pi that could not start still leaves the history to read.
+  The window keeps the outline as `SessionState.earlier`; "Show earlier turns", a jump on the turn rail or ⌥↑ page
+  turns in through `pageSession` (`chat.snapshot { before }`, one request after the other), and the rail's card
+  fetches the answer of a turn it has not loaded (`pagePreview`). A chat's title comes from the outline's first line.
 - **Many clients.** Prompts from two clients arrive in order (a send while running is a steer). Dialogs and approvals:
   first answer wins, the rest get `already_answered` and drop the card on `dialog_resolved`. Store text edits conflict by
   `baseRev` (`409 conflict`); structural ops are last-writer-wins.
@@ -1030,7 +1039,8 @@ Verified live (pi 1.0.0, Oct 2026):
   fixed truncated columns). Click smooth-scrolls the turn to the jump position (`TOP_GAP`) and flashes its
   bubble; dragging scrubs instantly; ⌥↑/⌥↓ jump to the start of the current/previous or the next message
   (`adjacentTurn`; left to the caret while a text field has text). Turns on earlier pages are rendered first
-  (`reveal`). Bookmarks are app-only state kept by the host (`ui-state.json`, `src/shared/ui-state.ts`), per session file, keyed by the message
+  (`reveal`); the desktop also shows the turns the host has not sent yet (`outlineItems`), and a jump to one pages it
+  in. Turns paged in from the host stay rendered (the transcript's limit grows by them). Bookmarks are app-only state kept by the host (`ui-state.json`, `src/shared/ui-state.ts`), per session file, keyed by the message
   timestamp because item keys change on every load.
 - Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
   strips `<input>`). `Markdown.tsx` renders a finished text whole (one sanitize call, remembered by text so a chat opened

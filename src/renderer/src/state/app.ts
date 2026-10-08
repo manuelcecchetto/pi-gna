@@ -19,8 +19,8 @@ import {
   type TaskModel,
   taskModel,
 } from "../../../shared/settings";
-import type { AttentionSummary, Revved, TaskTarget } from "../../../shared/host-api";
-import type { CardWorktree, HostEventBatch, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
+import type { AttentionSummary, ChatSnapshot, Revved, TaskTarget } from "../../../shared/host-api";
+import type { CardWorktree, HostEventBatch, OpenSessionResult, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import type {
   ExtensionUiResponse,
   ImageContent,
@@ -47,8 +47,11 @@ import { applyUi, bootUiState, uiStore } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { lightboxAt, lightboxStep, type LightboxView } from "../lib/lightbox";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
-import { attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
+import { attention, createSession, isDisposable, isDraft, isListed, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
+import type { TurnOutline } from "../../../shared/turn-outline";
+import type { EarlierTurns } from "../components/Transcript";
 import type { OpenChat } from "../lib/projects";
+import { pagePreview } from "../lib/rail";
 import { createStore, shallow, useStore, useStoreShallow } from "../lib/store";
 
 export interface Toast {
@@ -248,27 +251,39 @@ function start(cwd: string, summary?: Pick<SessionSummary, "path" | "title">, sh
   return handle;
 }
 
+/**
+ * Open the chat on the host. The answer brings the host's snapshot of it (the last page of turns, a line for each
+ * earlier one); what pi says meanwhile waits for it and applies on top, as when joining a live chat.
+ */
 async function load(handle: string, cwd: string, sessionPath: string | undefined, atp: AtpSession | undefined): Promise<void> {
+  attaching.set(handle, []);
+  let opened: OpenSessionResult;
   try {
-    const opened = await studio().openSession({ handle, cwd, sessionPath, atp });
-    const { entries } = opened;
-    if (opened.handle && opened.handle !== handle) {
-      // The file was already live under the host's handle (a chat another client started): join that one.
-      const wasActive = store.get().active === handle;
-      removeSession(handle);
-      void adopt(opened.handle, wasActive);
-      return;
-    }
-    patchSession(handle, (s) => {
-      const loaded = s.loading ? { ...s, loading: undefined } : s;
-      if (!entries.length) return loaded;
-      // pi may already be ready (name, model) by the time the file is parsed; keep its live state.
-      const hydrated = hydrate(loaded, entries);
-      return { ...hydrated, name: s.name ?? hydrated.name, thinkingLevel: s.thinkingLevel ?? hydrated.thinkingLevel };
-    });
+    opened = await studio().openSession({ handle, cwd, sessionPath, atp });
   } catch (error) {
+    attaching.delete(handle);
     toast(`Could not open session: ${(error as Error).message}`, "error");
     removeSession(handle);
+    return;
+  }
+  const buffered = attaching.get(handle) ?? [];
+  attaching.delete(handle);
+  const { snapshot } = opened;
+  if (opened.handle && opened.handle !== handle) {
+    // The file was already live under the host's handle (a chat another client started): join that one.
+    const wasActive = store.get().active === handle;
+    removeSession(handle);
+    if (!snapshot || store.get().sessions[opened.handle] || attaching.has(opened.handle)) return void adopt(opened.handle, wasActive);
+    install(opened.handle, snapshot, []);
+    if (wasActive) activate(opened.handle);
+    return;
+  }
+  // A prefill that came before the answer stays.
+  const editorText = store.get().sessions[handle]?.editorText;
+  if (snapshot) install(handle, snapshot, buffered, editorText);
+  else {
+    patchSession(handle, (s) => ({ ...s, loading: undefined }));
+    for (const batch of buffered) handleBatch(batch);
   }
 }
 
@@ -311,11 +326,85 @@ export async function adopt(handle: string, show = false): Promise<void> {
   const buffered = attaching.get(handle) ?? [];
   attaching.delete(handle);
   if (!snapshot) return;
-  const session = snapshot.state as unknown as SessionState;
-  store.set((state) => ({ ...state, sessions: { ...state.sessions, [handle]: session }, open: state.open.includes(handle) ? state.open : [...state.open, handle] }));
+  install(handle, snapshot, buffered);
+  if (show) activate(handle);
+}
+
+/** Show a chat as the host's snapshot has it, then the events that came after the snapshot (`buffered` meanwhile). */
+function install(handle: string, snapshot: ChatSnapshot & { seq: number }, buffered: HostEventBatch[], editorText?: SessionState["editorText"]): void {
+  const state = snapshot.state as unknown as SessionState;
+  const session: SessionState = { ...state, ...(snapshot.outline?.length && { earlier: snapshot.outline }), ...(editorText && { editorText }) };
+  store.set((s) => ({ ...s, sessions: { ...s.sessions, [handle]: session }, open: s.open.includes(handle) ? s.open : [...s.open, handle] }));
   for (const batch of buffered) if ((batch.seq ?? Number.POSITIVE_INFINITY) > snapshot.seq) handleBatch(batch);
   if (session.phase === "ready") void onReady(handle, { messageCount: session.items.length } as RpcSessionState);
-  if (show) activate(handle);
+}
+
+/** Turns per earlier page: the most the host serves at once. */
+const EARLIER_TURNS = 40;
+/** Paging of a chat runs one request after the other, so a jump and a scroll never load the same page twice. */
+const paging = new Map<string, Promise<void>>();
+
+/**
+ * Load the host's turns before the ones the chat shows: one page (the host makes it smaller when its turns are big),
+ * or every page down to turn `to` (a jump to an earlier turn). Events keep applying to the end of the transcript meanwhile.
+ */
+export function loadEarlier(handle: string, to?: number): Promise<void> {
+  const next = (paging.get(handle) ?? Promise.resolve()).catch(() => undefined).then(() => pageIn(handle, to));
+  paging.set(handle, next);
+  void next.finally(() => paging.get(handle) === next && paging.delete(handle)).catch(() => undefined);
+  return next;
+}
+
+async function pageIn(handle: string, to: number | undefined): Promise<void> {
+  const outline = store.get().sessions[handle]?.earlier;
+  if (!outline?.length) return;
+  const target = to === undefined ? 0 : Math.max(0, Math.min(to, outline.length - 1));
+  const pages: SessionState[] = [];
+  let before = outline.length;
+  do {
+    const page = await studio().pageSession(handle, before, Math.min(EARLIER_TURNS, before - target));
+    pages.unshift(page.value.state as unknown as SessionState);
+    before = page.value.turns.from;
+  } while (to !== undefined && before > target);
+  patchSession(handle, (s) => {
+    if (s.earlier !== outline) return s; // the chat was replaced meanwhile
+    const items = [...pages.flatMap((page) => page.items), ...s.items];
+    const tools = Object.assign({}, ...pages.map((page) => page.tools), s.tools) as SessionState["tools"];
+    return { ...s, items, tools, earlier: before > 0 ? outline.slice(0, before) : undefined };
+  });
+}
+
+const earlierOf = new WeakMap<TurnOutline[], EarlierTurns>();
+
+/** The host's turns before the ones a chat shows, for its Transcript: one line each until they are paged in. */
+export function earlierTurns(session: SessionState): EarlierTurns | undefined {
+  const outline = session.earlier;
+  if (!outline?.length) return undefined;
+  let earlier = earlierOf.get(outline);
+  if (!earlier) {
+    const { handle } = session;
+    const previews = new Map<number, Promise<string>>();
+    earlier = {
+      count: outline.length,
+      outline,
+      load: () => loadEarlier(handle),
+      reach: async (key) => {
+        const index = outline.findIndex((turn) => turn.key === key);
+        if (index >= 0) await loadEarlier(handle, index);
+      },
+      preview: (index) => {
+        let preview = previews.get(index);
+        if (!preview) {
+          preview = studio().pageSession(handle, index + 1, 1).then((page) => pagePreview(page.value.state as unknown as SessionState));
+          preview.catch(() => previews.delete(index));
+          previews.set(index, preview);
+        }
+        return preview;
+      },
+    };
+    earlierOf.set(outline, earlier);
+  }
+  return earlier;
 }
 
 /** Attention updates: a chat that is doing something and is not here yet was started elsewhere; join it. */
@@ -1186,6 +1275,8 @@ async function resume(): Promise<void> {
 export function sessionTitle(session: SessionState): string {
   if (session.name) return session.name;
   if (session.loading) return session.loading.title;
+  // The first message is on a page this window has not loaded.
+  if (session.earlier?.length) return session.earlier[0]!.label.slice(0, 120);
   const first = session.items.find((item) => item.kind === "user");
   if (first?.kind === "user") {
     const content = first.message.content;
