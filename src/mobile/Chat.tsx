@@ -1,16 +1,15 @@
 // One chat: join it on the host (open, or attach to a live one), show its transcript and approvals, and let go on leave.
 // Leaving detaches only: the host keeps the run going (docs/REMOTE.md section 5).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ListChevronsDownUp, ListChevronsUpDown, PanelRight } from "../renderer/src/components/icons";
+import { PanelRight } from "../renderer/src/components/icons";
 import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
-import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import type { ComputerPreviewFrame } from "../shared/computer";
 import { attention } from "../shared/session-state";
 import { useWakeAt } from "../renderer/src/components/primitives";
 import { agentActive, agentLapse } from "./browser-data";
-import { showChat, toggleExpandAll } from "./chat-ui";
+import { showChat } from "./chat-ui";
 import { keepFrame, pollPreview, runUsesComputer } from "./computer-preview";
 import type { HostClient } from "./client/host-client";
 import { projectOf } from "../shared/board";
@@ -18,7 +17,6 @@ import { FolderPicker } from "./ProjectSheets";
 import { MobileComposer } from "./MobileComposer";
 import type { Route } from "./nav";
 import { Header, Mark } from "./Screens";
-import { TurnList } from "./TurnList";
 
 type ChatRoute = Extract<Route, { screen: "chat" }>;
 
@@ -134,16 +132,12 @@ function BrowserButton({ client, handle, onOpen }: { client: HostClient; handle:
 export function ChatScreen({ client, route, back, push, replace }: { client: HostClient; route: ChatRoute; back: () => void; push: (route: Route) => void; replace: (route: Route) => void }) {
   const [attempt, setAttempt] = useState(0);
   const [picking, setPicking] = useState(false);
-  // Where TurnList puts its button: in the header, not over the transcript.
-  const [turnSlot, setTurnSlot] = useState<HTMLSpanElement | null>(null);
   const { handle, error } = useJoinedChat(client, route, attempt);
   const entry = useStore(client.store, (s) => (handle ? s.chats[handle] : undefined));
   const session = entry?.session;
   const failure = error ?? entry?.error;
   const title = session?.name ?? session?.title ?? route.title ?? "New chat";
   const level = session ? attention(session) : undefined;
-  const ui = useChatUiHandle();
-  const expandAll = useChatUi((s) => s.expandAll);
   // Before the transcript's effects settle its links (layout effects run before every passive effect).
   const chatHandle = session?.handle;
   const chatCwd = session?.cwd;
@@ -159,20 +153,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
     <div className="flex min-h-0 flex-1 flex-col">
       <Header title={title} onBack={back} trailing={
           <>
-            <span ref={setTurnSlot} className="contents" />
             {session && <BrowserButton client={client} handle={session.handle} onOpen={() => push({ screen: "browser", handle: session.handle })} />}
-            {session && (
-              <button
-                type="button"
-                aria-label={expandAll ? "Collapse all steps" : "Expand all steps"}
-                aria-pressed={expandAll}
-                data-testid="expand-all"
-                onClick={() => toggleExpandAll(ui)}
-                className={`grid h-11 w-11 shrink-0 place-items-center ${expandAll ? "text-accent" : "text-muted"}`}
-              >
-                {expandAll ? <ListChevronsDownUp size={18} /> : <ListChevronsUpDown size={18} />}
-              </button>
-            )}
             <span className="pr-4"><Mark level={level} /></span>
           </>
         }
@@ -196,7 +177,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
               </button>
             </div>
           )}
-          <Transcript session={session} earlier={earlier} turns={(nav) => <TurnList client={client} nav={nav} slot={turnSlot} />} onPickProject={() => setPicking(true)} />
+          <Transcript session={session} earlier={earlier} onPickProject={() => setPicking(true)} />
           {session.dialogs.length > 0 && (
             <div className="max-h-[55%] shrink-0 overflow-y-auto px-3 pb-2" data-testid="dialogs">
               <Dialogs handle={session.handle} dialogs={session.dialogs} />

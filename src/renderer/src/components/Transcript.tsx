@@ -22,8 +22,8 @@ import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/atta
 import { splitThreadMessage, type ThreadSender } from "../../../shared/threads";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { previewClick } from "../lib/preview";
-import { outlineItems, type RailItem, railItems } from "../lib/rail";
-import { distanceToEnd, END_SLACK, followsAfterScroll, scrollToRun, settleView, type ViewFollow } from "../lib/turn-scroll";
+import { outlineItems, railItems } from "../lib/rail";
+import { distanceToEnd, END_SLACK, followsAfterScroll, settleView, type ViewFollow } from "../lib/turn-scroll";
 import type { SessionState } from "../../../shared/session-state";
 import type { TurnOutline } from "../../../shared/turn-outline";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
@@ -37,7 +37,7 @@ import { Markdown } from "./Markdown";
 import { imageSrc } from "../lib/image-src";
 import type { ThumbBox } from "../lib/thumbnail";
 import { Ansi, ImageThumb } from "./primitives";
-import { findRun, flash, rendered, TurnRail } from "./TurnRail";
+import { TurnRail } from "./TurnRail";
 
 const PAGE = 30;
 
@@ -53,14 +53,7 @@ export interface EarlierTurns {
   preview?: (index: number) => Promise<string>;
 }
 
-/** What a client with its own turn navigation (the phone's jump list) gets: the turns and a way to scroll to one. */
-export interface TurnNav {
-  items: RailItem[];
-  jump: (key: string) => Promise<void>;
-  sessionPath?: string;
-}
-
-export function Transcript({ session, earlier, turns, onPickProject }: { session: SessionState; earlier?: EarlierTurns; turns?: (nav: TurnNav) => React.ReactNode; /** Makes the project name of the empty state a button (the phone: switch project). */ onPickProject?: () => void }) {
+export function Transcript({ session, earlier, onPickProject }: { session: SessionState; earlier?: EarlierTurns; /** Makes the project name of the empty state a button (the phone: switch project). */ onPickProject?: () => void }) {
   const derive = useMemo(() => createRunDeriver(), []);
   const runs = useMemo(() => derive({ items: session.items, running: session.running }), [derive, session.items, session.running]);
   const rail = useMemo(() => (earlier?.outline?.length ? [...outlineItems(earlier.outline, earlier.preview), ...railItems(runs)] : railItems(runs)), [runs, earlier?.outline, earlier?.preview]);
@@ -118,22 +111,6 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
     } finally {
       setPaging(false);
     }
-  };
-
-  /** Scroll to a turn (paging it in first when it is on an earlier page) and flash it. */
-  const jump = async (key: string) => {
-    const root = scroller.current;
-    if (!root) return;
-    let section = findRun(root, key);
-    let behavior: ScrollBehavior = "smooth";
-    if (!section) {
-      await reveal(key);
-      section = await rendered(root, key);
-      behavior = "instant";
-    }
-    if (!section) return;
-    scrollToRun(root, section, TOP_GAP, behavior);
-    flash(section);
   };
 
   const last = visible.at(-1);
@@ -194,7 +171,6 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
           ))}
         </div>
       </div>
-      {turns?.({ items: rail, jump, sessionPath: session.sessionPath })}
       <TurnRail items={rail} scroller={scroller} column={content} topGap={TOP_GAP} reveal={reveal} sessionPath={session.sessionPath} />
       {below && (
         <button

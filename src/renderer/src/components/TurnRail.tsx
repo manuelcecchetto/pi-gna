@@ -392,12 +392,12 @@ function useInView(scroller: React.RefObject<HTMLDivElement | null>, topGap: num
   return inView;
 }
 
-export function findRun(root: HTMLElement, key: string): HTMLElement | null {
+function findRun(root: HTMLElement, key: string): HTMLElement | null {
   return root.querySelector<HTMLElement>(`[data-run="${CSS.escape(key)}"]`);
 }
 
 /** Wait (up to 1.5 s) for a revealed turn to render. */
-export function rendered(root: HTMLElement, key: string): Promise<HTMLElement | null> {
+function rendered(root: HTMLElement, key: string): Promise<HTMLElement | null> {
   const started = performance.now();
   return new Promise((resolve) => {
     const check = () => {
@@ -410,7 +410,7 @@ export function rendered(root: HTMLElement, key: string): Promise<HTMLElement | 
 }
 
 /** Briefly light up the message you jumped to. */
-export function flash(section: HTMLElement): void {
+function flash(section: HTMLElement): void {
   const bubble = section.querySelector<HTMLElement>("[data-user-bubble]");
   if (!bubble || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   bubble.animate([{ backgroundColor: HIGHLIGHT }, { backgroundColor: HIGHLIGHT, offset: 0.35 }, { backgroundColor: "var(--raised)" }], {

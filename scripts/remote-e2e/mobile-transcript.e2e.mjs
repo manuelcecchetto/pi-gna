@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The phone's transcript extras on the seeded "Tools demo" session: tool sheets, expand all, images and the lightbox, links, visuals
-// with their watchdog, the turn list and bookmarks.
+// The phone's transcript extras on the seeded "Tools demo" session: tool sheets, images and the lightbox, links, visuals with their
+// watchdog.
 import { sleep, log, check, until, project, png, request, openPhone, scenario } from "./harness.mjs";
 
 await scenario("mobile transcript", async (ctx) => {
@@ -9,7 +9,7 @@ await scenario("mobile transcript", async (ctx) => {
   await transcriptChecks({ phone, A, shot, text, tap, exists, present });
 });
 
-/** The phone's transcript extras (T28): tool sheets, expand all, images and the lightbox, the turn list and bookmarks, visuals, copy, links, times. */
+/** The phone's transcript extras (T28): tool sheets, images and the lightbox, visuals, copy, links, times. */
 async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) {
   log("mobile transcript extras");
   const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);
@@ -66,16 +66,9 @@ async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) 
   check((await sheet()).includes('"level": 3') && (await sheet()).includes("frobbed"), "the generic sheet shows the JSON arguments and the result", await sheet());
   await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
 
-  // Expand all.
-  const rowsClosed = await count('[data-testid="tool-sheet"]');
-  check(rowsClosed === 0, "no sheet is left open");
-  check(!(await text()).includes("const veryLongLine"), "steps are collapsed before Expand all");
-  check(await click("expand-all"), "the header's Expand all is tapped");
-  await until("the steps open inline", present("const veryLongLine"));
-  // The tool's screenshot shows with its step; the user's photo always does.
-  check((await count("img")) >= 2, "the transcript shows the message's image and the tool's image", await phone.eval(`[...document.images].map((i) => i.getAttribute("src")?.slice(0, 40))`));
-  await click("expand-all");
-  await until("the steps close again", async () => !(await text()).includes("const veryLongLine"));
+  // The header holds only the browser button: no Expand all or turn list on the phone.
+  check(!(await exists('[data-testid="expand-all"]')) && !(await exists('[data-testid="turn-list-button"]')), "the chat header has no Expand all or turn list button");
+  check(!(await text()).includes("const veryLongLine"), "steps stay collapsed in the transcript");
 
   // Images and the lightbox.
   check(await phone.eval(`(() => { const i = document.querySelector('button img'); i.closest('button').click(); return true; })()`), "an image is tapped");
@@ -126,19 +119,4 @@ async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) 
   check((await count("iframe.visual-frame")) === 1, "the stuck frame is removed (the healthy one stays)");
   check((await text()).includes("clearInterval"), "its source is shown instead");
   await shot("27-visual-stuck");
-
-  // Turn list and bookmarks (the host keeps them).
-  check(await click("turn-list-button"), "the turn list button is tapped");
-  await until("the turn list", () => exists('[data-testid="turn-list"]'));
-  check((await count('[data-testid="turn-row"]')) === 2, "the list has one row per message sent", await count('[data-testid="turn-row"]'));
-  await shot("28-turn-list");
-  check(await phone.eval(`(() => { document.querySelector('[data-testid="turn-list"] [aria-label="Bookmark"]').click(); return true; })()`), "the first turn's star is tapped");
-  await until("the host to hold the bookmark", async () => Object.values((await A.ok("ui.get")).bookmarks ?? {}).some((marks) => marks.length === 1));
-  check(true, "the bookmark is in the host's ui state");
-  await phone.eval(`window.__flashes = 0; const animate = Element.prototype.animate; Element.prototype.animate = function (...args) { window.__flashes++; return animate.apply(this, args); }; true`);
-  check(await clickText('[data-testid="turn-row"]', "Second turn"), "the second turn's row is tapped");
-  await until("the list to close", async () => !(await exists('[data-testid="turn-list"]')));
-  await until("the view to scroll to the second turn", () => phone.eval(`(() => { const s = document.querySelector('[data-run]:last-of-type'); const sc = s?.closest(".overflow-y-auto"); return !!sc && sc.scrollTop > 0; })()`), 8_000, 100);
-  check((await phone.eval("window.__flashes")) >= 1, "the jump flashes the message");
-  await shot("29-after-jump");
 }

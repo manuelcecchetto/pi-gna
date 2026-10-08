@@ -6,6 +6,7 @@ moves those lines under the new version, and they become its GitHub release note
 ## Unreleased
 
 - Laments: a Worst first / Newest first switch on top of the Laments page, on the Mac and the phone. Resolved laments now sort worst first too, as the page said.
+- Phone: the chat header's browser button uses the desktop's right-pane icon instead of a globe, and the Expand all and turn list buttons are gone.
 
 ## 0.11.1 - 2026-10-10
 

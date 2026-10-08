@@ -17,7 +17,6 @@ import { toast } from "./toasts";
 
 const lightbox = createStore<LightboxView | undefined>(undefined);
 export const useLightbox = (): LightboxView | undefined => useStore(lightbox, (view) => view);
-export const toggleExpandAll = (ui: ChatUi): void => ui.store.set((state) => ({ ...state, expandAll: !state.expandAll, expanded: {} }));
 export const closeLightbox = (): void => lightbox.set(() => undefined);
 /** The lightbox `delta` images on (a swipe); stops at the ends. */
 export const stepLightbox = (delta: number): void => lightbox.set((view) => view && lightboxStep(view, delta));
