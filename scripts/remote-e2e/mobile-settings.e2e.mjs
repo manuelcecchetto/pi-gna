@@ -14,7 +14,23 @@ async function settingsChecks({ phone, A, shot, text, exists, present }) {
   const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);
   const clickText = (testId, label) => phone.eval(`(() => { const e = [...document.querySelectorAll('[data-testid="${testId}"]')].find((x) => x.innerText.includes(${JSON.stringify(label)})); if (!e) return false; e.click(); return true; })()`);
   const tapBack = () => phone.eval(`document.querySelector('[aria-label="Back"]').click()`);
-  const toggle = (name) => phone.eval(`document.querySelector('[role="switch"][aria-label="${name}"]').click()`);
+  /**
+   * Flip a switch from the phone and wait for the host to have the other value. A switch sends the opposite of what it
+   * shows, so it is tapped only once it shows the host's value: a tap before the phone has the settings, or a quick
+   * second tap before it has the host's answer, sends the value the host already has.
+   */
+  const flip = async (name, read) => {
+    const from = await read();
+    const state = `document.querySelector(${JSON.stringify(`[role="switch"][aria-label="${name}"]`)})?.getAttribute("aria-checked")`;
+    await until(`${name} showing the host's value`, async () => (await phone.eval(state)) === String(from));
+    await phone.eval(`document.querySelector(${JSON.stringify(`[role="switch"][aria-label="${name}"]`)}).click()`);
+    await until(`${name} switched on the host`, async () => (await read()) === !from);
+    return !from;
+  };
+  const visuals = async () => (await A.ok("settings.get")).visuals;
+  // Unset, pi retries.
+  const retry = async () => (await A.ok("settings.pi")).values["retry.enabled"] ?? true;
+  const laments = async () => (await A.ok("settings.get")).features.laments;
   for (let i = 0; i < 4 && !(await exists('[data-testid="open-settings"]')); i++) {
     await tapBack();
     await sleep(400);
@@ -40,24 +56,19 @@ async function settingsChecks({ phone, A, shot, text, exists, present }) {
   await until("sections", () => exists('[data-testid="section-agent"]'));
   await click("section-agent");
   await until("agent", () => exists('[data-testid="settings-agent"]'));
-  await toggle("Inline visuals");
-  await until("visuals on the host", async () => (await A.ok("settings.get")).visuals === true);
-  check(true, "Inline visuals (Beta) switched on from the phone");
-  await toggle("Retry automatically");
-  await until("pi setting on the host", async () => (await A.ok("settings.pi")).values["retry.enabled"] === false);
-  check(true, "a pi setting (retry) was written to pi's settings.json");
+  await flip("Inline visuals", visuals);
+  check(true, "Inline visuals (Beta) switched from the phone");
+  check((await flip("Retry automatically", retry)) === false, "a pi setting (retry) was written to pi's settings.json");
   await shot("19-agent");
-  await toggle("Retry automatically");
-  await toggle("Inline visuals");
+  await flip("Retry automatically", retry);
+  await flip("Inline visuals", visuals);
   await tapBack();
 
   await click("section-features");
   await until("features", () => exists('[data-testid="settings-features"]'));
-  await toggle("Laments");
-  await until("laments off on the host", async () => (await A.ok("settings.get")).features.laments === false);
+  await flip("Laments", laments);
   check(true, "a feature switch changed on the host");
-  await toggle("Laments");
-  await until("laments on", async () => (await A.ok("settings.get")).features.laments === true);
+  await flip("Laments", laments);
   await tapBack();
 
   await click("section-computer");
