@@ -1,0 +1,99 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import lost from '../assets/mascot/lost.webp';
+---
+
+<Base title="Page not found" description="This page doesn't exist." noindex og="home">
+  <section class="wrap lost">
+    <div class="art">
+      <Image src={lost} alt="Pigna reading an upside-down map, lost" widths={[260, 390, 520]} sizes="(min-width: 900px) 300px, 60vw" loading="eager" />
+    </div>
+    <div class="copy">
+      <p class="code" aria-hidden="true">404</p>
+      <h1 class="display">Mamma mia, <span class="serif">we’re lost.</span></h1>
+      <p class="lead">This page isn’t here. Maybe it moved, maybe it never was. Pigna is holding the map upside down, so don’t ask for directions.</p>
+      <div class="links">
+        <a class="btn" href="/">Back home</a>
+        <a class="btn btn-paper" href="/features/">See the features</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .lost {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: 40px;
+    min-height: 60vh;
+    padding-top: clamp(32px, 5vw, 64px);
+  }
+
+  .art :global(img) {
+    width: min(100%, 300px);
+    margin-inline: auto;
+    transform-origin: 50% 100%;
+    animation: puzzled 3.4s ease-in-out infinite;
+  }
+
+  @keyframes puzzled {
+    0%,
+    100% {
+      transform: rotate(-3deg);
+    }
+    50% {
+      transform: rotate(3deg);
+    }
+  }
+
+  .copy {
+    display: grid;
+    gap: 22px;
+    justify-items: start;
+  }
+
+  .code {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 1rem;
+    padding: 4px 12px;
+    border: var(--line);
+    border-radius: 999px;
+    background: var(--coral);
+    box-shadow: var(--shadow-sm);
+    rotate: -4deg;
+  }
+
+  .display {
+    font-size: clamp(2.8rem, 6.4vw, 5.4rem);
+  }
+
+  .display .serif {
+    color: var(--red);
+  }
+
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+
+  @media (max-width: 800px) {
+    .lost {
+      grid-template-columns: 1fr;
+    }
+
+    .art {
+      width: min(56vw, 240px);
+      justify-self: center;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .art :global(img) {
+      animation: none;
+    }
+  }
+</style>

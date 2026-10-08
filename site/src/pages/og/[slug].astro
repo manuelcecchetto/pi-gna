@@ -1,0 +1,190 @@
+---
+/**
+ * Share-card templates, 1200×630. Dev only: open /og/<slug>/ at exactly 1200×630 and save a screenshot to
+ * public/og/<slug>.jpg (site/README.md, Share images). Production builds generate no pages here.
+ */
+import type { GetStaticPaths, ImageMetadata } from 'astro';
+import { Image, Font } from 'astro:assets';
+import { FEATURES } from '../../data/features';
+import waving from '../../assets/hero/hero-full.webp';
+import box from '../../assets/mascot/download.webp';
+import barista from '../../assets/mascot/about.webp';
+import nerd from '../../assets/mascot/faq.webp';
+import builder from '../../assets/mascot/changelog.webp';
+import kanban from '../../assets/mascot/kanban.webp';
+import '../../styles/global.css';
+
+interface Card {
+  slug: string;
+  title: string;
+  accent: string;
+  sub: string;
+  pose: ImageMetadata;
+  color: string;
+}
+
+export const getStaticPaths = (() => {
+  if (import.meta.env.PROD) return [];
+  const cards: Card[] = [
+    { slug: 'home', title: 'Give pi', accent: 'a hand.', sub: 'The desktop app for the pi coding agent', pose: waving, color: 'sky' },
+    { slug: 'features', title: 'Everything', accent: 'pi-gna does', sub: 'Chats, browser, Computer Use, Kanban, GitHub and more', pose: kanban, color: 'mint' },
+    { slug: 'download', title: 'Download', accent: 'pi-gna', sub: 'Free for Apple silicon and Intel Macs', pose: box, color: 'teal' },
+    { slug: 'about', title: 'About', accent: 'pi-gna', sub: 'A frontend for pi, not a fork. Named after 🤌', pose: barista, color: 'gold' },
+    { slug: 'faq', title: 'Questions,', accent: 'answered.', sub: 'What pi-gna needs, costs and does', pose: nerd, color: 'lilac' },
+    { slug: 'changelog', title: 'Change', accent: 'log', sub: 'What changed in each pi-gna release', pose: builder, color: 'coral' },
+    ...FEATURES.map((f) => ({
+      slug: `feature-${f.slug}`,
+      title: f.title,
+      accent: '',
+      sub: f.summary,
+      pose: f.pose,
+      color: f.color,
+    })),
+  ];
+  return cards.map((card) => ({ params: { slug: card.slug }, props: { card } }));
+}) satisfies GetStaticPaths;
+
+const { card } = Astro.props as { card: Card };
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>OG · {card.slug}</title>
+    <Font cssVariable="--font-display" preload />
+    <Font cssVariable="--font-serif" />
+  </head>
+  <body>
+    <div class="og" data-color={card.color}>
+      <div class="copy">
+        <div class="logo"><img src="/pigna-hand.svg" alt="" /><span>i-gna</span></div>
+        <h1 class:list={{ long: card.title.length > 22 }}>
+          {card.title}
+          {card.accent && <span class="serif">{card.accent}</span>}
+        </h1>
+        <p>{card.sub}</p>
+        <span class="url">pi-gna.com</span>
+      </div>
+      <div class="art">
+        <span class="sun"></span>
+        <Image src={card.pose} alt="" width={520} loading="eager" />
+      </div>
+    </div>
+  </body>
+</html>
+
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .og {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 470px;
+    align-items: center;
+    width: 1200px;
+    height: 630px;
+    padding: 56px 40px 56px 72px;
+    box-sizing: border-box;
+    background:
+      radial-gradient(color-mix(in srgb, var(--ink) 12%, transparent) 1.4px, transparent 1.8px) 0 0 / 28px 28px,
+      var(--c-soft);
+    overflow: hidden;
+  }
+
+  .og::after {
+    content: '';
+    position: absolute;
+    inset: 18px;
+    border: 4px solid var(--ink);
+    border-radius: 36px;
+    pointer-events: none;
+  }
+
+  .copy {
+    display: grid;
+    gap: 26px;
+    justify-items: start;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.045em;
+  }
+
+  .logo img {
+    height: 42px;
+    width: auto;
+  }
+
+  h1 {
+    font-size: 96px;
+    font-weight: 800;
+    line-height: 0.92;
+    letter-spacing: -0.045em;
+  }
+
+  h1.long {
+    font-size: 72px;
+  }
+
+  .serif {
+    display: block;
+    color: var(--red);
+    font-size: 1.08em;
+  }
+
+  p {
+    max-width: 560px;
+    font-size: 30px;
+    line-height: 1.25;
+    color: var(--ink-2);
+    font-weight: 560;
+    letter-spacing: -0.015em;
+  }
+
+  .url {
+    padding: 8px 18px 10px;
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    background: var(--card);
+    box-shadow: 4px 4px 0 var(--ink);
+    font-size: 24px;
+    font-weight: 750;
+  }
+
+  .art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 100%;
+  }
+
+  .sun {
+    position: absolute;
+    width: 420px;
+    height: 420px;
+    border: 4px solid var(--ink);
+    border-radius: 50%;
+    background:
+      repeating-conic-gradient(from 0deg, color-mix(in srgb, #fff 26%, transparent) 0 10deg, transparent 10deg 24deg),
+      var(--c);
+    box-shadow: 8px 8px 0 var(--ink);
+  }
+
+  .art :global(img) {
+    position: relative;
+    max-height: 500px;
+    width: auto;
+    max-width: 440px;
+    object-fit: contain;
+  }
+</style>

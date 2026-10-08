@@ -1,0 +1,263 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Cursor from './Cursor.astro';
+const times = [400, 900, 1000, 1000, 1000, 1100, 900, 900, 900, 2600];
+const prs = [
+  { n: 42, title: 'Wink on hover', who: 'mascot-fan', age: '2h', tag: 'ui' },
+  { n: 41, title: 'Faster ⌘K search', who: 'speedy', age: '5h', tag: 'perf' },
+  { n: 39, title: 'Dark mode, but golden hour', who: 'dusk', age: '1d', tag: 'ui' },
+  { n: 37, title: 'Cut it to 999 lines, no deps', who: 'minimal', age: '2d', tag: 'refactor' },
+];
+---
+
+<DemoFrame
+  title="pi-gna · GitHub"
+  times={times}
+  label="Review on a pull request opens a new chat that reviews it with the pr-review skill, without touching your checkout."
+>
+  <div class="bar">
+    <span class="tab">Issues <i>4</i></span>
+    <span class="tab on-tab">Pull requests <i>{prs.length}</i></span>
+    <span class="acct">◉ manuelcecchetto ⌄</span>
+    <span class="refresh">↻</span>
+  </div>
+  <div class="list">
+    {
+      prs.map((pr, i) => (
+        <div class="pr" data-seq={i === 0 ? '0:idle,1:hover' : undefined}>
+          <span class="pr-ico">⇄</span>
+          <span class="pr-main">
+            <b>{pr.title}</b>
+            <span class="meta">
+              #{pr.n} · {pr.who} · {pr.age} <span class="lbl">{pr.tag}</span>
+            </span>
+          </span>
+          <span class="btnx rv" data-seq={i === 0 ? '0:idle,3:starting,4:open' : undefined}>
+            <span class="r-idle">Review</span>
+            <span class="r-starting">Starting…</span>
+            <span class="r-open">Review open</span>
+          </span>
+        </div>
+      ))
+    }
+  </div>
+
+  <aside class="panel" data-seq="0:out,4:in">
+    <header>Review · PR #42</header>
+    <div class="log">
+      <div class="item" data-at="4" data-off="9">
+        <div class="in"><div class="ai muted shimmer">Reviewing with pr-review…</div></div>
+      </div>
+      <div class="item" data-at="5"><div class="in"><div class="tool mono"><span class="ok">✓</span> gh pr view 42</div></div></div>
+      <div class="item" data-at="5"><div class="in"><div class="tool mono"><span class="ok">✓</span> gh pr diff 42</div></div></div>
+      <div class="item" data-at="6">
+        <div class="in"><div class="find"><span class="ok">●</span> The wink is pure CSS, no new script.</div></div>
+      </div>
+      <div class="item" data-at="7">
+        <div class="in"><div class="find"><span class="warn">●</span> No reduced-motion fallback for the wink.</div></div>
+      </div>
+      <div class="item" data-at="8">
+        <div class="in"><div class="find"><span class="ok">●</span> Your checkout was not touched.</div></div>
+      </div>
+      <div class="item" data-at="9">
+        <div class="in"><div class="ai">Findings stay here unless you ask me to post them.</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <Cursor who="you" class="me" data-seq="0:hidden,2:review,4:hidden" label="you" />
+</DemoFrame>
+
+<style>
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 48px;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .tab {
+    padding: 5px 11px;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+
+  .tab i {
+    font-style: normal;
+    color: var(--faint);
+    margin-left: 3px;
+  }
+
+  .on-tab {
+    background: var(--raised);
+    color: var(--fg);
+  }
+
+  .acct {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .refresh {
+    margin-left: 10px;
+    color: var(--muted);
+  }
+
+  .list {
+    padding: 10px 12px;
+  }
+
+  .pr {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 12px;
+    border-radius: 10px;
+    transition: background-color 0.3s;
+  }
+
+  .pr + .pr {
+    border-top: 1px solid var(--hair);
+  }
+
+  .pr[data-s='hover'] {
+    background: var(--panel);
+  }
+
+  .pr-ico {
+    color: var(--ok);
+    font-size: 14px;
+  }
+
+  .pr-main {
+    display: grid;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .pr-main b {
+    font-weight: 600;
+  }
+
+  .meta {
+    color: var(--faint);
+    font-size: 11.5px;
+  }
+
+  .lbl {
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgb(95 211 141 / 0.16);
+    color: #9ee5bb;
+  }
+
+  .rv {
+    display: grid;
+    min-width: 96px;
+  }
+
+  .rv > span {
+    grid-area: 1 / 1;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .rv:not([data-s]) .r-idle,
+  .rv[data-s='idle'] .r-idle,
+  .rv[data-s='starting'] .r-starting,
+  .rv[data-s='open'] .r-open {
+    opacity: 1;
+  }
+
+  .rv[data-s='starting'] {
+    background: #3a3a42;
+    color: var(--muted);
+  }
+
+  .rv[data-s='open'] {
+    background: rgb(91 141 239 / 0.22);
+    color: #c9d8fa;
+  }
+
+  .panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    border-left: 1px solid var(--hair);
+    background: var(--canvas);
+    box-shadow: -18px 0 40px rgb(0 0 0 / 0.35);
+    transform: translateX(105%);
+    transition: transform 0.7s cubic-bezier(0.2, 0.9, 0.2, 1);
+  }
+
+  .panel[data-s='in'] {
+    transform: none;
+  }
+
+  .panel header {
+    height: 48px;
+    padding: 15px 18px;
+    border-bottom: 1px solid var(--hair);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .log {
+    position: absolute;
+    inset: 48px 0 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 18px 20px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .find {
+    display: flex;
+    gap: 8px;
+    padding: 9px 11px;
+    border-radius: 10px;
+    background: var(--panel);
+    font-size: 12.5px;
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+
+  .warn {
+    color: var(--warn);
+  }
+
+  .me {
+    left: 560px;
+    top: 260px;
+    transition:
+      left 0.7s ease,
+      top 0.7s ease,
+      opacity 0.25s;
+  }
+
+  .me[data-s='hidden'] {
+    opacity: 0;
+  }
+
+  .me[data-s='review'] {
+    left: 646px;
+    top: 74px;
+  }
+</style>

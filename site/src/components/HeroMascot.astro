@@ -1,0 +1,616 @@
+---
+/**
+ * Pigna, waving. The body is a faceless drawing; the face is SVG traced from the original
+ * (tools/mascot/trace_face.py), so it can look at the pointer, blink and pull faces.
+ */
+import { Image } from 'astro:assets';
+import base from '../assets/hero/hero-base.webp';
+import face from '../data/hero-face.json';
+import { EXCLAMATIONS } from '../data/site';
+
+type Ellipse = { cx: number; cy: number; rx: number; ry: number; angle: number };
+const [w, h] = face.size;
+const eyes = (['l', 'r'] as const).map((side) => ({
+  side,
+  eye: face[`eye-${side}`] as Ellipse,
+  shine: face[`shine-${side}`] as Ellipse,
+}));
+const rot = (e: Ellipse) => `rotate(${e.angle} ${e.cx} ${e.cy})`;
+/** A happy ^ for squinting, drawn over the eye's center. */
+const arc = (e: Ellipse) =>
+  `M${e.cx - 34} ${e.cy + 14}Q${e.cx} ${e.cy - 40} ${e.cx + 34} ${e.cy + 14}`;
+---
+
+<div class="hm" data-hero-mascot data-says={JSON.stringify(EXCLAMATIONS)}>
+  <div class="disc" aria-hidden="true">
+    <svg class="rays" viewBox="-100 -100 200 200">
+      {
+        Array.from({ length: 14 }, (_, i) => (
+          <path d="M0 0L-13 -100H13Z" transform={`rotate(${(i * 360) / 14})`} />
+        ))
+      }
+    </svg>
+  </div>
+  <span class="deco deco-1" aria-hidden="true">
+    <svg viewBox="0 0 40 40"><path d="M20 2l4.6 12.4L38 20l-13.4 5.6L20 38l-4.6-12.4L2 20l13.4-5.6z" /></svg>
+  </span>
+  <span class="deco deco-2" aria-hidden="true">⌘K</span>
+  <span class="deco deco-3" aria-hidden="true">&lt;/&gt;</span>
+  <span class="deco deco-4" aria-hidden="true">
+    <svg viewBox="0 0 40 36"><path d="M20 34S3 23.5 3 12.5A8.5 8.5 0 0 1 20 8a8.5 8.5 0 0 1 17 4.5C37 23.5 20 34 20 34z" /></svg>
+  </span>
+  <span class="ground" aria-hidden="true"></span>
+
+  <button class="poke" type="button" aria-label="Poke Pigna, the pi-gna mascot">
+    <span class="jump">
+      <span class="bob">
+        <span class="rig">
+          <Image
+            src={base}
+            alt=""
+            widths={[380, 520, 700, 1018]}
+            sizes="(min-width: 1100px) 470px, (min-width: 760px) 40vw, 68vw"
+            loading="eager"
+            fetchpriority="high"
+            quality={88}
+            class="body"
+          />
+          <svg class="face" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+            <defs>
+              <clipPath id="hm-mouth"><path d={face.mouth} /></clipPath>
+            </defs>
+            <g class="brows">
+              <path class="brow brow-l" d={face['brow-l']} />
+              <path class="brow brow-r" d={face['brow-r']} />
+            </g>
+            <g class="look">
+              {
+                eyes.map(({ side, eye, shine }) => (
+                  <g class={`eye eye-${side}`}>
+                    <ellipse cx={eye.cx} cy={eye.cy} rx={eye.rx} ry={eye.ry} transform={rot(eye)} />
+                    <ellipse
+                      class="shine"
+                      cx={shine.cx}
+                      cy={shine.cy}
+                      rx={shine.rx}
+                      ry={shine.ry}
+                      transform={rot(shine)}
+                    />
+                  </g>
+                ))
+              }
+            </g>
+            <g class="joy">
+              {eyes.map(({ eye }) => <path d={arc(eye)} />)}
+            </g>
+            <g class="mouth">
+              <path d={face.mouth} />
+              <path class="tongue" d={face.tongue} clip-path="url(#hm-mouth)" />
+            </g>
+          </svg>
+        </span>
+      </span>
+    </span>
+  </button>
+
+  <p class="bubble" aria-live="polite"><span>Ciao!</span></p>
+  <span class="sparks" aria-hidden="true"></span>
+</div>
+
+<script>
+  const SPARK = '<svg viewBox="0 0 40 40"><path d="M20 2l4.6 12.4L38 20l-13.4 5.6L20 38l-4.6-12.4L2 20l13.4-5.6z"/></svg>';
+  const COLORS = ['var(--sun)', 'var(--coral)', 'var(--sky)', 'var(--mint)', 'var(--lilac)', 'var(--pink)'];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-hero-mascot]')) {
+    const poke = root.querySelector<HTMLButtonElement>('.poke')!;
+    const look = root.querySelector<SVGGElement>('.look')!;
+    const bubble = root.querySelector<HTMLElement>('.bubble')!;
+    const bubbleText = bubble.querySelector('span')!;
+    const sparks = root.querySelector<HTMLElement>('.sparks')!;
+    const says: string[] = JSON.parse(root.dataset.says ?? '[]');
+    let visible = true;
+    let lastPointer = 0;
+    let lastSaid = '';
+    let bubbleTimer = 0;
+    let target = { x: 0, y: 0 };
+    let current = { x: 0, y: 0 };
+    let frame = 0;
+
+    const setLook = () => {
+      frame = 0;
+      current.x += (target.x - current.x) * 0.22;
+      current.y += (target.y - current.y) * 0.22;
+      root.style.setProperty('--lx', current.x.toFixed(3));
+      root.style.setProperty('--ly', current.y.toFixed(3));
+      if (Math.abs(target.x - current.x) > 0.002 || Math.abs(target.y - current.y) > 0.002) {
+        frame = requestAnimationFrame(setLook);
+      }
+    };
+    const lookAt = (x: number, y: number) => {
+      target = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+      if (!frame) frame = requestAnimationFrame(setLook);
+    };
+
+    addEventListener(
+      'pointermove',
+      (event) => {
+        if (!visible || event.pointerType === 'touch') return;
+        lastPointer = performance.now();
+        const box = look.getBoundingClientRect();
+        const dx = event.clientX - (box.left + box.width / 2);
+        const dy = event.clientY - (box.top + box.height / 2);
+        lookAt(dx / (Math.abs(dx) + 240), dy / (Math.abs(dy) + 200));
+      },
+      { passive: true },
+    );
+
+    const say = (text?: string, ms = 2200) => {
+      let next = text;
+      while (!next || (next === lastSaid && says.length > 1)) next = says[Math.floor(Math.random() * says.length)];
+      lastSaid = next;
+      bubbleText.textContent = next;
+      bubble.classList.remove('show');
+      void bubble.offsetWidth;
+      bubble.classList.add('show');
+      clearTimeout(bubbleTimer);
+      bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), ms);
+    };
+
+    const burst = () => {
+      if (reduced.matches) return;
+      for (let i = 0; i < 9; i++) {
+        const s = document.createElement('i');
+        const angle = (i / 9) * Math.PI * 2 + Math.random() * 0.5;
+        const dist = 190 + Math.random() * 110;
+        s.innerHTML = SPARK;
+        s.style.setProperty('--x', `${Math.cos(angle) * dist}px`);
+        s.style.setProperty('--y', `${Math.sin(angle) * dist * 0.8 - 30}px`);
+        s.style.setProperty('--s', `${0.7 + Math.random() * 0.7}`);
+        s.style.setProperty('--c', COLORS[i % COLORS.length]);
+        s.style.setProperty('--d', `${Math.random() * 80}ms`);
+        sparks.append(s);
+        setTimeout(() => s.remove(), 1000);
+      }
+    };
+
+    poke.addEventListener('click', () => {
+      root.classList.remove('jumping', 'is-happy');
+      void root.offsetWidth;
+      root.classList.add('jumping', 'is-happy');
+      say();
+      burst();
+      setTimeout(() => root.classList.remove('jumping'), 750);
+      setTimeout(() => root.classList.remove('is-happy'), 1100);
+    });
+
+    const blink = () => {
+      if (visible && !root.classList.contains('is-happy')) {
+        root.classList.add('blink');
+        setTimeout(() => root.classList.remove('blink'), 130);
+        if (Math.random() < 0.2) {
+          setTimeout(() => root.classList.add('blink'), 260);
+          setTimeout(() => root.classList.remove('blink'), 390);
+        }
+      }
+      setTimeout(blink, 2200 + Math.random() * 3600);
+    };
+    setTimeout(blink, 1800);
+
+    // With no pointer (phones, or a still mouse), Pigna looks around on its own.
+    const wander = () => {
+      if (visible && performance.now() - lastPointer > 2500) {
+        lookAt(Math.random() < 0.3 ? 0 : Math.random() * 1.6 - 0.8, Math.random() * 1.2 - 0.5);
+      }
+      setTimeout(wander, 1400 + Math.random() * 2200);
+    };
+    setTimeout(wander, 2400);
+
+    new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting;
+      root.classList.toggle('off', !visible);
+    }).observe(root);
+
+    setTimeout(() => say('Ciao!', 2600), 900);
+  }
+</script>
+
+<style>
+  .hm {
+    --lx: 0;
+    --ly: 0;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1018 / 1464;
+    isolation: isolate;
+  }
+
+  /* The blue sun behind Pigna. */
+  .disc {
+    position: absolute;
+    left: 50%;
+    top: 56%;
+    width: 112%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    z-index: -1;
+    border: var(--line);
+    border-width: 3px;
+    border-radius: 50%;
+    background: var(--sky);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: disc-in 0.9s var(--spring) both;
+  }
+
+  .rays {
+    width: 100%;
+    height: 100%;
+    fill: #fff;
+    opacity: 0.22;
+    animation: spin 70s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
+  @keyframes disc-in {
+    from {
+      transform: scale(0.3) rotate(-30deg);
+    }
+  }
+
+  .ground {
+    position: absolute;
+    left: 24%;
+    right: 24%;
+    bottom: -1%;
+    height: 4.5%;
+    border-radius: 50%;
+    background: var(--ink);
+    opacity: 0.16;
+    z-index: -1;
+    animation: ground 3.2s ease-in-out infinite;
+  }
+
+  @keyframes ground {
+    50% {
+      transform: scaleX(0.82);
+      opacity: 0.1;
+    }
+  }
+
+  .poke {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    border-radius: 40%;
+  }
+
+  .poke:focus-visible {
+    outline-offset: -10px;
+  }
+
+  .jump,
+  .bob,
+  .rig {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform-origin: 50% 100%;
+  }
+
+  .jump {
+    animation: enter 1s var(--spring) 0.15s both;
+  }
+
+  @keyframes enter {
+    from {
+      transform: translateY(18%) scale(0.7);
+    }
+  }
+
+  .jumping .jump {
+    animation: leap 0.75s var(--out);
+  }
+
+  @keyframes leap {
+    0% {
+      transform: none;
+    }
+    18% {
+      transform: translateY(3%) scale(1.06, 0.9);
+    }
+    48% {
+      transform: translateY(-6%) scale(0.96, 1.04) rotate(-3deg);
+    }
+    74% {
+      transform: translateY(1.5%) scale(1.05, 0.94);
+    }
+    100% {
+      transform: none;
+    }
+  }
+
+  .bob {
+    animation: bob 3.2s ease-in-out infinite;
+  }
+
+  @keyframes bob {
+    50% {
+      transform: translateY(-2.6%) rotate(1.2deg);
+    }
+  }
+
+  .rig {
+    position: relative;
+    rotate: calc(var(--lx) * 3deg);
+    transition: rotate 0.6s var(--out);
+  }
+
+  .body,
+  .face {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .face {
+    overflow: visible;
+  }
+
+  .face :is(.brow, .eye ellipse:not(.shine), .mouth path:first-child) {
+    fill: #050000;
+  }
+
+  .shine {
+    fill: #fff;
+    transform: translate(calc(var(--lx) * 4px), calc(var(--ly) * 3px));
+  }
+
+  .tongue {
+    fill: #fc5657;
+  }
+
+  .look {
+    transform: translate(calc(var(--lx) * 13px), calc(var(--ly) * 9px));
+  }
+
+  .brows {
+    transform: translate(calc(var(--lx) * 6px), calc(var(--ly) * 5px));
+    transition: transform 0.35s var(--spring);
+  }
+
+  .eye {
+    transform-box: fill-box;
+    transform-origin: 50% 55%;
+    transition: transform 0.09s ease-out;
+  }
+
+  .blink .eye,
+  .is-happy .eye {
+    transform: scaleY(0.08);
+  }
+
+  .is-happy .eye {
+    opacity: 0;
+  }
+
+  .joy path {
+    fill: none;
+    stroke: #050000;
+    stroke-width: 17;
+    stroke-linecap: round;
+  }
+
+  .joy {
+    opacity: 0;
+  }
+
+  .is-happy .joy {
+    opacity: 1;
+    transition: opacity 0.05s 0.06s;
+  }
+
+  .is-happy .brows {
+    transform: translateY(-22px);
+  }
+
+  .mouth {
+    transform-box: fill-box;
+    transform-origin: 50% 20%;
+    transition: transform 0.4s var(--spring);
+  }
+
+  .is-happy .mouth {
+    transform: scale(1.14, 1.22);
+  }
+
+  /* Speech bubble */
+  .bubble {
+    position: absolute;
+    left: -6%;
+    top: 4%;
+    z-index: 3;
+    margin: 0;
+    padding: 0.35em 0.8em 0.45em;
+    border: var(--line);
+    border-radius: 22px 22px 22px 6px;
+    background: var(--card);
+    box-shadow: 4px 4px 0 var(--ink);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: clamp(1.5rem, 2.6vw, 2.15rem);
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    transform-origin: 20% 110%;
+    opacity: 0;
+    transform: scale(0.3) rotate(-14deg);
+    transition:
+      transform 0.25s ease-in,
+      opacity 0.2s ease-in;
+  }
+
+  .bubble::after {
+    content: '';
+    position: absolute;
+    left: 18px;
+    bottom: -13px;
+    width: 18px;
+    height: 18px;
+    border: var(--line);
+    border-top: 0;
+    border-left: 0;
+    background: var(--card);
+    transform: rotate(45deg) skew(12deg, 12deg);
+    border-bottom-right-radius: 4px;
+  }
+
+  .bubble.show {
+    opacity: 1;
+    transform: scale(1) rotate(-5deg);
+    transition:
+      transform 0.5s var(--spring),
+      opacity 0.1s;
+  }
+
+  /* Sparkles on a poke */
+  .sparks {
+    position: absolute;
+    left: 52%;
+    top: 46%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .sparks :global(i) {
+    position: absolute;
+    width: 38px;
+    height: 38px;
+    margin: -19px;
+    animation: spark 0.9s var(--out) var(--d) both;
+  }
+
+  .sparks :global(svg) {
+    width: 100%;
+    height: 100%;
+    fill: var(--c);
+    stroke: var(--ink);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    overflow: visible;
+  }
+
+  @keyframes spark {
+    0% {
+      transform: translate(0, 0) scale(0) rotate(0);
+      opacity: 1;
+    }
+    60% {
+      opacity: 1;
+    }
+    100% {
+      transform: translate(var(--x), var(--y)) scale(var(--s)) rotate(160deg);
+      opacity: 0;
+    }
+  }
+
+  /* Floating stickers */
+  .deco {
+    position: absolute;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    animation: float var(--t, 5s) ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .deco svg {
+    width: 100%;
+    height: 100%;
+    stroke: var(--ink);
+    stroke-width: 2.5;
+    stroke-linejoin: round;
+    overflow: visible;
+  }
+
+  .deco-1 {
+    right: -4%;
+    top: 12%;
+    width: 13%;
+    --t: 4.6s;
+    --r0: 0deg;
+    --r1: 30deg;
+  }
+
+  .deco-1 svg {
+    fill: var(--sun);
+  }
+
+  .deco-2,
+  .deco-3 {
+    padding: 0.3em 0.6em;
+    border: var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    box-shadow: 3px 3px 0 var(--ink);
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: clamp(0.85rem, 1.3vw, 1.05rem);
+  }
+
+  .deco-2 {
+    left: -12%;
+    bottom: 22%;
+    --t: 5.4s;
+    --r0: -8deg;
+    --r1: -3deg;
+    border-bottom-width: 5px;
+  }
+
+  .deco-3 {
+    right: -10%;
+    bottom: 30%;
+    background: var(--mint);
+    --t: 6.2s;
+    --r0: 6deg;
+    --r1: 12deg;
+  }
+
+  .deco-4 {
+    left: 2%;
+    top: 30%;
+    width: 11%;
+    --t: 5s;
+    --r0: -12deg;
+    --r1: 4deg;
+    --float: -14px;
+  }
+
+  .deco-4 svg {
+    fill: var(--coral);
+  }
+
+  .off :is(.rays, .ground, .bob, .deco) {
+    animation-play-state: paused;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rays,
+    .ground,
+    .bob,
+    .deco {
+      animation: none;
+    }
+  }
+</style>

@@ -1,0 +1,291 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Cursor from './Cursor.astro';
+const times = [400, 2100, 1000, 1100, 1400, 1700, 1400, 2300];
+const columns = [
+  { name: 'To do', count: '0:2,2:3,5:2' },
+  { name: 'In progress', count: '0:1,5:2,6:1' },
+  { name: 'In review', count: '0:1,6:2,7:1' },
+  { name: 'Done', count: '0:2,7:3' },
+];
+const cards = [
+  { col: 0, row: 0, title: 'Faster ⌘K search', tags: ['perf'] },
+  { col: 0, row: 1, title: 'Wallpaper per project', tags: ['ui'] },
+  { col: 1, row: 0, title: 'Fix the flaky login test', tags: ['tests'], working: true },
+  { col: 2, row: 0, title: 'Dark mode, but golden hour', tags: ['ui'] },
+  { col: 3, row: 0, title: 'Remove the chips nobody clicks', tags: ['ui'], done: true },
+  { col: 3, row: 1, title: 'Cut it to 999 lines', tags: ['refactor'], done: true },
+];
+---
+
+<DemoFrame
+  title="pi-gna · Board"
+  times={times}
+  label="A task typed in plain words becomes a titled, tagged card; Resolve sends it through In progress and In review to Done."
+>
+  <div class="input">
+    <span class="plus">+</span>
+    <span class="ph" data-seq="0:show,1:hide,2:show">Describe a task…</span>
+    <span class="typed" data-at="1" data-off="2" data-type="the logo should wink when you hover it" data-speed="40"></span>
+  </div>
+
+  {
+    columns.map((c, i) => (
+      <div class="col" style={`left:${16 + i * 175}px`}>
+        <div class="col-head">
+          {c.name} <span class="count" data-seq={c.count} />
+        </div>
+      </div>
+    ))
+  }
+
+  {
+    cards.map((c) => (
+      <div class="card" style={`left:${26 + c.col * 175}px;top:${110 + c.row * 76}px`}>
+        <b>{c.title}</b>
+        <span class="tags">
+          {c.tags.map((t) => (
+            <span class="tg">{t}</span>
+          ))}
+          {c.working && <span class="mk spin" />}
+          {c.done && <span class="ok">✓</span>}
+        </span>
+      </div>
+    ))
+  }
+
+  <div class="card mover" data-at="2" data-seq="0:c0,5:c1,6:c2,7:c3">
+    <b class="t-wait shimmer" data-seq="0:show,3:hide">Titling…</b>
+    <b class="t-real" data-seq="0:hide,3:show">Logo winks on hover</b>
+    <span class="tags">
+      <span class="tg t-real" data-seq="0:hide,3:show">ui</span>
+      <span class="tg t-real brand" data-seq="0:hide,3:show">brand</span>
+      <span class="branch" data-at="5" data-off="7">⑂ pigna/logo-wink</span>
+      <span class="mk" data-seq="0:none,5:spin,6:none"></span>
+      <span class="ok-d" data-at="7">✓</span>
+    </span>
+  </div>
+
+  <div class="menu" data-at="4" data-off="5">
+    <span>Investigate</span>
+    <span class="hl">Resolve in a worktree</span>
+    <span>QA</span>
+    <hr />
+    <span>Chat about it</span>
+  </div>
+  <Cursor who="you" class="me" data-seq="0:hidden,4:menu,5:hidden" label="you" />
+</DemoFrame>
+
+<style>
+  .input {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: 14px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    background: var(--panel);
+    color: var(--faint);
+  }
+
+  .plus {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  .ph[data-s='hide'] {
+    display: none;
+  }
+
+  .typed {
+    color: var(--fg);
+  }
+
+  .col {
+    position: absolute;
+    top: 70px;
+    width: 163px;
+    height: 344px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: var(--panel);
+  }
+
+  .col-head {
+    display: flex;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .count {
+    color: var(--faint);
+  }
+
+  .count::after {
+    content: attr(data-s);
+  }
+
+  .card {
+    position: absolute;
+    width: 143px;
+    height: 66px;
+    display: grid;
+    align-content: space-between;
+    padding: 9px 10px;
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    background: var(--raised);
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .card b {
+    font-weight: 600;
+  }
+
+  .tags {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .tg {
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #34343a;
+    color: var(--muted);
+    font-size: 10.5px;
+  }
+
+  .ok,
+  .ok-d {
+    margin-left: auto;
+    color: var(--ok);
+    font-size: 12px;
+  }
+
+  .mk {
+    width: 9px;
+    height: 9px;
+    margin-left: auto;
+    border-radius: 50%;
+  }
+
+  .mk.spin,
+  .mk[data-s='spin'] {
+    border: 2px solid var(--accent);
+    border-right-color: transparent;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .mover {
+    z-index: 5;
+    left: 26px;
+    top: 262px;
+    border-color: #4a4a55;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.35);
+    transition:
+      left 0.8s cubic-bezier(0.5, 0, 0.2, 1),
+      top 0.8s cubic-bezier(0.5, 0, 0.2, 1),
+      opacity 0.35s,
+      transform 0.5s var(--spring);
+  }
+
+  .mover[data-s='c1'] {
+    left: 201px;
+    top: 186px;
+  }
+
+  .mover[data-s='c2'] {
+    left: 376px;
+    top: 186px;
+  }
+
+  .mover[data-s='c3'] {
+    left: 551px;
+    top: 262px;
+  }
+
+  .mover > b {
+    grid-area: 1 / 1;
+  }
+
+  .mover [data-s='hide'],
+  .mover:is([data-s='c1'], [data-s='c2']) .brand {
+    display: none;
+  }
+
+  .branch {
+    max-width: 84px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgb(91 141 239 / 0.2);
+    color: #c9d8fa;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .branch:not(.on),
+  .ok-d:not(.on) {
+    display: none;
+  }
+
+  .menu {
+    position: absolute;
+    z-index: 8;
+    left: 150px;
+    top: 286px;
+    display: grid;
+    width: 186px;
+    padding: 5px;
+    border: 1px solid #3a3a42;
+    border-radius: 10px;
+    background: #2f2f34;
+    box-shadow: 0 14px 30px rgb(0 0 0 / 0.5);
+    font-size: 12px;
+  }
+
+  .menu span {
+    padding: 5px 9px;
+    border-radius: 6px;
+  }
+
+  .menu .hl {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .menu hr {
+    width: 100%;
+    margin: 4px 0;
+    border: 0;
+    border-top: 1px solid #44444b;
+  }
+
+  .me {
+    left: 120px;
+    top: 300px;
+    transition:
+      left 0.5s,
+      top 0.5s,
+      opacity 0.2s;
+  }
+
+  .me[data-s='hidden'] {
+    opacity: 0;
+  }
+
+  .me[data-s='menu'] {
+    left: 230px;
+    top: 318px;
+  }
+</style>

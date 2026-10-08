@@ -1,0 +1,180 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../../layouts/Base.astro';
+import FeatureGrid from '../../components/FeatureGrid.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import { FEATURES } from '../../data/features';
+import { SITE } from '../../data/site';
+import waving from '../../assets/hero/hero-full.webp';
+
+const extras = [
+  { icon: '📎', title: 'Attachments', body: 'Drop, paste or pick files and folders (sent by path) and images (sent to the model).' },
+  { icon: '🖱️', title: 'Right-click anything', body: 'Copy or save images, open links, look up text, and act on projects, chats and tabs.' },
+  { icon: '⌨️', title: '/ and @', body: 'Commands, skills and prompt templates with /, project files with @.' },
+  { icon: '🧩', title: 'Your extensions', body: 'Extensions run inside pi as in the terminal; their dialogs become native cards.' },
+  { icon: '🔄', title: 'Updates itself', body: 'Checks GitHub for new releases, shows the notes, installs when you quit.' },
+  { icon: '🙈', title: 'Hide projects', body: 'Take a project out of the sidebar and the phone without touching its chats.' },
+  { icon: '🚦', title: 'Yolo, if you dare', body: 'Off by default: allow browser, Computer Use and extension approvals without asking.' },
+  { icon: '🐚', title: 'pi --pigna', body: 'Open pi-gna on the project you are in, with the terminal as its log.' },
+];
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'pi-gna features',
+    itemListElement: FEATURES.map((f, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: f.name,
+      url: `${SITE.url}/features/${f.slug}/`,
+    })),
+  },
+];
+---
+
+<Base
+  title="Features"
+  description="Everything pi-gna adds to the pi coding agent: readable chats, a shared browser, Computer Use, Kanban, GitHub reviews, laments, ATP plans, an iPhone remote, inline visuals and plugins."
+  og="features"
+  jsonLd={jsonLd}
+>
+  <section class="wrap top">
+    <div class="intro">
+      <h1 class="display">Everything <span class="serif">pi-gna</span> does</h1>
+      <p class="lead">
+        pi gives you the agent. pi-gna gives it a window, a browser, a cursor, a board and a phone. Pick a feature, Pigna
+        will show you around.
+      </p>
+    </div>
+    <div class="wave" aria-hidden="true">
+      <Image src={waving} alt="" widths={[200, 300, 400]} sizes="200px" loading="eager" />
+    </div>
+  </section>
+
+  <section class="wrap" aria-label="Features">
+    <FeatureGrid />
+  </section>
+
+  <section class="section wrap extras" aria-labelledby="extras-title">
+    <h2 id="extras-title" class="h2" data-reveal>And everything <span class="serif">in between.</span></h2>
+    <ul>
+      {
+        extras.map((e, i) => (
+          <li data-reveal style={`--i:${i % 4}`}>
+            <span class="ico" aria-hidden="true">
+              {e.icon}
+            </span>
+            <span>
+              <b>{e.title}</b>
+              <span>{e.body}</span>
+            </span>
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .top {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: 24px;
+    padding-block: clamp(32px, 5vw, 64px) clamp(36px, 5vw, 56px);
+  }
+
+  .intro {
+    display: grid;
+    gap: 22px;
+  }
+
+  .display {
+    font-size: clamp(2.8rem, 7vw, 6rem);
+  }
+
+  .display .serif {
+    color: var(--red);
+  }
+
+  .wave {
+    width: clamp(120px, 15vw, 200px);
+    animation: float 4s ease-in-out infinite;
+    --r0: -4deg;
+    --r1: 4deg;
+  }
+
+
+  .extras .h2 {
+    margin-bottom: 40px;
+  }
+
+  .extras ul {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px 40px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .extras li {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 2px dashed color-mix(in srgb, var(--ink) 18%, transparent);
+  }
+
+  .extras li > span:last-child {
+    display: grid;
+    gap: 2px;
+  }
+
+  .extras b {
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+  }
+
+  .extras li span span {
+    color: var(--ink-2);
+    font-size: 1rem;
+  }
+
+  .ico {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 48px;
+    height: 48px;
+    border: var(--line);
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: 2px 2px 0 var(--ink);
+    font-size: 1.4rem;
+  }
+
+
+  @media (max-width: 700px) {
+    .top {
+      grid-template-columns: 1fr;
+    }
+
+    .wave {
+      display: none;
+    }
+
+    .extras ul {
+      grid-template-columns: 1fr;
+    }
+  }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    .wave {
+      animation: none;
+    }
+  }
+</style>

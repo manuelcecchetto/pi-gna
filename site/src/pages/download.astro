@@ -1,0 +1,283 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import DownloadButtons from '../components/DownloadButtons.astro';
+import CopyCommand from '../components/CopyCommand.astro';
+import box from '../assets/mascot/download.webp';
+import { SITE } from '../data/site';
+import { releases, formatDate } from '../lib/changelog';
+
+const latest = releases()[0];
+---
+
+<Base
+  title="Download pi-gna for Mac"
+  description="Download pi-gna, the free desktop app for the pi coding agent, for Apple silicon and Intel Macs. Or let pi install it for you."
+  og="download"
+>
+  <section class="wrap hero">
+    <div class="copy">
+      <p class="eyebrow"><span class="dot" style="--c:var(--mint)"></span>Free · MIT · macOS</p>
+      <h1 class="display">Download <span class="serif">pi-gna</span></h1>
+      <p class="lead">
+        For Apple silicon and Intel Macs.{' '}
+        {latest && <>Version {latest.version}, released {formatDate(latest.date)}.{' '}</>}
+        It needs <a href={SITE.pi}>pi</a> 1.0.0 or newer.
+      </p>
+      <DownloadButtons />
+    </div>
+    <div class="art">
+      <Image src={box} alt="Pigna popping out of a cardboard box" widths={[320, 480, 640]} sizes="(min-width: 900px) 380px, 70vw" loading="eager" fetchpriority="high" />
+    </div>
+  </section>
+
+  <section class="section wrap ways" aria-labelledby="ways-title">
+    <h2 id="ways-title" class="h2" data-reveal>Three ways <span class="serif">in.</span></h2>
+    <ol class="cards">
+      <li class="card way" data-color="sky" data-reveal style="--i:0;--tilt:-1deg">
+        <span class="num">1</span>
+        <div class="text">
+          <h3 class="h3">Let pi do it</h3>
+          <p>Paste this into pi, or any coding agent. It checks pi, downloads the right build, installs it and adds the <code>--pigna</code> flag.</p>
+        </div>
+        <CopyCommand text={SITE.agentPrompt} kind="prompt" />
+      </li>
+      <li class="card way" data-color="sun" data-reveal style="--i:1;--tilt:1deg">
+        <span class="num">2</span>
+        <div class="text">
+          <h3 class="h3">Download the app</h3>
+          <p>Open the disk image and drag pi-gna to Applications.</p>
+        </div>
+        <div class="dmgs">
+          <a class="btn btn-sm" href={SITE.dmgArm}>Apple silicon <span class="muted">.dmg</span></a>
+          <a class="btn btn-sm btn-paper" href={SITE.dmgIntel}>Intel <span class="muted">.dmg</span></a>
+        </div>
+      </li>
+      <li class="card way" data-color="mint" data-reveal style="--i:2;--tilt:-0.5deg">
+        <span class="num">3</span>
+        <div class="text">
+          <h3 class="h3">Add <code>pi --pigna</code></h3>
+          <p>Then <code>pi --pigna</code> in any project opens pi-gna right there, with the terminal as its log.</p>
+        </div>
+        <CopyCommand text={SITE.installCommand} />
+      </li>
+    </ol>
+  </section>
+
+  <section class="wrap first" aria-labelledby="first-title">
+    <div class="card note" data-reveal>
+      <div>
+        <h2 id="first-title" class="h3">“Apple could not verify pi-gna…”</h2>
+        <p>
+          Builds are not notarized: there is no paid Apple certificate behind this project. The first time you open a
+          downloaded copy, macOS blocks it. Click <b>Open Anyway</b> in System Settings › Privacy &amp; Security, or run:
+        </p>
+      </div>
+      <CopyCommand text={SITE.quarantineCommand} />
+    </div>
+  </section>
+
+  <section class="section wrap facts" aria-label="Requirements and updates">
+    <div class="cols">
+      <div data-reveal>
+        <h2 class="h3">You’ll need</h2>
+        <ul>
+          <li>A Mac, Apple silicon or Intel.</li>
+          <li>
+            <a href={SITE.pi}>pi</a> 1.0.0 or newer, run once and signed in to a model provider. No pi yet? <code
+              >npm install -g @earendil-works/pi-coding-agent</code
+            >
+          </li>
+          <li><a href="https://github.com/BurntSushi/ripgrep">ripgrep</a> (<code>rg</code>), for <code>@</code> file mentions.</li>
+        </ul>
+      </div>
+      <div data-reveal style="--i:1">
+        <h2 class="h3">Updates</h2>
+        <ul>
+          <li>pi-gna checks GitHub for a new release when it starts and every few hours.</li>
+          <li>A row at the foot of the sidebar shows the release notes; <b>Update</b> installs it when you quit, or right away with <b>Restart now</b>.</li>
+          <li><code>pi update</code> updates the <code>--pigna</code> flag.</li>
+        </ul>
+      </div>
+      <div data-reveal style="--i:2">
+        <h2 class="h3">Windows and source</h2>
+        <ul>
+          <li>A Windows x64 beta is published now and then as a <a href={SITE.releases}>GitHub prerelease</a>. Computer Use and in-app updates are macOS only.</li>
+          <li>Build it yourself with Node 24 and pnpm 10: <a href={`${SITE.repo}#build-from-source`}>see the README</a>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    align-items: center;
+    gap: 32px;
+    padding-top: clamp(32px, 5vw, 64px);
+  }
+
+  .copy {
+    display: grid;
+    gap: 24px;
+    justify-items: start;
+  }
+
+  .display {
+    font-size: clamp(3rem, 7.4vw, 6.4rem);
+  }
+
+  .display .serif {
+    color: var(--red);
+  }
+
+  .lead a,
+  .facts a {
+    text-decoration-color: var(--coral);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+
+  .art :global(img) {
+    width: min(100%, 400px);
+    margin-inline: auto;
+    animation: float 4.4s ease-in-out infinite;
+    --r0: -2deg;
+    --r1: 2deg;
+  }
+
+  .ways .h2 {
+    margin-bottom: 40px;
+  }
+
+  .cards {
+    display: grid;
+    gap: 24px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .way {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 0.8fr) minmax(0, 1.2fr);
+    align-items: center;
+    gap: 14px 28px;
+    padding: 26px 28px;
+    background: var(--c-soft);
+  }
+
+  .way .text {
+    display: grid;
+    gap: 8px;
+  }
+
+  .way p {
+    color: var(--ink-2);
+    font-size: 1.02rem;
+  }
+
+  .way .h3 code {
+    font-size: 0.8em;
+  }
+
+  .num {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: var(--line);
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 2px 2px 0 var(--ink);
+    font-weight: 800;
+    font-size: 1.2rem;
+  }
+
+  .dmgs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .note {
+    display: grid;
+    gap: 20px;
+    padding: 30px 32px;
+    background: var(--coral-soft);
+  }
+
+  .note p {
+    margin-top: 10px;
+    color: var(--ink-2);
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+  }
+
+  .cols ul {
+    display: grid;
+    gap: 12px;
+    margin: 18px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cols li {
+    position: relative;
+    padding-left: 26px;
+    color: var(--ink-2);
+    font-size: 1.02rem;
+  }
+
+  .cols li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.5em;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    background: var(--sun);
+  }
+
+  .cols li code {
+    white-space: normal;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+
+    .way {
+      grid-template-columns: 44px minmax(0, 1fr);
+    }
+
+    .way > :global(:last-child) {
+      grid-column: 1 / -1;
+    }
+
+    .art {
+      order: -1;
+      width: min(60vw, 280px);
+      justify-self: center;
+    }
+
+    .cols {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .art :global(img) {
+      animation: none;
+    }
+  }
+</style>

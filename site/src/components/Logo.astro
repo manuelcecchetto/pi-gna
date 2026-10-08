@@ -1,0 +1,61 @@
+---
+/** The 🤌i-gna wordmark: the mirrored, turned 🤌 (Twemoji, CC-BY 4.0) is the P. */
+interface Props {
+  size?: number;
+  class?: string;
+}
+const { size = 30, class: className } = Astro.props;
+---
+
+<a href="/" class:list={['logo', className]} style={`--size:${size}px`} aria-label="pi-gna home">
+  <img src="/pigna-hand.svg" alt="" width={Math.round(size * 1.124)} height={size} />
+  <span aria-hidden="true">i-gna</span>
+</a>
+
+<style>
+  .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    font-size: calc(var(--size) * 0.98);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 1;
+    text-decoration: none;
+    color: var(--ink);
+  }
+
+  img {
+    width: auto;
+    height: var(--size);
+    transform-origin: 70% 60%;
+    transition: transform 0.45s var(--spring);
+  }
+
+  span {
+    padding-bottom: 0.08em;
+  }
+
+  .logo:hover img {
+    animation: pinch 0.7s var(--out);
+  }
+
+  @keyframes pinch {
+    0%,
+    100% {
+      transform: rotate(0);
+    }
+    20% {
+      transform: rotate(-14deg) scale(1.08);
+    }
+    40% {
+      transform: rotate(10deg) scale(1.08);
+    }
+    60% {
+      transform: rotate(-8deg) scale(1.04);
+    }
+    80% {
+      transform: rotate(4deg);
+    }
+  }
+</style>

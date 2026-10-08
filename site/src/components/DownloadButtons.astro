@@ -1,0 +1,93 @@
+---
+import { SITE } from '../data/site';
+
+interface Props {
+  /** Show the Intel link under the main button. */
+  intel?: boolean;
+  class?: string;
+}
+const { intel = true, class: className } = Astro.props;
+---
+
+<div class:list={['dl', className]}>
+  <a class="btn btn-ink big" href={SITE.dmgArm} data-dl>
+    <svg viewBox="0 0 24 24" aria-hidden="true"
+      ><path
+        fill="currentColor"
+        d="M16.37 12.6c-.02-2.3 1.88-3.4 1.97-3.46-1.07-1.57-2.74-1.79-3.33-1.81-1.42-.14-2.77.83-3.49.83-.72 0-1.83-.81-3.01-.79-1.55.02-2.98.9-3.78 2.29-1.61 2.8-.41 6.94 1.16 9.21.77 1.11 1.68 2.36 2.88 2.31 1.16-.05 1.59-.75 2.99-.75 1.4 0 1.79.75 3.01.72 1.24-.02 2.03-1.13 2.79-2.25.88-1.29 1.24-2.53 1.26-2.6-.03-.01-2.42-.93-2.45-3.7zM14.07 5.85c.64-.77 1.07-1.85.95-2.92-.92.04-2.03.61-2.69 1.38-.59.68-1.11 1.77-.97 2.82 1.02.08 2.07-.52 2.71-1.28z"
+      ></path></svg
+    >
+    <span>
+      Download for Mac
+      <span class="btn-sub" data-dl-sub>Apple silicon · free</span>
+    </span>
+  </a>
+  {
+    intel && (
+      <p class="alt">
+        <a href={SITE.dmgIntel} data-dl-alt>
+          Intel Mac?
+        </a>{' '}
+        · <a href={SITE.releases}>All releases</a>
+      </p>
+    )
+  }
+</div>
+
+<script>
+  // Chromium can tell an Intel Mac apart; swap the buttons there. Safari can't, so Apple silicon stays the default.
+  type UAData = { getHighEntropyValues(hints: string[]): Promise<{ architecture?: string; platform?: string }> };
+  const ua = (navigator as Navigator & { userAgentData?: UAData }).userAgentData;
+  ua?.getHighEntropyValues(['architecture'])
+    .then(({ architecture, platform }) => {
+      if (platform !== 'macOS' || architecture !== 'x86') return;
+      for (const main of document.querySelectorAll<HTMLAnchorElement>('[data-dl]')) {
+        const arm = main.href;
+        const alt = main.closest('.dl')?.querySelector<HTMLAnchorElement>('[data-dl-alt]');
+        main.href = arm.replace('arm64', 'x64');
+        const sub = main.querySelector('[data-dl-sub]');
+        if (sub) sub.textContent = 'Intel · free';
+        if (alt) {
+          alt.href = arm;
+          alt.textContent = 'Apple silicon Mac?';
+        }
+      }
+    })
+    .catch(() => {});
+</script>
+
+<style>
+  .dl {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .big {
+    min-height: 66px;
+    padding: 0.6em 1.5em 0.6em 1.2em;
+    font-size: 1.15rem;
+    text-align: left;
+  }
+
+  .big svg {
+    width: 1.5em;
+    height: 1.5em;
+    margin-top: -0.15em;
+  }
+
+  .alt {
+    margin: 0;
+    padding-left: 6px;
+    font-size: 0.92rem;
+    color: var(--ink-2);
+  }
+
+  .alt a {
+    font-weight: 650;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--coral);
+  }
+</style>

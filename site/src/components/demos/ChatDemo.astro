@@ -1,0 +1,185 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Sidebar from './Sidebar.astro';
+const times = [500, 800, 1000, 800, 1100, 1300, 2300, 1800, 2600, 1800];
+---
+
+<DemoFrame title="pi-gna" times={times} label="A pi chat in pi-gna: grouped tool calls, a diff, and a message that steers the run.">
+  <Sidebar current="make the 🤌 3% more italian" mark="0:done,2:working,9:done" />
+
+  <section class="main">
+    <header class="chat-head">make the 🤌 3% more italian</header>
+    <div class="log">
+      <div class="item" data-at="1"><div class="in"><div class="user">make the 🤌 3% more italian</div></div></div>
+      <div class="item" data-at="2" data-off="3"><div class="in"><div class="ai muted shimmer">Thinking…</div></div></div>
+      <div class="item" data-at="3">
+        <div class="in">
+          <div class="group" data-seq="0:closed,4:open">
+            <div class="tool"><span class="chev">›</span> <b>3 tool calls</b> · read, edit, bash</div>
+            <div class="calls">
+              <div class="tool mono"><span class="ok">✓</span> read src/hand.svg</div>
+              <div class="tool mono"><span class="ok">✓</span> edit src/hand.svg <span class="ok">+1</span> <span class="bad">−1</span></div>
+              <div class="tool mono"><span class="ok">✓</span> bash pnpm test <span class="muted">· 112 passed</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="item" data-at="5">
+        <div class="in">
+          <div class="diff mono">
+            <div class="file">src/hand.svg</div>
+            <div class="del-line">- &lt;g transform="rotate(0)"&gt;</div>
+            <div class="add-line">+ &lt;g transform="rotate(3deg)"&gt; &lt;!-- più italiano --&gt;</div>
+          </div>
+        </div>
+      </div>
+      <div class="item" data-at="6">
+        <div class="in"><div class="ai" data-type="Fatto. The hand now gestures 3% harder, and the tests still pass."></div></div>
+      </div>
+      <div class="item" data-at="8">
+        <div class="in"><div class="user steer"><span class="tagline">Steered</span>also make it wink 😉</div></div>
+      </div>
+      <div class="item" data-at="9"><div class="in"><div class="ai muted shimmer">Adding a wink…</div></div></div>
+    </div>
+    <div class="composer">
+      <span class="typed" data-at="7" data-off="8" data-type="also make it wink 😉"></span>
+      <span class="ph" data-seq="0:show,7:hide,8:show">Ask pi anything…</span>
+      <span class="model">◎ Claude Opus 5.5 ⌄</span>
+      <span class="hint chip" data-at="7" data-off="8">↩ steers the run</span>
+    </div>
+  </section>
+</DemoFrame>
+
+<style>
+  .main {
+    position: absolute;
+    inset: 0 0 0 176px;
+  }
+
+  .chat-head {
+    height: 40px;
+    padding: 11px 20px;
+    border-bottom: 1px solid var(--hair);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .log {
+    position: absolute;
+    inset: 40px 0 92px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 26px 14px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .user {
+    width: fit-content;
+    margin-left: auto;
+  }
+
+  .group {
+    display: grid;
+    gap: 6px;
+  }
+
+  .chev {
+    display: inline-block;
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.3s;
+  }
+
+  .group[data-s='open'] .chev {
+    transform: rotate(90deg);
+  }
+
+  .calls {
+    display: grid;
+    grid-template-rows: 0fr;
+    margin-left: 4px;
+    padding-left: 14px;
+    border-left: 1px solid var(--hair);
+    opacity: 0;
+    transition:
+      grid-template-rows 0.5s var(--out),
+      opacity 0.4s;
+  }
+
+  .calls > * {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .group[data-s='open'] .calls {
+    grid-template-rows: repeat(3, 1fr);
+    gap: 5px;
+    opacity: 1;
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+
+  .bad {
+    color: var(--bad);
+  }
+
+  .diff {
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .diff > div {
+    padding: 4px 12px;
+  }
+
+  .diff .file {
+    background: var(--panel);
+    color: var(--muted);
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .del-line {
+    background: rgb(255 107 107 / 0.13);
+    color: #ffb3b3;
+  }
+
+  .add-line {
+    background: rgb(95 211 141 / 0.13);
+    color: #b5f0cb;
+  }
+
+  .ai[data-type] {
+    min-height: 20px;
+  }
+
+  .steer {
+    display: grid;
+    gap: 2px;
+  }
+
+  .tagline {
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .ph[data-s='hide'] {
+    display: none;
+  }
+
+  .hint {
+    position: absolute;
+    right: 12px;
+    bottom: 8px;
+    background: rgb(91 141 239 / 0.18);
+    color: #b9cdf7;
+  }
+</style>

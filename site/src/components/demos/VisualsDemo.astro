@@ -1,0 +1,261 @@
+---
+import DemoFrame from './DemoFrame.astro';
+const times = [400, 900, 900, 1900, 1400, 1000, 800, 800, 2600];
+const files = [
+  { name: 'web/ChatView.tsx', n: 68 },
+  { name: 'server/ws.ts', n: 45 },
+  { name: 'web/Board.tsx', n: 31 },
+  { name: 'server/atp.ts', n: 22 },
+];
+const stages = ['To do', 'In progress', 'In review', 'Done'];
+---
+
+<DemoFrame
+  title="pi-gna"
+  times={times}
+  label="pi answers with an inline chart of the busiest files, then an animated flow of how a card moves across the board."
+>
+  <div class="log">
+    <div class="item" data-at="1"><div class="in"><div class="user">which files change the most?</div></div></div>
+    <div class="item" data-at="2"><div class="in"><div class="ai">Mostly the chat view and the server. The last 60 days:</div></div></div>
+    <div class="item" data-at="3">
+      <div class="in">
+        <div class="visual" data-seq="0:empty,3:grow">
+          <div class="v-head"><b>The chat view is the hot spot</b><span>edits, last 60 days</span></div>
+          <div class="stats">
+            <span><b>166</b> edits</span>
+            <span><b>41%</b> in one file</span>
+          </div>
+          <div class="bars">
+            {
+              files.map((f, i) => (
+                <>
+                  <span class="fname">{f.name}</span>
+                  <span class="track">
+                    <span class="fill" style={`--v:${(f.n / 68) * 100}%;--d:${i * 120}ms;--h:${4 - i}`} />
+                  </span>
+                  <span class="num">{f.n}</span>
+                </>
+              ))
+            }
+          </div>
+          <div class="tip" data-at="4" data-off="5">68 edits · 23 this week</div>
+        </div>
+      </div>
+    </div>
+    <div class="item" data-at="5"><div class="in"><div class="ai">And how a card moves across the board:</div></div></div>
+    <div class="item" data-at="5">
+      <div class="in">
+        <div class="visual flow" data-seq="0:s0,5:s1,6:s2,7:s3,8:s4">
+          <div class="stages">
+            {
+              stages.map((s, i) => (
+                <>
+                  {i > 0 && <span class="link" data-i={i} />}
+                  <span class="stage" data-i={i + 1}>
+                    {s}
+                  </span>
+                </>
+              ))
+            }
+          </div>
+          <div class="ctrls"><span>❚❚ Pause</span><span>↺ Restart</span><span>1×</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</DemoFrame>
+
+<style>
+  .log {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 60px 24px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .user {
+    width: fit-content;
+    margin-left: auto;
+  }
+
+  .visual {
+    position: relative;
+    padding: 16px 18px;
+    border-radius: 14px;
+    background: var(--panel);
+  }
+
+  .v-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .v-head b {
+    font-size: 14px;
+  }
+
+  .v-head span {
+    color: var(--faint);
+    font-size: 11.5px;
+  }
+
+  .stats {
+    display: flex;
+    gap: 28px;
+    margin-bottom: 12px;
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+
+  .stats b {
+    display: block;
+    color: var(--fg);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .bars {
+    display: grid;
+    grid-template-columns: 130px 1fr 30px;
+    align-items: center;
+    gap: 7px 12px;
+    font-size: 12px;
+  }
+
+  .fname {
+    color: var(--muted);
+  }
+
+  .track {
+    height: 12px;
+    border-radius: 6px;
+    background: #2c2c31;
+    overflow: hidden;
+  }
+
+  .fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: 6px;
+    background: hsl(calc(var(--h) * 9 + 4) 85% calc(52% + var(--h) * 2%));
+    transition: width 0.9s cubic-bezier(0.2, 0.9, 0.2, 1) var(--d);
+  }
+
+  .visual[data-s='grow'] .fill {
+    width: var(--v);
+  }
+
+  .num {
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .tip {
+    position: absolute;
+    left: 360px;
+    top: 98px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: #ececef;
+    color: #1b1b1d;
+    font-size: 11.5px;
+    font-weight: 600;
+    box-shadow: 0 8px 20px rgb(0 0 0 / 0.4);
+  }
+
+  .flow {
+    display: grid;
+    gap: 12px;
+  }
+
+  .stages {
+    display: flex;
+    align-items: center;
+  }
+
+  .stage {
+    padding: 7px 13px;
+    border: 1.5px solid #3a3a42;
+    border-radius: 999px;
+    color: var(--faint);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition:
+      background-color 0.4s,
+      border-color 0.4s,
+      color 0.4s,
+      transform 0.5s var(--spring);
+  }
+
+  .link {
+    position: relative;
+    flex: 1;
+    height: 2px;
+    margin: 0 6px;
+    background: #3a3a42;
+  }
+
+  .link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    transition: transform 0.6s ease;
+  }
+
+  .flow[data-s='s1'] .stage[data-i='1'],
+  .flow[data-s='s2'] .stage:is([data-i='1'], [data-i='2']),
+  .flow[data-s='s3'] .stage:is([data-i='1'], [data-i='2'], [data-i='3']),
+  .flow[data-s='s4'] .stage {
+    border-color: var(--accent);
+    background: rgb(91 141 239 / 0.18);
+    color: #dbe5fb;
+  }
+
+  .flow[data-s='s1'] .stage[data-i='1'],
+  .flow[data-s='s2'] .stage[data-i='2'],
+  .flow[data-s='s3'] .stage[data-i='3'],
+  .flow[data-s='s4'] .stage[data-i='4'] {
+    transform: scale(1.08);
+  }
+
+  .flow[data-s='s4'] .stage[data-i='4'] {
+    border-color: var(--ok);
+    background: rgb(95 211 141 / 0.18);
+    color: #c4f1d6;
+  }
+
+  .flow[data-s='s2'] .link[data-i='1']::after,
+  .flow[data-s='s3'] .link:is([data-i='1'], [data-i='2'])::after,
+  .flow[data-s='s4'] .link::after {
+    transform: none;
+  }
+
+  .ctrls {
+    display: flex;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .ctrls span {
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: var(--raised);
+  }
+</style>
