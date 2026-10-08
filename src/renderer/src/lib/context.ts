@@ -44,6 +44,11 @@ export function cacheHitRate(usage: PromptTokens | undefined): number | null {
   return prompt > 0 ? usage.cacheRead / prompt : null;
 }
 
+/** Cache hit rate of the last request that reported prompt tokens. */
+export function lastCacheHit(items: SessionState["items"]): number | null {
+  return cacheHitRate(lastRequestUsage(items));
+}
+
 /** Usage of the latest assistant response that actually reported prompt tokens. */
 export function lastRequestUsage(items: SessionState["items"]): PromptTokens | undefined {
   for (let i = items.length - 1; i >= 0; i--) {

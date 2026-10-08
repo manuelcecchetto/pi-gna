@@ -1,11 +1,11 @@
 // Extension dialogs (select / confirm / input / editor) as approval cards above the composer.
 import { ShieldQuestion } from "./icons";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { ExtensionUiDialog } from "../../../shared/protocol";
 import { useChatActions } from "../lib/chat-ui";
 import { Ansi, Kbd, useNow } from "./primitives";
 
-export function Dialogs({ handle, dialogs }: { handle: string; dialogs: ExtensionUiDialog[] }) {
+export const Dialogs = memo(function Dialogs({ handle, dialogs }: { handle: string; dialogs: ExtensionUiDialog[] }) {
   if (!dialogs.length) return null;
   return (
     <div className="flex flex-col gap-2">
@@ -14,7 +14,7 @@ export function Dialogs({ handle, dialogs }: { handle: string; dialogs: Extensio
       ))}
     </div>
   );
-}
+});
 
 function Countdown({ timeout }: { timeout: number }) {
   const [start] = useState(() => Date.now());

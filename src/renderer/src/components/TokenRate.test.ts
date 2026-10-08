@@ -35,7 +35,7 @@ describe("TokenRate", () => {
   afterEach(() => vi.useRealTimers());
   const render = (session: SessionState, now: number) => {
     vi.useFakeTimers({ now });
-    return renderToStaticMarkup(createElement(TokenRate, { session }));
+    return renderToStaticMarkup(createElement(TokenRate, { items: session.items, running: session.running }));
   };
 
   it("shows the live estimate, then the reported rate dimmed once the response ends", () => {

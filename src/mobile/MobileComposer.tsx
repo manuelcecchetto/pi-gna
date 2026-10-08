@@ -10,6 +10,7 @@ import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";
 import { TokenRate } from "../renderer/src/components/TokenRate";
 import { Widget } from "../renderer/src/components/Widget";
+import { lastCacheHit } from "../renderer/src/lib/context";
 import { fuzzyFilter } from "../renderer/src/lib/fuzzy";
 import { applyMenuChoice, detectMenu, type MenuState } from "../shared/composer-menu";
 import type { SlashCommand } from "../shared/protocol";
@@ -236,8 +237,8 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
           </button>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {running && <TokenRate session={session} />}
-          <ContextMeter touch session={session} compaction={data.compaction} onCompact={() => void data.compactNow()} />
+          {running && <TokenRate items={session.items} running={session.running} />}
+          <ContextMeter touch session={session} cacheHit={lastCacheHit(session.items)} compaction={data.compaction} onCompact={() => void data.compactNow()} />
         </div>
       </div>
       {confirmStop ? (

@@ -131,4 +131,19 @@ describe("token rate", () => {
     const crashed = play([[5000, { type: "agent_settled" }]], play(streamed));
     expect(latestRate(crashed.items, 10_000)).toBeUndefined();
   });
+
+  it("does not walk past the newest response read from the session file", () => {
+    const entries: SessionEntry[] = Array.from({ length: 50 }, (_, i) => ({
+      type: "message" as const, id: `a${i}`, parentId: i ? `a${i - 1}` : null, timestamp: "2026-10-03T10:00:00Z", message: assistant([{ type: "text", text: "x" }], 1),
+    }));
+    // Opened from disk, then a live response that only calls a tool: no rate, and nothing older has one.
+    const state = play([
+      [0, { type: "message_start", message: assistant([]) }],
+      [100, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id: "c1", toolName: "read" } }],
+    ], hydrate(createSession("h", "/repo"), entries));
+    const read: number[] = [];
+    const items = new Proxy(state.items, { get: (target, key, receiver) => (typeof key === "string" && /^\d+$/.test(key) && read.push(Number(key)), Reflect.get(target, key, receiver)) });
+    expect(latestRate(items, 10_000)).toBeUndefined();
+    expect(Math.min(...read)).toBe(state.items.length - 2);
+  });
 });

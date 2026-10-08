@@ -882,7 +882,7 @@ function SideChat({ session, placeholder }: { session: SessionState; placeholder
     <div className="flex min-h-0 flex-1 flex-col">
       <Transcript session={session} earlier={earlierTurns(session)} />
       <div className="px-3 pb-3">
-        <Composer key={session.handle} session={session} floating placeholder={placeholder} />
+        <Composer key={session.handle} handle={session.handle} floating placeholder={placeholder} />
       </div>
     </div>
   );
@@ -988,7 +988,7 @@ function OrchestratorDock({
         <div ref={bottom} className="pointer-events-auto">
           <Composer
             key={session.handle}
-            session={session}
+            handle={session.handle}
             floating
             placeholder={plan ? PLAN_PLACEHOLDER : "/skill:atp-architect or atp-micro-architect, then what to build…"}
           />

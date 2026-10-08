@@ -2,9 +2,9 @@
 // window is, how far pi's auto-compaction is, session totals, and Compact now. On a touch screen (`touch`) a tap
 // opens the same card as a bottom sheet.
 import { FoldVertical } from "./icons";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { resolveReserveTokens } from "../../../shared/compaction";
-import { type ContextLevel, cacheHitRate, lastRequestUsage, summarizeContext } from "../lib/context";
+import { type ContextLevel, cacheHitRate, summarizeContext } from "../lib/context";
 import { formatCost, formatTokens } from "../lib/format";
 import type { SessionState } from "../../../shared/session-state";
 import type { CompactionSettings } from "../../../shared/compaction";
@@ -16,13 +16,19 @@ const LEVEL_COLOR: Record<ContextLevel, string> = {
   high: "var(--bad)",
 };
 
-export function ContextMeter({
+/** What the meter reads from a session: none of it changes while a response streams. */
+export type ContextSession = Pick<SessionState, "model" | "stats" | "autoCompaction" | "running" | "compacting" | "phase">;
+
+/** `cacheHit`: the last request's cache hit rate (lastCacheHit), for the details card. */
+export const ContextMeter = memo(function ContextMeter({
   session,
+  cacheHit,
   compaction,
   onCompact,
   touch = false,
 }: {
-  session: SessionState;
+  session: ContextSession;
+  cacheHit: number | null;
   compaction: CompactionSettings;
   onCompact: () => void;
   touch?: boolean;
@@ -63,14 +69,14 @@ export function ContextMeter({
             className="rounded-t-2xl border-t border-line-strong bg-panel p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-[14px]"
             onClick={(event) => event.stopPropagation()}
           >
-            <ContextCard session={session} summary={summary} onCompact={() => { setOpen(false); onCompact(); }} touch />
+            <ContextCard session={session} cacheHit={cacheHit} summary={summary} onCompact={() => { setOpen(false); onCompact(); }} touch />
           </div>
         </div>
       )}
-      {open && !touch && <ContextCard session={session} summary={summary} onCompact={onCompact} />}
+      {open && !touch && <ContextCard session={session} cacheHit={cacheHit} summary={summary} onCompact={onCompact} />}
     </div>
   );
-}
+});
 
 function Ring({ fraction, color }: { fraction: number | null; color: string }) {
   const r = 6.5;
@@ -97,11 +103,13 @@ function Ring({ fraction, color }: { fraction: number | null; color: string }) {
 
 function ContextCard({
   session,
+  cacheHit,
   summary,
   onCompact,
   touch = false,
 }: {
-  session: SessionState;
+  session: ContextSession;
+  cacheHit: number | null;
   summary: NonNullable<ReturnType<typeof summarizeContext>>;
   onCompact: () => void;
   touch?: boolean;
@@ -128,7 +136,7 @@ function ContextCard({
 
       <div className="mt-2.5 flex flex-col gap-1 text-muted">
         <Row label="In context" value={summary.used === null ? "until the next response" : `${formatTokens(summary.used)} / ${formatTokens(summary.window)} tokens`} />
-        <Row label="Cache hit" value={cacheLabel(cacheHitRate(lastRequestUsage(session.items)), cacheHitRate(stats?.tokens))} />
+        <Row label="Cache hit" value={cacheLabel(cacheHit, cacheHitRate(stats?.tokens))} />
         {summary.compactAt !== null ? (
           <Row
             label="Auto-compacts at"

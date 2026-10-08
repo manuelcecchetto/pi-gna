@@ -1,13 +1,14 @@
 // Output speed next to the context meter: tokens per second of the response streaming now, else of the last one.
+import { memo } from "react";
 import { formatDuration, formatTokens } from "../lib/format";
-import type { SessionState } from "../../../shared/session-state";
+import type { Item } from "../../../shared/session-state";
 import { latestRate } from "../../../shared/token-rate";
 import { useNow } from "./primitives";
 
-export function TokenRate({ session }: { session: SessionState }) {
+export const TokenRate = memo(function TokenRate({ items, running }: { items: Item[]; running: boolean }) {
   // Ticks while pi runs: the rate follows the stream, and holds once a pause outlasts STALL_MS.
-  useNow(500, session.running);
-  const rate = latestRate(session.items, Date.now());
+  useNow(500, running);
+  const rate = latestRate(items, Date.now());
   if (!rate) return null;
   const about = rate.estimated ? "~" : "";
   const detail = `${about}${formatTokens(Math.round(rate.tokens))} tokens in ${formatDuration(rate.seconds * 1000)}`;
@@ -21,7 +22,7 @@ export function TokenRate({ session }: { session: SessionState }) {
       {formatRate(rate.perSecond)} tok/s
     </span>
   );
-}
+});
 
 function formatRate(perSecond: number): string {
   return perSecond < 10 ? perSecond.toFixed(1) : String(Math.round(perSecond));

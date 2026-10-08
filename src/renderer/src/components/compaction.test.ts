@@ -2,13 +2,17 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, SessionEvent } from "../../../shared/protocol";
-import { createSession, reduceSessionEvent } from "../../../shared/session-state";
+import { createSession, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
 import { CompactionProgress } from "./CompactionProgress";
 import { Composer } from "./Composer";
 import { Transcript } from "./Transcript";
 
-const app = vi.hoisted(() => ({ expanded: {} as Record<string, boolean>, expandAll: false, commands: {}, annotations: [], attachments: {}, models: [], levels: {}, compaction: {} }));
-vi.mock("../state/app", () => ({ useApp: (selector: (state: typeof app) => unknown) => selector(app), composerCard: () => undefined }));
+const app = vi.hoisted(() => ({ expanded: {} as Record<string, boolean>, expandAll: false, commands: {}, annotations: [], attachments: {}, models: [], levels: {}, compaction: {}, sessions: {} as Record<string, unknown> }));
+vi.mock("../state/app", () => ({
+  useApp: (selector: (state: typeof app) => unknown) => selector(app),
+  useAppShallow: (selector: (state: typeof app) => unknown) => selector(app),
+  composerCard: () => undefined,
+}));
 // The transcript reads its state and actions through the ChatUi context (lib/chat-ui.tsx); here from the same fake app state.
 vi.mock("../lib/chat-ui", () => ({
   useChatUi: (selector: (state: unknown) => unknown) => selector({ ...app, board: { cards: [] }, settings: { visuals: false, wallpaper: "none", wallpaperLoop: false } }),
@@ -26,6 +30,11 @@ const assistant = (id: string): AssistantMessage => ({
 });
 const play = (events: SessionEvent[]) => events.reduce((state, event, index) => reduceSessionEvent(state, event, 1000 + index * 100), createSession("h", "/repo"));
 const started: SessionEvent = { type: "compaction_start", reason: "manual" };
+/** The composer reads its chat from the app state by handle. */
+const composer = (session: SessionState) => {
+  app.sessions = { [session.handle]: session };
+  return renderToStaticMarkup(createElement(Composer, { handle: session.handle }));
+};
 const ended: SessionEvent = { type: "compaction_end", reason: "manual", result: { summary: "Important summary", tokensBefore: 120000 }, aborted: false, willRetry: false };
 
 beforeEach(() => {
@@ -38,12 +47,12 @@ describe("visible compaction UI", () => {
   it.each([false, true])("shows compaction once, only in the chat (agent running: %s)", (running) => {
     const state = { ...play([started]), running };
     const transcript = renderToStaticMarkup(createElement(Transcript, { session: state }));
-    const composer = renderToStaticMarkup(createElement(Composer, { session: state }));
+    const markup = composer(state);
     expect(transcript).toContain("Compacting context…");
     expect(transcript.match(/Compacting context/g)).toHaveLength(1);
     expect(transcript).not.toContain("· compacting context");
-    expect(composer).not.toContain("Compacting context");
-    expect(composer).toContain('title="Stop (Esc twice)"');
+    expect(markup).not.toContain("Compacting context");
+    expect(markup).toContain('title="Stop (Esc twice)"');
     expect(transcript).toContain('aria-live="polite"');
   });
 
@@ -69,7 +78,7 @@ describe("visible compaction UI", () => {
     expect(markup).toContain(label);
     expect(markup).toContain(detail);
     expect(markup).not.toContain('data-compaction="running"');
-    expect(renderToStaticMarkup(createElement(Composer, { session: state }))).not.toContain("Compacting context");
+    expect(composer(state)).not.toContain("Compacting context");
   });
 
   it("does not show a stale tool row when work is collapsed during compaction", () => {

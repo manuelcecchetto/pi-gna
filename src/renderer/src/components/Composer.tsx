@@ -1,9 +1,10 @@
 import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, MessageSquare, Plus, Square, SquareKanban, X } from "./icons";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import type { Annotation } from "../../../shared/browser";
 import type { Attachment } from "../lib/attachments";
+import { lastCacheHit } from "../lib/context";
 import { fuzzyFilter } from "../lib/fuzzy";
 import { desktopLinks, previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
@@ -24,6 +25,7 @@ import {
   setThinking,
   showBoard,
   useApp,
+  useAppShallow,
 } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { ContextMeter } from "./ContextMeter";
@@ -52,10 +54,45 @@ interface MenuItem {
 const ESC_ARM_MS = 2500;
 
 /**
+ * The session fields the composer shows. A streaming delta changes none of them (it replaces the items), so a
+ * streaming chat does not render the composer; `SessionTokenRate` follows the stream on its own.
+ */
+export type ComposerSession = Pick<
+  SessionState,
+  | "handle"
+  | "sessionPath"
+  | "cwd"
+  | "phase"
+  | "running"
+  | "compacting"
+  | "editorText"
+  | "dialogs"
+  | "widgets"
+  | "queue"
+  | "model"
+  | "modelRef"
+  | "thinkingLevel"
+  | "stats"
+  | "autoCompaction"
+> & { cacheHit: number | null };
+
+/** @internal The composer's slice of a session: a new object each call, compared field by field (useAppShallow). */
+export function composerFields(session: SessionState | undefined): ComposerSession | undefined {
+  if (!session) return undefined;
+  const { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction } = session;
+  return { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction, cacheHit: lastCacheHit(session.items) };
+}
+
+/**
  * `placeholder`: what the empty composer suggests while pi is idle (the ATP page's orchestrator has its own).
  * `floating`: no page padding, a translucent, blurred box (the ATP page: over the graph, or in its side column).
  */
-export function Composer({ session, placeholder, floating = false }: { session: SessionState; placeholder?: string; floating?: boolean }) {
+export const Composer = memo(function Composer({ handle, placeholder, floating = false }: { handle: string; placeholder?: string; floating?: boolean }) {
+  const session = useAppShallow((state) => composerFields(state.sessions[handle]));
+  return session ? <ComposerBox session={session} placeholder={placeholder} floating={floating} /> : null;
+});
+
+function ComposerBox({ session, placeholder, floating }: { session: ComposerSession; placeholder?: string; floating: boolean }) {
   const { handle } = session;
   const sessionPath = session.sessionPath;
   const [text, setTextState] = useState(() => drafts.get(handle) ?? (sessionPath && drafts.get(sessionPath)) ?? "");
@@ -91,12 +128,17 @@ export function Composer({ session, placeholder, floating = false }: { session: 
     area.current?.focus();
   }, [injected, handle, setText]);
 
+  const exited = session.phase === "exited";
+  const hint = exited ? "pi exited" : session.phase === "starting" ? "Starting pi…" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : (placeholder ?? "Ask pi anything…  @ for files, / for commands");
+
+  // Fit the box to the text. "auto" and then reading scrollHeight forces a layout: only when the text (or the
+  // placeholder of an empty box) changes, not on every render.
   useLayoutEffect(() => {
     const element = area.current;
     if (!element) return;
     element.style.height = "auto";
     element.style.height = `${Math.min(element.scrollHeight, 320)}px`;
-  });
+  }, [text, hint]);
 
   useEffect(() => {
     area.current?.focus();
@@ -209,8 +251,8 @@ export function Composer({ session, placeholder, floating = false }: { session: 
 
   const widgetsAbove = Object.entries(session.widgets).filter(([, w]) => w.placement === "aboveEditor");
   const widgetsBelow = Object.entries(session.widgets).filter(([, w]) => w.placement === "belowEditor");
-  const exited = session.phase === "exited";
   const busy = session.running || Boolean(session.compacting);
+  const onCompact = useCallback(() => void compact(handle), [handle]);
 
   useEffect(() => {
     if (!armed) return;
@@ -283,7 +325,7 @@ export function Composer({ session, placeholder, floating = false }: { session: 
           value={text}
           rows={2}
           disabled={exited}
-          placeholder={exited ? "pi exited" : session.phase === "starting" ? "Starting pi…" : session.running ? "Steer the agent…  (⌥⏎ to queue a follow-up)" : (placeholder ?? "Ask pi anything…  @ for files, / for commands")}
+          placeholder={hint}
           onChange={onChange}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
@@ -299,8 +341,8 @@ export function Composer({ session, placeholder, floating = false }: { session: 
           <ModelPicker session={session} />
           <ThinkingPicker session={session} />
           <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
-            <TokenRate session={session} />
-            <ContextMeter session={session} compaction={compaction} onCompact={() => void compact(handle)} />
+            <SessionTokenRate handle={handle} running={session.running} />
+            <ContextMeter session={session} cacheHit={session.cacheHit} compaction={compaction} onCompact={onCompact} />
             {busy && (empty || armed) ? (
               <button
                 type="button"
@@ -335,6 +377,12 @@ export function Composer({ session, placeholder, floating = false }: { session: 
   );
 }
 
+/** The part of the composer that follows the stream: it reads the chat's items itself. */
+function SessionTokenRate({ handle, running }: { handle: string; running: boolean }) {
+  const items = useApp((state) => state.sessions[handle]?.items);
+  return items ? <TokenRate items={items} running={running} /> : null;
+}
+
 function PickerButton({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
@@ -350,13 +398,13 @@ function PickerButton({ icon, label, onClick, disabled }: { icon: React.ReactNod
   );
 }
 
-function ModelPicker({ session }: { session: SessionState }) {
+function ModelPicker({ session }: { session: Pick<SessionState, "handle" | "phase" | "model" | "modelRef"> }) {
   const models = useApp((state) => state.models);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const close = useCallback(() => setOpen(false), []);
   const label = session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model");
-  const filtered = fuzzyFilter(models, query, (m: Model) => `${m.provider}/${m.id} ${m.name}`, 200);
+  const filtered = open ? fuzzyFilter(models, query, (m: Model) => `${m.provider}/${m.id} ${m.name}`, 200) : [];
   const choose = (model: Model) => {
     setOpen(false);
     setQuery("");
@@ -399,7 +447,7 @@ function ModelPicker({ session }: { session: SessionState }) {
   );
 }
 
-function ThinkingPicker({ session }: { session: SessionState }) {
+function ThinkingPicker({ session }: { session: Pick<SessionState, "handle" | "phase" | "thinkingLevel"> }) {
   const levels = useApp((state) => state.levels[session.handle]);
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);

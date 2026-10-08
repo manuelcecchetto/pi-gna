@@ -82,7 +82,7 @@ function ChatPane({ session }: { session: SessionState }) {
       </header>
       {session.phase === "exited" && <ExitBanner session={session} />}
       <Transcript session={session} earlier={earlierTurns(session)} />
-      <Composer session={session} />
+      <Composer handle={session.handle} />
     </div>
   );
 }

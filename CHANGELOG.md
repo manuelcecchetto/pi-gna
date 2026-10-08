@@ -16,6 +16,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Fast answers cost the window and your phone less: the text a model streams within a frame now reaches them as one update instead of one per piece (an answer streaming about 160 pieces a second sent 800 updates, now about 260; at 750 a second, 1,500 updates became about 115).
 - Chats you leave idle no longer keep a pi process running for the rest of the session: a chat that has been idle for 30 minutes, or that is past the 8 most recently used idle chats, stops its pi and opens again from the sidebar with its transcript and any unsent text. Chats that are running, waiting for an answer, unread, held by ATP or on screen (even with the window in the background) keep theirs. On the phone, Reopen on such a chat now opens it again instead of saying it has ended.
 - New chats are ready to prompt at once: pi-gna keeps one pi started for the next New chat in the folder you last opened a chat in (New chat to ready took about 0.7 s, now about 10 ms). It is skipped while your Mac is busy, replaced when pi's settings, your features or your context files change, and stopped after 10 minutes unused.
+- The message box no longer redraws on every frame while an answer streams, and no longer measures its own height each time: the window lays out about a third as often while streaming (194 layouts in 2 seconds of a stream, now 68).
 
 ## 0.9.1 - 2026-10-08
 

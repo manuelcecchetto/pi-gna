@@ -9,7 +9,7 @@ import { useChatActions } from "../lib/chat-ui";
 import { Popover } from "./primitives";
 
 /** `touch`: every action on the row with touch-size targets (Steer or Later, Edit, Remove) instead of a hover menu. */
-export function QueueCard({ session, onEdit, touch = false }: { session: SessionState; onEdit: (text: string) => void; touch?: boolean }) {
+export function QueueCard({ session, onEdit, touch = false }: { session: Pick<SessionState, "handle" | "queue">; onEdit: (text: string) => void; touch?: boolean }) {
   const [busy, setBusy] = useState(false);
   const { editQueue } = useChatActions();
   const items = [

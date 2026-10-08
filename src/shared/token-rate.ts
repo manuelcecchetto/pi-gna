@@ -57,11 +57,16 @@ export function responseRate(item: AssistantItem, now: number): ResponseRate | u
   return { perSecond: tokens / seconds, tokens, seconds, estimated, live: item.streaming };
 }
 
-/** The newest response with a rate: the one streaming, else the last one measured (also after the run). */
+/**
+ * The newest response with a rate: the one streaming, else the last one measured (also after the run). Stops at the
+ * newest response read from the session file (no `times`): it and every older one have no timings, so a chat opened
+ * from disk is not walked on every frame.
+ */
 export function latestRate(items: Item[], now: number): ResponseRate | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];
     if (item?.kind !== "assistant") continue;
+    if (!item.times) return undefined;
     const rate = responseRate(item, now);
     if (rate) return rate;
   }
