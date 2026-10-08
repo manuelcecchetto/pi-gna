@@ -31,6 +31,18 @@ describe("EventHub", () => {
     expect(a.flat().map((e) => e.event)).toEqual([2, 3]);
   });
 
+  it("serializes each event once, for the ring and every stream", () => {
+    const hub = new EventHub();
+    let calls = 0;
+    const event = { toJSON: () => (calls++, { kind: "x", text: 'a "b"' }) };
+    const [envelope] = hub.publishBatch("chat:abc123", [event]);
+    expect(hub.json(envelope!)).toBe(JSON.stringify({ ...envelope, event: { kind: "x", text: 'a "b"' } }));
+    hub.json(envelope!);
+    const replay = hub.since(hub.bootId, 0);
+    expect(replay.kind === "replay" && hub.json(replay.events[0]!)).toBe(hub.json(envelope!));
+    expect(calls).toBe(1);
+  });
+
   it("evicts by count", () => {
     const hub = new EventHub(3, 1e9);
     for (let i = 0; i < 5; i++) hub.publish("global", i);

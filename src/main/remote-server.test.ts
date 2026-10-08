@@ -437,6 +437,22 @@ describe("RemoteServer", () => {
       b.close();
     });
 
+    it("writes each event as the hub serialized it once, with large image blocks swapped for their URL", async () => {
+      const s = sse("/api/events?stream=stream-aaaa", cookie);
+      await s.ready;
+      const plain = { kind: "plain", text: 'a "quoted" \u2028 line', nested: [1, null, { ok: true }] };
+      const shot = { kind: "shot", content: [{ type: "image", mimeType: "image/png", data: "A".repeat(20_000) }] };
+      const [one, two] = hub.publishBatch("global", [plain, shot]);
+      await s.until(() => s.frames.some((f) => f.includes('"shot"')));
+      const data = (seq: number) => s.frames.find((f) => f.startsWith(`id: boot1:${seq}\n`))!.split("data: ")[1]!;
+      expect(data(one!.seq)).toBe(JSON.stringify(one));
+      const image = JSON.parse(data(two!.seq)).event.content[0];
+      expect(image).toMatchObject({ type: "image", mimeType: "image/png", data: "" });
+      expect(image.url).toMatch(/^\/api\/image\/[0-9a-f]{64}$/);
+      expect((await send("GET", image.url, { cookie })).status).toBe(200);
+      s.close();
+    });
+
     it("delivers chat topics only to subscribed streams", async () => {
       const s = sse("/api/events?stream=stream-aaaa", cookie);
       await s.ready;

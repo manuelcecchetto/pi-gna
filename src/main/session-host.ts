@@ -13,6 +13,7 @@ import { applyQueueOp, type Queues } from "../shared/queue";
 import { turnOutline } from "../shared/turn-outline";
 import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
+import { COALESCE_MS, coalesce, isDelta } from "./coalesce";
 import { KeyedMutex } from "./command-layer";
 import { log } from "./log";
 import { type PiExit, PiProcess } from "./pi-process";
@@ -62,6 +63,9 @@ interface Live {
    * after the history, in order, as it did when the file was read first.
    */
   loading?: { entries: Promise<SessionEntry[]>; held: HostEvent[]; exit?: () => void };
+  /** Streaming deltas waiting for the next frame (`coalesce.ts`): not in `state` or `seq` yet. */
+  waiting: HostEvent[];
+  flush?: ReturnType<typeof setTimeout>;
 }
 
 export interface ChatPage {
@@ -99,7 +103,7 @@ export class SessionHost {
   /** Session file -> the one handle whose pi has it open (two pis on one file are unsafe). */
   private readonly byFile = new Map<string, string>();
   private readonly mutex = new KeyedMutex();
-  private readonly summaries = new Map<string, string>();
+  private readonly summaries = new Map<string, AttentionSummary>();
   private publishGlobal: (event: GlobalEvent) => void = () => {};
   /** Choices main asked of the user (requestChoice). Answered from the window only; pi never sees them. */
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
@@ -254,6 +258,7 @@ export class SessionHost {
       dialogs: new Map(),
       resolved: new Set(),
       loading: { entries, held: [] },
+      waiting: [],
     };
     this.live.set(handle, chat);
     if (sessionPath) this.byFile.set(sessionPath, handle);
@@ -373,7 +378,11 @@ export class SessionHost {
 
   // ── State, snapshots, attention ──────────────────────────────────────────────
 
-  /** Reduce events into the chat's authoritative state (host clock), then publish them and its attention. */
+  /**
+   * Reduce events into the chat's authoritative state (host clock), then publish them and its attention. Streaming
+   * deltas wait up to a frame and go out merged; any other event sends the waiting ones first, so order is kept. A
+   * snapshot taken meanwhile does not hold them, and they follow it (higher `seq`).
+   */
   private push(handle: string, events: HostEvent[]): void {
     const chat = this.live.get(handle);
     if (!chat) {
@@ -384,6 +393,15 @@ export class SessionHost {
       chat.loading.held.push(...events);
       return;
     }
+    if (events.length && events.every(isDelta)) {
+      chat.waiting.push(...events);
+      chat.flush ??= setTimeout(() => this.live.get(handle) === chat && this.push(handle, []), COALESCE_MS);
+      return;
+    }
+    clearTimeout(chat.flush);
+    chat.flush = undefined;
+    events = coalesce(chat.waiting.length ? [...chat.waiting.splice(0), ...events] : events);
+    if (!events.length) return;
     const now = Date.now();
     let state = chat.state;
     const settledNow: RunOutcome[] = [];
@@ -464,9 +482,9 @@ export class SessionHost {
     const chat = this.live.get(handle);
     if (!chat) return;
     const summary = this.summary(handle, chat);
-    const json = JSON.stringify(summary);
-    if (this.summaries.get(handle) === json) return;
-    this.summaries.set(handle, json);
+    const last = this.summaries.get(handle);
+    if (last && sameSummary(last, summary)) return;
+    this.summaries.set(handle, summary);
     this.publishGlobal({ kind: "attention", chats: [summary], removed: [] });
   }
 
@@ -701,4 +719,10 @@ export class SessionHost {
   async closeAll(): Promise<void> {
     await Promise.all([...this.live.values()].map((chat) => chat.pi.close()));
   }
+}
+
+/** A summary holds primitives and `settled`, which is replaced (never edited) when a run settles: a shallow compare. */
+function sameSummary(a: AttentionSummary, b: AttentionSummary): boolean {
+  const keys = Object.keys(b) as (keyof AttentionSummary)[];
+  return keys.length === Object.keys(a).length && keys.every((key) => a[key] === b[key]);
 }

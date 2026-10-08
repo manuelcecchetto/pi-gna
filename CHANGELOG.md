@@ -13,6 +13,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Opening a long chat starts pi while its history is still being read, so it is ready to prompt sooner (a 115 MB chat was ready in about 1.9 s, now about 1.6 s).
 - Opening a chat that is already running (on your phone, or a card's chat from the sidebar) no longer reads its whole session file again: it joins the running chat at once (a 115 MB chat took about 280 ms, now 1 ms).
 - Long chats open with their last turns instead of the whole history: the window loads earlier turns as you scroll up, jump on the turn rail or open a bookmark (a 71 MB chat sent 70 MB to the window and kept 81 MB in its memory, now 22 KB and 4 MB, and it shows about a third sooner).
+- Fast answers cost the window and your phone less: the text a model streams within a frame now reaches them as one update instead of one per piece (an answer streaming about 160 pieces a second sent 800 updates, now about 260; at 750 a second, 1,500 updates became about 115).
 
 ## 0.9.1 - 2026-10-08
 

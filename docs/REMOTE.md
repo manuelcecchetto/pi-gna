@@ -189,7 +189,9 @@ Every push goes through one in-process EventHub in main. The desktop window is o
     `ui`, `chat.opened`, `chat.closed`.
   - `chat:<handle>` events (`HostEvent`): the existing `rpc`, `ready`, `exit` plus `dialog_resolved`, `lease` and `closed`.
 - **Implementation (`src/main/event-hub.ts`):** `publish`/`publishBatch` (a batch is consecutive `seq`s delivered to each
-  subscriber in one call, which keeps the desktop's `IPC.events` batching), `subscribe({ topics, deliver, onClose })`
+  subscriber in one call, which keeps the desktop's `IPC.events` batching; a chat's streaming deltas arrive merged per
+  frame, see DESIGN.md), `json(envelope)` (the envelope's JSON from the event's, made once at publish; SSE frames reuse
+  it), `subscribe({ topics, deliver, onClose })`
   with `setTopics` and `close(reason)`, `since(bootId, seq)` (replay or resync via `planReplay`). The desktop window is
   the `"all"` subscriber in `src/main/index.ts` and maps events back to the legacy IPC channels. `browser.reveal` and
   `browser.annotation` are `global` events too. **Window-only pushes stay direct sends** (desktop shell, not host

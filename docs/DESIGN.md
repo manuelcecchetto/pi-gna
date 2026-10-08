@@ -711,6 +711,12 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   authoritative. A page is also about 2 MB at most (`PAGE_BYTES`, sized from the strings of its turns; at least one
   turn): a few turns of screenshots or big tool output can be most of a 100 MB chat. Browser frames and
   `computer.preview` never enter the ring.
+- **Streaming deltas are merged in main.** Text, thinking and tool-call deltas wait up to a frame (16 ms,
+  `src/main/coalesce.ts`) and are merged per block before the reducer, so a fast model costs one reduce, ring entry,
+  IPC send and SSE frame per frame, not per stdout chunk. Any other event sends the waiting ones first, in order.
+  Waiting deltas are not in the state or `seq` yet, so a snapshot taken meanwhile is followed by them. The hub
+  serializes each event once (`EventHub.json`), for the ring's size and every phone stream; only an event holding an
+  image block goes through the image replacer again.
 - **Leases.** `chat.open` and `chat.attach` take a lease `(handle, clientId)`; the desktop is `desktop`, a phone is its
   stream id. A lease whose stream closed lives 60 s. pi stops only with no leases and a disposable chat (not prompted,
   running, compacting, holding a dialog or unread), or on an explicit `chat.close`: closing or suspending a client never

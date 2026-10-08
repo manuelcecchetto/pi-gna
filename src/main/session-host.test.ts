@@ -391,6 +391,44 @@ describe("session registry", () => {
     expect(attentions.some((e) => e.chats[0]?.attention === "unread")).toBe(true);
     expect(attentions.at(-1)!.chats[0]!.settled).toBeDefined();
   });
+
+  it("holds streaming deltas for a frame and sends them merged, ahead of any other event; a snapshot meanwhile is followed by them", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, seen, globals } = await setup();
+      const { handle } = await host.open({ cwd: "/tmp" }, { client: A });
+      const pi = fake.pis[0]!;
+      const delta = (text: string) => rec("message_update", { assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text } });
+      const text = () => (host.stateOf(handle)!.items.at(-1) as Extract<Item, { kind: "assistant" }>).message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
+      pi.handlers.onRecords([rec("agent_start"), rec("message_start", { message: { role: "assistant", content: [], stopReason: "stop", timestamp: 1 } }), rec("message_update", { assistantMessageEvent: { type: "text_start", contentIndex: 0 } })]);
+      const batches = seen.length;
+      const attention = globals.filter((e) => e.kind === "attention").length;
+
+      pi.handlers.onRecords([delta("Hel")]);
+      pi.handlers.onRecords([delta("lo")]);
+      expect(seen).toHaveLength(batches);
+      const snap = host.snapshot(handle, { turns: 1 })!;
+      expect(snap.seq).toBe(seen.at(-1)!.seq);
+      expect(text()).toBe("");
+      vi.advanceTimersByTime(16);
+      expect(seen.slice(batches).map((batch) => batch.events)).toEqual([[{ kind: "rpc", record: delta("Hello") }]]);
+      expect(seen.at(-1)!.seq).toBeGreaterThan(snap.seq);
+      expect(text()).toBe("Hello");
+
+      pi.handlers.onRecords([delta(", ")]);
+      pi.handlers.onRecords([delta("world"), rec("message_update", { assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "Hello, world" } })]);
+      expect(seen.slice(batches + 1).map((batch) => batch.events)).toEqual([[{ kind: "rpc", record: delta(", world") }, { kind: "rpc", record: rec("message_update", { assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "Hello, world" } }) }]]);
+      vi.advanceTimersByTime(100);
+      expect(seen).toHaveLength(batches + 2);
+      expect(globals.filter((e) => e.kind === "attention")).toHaveLength(attention);
+
+      pi.handlers.onRecords([delta("!")]);
+      await host.close(handle);
+      expect(seen.slice(batches + 2).flatMap((batch) => batch.events.map((event) => event.kind))).toEqual(["rpc", "closed", "exit"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ── Command semantics ────────────────────────────────────────────────────────

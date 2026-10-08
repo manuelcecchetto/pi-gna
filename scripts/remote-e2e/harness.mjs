@@ -371,7 +371,8 @@ export class Phone {
 
 export const records = (events, topic) => events.filter((e) => e.topic === topic && e.event.kind === "rpc").map((e) => e.event.record);
 /** The assistant text deltas of a stream, in order. */
-export const deltas = (events, topic) => records(events, topic).filter((r) => r.type === "message_update" && r.assistantMessageEvent?.type === "text_delta").map((r) => r.assistantMessageEvent.delta);
+/** The streamed text pieces; the host merges the deltas of a frame (src/main/coalesce.ts), so each is split back into fake-pi's paragraphs. */
+export const deltas = (events, topic) => records(events, topic).filter((r) => r.type === "message_update" && r.assistantMessageEvent?.type === "text_delta").flatMap((r) => r.assistantMessageEvent.delta.split(/(?<=\n\n)/));
 export const messageEnds = (events, topic, role) => records(events, topic).filter((r) => r.type === "message_end" && r.message.role === role);
 export const userTexts = (events, topic) => messageEnds(events, topic, "user").map((r) => (typeof r.message.content === "string" ? r.message.content : r.message.content.map((c) => c.text).join("")));
 export const lineNumbers = (events, topic) => deltas(events, topic).map((d) => Number(/^Line (\d+) /.exec(d)?.[1]));

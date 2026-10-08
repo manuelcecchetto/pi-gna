@@ -562,13 +562,19 @@ export class RemoteServer {
 
   private deliver(stream: Stream, batch: HubEnvelope[], cap: number) {
     if (stream.paused) return;
-    for (const e of batch) stream.res.write(`id: ${e.bootId}:${e.seq}\nevent: host\ndata: ${JSON.stringify(e, this.images.replacer)}\n\n`);
+    stream.res.write(batch.map((e) => `id: ${e.bootId}:${e.seq}\nevent: host\ndata: ${this.frame(e)}\n\n`).join(""));
     if (stream.res.writableLength > cap) {
       stream.paused = true;
       stream.hardTimer = setTimeout(() => {
         if (stream.res.writableLength > (this.o.streamHardCap ?? STREAM_HARD_CAP_BYTES)) this.closeStream(stream, "backpressure");
       }, this.o.streamHardMs ?? STREAM_HARD_MS);
     }
+  }
+
+  /** The envelope's JSON as the hub made it; only one holding an image block (`"type":"image"`) is written again, through the image replacer. */
+  private frame(e: HubEnvelope): string {
+    const json = this.o.hub.json(e);
+    return json.includes('"type":"image"') ? JSON.stringify(e, this.images.replacer) : json;
   }
 
   private drained(stream: Stream) {

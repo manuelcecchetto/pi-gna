@@ -3,6 +3,13 @@
 import { randomUUID } from "node:crypto";
 import { log, check, until, records, deltas, userTexts, lineNumbers, contiguous, agentEnds, finalText, lastLine, desktopHasLines, settled, scenario } from "./harness.mjs";
 
+/** The last streamed line in a snapshot's last turn (the earlier turn's 250 lines are in it too). */
+const turnLine = (snapshot) => {
+  const { items } = snapshot.state;
+  const turn = items.slice(items.findLastIndex((item) => item.kind === "user"));
+  return Math.max(0, ...[...JSON.stringify(turn).matchAll(/Line (\d+) of the streamed/g)].map((m) => Number(m[1])));
+};
+
 await scenario("reconnect and resync", async (ctx) => {
   const { A, B, desktop } = ctx;
   const handle = await ctx.openChat();
@@ -57,13 +64,20 @@ await scenario("reconnect and resync", async (ctx) => {
   log("drop A, overflow the ring, reconnect: resync path");
   markA = aAll.length;
   markB = sseB.events.length;
-  sent = await A.ok("chat.send", { handle, text: "overflow test [lines=6000][delay=1]", mode: "send" });
+  sent = await A.ok("chat.send", { handle, text: "overflow test [lines=6000][delay=5]", mode: "send" });
   await until("a few lines on A", () => deltas(collectA().slice(markA), topic).length >= 20);
   collectA();
   const oldId = sseA.lastId;
   const oldSeq = Number(oldId.split(":")[1]);
   sseA.drop();
-  await until("the ring to overflow", () => (sseB.events.at(-1)?.seq ?? 0) - oldSeq > 2300, 60_000, 100);
+  // The host merges a frame's text deltas into one event (src/main/coalesce.ts), so streamed text alone takes over
+  // half a minute to fill the ring: B's presence changes (one `lease` event each) fill the rest.
+  await B.ok("chat.attach", { handle });
+  let viewing = false;
+  await until("the ring to overflow", async () => {
+    for (let i = 0; i < 50; i++) await B.ok("chat.viewing", { handle, viewing: (viewing = !viewing) });
+    return (sseB.events.at(-1)?.seq ?? 0) - oldSeq > 2300;
+  }, 60_000, 0);
   sseA = A.events([handle], oldId);
   await until("A's stream", () => sseA.frames.length > 1);
   const resync = sseA.frames.find((f) => f.event === "resync");
@@ -71,7 +85,7 @@ await scenario("reconnect and resync", async (ctx) => {
   check(!sseA.frames.slice(0, sseA.frames.indexOf(resync)).some((f) => f.event === "host" && f.json.seq <= oldSeq + 1), "no replay of the lost events");
   // The client's resync: replace state from snapshots, then apply only newer events.
   const snap = await A.ok("chat.snapshot", { handle });
-  const snapLine = Math.max(...[...JSON.stringify(snap.value).matchAll(/Line (\d+) of the streamed/g)].map((m) => Number(m[1])));
+  const snapLine = turnLine(snap.value);
   await until("live events after the snapshot", () => deltas(sseA.events.filter((e) => e.seq > snap.seq), topic).length >= 5);
   const after = lineNumbers(sseA.events.filter((e) => e.seq > snap.seq), topic);
   check(after[0] === snapLine + 1 && contiguous(after), "the snapshot plus newer events leave no gap and no duplicate", { snapLine, first: after[0] });
@@ -82,6 +96,6 @@ await scenario("reconnect and resync", async (ctx) => {
   collectA();
   const finalSnap = await A.ok("chat.snapshot", { handle });
   const endLine = lastLine(finalText(sseB.events.slice(markB), topic));
-  check(Math.max(...[...JSON.stringify(finalSnap.value).matchAll(/Line (\d+) of the streamed/g)].map((m) => Number(m[1]))) === endLine, "the snapshot after the resync ends where B's stream ends", endLine);
+  check(turnLine(finalSnap.value) === endLine, "the snapshot after the resync ends where B's stream ends", endLine);
   check(await desktopHasLines(desktop, endLine), "the desktop ends at the same line");
 });
