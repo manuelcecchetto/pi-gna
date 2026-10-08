@@ -1,0 +1,282 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import CtaBand from '../components/CtaBand.astro';
+import nerd from '../assets/mascot/faq.webp';
+import { SITE } from '../data/site';
+import { inline, plain } from '../lib/text';
+
+/** Answers accept `code`, **bold** and [links](url). */
+const faqs = [
+  {
+    q: 'What is pi-gna?',
+    a: 'A desktop app for the [pi coding agent](https://pi.dev). It gives pi a window: readable chats, a browser you share with it, Computer Use, a Kanban board per project, GitHub reviews, laments, ATP plans, inline visuals and an iPhone remote.',
+  },
+  {
+    q: 'Do I need pi installed?',
+    a: 'Yes. pi-gna is a frontend, not a fork: every chat is a `pi --mode rpc` process running your own pi (1.0.0 or newer), with your models, logins, settings, extensions, skills and MCP servers.',
+  },
+  {
+    q: 'Is it free?',
+    a: 'Yes. pi-gna is open source under the MIT license, with no account to make. You pay your model provider as you do in the terminal.',
+  },
+  {
+    q: 'Can I keep using pi in the terminal?',
+    a: 'Of course. Sessions are pi’s own session files, so a chat started in the terminal continues in pi-gna, and back. `pi --pigna` opens pi-gna on the project you are in.',
+  },
+  {
+    q: 'Which models does it support?',
+    a: 'Whatever your pi supports. Settings › Providers signs in to pi’s model providers with an account or an API key, as pi’s `/login` does.',
+  },
+  {
+    q: 'Why does macOS say it can’t verify the app?',
+    a: 'Builds are not notarized, because there is no paid Apple certificate behind the project. Click **Open Anyway** in System Settings › Privacy & Security, or run `xattr -dr com.apple.quarantine /Applications/pi-gna.app`.',
+  },
+  {
+    q: 'Does pi-gna send my code anywhere?',
+    a: 'pi-gna has no server, no account and no telemetry. Your prompts go to your model provider through pi, exactly as they do in the terminal, and pi-gna checks GitHub for updates.',
+  },
+  {
+    q: 'Can pi click around my Mac without asking?',
+    a: 'Computer Use is off by default. When it is on, you approve each app (once or always), terminals, pi-gna and system security prompts are always off limits, and **Esc** stops it. pi uses a cursor of its own, never your mouse.',
+  },
+  {
+    q: 'How does the iPhone remote work?',
+    a: 'Over [Tailscale](https://tailscale.com): pi-gna serves itself to your own tailnet with `tailscale serve`, never the public internet. Add it to your Home Screen, pair with a one-time code, and keep the Mac awake. It is off by default.',
+  },
+  {
+    q: 'Will my pi extensions work?',
+    a: 'Yes, they run inside pi exactly as in the terminal. Their dialogs, notices and widgets are drawn natively. Terminal-only UI (custom components, headers, footers) isn’t available in RPC mode.',
+  },
+  {
+    q: 'Windows? Linux?',
+    a: 'macOS is the home of pi-gna. A Windows x64 beta is published now and then as a [GitHub prerelease](https://github.com/manuelcecchetto/pi-gna/releases); Linux isn’t supported yet.',
+  },
+  {
+    q: 'How do updates work?',
+    a: 'pi-gna checks GitHub when it starts and every few hours. A row in the sidebar shows the release notes; **Update** installs the new version when you quit, or right away with **Restart now**.',
+  },
+  {
+    q: 'What does the name mean?',
+    a: '*Pigna* is Italian for pine cone, and *mano a pigna* is the 🤌 gesture. The hand is the P in the logo.',
+  },
+];
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((f) => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: plain(f.a).replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') },
+    })),
+  },
+];
+---
+
+<Base
+  title="FAQ"
+  description="Answers about pi-gna, the desktop app for the pi coding agent: what it needs, what it costs, privacy, Computer Use, the iPhone remote and updates."
+  og="faq"
+  jsonLd={jsonLd}
+>
+  <section class="wrap hero">
+    <div class="copy">
+      <p class="eyebrow"><span class="dot" style="--c:var(--lilac)"></span>Domande frequenti</p>
+      <h1 class="display">Questions, <span class="serif">answered.</span></h1>
+      <p class="lead">The things people ask before, and right after, installing pi-gna.</p>
+    </div>
+    <div class="art">
+      <Image src={nerd} alt="Pigna in glasses with a laptop" widths={[300, 450, 600]} sizes="(min-width: 900px) 320px, 60vw" loading="eager" fetchpriority="high" />
+    </div>
+  </section>
+
+  <section class="wrap list" aria-label="Questions">
+    {
+      faqs.map((f, i) => (
+        <div data-reveal style={`--i:${i % 3}`}>
+        <details class="qa" open={i === 0}>
+          <summary>
+            <span class="q">{f.q}</span>
+            <span class="plus" aria-hidden="true" />
+          </summary>
+          <div class="a prose">
+            <p set:html={inline(f.a)} />
+          </div>
+        </details>
+        </div>
+      ))
+    }
+    <p class="more">
+      Something else? <a href={`${SITE.repo}/issues`}>Ask on GitHub</a>.
+    </p>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+    align-items: center;
+    gap: 32px;
+    padding-block: clamp(32px, 5vw, 64px) clamp(40px, 6vw, 72px);
+  }
+
+  .copy {
+    display: grid;
+    gap: 24px;
+    justify-items: start;
+  }
+
+  .display {
+    font-size: clamp(3rem, 7.4vw, 6.4rem);
+  }
+
+  .display .serif {
+    color: var(--red);
+  }
+
+  .art :global(img) {
+    width: min(100%, 330px);
+    margin-inline: auto;
+    animation: float 4.8s ease-in-out infinite;
+    --r0: 1deg;
+    --r1: -2deg;
+  }
+
+  .list {
+    display: grid;
+    gap: 16px;
+    max-width: 860px;
+  }
+
+  .qa {
+    border: var(--line);
+    border-radius: 20px;
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+    transition:
+      box-shadow 0.3s var(--spring),
+      transform 0.3s var(--spring),
+      background-color 0.3s;
+  }
+
+  .qa[open] {
+    background: var(--sun-soft);
+    box-shadow: var(--shadow);
+  }
+
+  .qa:hover {
+    transform: translate(-2px, -2px);
+  }
+
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 20px 22px 20px 26px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .q {
+    flex: 1;
+    font-size: clamp(1.15rem, 2vw, 1.35rem);
+    font-weight: 720;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+  }
+
+  .plus {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: var(--line);
+    border-radius: 50%;
+    background: var(--card);
+    transition:
+      transform 0.45s var(--spring),
+      background-color 0.3s;
+  }
+
+  .plus::before,
+  .plus::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 2.5px;
+    margin: -1.25px 0 0 -7px;
+    border-radius: 2px;
+    background: var(--ink);
+  }
+
+  .plus::after {
+    transform: rotate(90deg);
+  }
+
+  .qa[open] .plus {
+    transform: rotate(135deg);
+    background: var(--sun);
+  }
+
+  .a {
+    padding: 0 26px 24px;
+    color: var(--ink-2);
+    font-size: 1.08rem;
+  }
+
+  .qa[open] .a {
+    animation: open 0.4s var(--out);
+  }
+
+  @keyframes open {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+
+  .a :global(code) {
+    white-space: normal;
+  }
+
+  .more {
+    margin-top: 16px;
+    font-size: 1.1rem;
+  }
+
+  .more a {
+    font-weight: 650;
+    text-decoration-color: var(--coral);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+
+    .art {
+      order: -1;
+      width: min(56vw, 240px);
+      justify-self: center;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .art :global(img) {
+      animation: none;
+    }
+  }
+</style>

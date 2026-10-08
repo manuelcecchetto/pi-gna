@@ -1,0 +1,29 @@
+---
+/**
+ * A cursor. The agent's is Computer Use's: the pigna hand mirrored and tilted 40° so its fingertips point like an
+ * arrow, glowing yellow (native/computer-use/Sources/Overlay.swift, HandView). Yours is a plain white arrow.
+ * The element's top-left is the hotspot.
+ */
+interface Props {
+  who?: 'agent' | 'you';
+  label?: string;
+  class?: string;
+  [attr: string]: unknown;
+}
+const { who = 'agent', label, class: className, ...attrs } = Astro.props;
+---
+
+{
+  who === 'agent' ? (
+    <span class:list={['agent', className]} {...attrs}>
+      <img src="/pigna-hand.svg" alt="" width="34" height="30" />
+    </span>
+  ) : (
+    <span class:list={['you', className]} {...attrs}>
+      <svg viewBox="0 0 24 24">
+        <path d="M3 2l17 9.5-7.4 1.6L9 20z" fill="#fff" stroke="#111114" stroke-width="1.6" stroke-linejoin="round" />
+      </svg>
+      {label && <span class="tagx">{label}</span>}
+    </span>
+  )
+}

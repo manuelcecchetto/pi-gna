@@ -1,0 +1,306 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Cursor from './Cursor.astro';
+const times = [400, 900, 1100, 1400, 1000, 1000, 1100, 2600];
+---
+
+<DemoFrame
+  title="pi-gna"
+  times={times}
+  label="pi finds ripgrep missing, files a Costly lament and carries on with grep; Fix starts a chat that fixes it in a worktree."
+>
+  <section class="chat">
+    <header class="chat-head">find every TODO</header>
+    <div class="log">
+      <div class="item" data-at="1"><div class="in"><div class="user">find every TODO in the repo</div></div></div>
+      <div class="item" data-at="2">
+        <div class="in">
+          <div class="tool mono"><span class="bad">✗</span> bash rg TODO</div>
+          <div class="err mono">rg: command not found</div>
+        </div>
+      </div>
+      <div class="item" data-at="3">
+        <div class="in">
+          <div class="ai">No ripgrep here, so I filed a lament and I’m using grep.</div>
+          <span class="chip filed">😠 Lament filed</span>
+        </div>
+      </div>
+      <div class="item" data-at="4">
+        <div class="in"><div class="tool mono"><span class="ok">✓</span> bash grep -rn TODO . <span class="muted">· 38 matches</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="board">
+    <header class="b-head">
+      <b>Laments</b>
+      <span class="filter on-f">Open <i data-seq="0:2,3:3"></i></span>
+      <span class="filter">Resolved</span>
+    </header>
+    <div class="rows">
+      <div class="item" data-at="3"><div class="in">
+      <div class="lament fresh">
+        <span class="emo">😠</span>
+        <span class="body">
+          <span class="sev costly">Costly</span>
+          <b>ripgrep is missing, search falls back to grep</b>
+          <span class="when">just now · find every TODO</span>
+        </span>
+        <span class="fix" data-seq="0:idle,5:starting,6:started">
+          <span class="f-idle">Fix</span>
+          <span class="f-starting">Starting Fix…</span>
+          <span class="f-started">Fix started</span>
+        </span>
+      </div>
+      </div></div>
+      <div class="item" data-at="6"><div class="in"><div class="branch">⑂ new chat on <b>lament/ripgrep</b>, in its own worktree</div></div></div>
+      <div class="lament">
+        <span class="emo">🤬</span>
+        <span class="body">
+          <span class="sev blocking">Blocking</span>
+          <b>gh is not logged in for this repository</b>
+          <span class="when">1d · review PR #12</span>
+        </span>
+        <span class="fix"><span class="f-idle">Fix</span></span>
+      </div>
+      <div class="lament">
+        <span class="emo">😒</span>
+        <span class="body">
+          <span class="sev annoying">Annoying</span>
+          <b>no jq, so JSON is parsed by hand</b>
+          <span class="when">2d · bump the deps</span>
+        </span>
+        <span class="fix"><span class="f-idle">Fix</span></span>
+      </div>
+    </div>
+  </section>
+  <Cursor who="you" class="me" data-seq="0:hidden,4:fix,6:hidden" label="you" />
+</DemoFrame>
+
+<style>
+  .chat {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 290px;
+    border-right: 1px solid var(--hair);
+  }
+
+  .chat-head,
+  .b-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 44px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--hair);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .log {
+    position: absolute;
+    inset: 44px 0 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 16px 20px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .user {
+    width: fit-content;
+    margin-left: auto;
+  }
+
+  .err {
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgb(255 107 107 / 0.12);
+    color: #ffb3b3;
+  }
+
+  .filed {
+    margin-top: 8px;
+    background: rgb(229 192 123 / 0.16);
+    color: #f0d49c;
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+
+  .bad {
+    color: var(--bad);
+  }
+
+  .board {
+    position: absolute;
+    inset: 0 0 0 290px;
+    background: var(--sunken);
+  }
+
+  .filter {
+    padding: 4px 10px;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .filter:first-of-type {
+    margin-left: auto;
+  }
+
+  .filter i {
+    font-style: normal;
+    color: var(--faint);
+  }
+
+  .filter i::after {
+    content: attr(data-s);
+  }
+
+  .on-f {
+    background: var(--raised);
+    color: var(--fg);
+  }
+
+  .rows {
+    display: grid;
+    padding: 14px 16px;
+  }
+
+  .lament {
+    margin: 0 0 10px;
+  }
+
+  .lament {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    background: var(--panel);
+  }
+
+  .fresh {
+    border-color: rgb(240 163 94 / 0.55);
+    background: #2a2622;
+  }
+
+  .lament:not(.fresh) {
+    opacity: 0.85;
+  }
+
+  .emo {
+    font-size: 22px;
+  }
+
+  .body {
+    display: grid;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+  }
+
+  .body b {
+    font-weight: 600;
+  }
+
+  .sev {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .annoying {
+    color: #e5c07b;
+  }
+
+  .costly {
+    color: #f0a35e;
+  }
+
+  .blocking {
+    color: #ff6b6b;
+  }
+
+  .when {
+    color: var(--faint);
+    font-size: 11px;
+  }
+
+  .fix {
+    display: grid;
+    min-width: 92px;
+    height: 28px;
+    place-items: center;
+    border-radius: 8px;
+    background: var(--raised);
+    font-size: 12px;
+    font-weight: 600;
+    transition: background-color 0.3s;
+  }
+
+  .fix > span {
+    grid-area: 1 / 1;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .fix:not([data-s]) .f-idle,
+  .fix[data-s='idle'] .f-idle,
+  .fix[data-s='starting'] .f-starting,
+  .fix[data-s='started'] .f-started {
+    opacity: 1;
+  }
+
+  .fix[data-s='idle'] {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .fix[data-s='starting'] {
+    background: #3a3a42;
+    color: var(--muted);
+  }
+
+  .fix[data-s='started'] {
+    background: rgb(95 211 141 / 0.18);
+    color: #9ee5bb;
+  }
+
+  .branch {
+    margin: 0 4px 12px;
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+
+  .branch b {
+    color: #c9d8fa;
+    font-weight: 600;
+  }
+
+  .me {
+    left: 520px;
+    top: 300px;
+    transition:
+      left 0.7s ease,
+      top 0.7s ease,
+      opacity 0.25s;
+  }
+
+  .me[data-s='hidden'] {
+    opacity: 0;
+  }
+
+  .me[data-s='fix'] {
+    left: 664px;
+    top: 82px;
+  }
+</style>

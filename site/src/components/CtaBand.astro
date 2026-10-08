@@ -1,0 +1,120 @@
+---
+import { Image } from 'astro:assets';
+import box from '../assets/mascot/download.webp';
+import DownloadButtons from './DownloadButtons.astro';
+import CopyCommand from './CopyCommand.astro';
+import { SITE } from '../data/site';
+
+interface Props {
+  title?: string;
+  /** The italic end of the title. */
+  accent?: string;
+}
+const { title = 'Pronto?', accent = 'Andiamo.' } = Astro.props;
+---
+
+<section class="cta wrap" aria-labelledby="cta-title">
+  <div class="panel" data-observe>
+    <div class="copy">
+      <h2 id="cta-title" class="h2">
+        {title} <span class="serif">{accent}</span>
+      </h2>
+      <p class="lead">Free and open source. Bring the pi you already have, and it’s ready in a minute.</p>
+      <DownloadButtons />
+      <div class="or">
+        <span>or ask your agent</span>
+        <CopyCommand text={SITE.agentPrompt} kind="prompt" />
+      </div>
+    </div>
+    <div class="art" aria-hidden="true">
+      <Image src={box} alt="" widths={[300, 450, 600]} sizes="(min-width: 900px) 340px, 60vw" loading="lazy" />
+    </div>
+  </div>
+</section>
+
+<style>
+  .cta {
+    padding-top: clamp(40px, 6vw, 80px);
+  }
+
+  .panel {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
+    align-items: center;
+    gap: 24px;
+    padding: clamp(28px, 5vw, 64px);
+    border: var(--line);
+    border-radius: 32px;
+    background:
+      radial-gradient(circle at 85% 30%, color-mix(in srgb, #fff 45%, transparent) 0 18%, transparent 19%),
+      var(--sun);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+
+  .copy {
+    display: grid;
+    gap: 22px;
+    justify-items: start;
+  }
+
+  .lead {
+    color: var(--ink);
+  }
+
+  .or {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+    max-width: 520px;
+  }
+
+  .or > span {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1.2rem;
+  }
+
+  .art {
+    align-self: end;
+    margin-bottom: clamp(-64px, -5vw, -28px);
+  }
+
+  .art :global(img) {
+    width: min(100%, 380px);
+    margin-inline: auto;
+    transform-origin: 50% 100%;
+  }
+
+  :global(.js) .panel:not(.is-in) .art :global(img) {
+    transform: translateY(40%) scale(0.85);
+  }
+
+  .is-in .art :global(img) {
+    transition: transform 0.9s var(--spring) 0.2s;
+  }
+
+  .panel:hover .art :global(img) {
+    animation: pop-out 0.8s var(--out);
+  }
+
+  @keyframes pop-out {
+    30% {
+      transform: translateY(5%) scale(1.04, 0.94);
+    }
+    60% {
+      transform: translateY(-6%) scale(0.97, 1.04);
+    }
+  }
+
+  @media (max-width: 820px) {
+    .panel {
+      grid-template-columns: 1fr;
+    }
+
+    .art :global(img) {
+      width: min(70%, 300px);
+    }
+  }
+</style>

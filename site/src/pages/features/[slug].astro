@@ -1,0 +1,421 @@
+---
+import type { GetStaticPaths } from 'astro';
+import { Image } from 'astro:assets';
+import Base from '../../layouts/Base.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import { FEATURES, type Feature } from '../../data/features';
+import { SITE } from '../../data/site';
+import { inline, plain } from '../../lib/text';
+import { DEMOS } from '../../components/demos';
+
+export const getStaticPaths = (() =>
+  FEATURES.map((feature, i) => ({
+    params: { slug: feature.slug },
+    props: {
+      feature,
+      prev: FEATURES[(i - 1 + FEATURES.length) % FEATURES.length],
+      next: FEATURES[(i + 1) % FEATURES.length],
+    },
+  }))) satisfies GetStaticPaths;
+
+interface Props {
+  feature: Feature;
+  prev: Feature;
+  next: Feature;
+}
+const { feature: f, prev, next } = Astro.props;
+const Demo = DEMOS[f.slug];
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'pi-gna', item: `${SITE.url}/` },
+      { '@type': 'ListItem', position: 2, name: 'Features', item: `${SITE.url}/features/` },
+      { '@type': 'ListItem', position: 3, name: f.name, item: `${SITE.url}/features/${f.slug}/` },
+    ],
+  },
+];
+---
+
+<Base
+  title={`${f.name}: ${f.title}`}
+  description={plain(f.tagline)}
+  og={`feature-${f.slug}`}
+  ogAlt={f.poseAlt}
+  jsonLd={jsonLd}
+>
+  <section class="fhero wrap" data-color={f.color}>
+    <div class="panel">
+      <div class="copy">
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <a href="/features/">Features</a>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">{f.name}</span>
+        </nav>
+        <h1 class="title">{f.title}</h1>
+        <p class="lead">{f.tagline}</p>
+        {
+          f.keys[0] && (
+            <p class="shortcut">
+              <span class="keys">
+                {f.keys[0].keys.map((k) => (
+                  <kbd class="kbd">{k}</kbd>
+                ))}
+              </span>
+              <span>{f.keys[0].label}</span>
+            </p>
+          )
+        }
+      </div>
+      <div class="art">
+        <span class="sun" aria-hidden="true"></span>
+        <Image
+          src={f.pose}
+          alt={f.poseAlt}
+          widths={[300, 450, 600, 760]}
+          sizes="(min-width: 900px) 380px, 62vw"
+          loading="eager"
+          fetchpriority="high"
+          class="pose"
+          style={`view-transition-name: pose-${f.slug}`}
+        />
+      </div>
+    </div>
+  </section>
+
+  {
+    Demo && (
+      <section class="demo-sec wrap" aria-label="Demo">
+        <Demo />
+      </section>
+    )
+  }
+
+  <section class="section points wrap" aria-labelledby="points-title" data-color={f.color}>
+    <h2 id="points-title" class="h2" data-reveal>What you get</h2>
+    <ul class="grid">
+      {
+        f.points.map((p, i) => (
+          <li class="card point" data-reveal style={`--i:${i % 2};--tilt:${i % 2 ? 1 : -1}deg`}>
+            <span class="pin" aria-hidden="true" />
+            <h3 class="h3">{p.title}</h3>
+            <p set:html={inline(p.body)} />
+          </li>
+        ))
+      }
+    </ul>
+  </section>
+
+  {
+    f.keys.length > 1 && (
+      <section class="keys-sec wrap" aria-labelledby="keys-title">
+        <h2 id="keys-title" class="h2" data-reveal>
+          Keys
+        </h2>
+        <dl class="card keylist" data-reveal>
+          {f.keys.map((k) => (
+            <div>
+              <dt class="keys">
+                {k.keys.map((key) => (
+                  <kbd class="kbd">{key}</kbd>
+                ))}
+              </dt>
+              <dd>{k.label}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    )
+  }
+
+  <nav class="pager wrap" aria-label="More features">
+    {
+      [
+        { f: prev, dir: 'Previous' },
+        { f: next, dir: 'Next' },
+      ].map(({ f: other, dir }) => (
+        <a href={`/features/${other.slug}/`} class:list={['other', dir.toLowerCase()]} data-color={other.color}>
+          <Image src={other.pose} alt="" widths={[120, 240]} sizes="96px" loading="lazy" />
+          <span>
+            <span class="dir">{dir}</span>
+            <span class="oname">{other.name}</span>
+          </span>
+        </a>
+      ))
+    }
+  </nav>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .fhero {
+    padding-top: clamp(20px, 3vw, 36px);
+  }
+
+  .panel {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: center;
+    gap: 24px;
+    padding: clamp(28px, 5vw, 60px);
+    border: var(--line);
+    border-radius: 34px;
+    background: var(--c-soft);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+
+  .copy {
+    display: grid;
+    gap: 20px;
+    justify-items: start;
+  }
+
+  .crumbs {
+    display: flex;
+    gap: 10px;
+    font-size: 0.95rem;
+    font-weight: 650;
+  }
+
+  .crumbs a {
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--c);
+  }
+
+  .crumbs [aria-current] {
+    color: var(--ink-2);
+  }
+
+  .title {
+    font-size: clamp(2.5rem, 5.4vw, 4.6rem);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+  }
+
+  .lead {
+    color: var(--ink);
+    opacity: 0.85;
+  }
+
+  .shortcut {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 340px;
+  }
+
+  .sun {
+    position: absolute;
+    width: 84%;
+    aspect-ratio: 1;
+    border: var(--line);
+    border-radius: 50%;
+    background:
+      repeating-conic-gradient(from 0deg, color-mix(in srgb, #fff 26%, transparent) 0 10deg, transparent 10deg 24deg),
+      var(--c);
+    animation: spin-slow 60s linear infinite;
+  }
+
+  @keyframes spin-slow {
+    to {
+      rotate: 1turn;
+    }
+  }
+
+  .pose {
+    position: relative;
+    width: min(100%, 380px);
+    max-height: 420px;
+    object-fit: contain;
+    animation: float 4.6s ease-in-out infinite;
+    --float: -12px;
+    --r0: -1deg;
+    --r1: 2deg;
+  }
+
+  .demo-sec {
+    max-width: 920px;
+    padding-top: clamp(56px, 8vw, 100px);
+  }
+
+  .points .h2 {
+    margin-bottom: 36px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .point {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 26px 26px 28px;
+  }
+
+  /* An odd last point spans the row instead of leaving a hole beside it. */
+  .point:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .point p {
+    color: var(--ink-2);
+    font-size: 1.05rem;
+  }
+
+  .pin {
+    width: 22px;
+    height: 22px;
+    margin-bottom: 4px;
+    border: var(--line);
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .points {
+    padding-bottom: clamp(40px, 6vw, 70px);
+  }
+
+  .keys-sec .h2 {
+    margin-bottom: 28px;
+  }
+
+  .keylist {
+    margin: 0;
+    padding: 8px 24px;
+  }
+
+  .keylist div {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 0;
+  }
+
+  .keylist div + div {
+    border-top: 1.5px dashed color-mix(in srgb, var(--ink) 20%, transparent);
+  }
+
+  .keylist dd {
+    margin: 0;
+    font-weight: 560;
+  }
+
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    padding-top: clamp(56px, 8vw, 96px);
+  }
+
+  .other {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 22px 14px 14px;
+    border: var(--line);
+    border-radius: var(--r);
+    background: var(--c-soft);
+    box-shadow: var(--shadow);
+    text-decoration: none;
+    transition:
+      transform 0.35s var(--spring),
+      box-shadow 0.35s var(--spring);
+  }
+
+  .other:hover {
+    transform: translate(-3px, -3px) rotate(-0.8deg);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .other.next {
+    flex-direction: row-reverse;
+    text-align: right;
+    padding: 14px 14px 14px 22px;
+  }
+
+  .other :global(img) {
+    width: 84px;
+    height: 84px;
+    object-fit: contain;
+  }
+
+  .other:hover :global(img) {
+    animation: wiggle 0.5s var(--out);
+  }
+
+  .other > span {
+    display: grid;
+    flex: 1;
+  }
+
+  .dir {
+    font-size: 0.85rem;
+    font-weight: 650;
+    color: var(--ink-2);
+  }
+
+  .oname {
+    font-size: 1.35rem;
+    font-weight: 780;
+    letter-spacing: -0.03em;
+  }
+
+  @media (max-width: 860px) {
+    .panel {
+      grid-template-columns: 1fr;
+    }
+
+    .art {
+      order: -1;
+      min-height: 0;
+      width: min(70vw, 320px);
+      justify-self: center;
+    }
+
+    .grid {
+      grid-template-columns: 1fr;
+    }
+
+    .keylist div {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+  }
+
+  @media (max-width: 560px) {
+    .pager {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sun,
+    .pose {
+      animation: none;
+    }
+  }
+</style>

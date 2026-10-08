@@ -1,0 +1,221 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Cursor from './Cursor.astro';
+const times = [400, 900, 1000, 900, 1000, 900, 2700];
+const nav = ['General', 'Appearance', 'Agent', 'Providers', 'Plugins', 'Computer use', 'Remote access'];
+const apps = [
+  { name: 'Notion', color: '#ececef', ink: '#111', seq: '0:off,2:connecting,3:on', tools: 14 },
+  { name: 'Attio', color: '#5b8def', ink: '#fff' },
+  { name: 'Granola', color: '#86d5b0', ink: '#10261b', seq: '0:off,4:connecting,5:on', tools: 6 },
+  { name: 'Intercom', color: '#4a86f0', ink: '#fff' },
+  { name: 'Brevo', color: '#0b996e', ink: '#fff' },
+];
+---
+
+<DemoFrame
+  title="Settings"
+  times={times}
+  label="Settings › Plugins: switching on Notion and Granola connects them over MCP and writes pi's own mcp.json."
+>
+  <nav class="snav">
+    {nav.map((n) => <span class:list={{ cur: n === 'Plugins' }}>{n}</span>)}
+  </nav>
+  <section class="pane">
+    <h4>Plugins</h4>
+    <p class="sub">Apps connect over MCP. Packages add extensions, skills and prompts to pi.</p>
+    <div class="group">
+      <div class="gtitle">Apps</div>
+      {
+        apps.map((a) => (
+          <div class="app" data-seq={a.seq ?? '0:off'}>
+            <span class="logo" style={`background:${a.color};color:${a.ink}`}>
+              {a.name[0]}
+            </span>
+            <span class="aname">{a.name}</span>
+            <span class="state">
+              <span class="s-conn">Connecting…</span>
+              <span class="s-on">Connected · {a.tools} tools</span>
+            </span>
+            <span class="switch" />
+          </div>
+        ))
+      }
+    </div>
+    <div class="group">
+      <div class="gtitle">pi packages</div>
+      <div class="app" data-seq="0:on">
+        <span class="logo pkg">π</span>
+        <span class="aname">pi-claude-bridge <span class="muted">· for you</span></span>
+        <span class="switch"></span>
+      </div>
+    </div>
+  </section>
+  <Cursor who="you" class="me" data-seq="0:rest,1:notion,4:granola,6:rest" label="you" />
+  <div class="toast" data-at="6"><span class="ok">✓</span> Saved to pi’s mcp.json. pi in the terminal sees it too.</div>
+</DemoFrame>
+
+<style>
+  .snav {
+    position: absolute;
+    inset: 0 auto 0 0;
+    display: grid;
+    align-content: start;
+    gap: 2px;
+    width: 176px;
+    padding: 16px 10px;
+    background: var(--sunken);
+    border-right: 1px solid var(--hair);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .snav span {
+    padding: 6px 10px;
+    border-radius: 7px;
+  }
+
+  .snav .cur {
+    background: var(--raised);
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  .pane {
+    position: absolute;
+    inset: 0 0 0 176px;
+    padding: 20px 28px;
+  }
+
+  h4 {
+    margin: 0;
+    font: 700 18px/1.2 var(--ui);
+  }
+
+  .sub {
+    margin: 4px 0 14px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .group {
+    margin-bottom: 12px;
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .gtitle {
+    padding: 8px 14px 6px;
+    color: var(--faint);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .app {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 14px;
+    border-top: 1px solid var(--hair);
+  }
+
+  .logo {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 800;
+  }
+
+  .pkg {
+    background: #2f2f35;
+    color: var(--fg);
+  }
+
+  .aname {
+    flex: 1;
+    font-size: 12.5px;
+  }
+
+  .state {
+    display: grid;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .state > span {
+    grid-area: 1 / 1;
+    opacity: 0;
+    text-align: right;
+    transition: opacity 0.25s;
+  }
+
+  .app[data-s='connecting'] .s-conn,
+  .app[data-s='on'] .s-on {
+    opacity: 1;
+  }
+
+  .app[data-s='on'] .s-on {
+    color: var(--ok);
+  }
+
+  .switch {
+    position: relative;
+    width: 32px;
+    height: 19px;
+    border-radius: 999px;
+    background: #3a3a42;
+    transition: background-color 0.3s;
+  }
+
+  .switch::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.35s var(--spring);
+  }
+
+  .app:is([data-s='connecting'], [data-s='on']) .switch {
+    background: var(--ok);
+  }
+
+  .app:is([data-s='connecting'], [data-s='on']) .switch::after {
+    transform: translateX(13px);
+  }
+
+  .me {
+    left: 540px;
+    top: 402px;
+    transition:
+      left 0.7s ease,
+      top 0.7s ease;
+  }
+
+  .me[data-s='notion'] {
+    left: 648px;
+    top: 121px;
+  }
+
+  .me[data-s='granola'] {
+    left: 648px;
+    top: 203px;
+  }
+
+  .toast {
+    right: 18px;
+    top: 18px;
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+</style>

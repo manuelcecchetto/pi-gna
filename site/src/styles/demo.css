@@ -1,0 +1,435 @@
+/* The app's own dark look, for the feature demos (tokens from the app's styles.css). */
+
+.screen {
+  --canvas: #1b1b1d;
+  --panel: #222225;
+  --raised: #2b2b2f;
+  --sunken: #161618;
+  --fg: #ececef;
+  --muted: #a1a1aa;
+  --faint: #6e6e78;
+  --accent: #5b8def;
+  --ok: #5fd38d;
+  --bad: #ff6b6b;
+  --warn: #e5c07b;
+  --hair: #2f2f35;
+  --ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--canvas);
+  color: var(--fg);
+  font: 400 13.5px/1.45 var(--ui);
+  letter-spacing: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.screen * {
+  box-sizing: border-box;
+}
+
+.paused .screen *,
+.paused .screen *::before,
+.paused .screen *::after {
+  animation-play-state: paused !important;
+}
+
+/* Steps: [data-at] elements appear when the runner gives them .on. */
+.screen :where([data-at]:not([data-type])) {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition:
+    opacity 0.35s ease,
+    transform 0.5s var(--spring);
+}
+
+.screen :where([data-at].on) {
+  opacity: 1;
+  transform: none;
+}
+
+/* A log entry that grows in, so a log anchored to the bottom scrolls like a chat. */
+.screen :where(.item[data-at]) {
+  display: grid;
+  grid-template-rows: 0fr;
+  transform: none;
+  transition:
+    grid-template-rows 0.45s var(--out),
+    opacity 0.35s ease;
+}
+
+.screen :where(.item[data-at].on) {
+  grid-template-rows: 1fr;
+}
+
+.screen :where(.item > .in) {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.screen :where(.item > .in > :first-child) {
+  margin-top: 12px;
+}
+
+.reset .screen :where([data-at]) {
+  transition-duration: 0.18s;
+}
+
+.screen .typing::after,
+.screen .caret::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: -0.2em;
+  background: var(--accent);
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* App pieces */
+
+.screen .side {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 176px;
+  padding: 12px 10px;
+  background: var(--sunken);
+  border-right: 1px solid var(--hair);
+}
+
+.screen .side .proj {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 4px 6px;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.screen .side .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 20px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.screen .side .row.cur {
+  background: var(--raised);
+  color: var(--fg);
+}
+
+.screen .newchat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  font-weight: 500;
+  font-size: 12.5px;
+}
+
+.screen .label {
+  color: var(--faint);
+  font-size: 11.5px;
+  margin: 14px 6px 0;
+}
+
+/* Status mark in the sidebar: idle dot, spinning while working, check when done. */
+.screen .mark {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-left: auto;
+  border-radius: 50%;
+}
+
+.screen .mark[data-s='working'] {
+  border: 2px solid var(--accent);
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+.screen .mark[data-s='done'] {
+  background: var(--ok);
+}
+
+.screen .mark[data-s='waiting'] {
+  background: var(--warn);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.screen .user {
+  align-self: flex-end;
+  max-width: 78%;
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--raised);
+}
+
+.screen .ai {
+  max-width: 92%;
+  color: var(--fg);
+}
+
+.screen .ai.muted,
+.screen .muted {
+  color: var(--muted);
+}
+
+.screen .tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.screen .tool b {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.screen .mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  font-variant-ligatures: none;
+}
+
+.screen .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.screen .btnx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
+}
+
+.screen .btnx.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.screen .composer {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 16px;
+  height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--faint);
+}
+
+.screen .composer .model {
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.screen .composer .typed {
+  color: var(--fg);
+}
+
+/* The agent's cursor: the pigna hand, fingertips on the hotspot (the element's top-left). */
+.screen .agent {
+  position: absolute;
+  z-index: 20;
+  width: 0;
+  height: 0;
+  transition:
+    left 0.9s cubic-bezier(0.5, 0, 0.2, 1),
+    top 0.9s cubic-bezier(0.5, 0, 0.2, 1),
+    opacity 0.3s;
+}
+
+.screen .agent img {
+  position: absolute;
+  left: calc(-0.985 * 34px);
+  top: calc(-0.215 * 30px);
+  width: 34px;
+  height: 30px;
+  max-width: none;
+  transform-origin: 98.5% 21.5%;
+  transform: rotate(40deg) scaleX(-1);
+  animation: breathe 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes breathe {
+  from {
+    filter: drop-shadow(0 0 2px #ffd140);
+  }
+  to {
+    filter: drop-shadow(0 0 5px #ffd140);
+  }
+}
+
+/* Computer Use's click: yellow, coral and blue rings, one after another. */
+.screen .rings {
+  position: absolute;
+  z-index: 19;
+  width: 0;
+  height: 0;
+}
+
+.screen .rings i {
+  position: absolute;
+  border: 2.5px solid var(--rc);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--rc);
+  opacity: 0;
+}
+
+.screen .rings i:nth-child(1) {
+  --rc: #f1be58;
+  inset: -20px;
+  background: rgb(241 190 88 / 0.3);
+}
+
+.screen .rings i:nth-child(2) {
+  --rc: #f09082;
+  inset: -28px;
+  animation-delay: 70ms !important;
+}
+
+.screen .rings i:nth-child(3) {
+  --rc: #4d9abf;
+  inset: -36px;
+  animation-delay: 140ms !important;
+}
+
+.screen .rings.on i {
+  animation: ring 0.5s ease-out both;
+}
+
+@keyframes ring {
+  from {
+    opacity: 1;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+
+.screen .ripple {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  margin: -17px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.screen .ripple.on {
+  animation: ripple 0.6s ease-out;
+}
+
+@keyframes ripple {
+  from {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.screen .shimmer {
+  background: linear-gradient(90deg, var(--muted) 0 30%, #fff 50%, var(--muted) 70% 100%) 0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+.screen .you {
+  position: absolute;
+  z-index: 19;
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5));
+}
+
+.screen .you .tagx {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  padding: 1px 7px 2px;
+  border-radius: 6px;
+  background: #ececef;
+  color: #1b1b1d;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.screen .toast {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+  font-size: 12.5px;
+  font-weight: 500;
+}

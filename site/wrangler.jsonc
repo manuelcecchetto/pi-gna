@@ -1,0 +1,11 @@
+// Cloudflare Workers static assets: `pnpm run deploy` builds and uploads dist/. No Worker script runs.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pi-gna-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

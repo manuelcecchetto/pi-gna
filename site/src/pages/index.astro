@@ -1,0 +1,390 @@
+---
+import Base from '../layouts/Base.astro';
+import HeroMascot from '../components/HeroMascot.astro';
+import DownloadButtons from '../components/DownloadButtons.astro';
+import Marquee from '../components/Marquee.astro';
+import PeekShot from '../components/PeekShot.astro';
+import FeatureGrid from '../components/FeatureGrid.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { SITE } from '../data/site';
+import { releases } from '../lib/changelog';
+
+const latest = releases()[0];
+
+const pillars = [
+  {
+    title: 'Not a fork',
+    body: 'Every chat is a <code>pi --mode rpc</code> process running the pi you already have. pi-gna just gives it a window.',
+    color: 'coral',
+  },
+  {
+    title: 'Same sessions, both ways',
+    body: 'Start a chat in the terminal, carry on in pi-gna, and go back. Your sessions are pi’s own session files.',
+    color: 'sky',
+  },
+  {
+    title: 'Nothing to set up twice',
+    body: 'Your models and logins, settings, extensions, skills, prompt templates and MCP servers are already there.',
+    color: 'mint',
+  },
+];
+
+const little = [
+  { keys: ['⌘', 'K'], title: 'Search everything', body: 'Chats in every project, cards, settings and commands.' },
+  { keys: ['⌥', '↩'], title: 'Queue a follow-up', body: 'Line up the next message while pi is still working.' },
+  { keys: ['Esc', 'Esc'], title: 'Stop, politely', body: 'Stop the run and get your queued messages back.' },
+  { keys: ['⌘', '1'], title: 'Jump to a chat', body: 'Hold ⌘ to see the numbers on the sidebar’s chats.' },
+  { keys: ['@'], title: 'Mention files', body: 'Project files by name; / for commands, skills and prompts.' },
+  { keys: ['⌘', 'V'], title: 'Paste screenshots', body: 'Images go to the model, files and folders by path.' },
+];
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'pi-gna',
+    url: SITE.url,
+    description: SITE.description,
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'macOS',
+    softwareVersion: latest?.version,
+    downloadUrl: SITE.latest,
+    license: 'https://opensource.org/licenses/MIT',
+    image: `${SITE.url}/og/home.jpg`,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    author: { '@type': 'Person', name: SITE.author.name, url: SITE.author.url },
+  },
+  { '@context': 'https://schema.org', '@type': 'WebSite', name: 'pi-gna', url: SITE.url },
+];
+---
+
+<Base title="pi-gna · The desktop app for the pi coding agent" fullTitle jsonLd={jsonLd}>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow pop" style="--d:0ms"><span class="dot" style="--c:var(--coral)"></span>The desktop app for the pi coding agent</p>
+        <h1 class="display">
+          <span class="word" style="--d:60ms">Give</span>
+          <span class="word" style="--d:140ms">pi</span>
+          <span class="word serif" style="--d:240ms">a hand.</span>
+        </h1>
+        <p class="lead pop" style="--d:320ms">
+          pi-gna puts the pi you already have in a Mac app: chats you can read, a browser pi drives while you watch,
+          Computer Use, a Kanban board, GitHub reviews and your iPhone. Same models, same sessions, nothing to migrate.
+        </p>
+        <div class="ctas pop" style="--d:400ms">
+          <DownloadButtons />
+          <a class="btn btn-paper" href="/features/">Tour the features</a>
+        </div>
+        <ul class="meta pop" style="--d:480ms">
+          <li>macOS, Apple silicon &amp; Intel</li>
+          <li>Free, MIT licensed</li>
+          {latest && <li><a href="/changelog/">v{latest.version}</a></li>}
+        </ul>
+      </div>
+      <div class="hero-art">
+        <HeroMascot />
+      </div>
+    </div>
+  </section>
+
+  <Marquee />
+
+  <section class="section window" aria-labelledby="window-title">
+    <div class="wrap">
+      <div class="head" data-reveal>
+        <h2 id="window-title" class="h2">Your pi, <span class="serif">with a window.</span></h2>
+        <p class="lead">
+          pi-gna is a frontend, not a fork. It runs your pi exactly as the terminal does, and draws it properly.
+        </p>
+      </div>
+      <PeekShot />
+      <ul class="pillars">
+        {
+          pillars.map((p, i) => (
+            <li class="card pillar" data-reveal data-color={p.color} style={`--i:${i};--tilt:${[-1.5, 1, -0.5][i]}deg`}>
+              <span class="num" aria-hidden="true">{i + 1}</span>
+              <h3 class="h3">{p.title}</h3>
+              <p set:html={p.body} />
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section class="section features" aria-labelledby="features-title">
+    <div class="wrap">
+      <div class="head center" data-reveal>
+        <h2 id="features-title" class="h2">Everything pi does, <span class="serif">plus hands.</span></h2>
+        <p class="lead">Ten things pi-gna adds on top of pi. Pigna dressed up for each one.</p>
+      </div>
+      <FeatureGrid />
+    </div>
+  </section>
+
+  <section class="section little" aria-labelledby="little-title">
+    <div class="wrap">
+      <div class="head" data-reveal>
+        <h2 id="little-title" class="h2">And the <span class="serif">little things.</span></h2>
+        <p class="lead">Made for the keyboard, like the terminal pi came from.</p>
+      </div>
+      <ul class="little-grid">
+        {
+          little.map((l, i) => (
+            <li class="card tip" data-reveal style={`--i:${i % 3}`}>
+              <span class="keys">
+                {l.keys.map((k) => (
+                  <kbd class="kbd">{k}</kbd>
+                ))}
+              </span>
+              <h3>{l.title}</h3>
+              <p>{l.body}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>
+
+<style>
+  .hero {
+    position: relative;
+    isolation: isolate;
+    padding-block: clamp(36px, 6vw, 80px) clamp(70px, 9vw, 120px);
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image: radial-gradient(color-mix(in srgb, var(--ink) 13%, transparent) 1.2px, transparent 1.6px);
+    background-size: 26px 26px;
+    background-position: -6px -6px;
+    mask-image: linear-gradient(#000 60%, transparent);
+  }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+    align-items: center;
+    gap: clamp(24px, 4vw, 64px);
+  }
+
+  .hero-copy {
+    display: grid;
+    gap: 26px;
+    justify-items: start;
+  }
+
+  .display {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.22em;
+  }
+
+  .word {
+    display: inline-block;
+    transform-origin: 50% 100%;
+    animation: word-in 0.9s var(--spring) var(--d) both;
+  }
+
+  .word.serif {
+    color: var(--red);
+    padding-right: 0.06em;
+  }
+
+  @keyframes word-in {
+    from {
+      transform: translateY(0.35em) rotate(-6deg) scale(0.9);
+    }
+  }
+
+  .pop {
+    animation: pop-in 0.8s var(--out) var(--d) both;
+  }
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+
+  .ctas {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px 18px;
+  }
+
+  .ctas > .btn {
+    min-height: 66px;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.92rem;
+    font-weight: 560;
+    color: var(--ink-2);
+  }
+
+  .meta li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .meta li::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--mint);
+    border: 1.5px solid var(--ink);
+  }
+
+  .meta a {
+    text-decoration-color: var(--coral);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+
+  .hero-art {
+    width: min(100%, 470px);
+    justify-self: center;
+    margin-right: clamp(0px, 3vw, 40px);
+  }
+
+  .head {
+    display: grid;
+    gap: 18px;
+    max-width: 760px;
+    margin-bottom: clamp(36px, 5vw, 60px);
+  }
+
+  .head.center {
+    justify-items: center;
+    text-align: center;
+    margin-inline: auto;
+  }
+
+  .window {
+    padding-top: clamp(90px, 12vw, 160px);
+  }
+
+  .window .head {
+    margin-bottom: 0;
+  }
+
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin: clamp(48px, 6vw, 72px) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .pillar {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 26px 24px 28px;
+    background: var(--c-soft);
+  }
+
+  .pillar p {
+    color: var(--ink-2);
+    font-size: 1.02rem;
+  }
+
+  .num {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-bottom: 6px;
+    border: var(--line);
+    border-radius: 50%;
+    background: var(--c);
+    box-shadow: 2px 2px 0 var(--ink);
+    font-weight: 800;
+    font-size: 1.2rem;
+  }
+
+  .features {
+    background: var(--paper-2);
+    border-block: var(--line);
+  }
+
+
+  .little-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tip {
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    padding: 22px 22px 24px;
+    transition: transform 0.35s var(--spring);
+  }
+
+  .tip:hover {
+    transform: rotate(-1.2deg) translateY(-3px);
+  }
+
+  .tip .keys {
+    margin-bottom: 8px;
+  }
+
+  .tip h3 {
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+  }
+
+  .tip p {
+    font-size: 1rem;
+    color: var(--ink-2);
+  }
+
+
+  @media (max-width: 900px) {
+    .hero-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .hero-art {
+      order: -1;
+      width: min(64vw, 330px);
+      margin: 0 auto 8px;
+    }
+
+    .pillars,
+    .little-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .pillars,
+    .little-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

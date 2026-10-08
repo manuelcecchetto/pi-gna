@@ -1,0 +1,118 @@
+---
+/** The app screenshot, with Pigna peeking over its title bar. */
+import { Image } from 'astro:assets';
+import shot from '../assets/shots/app.webp';
+import peek from '../assets/mascot/peek.webp';
+---
+
+<figure class="peekshot" data-observe>
+  <div class="peeker" aria-hidden="true">
+    <span class="clip">
+      <Image src={peek} alt="" widths={[220, 330, 440]} sizes="(min-width: 900px) 220px, 26vw" loading="lazy" />
+    </span>
+    <span class="psst">psst… it’s the app</span>
+  </div>
+  <Image
+    src={shot}
+    alt="pi-gna’s window: projects and their chats in the sidebar, and a new chat over a painted 🤌 in a dusk sky"
+    widths={[640, 960, 1280, 1600, 1980]}
+    sizes="(min-width: 1220px) 1100px, 92vw"
+    loading="lazy"
+    class="shot"
+  />
+</figure>
+
+<style>
+  .peekshot {
+    position: relative;
+    margin: 0;
+    padding-top: clamp(80px, 13vw, 170px);
+  }
+
+  .shot {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    filter: drop-shadow(10px 10px 0 var(--ink));
+  }
+
+  /* The drawing is cut flat at 93.7% of its height, where the ledge goes; the fingers hang below it. */
+  .peeker {
+    --w: clamp(120px, 20vw, 220px);
+    position: absolute;
+    z-index: 2;
+    right: 9%;
+    top: calc(clamp(80px, 13vw, 170px) - var(--w) * 0.7221 + 0.3%);
+    width: var(--w);
+  }
+
+  .clip {
+    display: block;
+    clip-path: inset(-50% -20% 6.3% -20%);
+    transition: clip-path 0.01s 1.15s;
+  }
+
+  .clip :global(img) {
+    width: 100%;
+    transform: translateY(78%);
+    transition: transform 0.9s var(--spring) 0.25s;
+  }
+
+  .is-in .clip {
+    clip-path: inset(-50% -20% -10% -20%);
+  }
+
+  .is-in .clip :global(img) {
+    transform: none;
+  }
+
+  .is-in .clip:hover :global(img) {
+    animation: peek-wiggle 0.6s var(--out);
+  }
+
+  @keyframes peek-wiggle {
+    30% {
+      transform: rotate(-4deg) translateY(-3%);
+    }
+    65% {
+      transform: rotate(3deg);
+    }
+  }
+
+  .psst {
+    position: absolute;
+    right: 92%;
+    top: 4%;
+    padding: 6px 12px 8px;
+    border: var(--line);
+    border-radius: 16px 16px 4px 16px;
+    background: var(--card);
+    box-shadow: 3px 3px 0 var(--ink);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: clamp(1rem, 1.8vw, 1.35rem);
+    line-height: 1.1;
+    white-space: nowrap;
+    opacity: 0;
+    transform: scale(0.4) rotate(8deg);
+    transform-origin: 100% 100%;
+    transition:
+      transform 0.5s var(--spring) 1.4s,
+      opacity 0.2s 1.4s;
+  }
+
+  .is-in .psst {
+    opacity: 1;
+    transform: rotate(-4deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .clip {
+      clip-path: none;
+    }
+
+    .clip :global(img) {
+      transform: none;
+    }
+  }
+</style>
