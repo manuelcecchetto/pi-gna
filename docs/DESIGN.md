@@ -1027,7 +1027,13 @@ Verified live (pi 1.0.0, Oct 2026):
   (`reveal`). Bookmarks are app-only state kept by the host (`ui-state.json`, `src/shared/ui-state.ts`), per session file, keyed by the message
   timestamp because item keys change on every load.
 - Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
-  strips `<input>`). pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the
+  strips `<input>`). `Markdown.tsx` renders a finished text whole (one sanitize call, remembered by text so a chat opened
+  again does not render it again). A streaming text renders block by block (`lexMarkdown`, `renderMarkdownBlocks` in
+  `lib/markdown.ts`): each frame lexes on from the previous frame's blocks, keeping all but the last two, and the
+  component replaces only the blocks whose HTML changed, so earlier blocks keep their nodes (a selection, icons) and a
+  long answer costs the same per frame as a short one. Raw HTML that leaves a tag open (`<details>`, an unclosed `<b>`)
+  keeps the blocks up to its close together; link reference definitions make every frame lex whole. Joined, the blocks
+  are byte-identical to the whole text's HTML (`lib.test.ts`, "markdown blocks"). pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the
   model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
   footnotes or Mermaid). It only applies to pi-gna sessions; opening a terminal session in pi-gna adds that
   prompt section on its next request.
@@ -1140,7 +1146,8 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
 - The prose around the fence must answer the question alone; the visual only supplements it (the prompt says so).
 - Cap **64 KB** (`VISUAL_MAX_BYTES`, `lib/markdown.ts`): larger blocks stay a code block with a "too large" note.
 - `markdown.ts` pulls a complete fence out before DOMPurify and leaves `<div class="visual" data-visual>` holding the source in
-  a hidden `.visual-src`; `Markdown.tsx` hydrates it into `VisualFrame`. Setting off, or a fence still open while streaming:
+  a hidden `.visual-src`; `Markdown.tsx` hydrates it into `VisualFrame` once the message is complete, and the frame stays
+  mounted while its block does. Setting off, or a fence still open while streaming:
   a plain code block (streaming shows a skeleton, with "Drawing visual…" for screen readers, instead of partial source).
 - The prompt (`resources/pigna-visual-prompt.md`) lists the kit classes, tokens and helpers, when exactly one visual is
   warranted and when not, and SVG rules. It reaches the agent as a context file, not `--append-system-prompt`:

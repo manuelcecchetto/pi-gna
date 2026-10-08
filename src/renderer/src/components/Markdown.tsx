@@ -1,9 +1,9 @@
 import { memo, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { type ChatLinks, ChatUiProvider, type ChatUiState, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
+import { createRoot, type Root } from "react-dom/client";
+import { type ChatLinks, type ChatUi, ChatUiProvider, type ChatUiState, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
 import { highlight, highlightWithin } from "../lib/highlight";
-import { renderMarkdown } from "../lib/markdown";
+import { type LexedMarkdown, lexMarkdown, renderMarkdownBlocks, renderMarkdownCached } from "../lib/markdown";
 import { decorateWebLinks, loadChatImages, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
 
 interface ProseActions {
@@ -53,6 +53,51 @@ function onProseClick(event: MouseEvent<HTMLElement>, { openExternal, openLightb
 
 const OPEN_VISUAL = /(^|\n)(```+|~~~+)[ \t]*visual\b[^\n]*\n(?![\s\S]*\n\2[ \t]*(\n|$))[\s\S]*$/;
 
+/** What a Markdown element shows: the HTML of each block and the nodes it put in for it. */
+interface ShownBlocks {
+  html: string[];
+  nodes: ChildNode[][];
+}
+
+/**
+ * Makes `root`'s children show `html`, one entry per block, replacing only the blocks whose HTML changed: the rest keep
+ * their nodes (and a selection, an icon or a loaded image in them). Returns the elements it put in.
+ */
+function patchBlocks(root: HTMLElement, shown: ShownBlocks, html: string[]): Element[] {
+  const keep = html.map((block, index) => shown.html[index] === block);
+  shown.nodes.forEach((nodes, index) => {
+    if (!keep[index]) for (const node of nodes) node.remove();
+  });
+  const nodes: ChildNode[][] = [];
+  const added: Element[] = [];
+  // Backwards, so each new block goes in before the first node of the block after it.
+  let before: ChildNode | null = null;
+  for (let index = html.length - 1; index >= 0; index--) {
+    let block = shown.nodes[index];
+    if (!keep[index] || !block) {
+      const template = document.createElement("template");
+      template.innerHTML = html[index] as string;
+      block = [...template.content.childNodes];
+      for (const node of block) if (node instanceof Element) added.push(node);
+      root.insertBefore(template.content, before);
+    }
+    nodes[index] = block;
+    before = block[0] ?? before;
+  }
+  shown.html = html;
+  shown.nodes = nodes;
+  return added;
+}
+
+/** The frame of a finished visual, in a root of its own that carries the chat's UI handle along. */
+function renderFrame(mount: Root, ui: ChatUi, source: string): void {
+  mount.render(
+    <ChatUiProvider ui={ui}>
+      <VisualFrame source={source} />
+    </ChatUiProvider>,
+  );
+}
+
 export const Markdown = memo(function Markdown({
   text,
   streaming = false,
@@ -66,35 +111,74 @@ export const Markdown = memo(function Markdown({
   const board = useChatUi((s) => s.board);
   const ui = useChatUiHandle(); // the frames mount in roots of their own, which carry it along
   const enabled = useChatUi((s) => s.settings.visuals) && visuals;
-  const html = useMemo(() => {
+  // A text that streams renders block by block, lexing on from the last frame's blocks, so each frame parses only its
+  // tail and replaces only its last block. One that has not streamed here renders whole, as a single block.
+  const lexed = useRef<LexedMarkdown | undefined>(undefined);
+  const blocks = useMemo(() => {
+    const options = { visuals: enabled, localImages: true };
+    if (!streaming && !lexed.current) return [renderMarkdownCached(text, options)];
     // An unfinished visual fence streams as an empty visual, which the effect below shows as a skeleton, not raw source.
     const src = enabled && streaming ? text.replace(OPEN_VISUAL, "$1```visual\n```\n") : text;
-    return renderMarkdown(src, { visuals: enabled, localImages: true });
+    lexed.current = lexMarkdown(src, lexed.current);
+    return renderMarkdownBlocks(lexed.current, options);
   }, [text, enabled, streaming]);
   const ref = useRef<HTMLDivElement>(null);
+  const shown = useRef<ShownBlocks>({ html: [], nodes: [] });
+  // Blocks go in before paint, only those that changed. Site icons go in with them so links do not shift; while
+  // streaming only the new blocks get them, and favicons are fetched once the message is complete.
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const added = patchBlocks(root, shown.current, blocks);
+    if (!streaming) decorateWebLinks(root, true);
+    else for (const element of added) decorateWebLinks(element as HTMLElement, false);
+  }, [blocks, streaming]);
   useEffect(() => {
     if (!streaming) highlightWithin(ref.current);
-  }, [html, streaming]);
-  // Site icons go in before paint so links do not shift; favicons are fetched once the message is complete.
-  useLayoutEffect(() => decorateWebLinks(ref.current, !streaming), [html, streaming]);
+  }, [blocks, streaming]);
   // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
     if (!streaming) void resolveFileLinks(ref.current, links, homeDir).then(() => loadChatImages(ref.current, links));
-  }, [html, streaming, links, homeDir]);
+  }, [blocks, streaming, links, homeDir]);
   // Card links settle once the board has cards (a phone's arrives with its first sync), not on every board change.
   const hasCards = board.cards.length > 0;
   useEffect(() => {
     if (!streaming && hasCards) resolveCardLinks(ref.current, board);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html, streaming, hasCards]);
+  }, [blocks, streaming, hasCards]);
+  // Each finished visual mounts its frame once and keeps it while its block stays; a replaced block's frame unmounts.
+  const frames = useRef(new Map<HTMLElement, { mount: Root; ui: ChatUi; source: string }>());
+  const alive = useRef(false);
+  useEffect(() => {
+    const mounted = frames.current;
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      // Unmount outside the current render pass, unless the element came back (a development remount).
+      setTimeout(() => {
+        if (alive.current) return;
+        for (const { mount } of mounted.values()) mount.unmount();
+        mounted.clear();
+      }, 0);
+    };
+  }, []);
   useEffect(() => {
     const root = ref.current;
+    const mounted = frames.current;
+    for (const [el, { mount }] of mounted) {
+      if (enabled && root?.contains(el)) continue;
+      mounted.delete(el);
+      setTimeout(() => mount.unmount(), 0);
+    }
     if (!root || !enabled) return;
-    const roots: ReturnType<typeof createRoot>[] = [];
     for (const el of root.querySelectorAll<HTMLElement>(".visual[data-visual]")) {
-      const source = el.querySelector(".visual-src")?.textContent ?? "";
+      const frame = mounted.get(el);
+      if (frame) {
+        if (frame.ui !== ui) renderFrame(frame.mount, (frame.ui = ui), frame.source);
+        continue;
+      }
       if (streaming) {
-        // Keep the hidden source: the effect runs again when streaming ends and the html (so this element) is unchanged.
+        // Keep the hidden source: the effect runs again when streaming ends and this block (so this element) stays.
         el.classList.add("pending");
         if (!el.querySelector(".visual-drawing")) {
           // A skeleton in the rough shape of a visual (headline numbers, a chart, a few rows); the text is for screen readers.
@@ -107,23 +191,14 @@ export const Markdown = memo(function Markdown({
         }
         continue;
       }
+      const source = el.querySelector(".visual-src")?.textContent ?? "";
       el.classList.remove("pending");
       el.textContent = "";
       const mount = createRoot(el);
-      mount.render(
-        <ChatUiProvider ui={ui}>
-          <VisualFrame source={source} />
-        </ChatUiProvider>,
-      );
-      roots.push(mount);
+      renderFrame(mount, ui, source);
+      mounted.set(el, { mount, ui, source });
     }
-    return () => {
-      // Unmount outside the current render pass.
-      setTimeout(() => {
-        for (const mount of roots) mount.unmount();
-      }, 0);
-    };
-  }, [html, streaming, enabled, ui]);
+  }, [blocks, streaming, enabled, ui]);
   return (
     <div ref={ref} className="prose selectable" onClick={(event) => onProseClick(event, { openExternal, openLightbox, links, homeDir, board })}
       onKeyDown={(event) => {
@@ -131,8 +206,7 @@ export const Markdown = memo(function Markdown({
         if (card && event.key === "Enter") return openCardLink(card, links, board);
         const file = (event.target as HTMLElement).closest<HTMLElement>("[data-file]");
         if (file && event.key === "Enter") openFileLink(file, event, links, homeDir);
-      }}
-      dangerouslySetInnerHTML={{ __html: html }} />
+      }} />
   );
 });
 

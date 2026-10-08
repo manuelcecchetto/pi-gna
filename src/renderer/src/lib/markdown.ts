@@ -3,7 +3,7 @@
 // become `data-file` chips the component wires to the file preview, and local images (`![alt](path)`, or a raw
 // `<img src="path">`) become `data-image` placeholders it loads through main (docs/FILE_PREVIEW.md, Chat links).
 import DOMPurify from "dompurify";
-import { Marked } from "marked";
+import { Marked, type Token, type Tokens } from "marked";
 import { cardLinkId } from "../../../shared/board";
 import { isLocalLinkHref, kindFor, looksLikePath, parseLinkTarget } from "../../../shared/preview";
 import { IMG_TAG, imgAttributes } from "../../../shared/markdown-images";
@@ -136,13 +136,12 @@ export function markdownBlockLines(source: string): number[] | undefined {
   return lines;
 }
 
-/** Markdown -> HTML before sanitizing (exported for tests). */
-export function markdownToHtml(source: string, options: MarkdownOptions = {}): string {
+function withOptions(options: MarkdownOptions, render: () => string): string {
   visualsOn = options.visuals === true;
   fileLinksOn = options.fileLinks !== false;
   localImagesOn = options.localImages === true;
   try {
-    return marked.parse(source, { async: false }) as string;
+    return render();
   } finally {
     visualsOn = false;
     fileLinksOn = true;
@@ -150,6 +149,155 @@ export function markdownToHtml(source: string, options: MarkdownOptions = {}): s
   }
 }
 
+/** Markdown -> HTML before sanitizing (exported for tests). */
+export function markdownToHtml(source: string, options: MarkdownOptions = {}): string {
+  return withOptions(options, () => marked.parse(source, { async: false }) as string);
+}
+
+// An instance of its own, configured once: a config passed to each `sanitize` call is parsed again on every call.
+let purifier: ReturnType<typeof DOMPurify> | undefined;
+function sanitize(html: string): string {
+  if (!purifier) {
+    purifier = DOMPurify(window);
+    purifier.setConfig({ ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-card", "data-kind", "data-path", "data-image", "data-width", "data-height"], FORBID_TAGS: ["style", "form", "input"] });
+  }
+  return purifier.sanitize(html);
+}
+
 export function renderMarkdown(source: string, options: MarkdownOptions = {}): string {
-  return DOMPurify.sanitize(markdownToHtml(source, options), { ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-card", "data-kind", "data-path", "data-image", "data-width", "data-height"], FORBID_TAGS: ["style", "form", "input"] });
+  return sanitize(markdownToHtml(source, options));
+}
+
+/**
+ * A top-level block that renders and sanitizes on its own: one token (with the blank lines after it), or several when
+ * raw HTML in the first leaves a tag open, so `<details>` and what it wraps stay together.
+ */
+export interface MarkdownBlock {
+  raw: string;
+  tokens: Token[];
+}
+
+/** A lexed text, which the next, longer text of the same stream lexes on from (`lexMarkdown`). */
+export interface LexedMarkdown {
+  text: string;
+  blocks: MarkdownBlock[];
+  /**
+   * Where each block starts in `text`, up to the first block whose source marked rewrote (it trims the last list item of
+   * an unfinished text, say); the blocks before that one cover the text exactly, as reuse needs.
+   */
+  starts: number[];
+  /** Link reference definitions, which reach across blocks; with any, every text is lexed whole. */
+  links: string;
+}
+
+const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+const HTML_TAG = /<(\/?)([a-zA-Z][\w:-]*)\b[^>]*?(\/?)>/g;
+
+/** How many tags are open after `token`'s raw HTML (block or inline), starting from `depth`. */
+function openTags(token: Token, depth: number): number {
+  marked.walkTokens([token], (inner) => {
+    if (inner.type !== "html") return;
+    for (const [, close, name, selfClosing] of (inner as Tokens.HTML).text.matchAll(HTML_TAG)) {
+      if (selfClosing || VOID_TAGS.has((name as string).toLowerCase())) continue;
+      depth = Math.max(0, depth + (close ? -1 : 1));
+    }
+  });
+  return depth;
+}
+
+/** Groups the tokens of `text` lexed from `at` into blocks, with the offset each starts at while they match the text. */
+function groupBlocks(tokens: Token[], text: string, at: number): { blocks: MarkdownBlock[]; starts: number[] } {
+  const blocks: MarkdownBlock[] = [];
+  const starts: number[] = [];
+  let exact = true;
+  let open: MarkdownBlock | undefined;
+  let depth = 0;
+  for (const token of tokens) {
+    exact &&= text.startsWith(token.raw, at);
+    const blank = token.type === "space" || token.type === "def";
+    // Blank lines and definitions render nothing and go with the block before them.
+    const block = open ?? (blank ? blocks.at(-1) : undefined);
+    if (block) {
+      block.raw += token.raw;
+      block.tokens.push(token);
+    } else {
+      open = { raw: token.raw, tokens: [token] };
+      blocks.push(open);
+      if (exact) starts.push(at);
+    }
+    at += token.raw.length;
+    if (!blank) depth = openTags(token, depth);
+    if (depth === 0 && !blank) open = undefined;
+  }
+  return { blocks, starts };
+}
+
+/**
+ * The blocks of `source`. Given the text before it in the same stream, it keeps every block but the last two and lexes
+ * only from there on: a block is final once another follows it (the last one can still turn into a setext heading, a
+ * table or a longer list), and the one more covers a block that the new text joins to the last.
+ */
+export function lexMarkdown(source: string, previous?: LexedMarkdown): LexedMarkdown {
+  const text = source.replace(/\r\n?/g, "\n");
+  if (previous?.text === text) return previous;
+  const keep = previous && !previous.links && text.startsWith(previous.text) ? Math.min(previous.blocks.length - 2, previous.starts.length - 1) : 0;
+  if (previous && keep > 0) {
+    const offset = previous.starts[keep] as number;
+    const tokens = marked.lexer(text.slice(offset));
+    if (Object.keys(tokens.links).length === 0) {
+      const tail = groupBlocks(tokens, text, offset);
+      return { text, blocks: [...previous.blocks.slice(0, keep), ...tail.blocks], starts: [...previous.starts.slice(0, keep), ...tail.starts], links: "" };
+    }
+  }
+  const tokens = marked.lexer(text);
+  const links = Object.keys(tokens.links).length ? JSON.stringify(tokens.links) : "";
+  return { text, ...groupBlocks(tokens, text, 0), links };
+}
+
+/** One block -> HTML before sanitizing (exported for tests); a text's blocks join to its `markdownToHtml`. */
+export function markdownBlockToHtml(block: MarkdownBlock, options: MarkdownOptions = {}): string {
+  return withOptions(options, () => marked.parser(block.tokens));
+}
+
+const flagsOf = (options: MarkdownOptions) => `${options.visuals === true ? 1 : 0}${options.fileLinks !== false ? 1 : 0}${options.localImages === true ? 1 : 0}`;
+
+// Sanitized HTML per block object and options: a stream keeps its blocks from frame to frame, so each renders once.
+const htmlOfBlock = new WeakMap<MarkdownBlock, { flags: string; html: string }>();
+
+/** The sanitized HTML of each block of `lexed`, in order; joined, they are `renderMarkdown` of its text. */
+export function renderMarkdownBlocks(lexed: LexedMarkdown, options: MarkdownOptions = {}): string[] {
+  const flags = flagsOf(options) + lexed.links;
+  return lexed.blocks.map((block) => {
+    const known = htmlOfBlock.get(block);
+    if (known?.flags === flags) return known.html;
+    const html = sanitize(markdownBlockToHtml(block, options));
+    htmlOfBlock.set(block, { flags, html });
+    return html;
+  });
+}
+
+// Sanitized HTML of whole texts by options and source, most recently used last, within a budget of characters (source
+// and HTML): a chat opened again shows its answers without rendering them again.
+const textCache = new Map<string, string>();
+const TEXT_CACHE_CHARS = 6_000_000;
+let textCacheChars = 0;
+
+/** `renderMarkdown`, remembered: for finished texts, which render whole (one sanitize call costs less than one per block). */
+export function renderMarkdownCached(source: string, options: MarkdownOptions = {}): string {
+  const key = `${flagsOf(options)}\0${source}`;
+  let html = textCache.get(key);
+  if (html !== undefined) {
+    textCache.delete(key);
+  } else {
+    html = renderMarkdown(source, options);
+    if (key.length + html.length > TEXT_CACHE_CHARS / 8) return html;
+    textCacheChars += key.length + html.length;
+    for (const [oldest, value] of textCache) {
+      if (textCacheChars <= TEXT_CACHE_CHARS) break;
+      textCache.delete(oldest);
+      textCacheChars -= oldest.length + value.length;
+    }
+  }
+  textCache.set(key, html);
+  return html;
 }

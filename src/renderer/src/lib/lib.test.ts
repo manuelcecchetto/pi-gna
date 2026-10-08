@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseAnsi, stripAnsi } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
-import { markdownBlockLines, markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
+import { type LexedMarkdown, lexMarkdown, markdownBlockLines, markdownBlockToHtml, markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
 import { applyQueueOp } from "../../../shared/queue";
 import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
 import { cacheHitRate, summarizeContext } from "./context";
@@ -332,6 +332,47 @@ describe("clampPanel", () => {
     expect(clampPanel(600, ATP_DETAIL, 450.6)).toBe(451); // the graph would get narrower than its minimum
     expect(clampPanel(600, ATP_DETAIL, 50)).toBe(300); // no room at all: the minimum still wins
     expect(clampPanel(Number.NaN, ATP_DETAIL)).toBe(380);
+  });
+});
+
+describe("markdown blocks", () => {
+  const options = { visuals: true, localImages: true };
+  const html = (lexed: LexedMarkdown) => lexed.blocks.map((block) => markdownBlockToHtml(block, options)).join("");
+  const docs = [
+    "\n\n# Title\n\nSome text\nwrapped.\n\n- a\n- b\n\n  continued\n\n1. one\n\n\n2. two\n\n```ts\nx\n```\n\n> quote\nlazy\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nSetext\n===\n\n    indented code\n\n- [x] done\n- [ ] open \n",
+    "Intro.\n\n<details>\n<summary>More</summary>\n\n**inside** and `src/a.ts:3`\n\n</details>\n\nText with <b>bold\n\nstill bold</b> after.\n\n<br>\n\nEnd ![shot](a.png) [file](src/main/x.ts:1).\n",
+    "Answer.\n\n```visual\n<div class=\"stack\"><b>hi</b></div>\n```\n\nAfter the visual.\r\n\r\nCRLF line.\r\n",
+  ];
+
+  it("render block by block to the same HTML as the whole text", () => {
+    for (const doc of docs) expect(html(lexMarkdown(doc))).toBe(markdownToHtml(doc.replace(/\r\n?/g, "\n"), options));
+  });
+
+  it("keep raw HTML that wraps other blocks in one block", () => {
+    const { blocks } = lexMarkdown(docs[1] as string);
+    expect(blocks.map((block) => block.raw.split("\n")[0])).toEqual(["Intro.", "<details>", "Text with <b>bold", "<br>", "End ![shot](a.png) [file](src/main/x.ts:1)."]);
+  });
+
+  it("lex a stream on from the last frame to what lexing each frame whole gives, keeping the finished blocks", () => {
+    for (const doc of docs) {
+      let lexed: LexedMarkdown | undefined;
+      for (let end = 1; end <= doc.length; end++) {
+        const previous: LexedMarkdown | undefined = lexed;
+        lexed = lexMarkdown(doc.slice(0, end), previous);
+        expect(html(lexed)).toBe(markdownToHtml(doc.slice(0, end).replace(/\r\n?/g, "\n"), options));
+        // Every block but the last two of the previous frame is the same object, so its HTML is not rendered again.
+        if (previous) for (let i = 0; i < previous.blocks.length - 2; i++) expect(lexed.blocks[i]).toBe(previous.blocks[i]);
+      }
+    }
+  });
+
+  it("lex every frame whole once a link reference definition shows up, since it reaches back", () => {
+    let lexed = lexMarkdown("See [the docs][d].\n\nMore.\n\nAnd more.\n\n");
+    lexed = lexMarkdown("See [the docs][d].\n\nMore.\n\nAnd more.\n\n[d]: https://x.y\n", lexed);
+    expect(html(lexed)).toContain('<a href="https://x.y">the docs</a>');
+    const next = lexMarkdown(`${lexed.text}\nTail.`, lexed);
+    expect(next.blocks[0]).not.toBe(lexed.blocks[0]);
+    expect(html(next)).toBe(markdownToHtml(next.text, options));
   });
 });
 
