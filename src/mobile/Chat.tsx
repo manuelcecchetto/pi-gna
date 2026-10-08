@@ -1,7 +1,7 @@
 // One chat: join it on the host (open, or attach to a live one), show its transcript and approvals, and let go on leave.
 // Leaving detaches only: the host keeps the run going (docs/REMOTE.md section 5).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Globe, ListChevronsDownUp, ListChevronsUpDown } from "../renderer/src/components/icons";
+import { ListChevronsDownUp, ListChevronsUpDown, PanelRight } from "../renderer/src/components/icons";
 import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
 import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";
@@ -125,7 +125,7 @@ function BrowserButton({ client, handle, onOpen }: { client: HostClient; handle:
   const label = tabs.length ? `Browser, ${tabs.length} tab${tabs.length === 1 ? "" : "s"}` : "Browser";
   return (
     <button type="button" aria-label={label} data-testid="open-browser" onClick={onOpen} className={`relative grid h-11 w-11 shrink-0 place-items-center ${busy ? "text-accent" : "text-muted"}`}>
-      <Globe size={18} className={busy ? "animate-pulse" : undefined} />
+      <PanelRight size={18} className={busy ? "animate-pulse" : undefined} />
       {tabs.length > 0 && <span className="absolute right-1.5 top-2 min-w-4 rounded-full bg-raised px-1 text-center text-[10px] leading-4 text-fg">{tabs.length}</span>}
     </button>
   );
