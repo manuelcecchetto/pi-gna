@@ -10,6 +10,7 @@ const calls: unknown[][] = [];
 const record = (name: string) => (...args: unknown[]) => (calls.push([name, ...args]), Promise.resolve({ name }));
 const deps = {
   shellEnv: Promise.resolve(),
+  piDirs: Promise.resolve(),
   host: { respondDialog: (...args: unknown[]) => calls.push(["respondDialog", ...args]) },
   tasks: { start: record("tasks.start"), addCard: record("tasks.addCard"), send: record("tasks.send") },
   board: {},
@@ -154,6 +155,41 @@ describe("host methods table", () => {
   it("maps positional IPC arguments onto the argument object", () => {
     const route = IPC_ROUTES.find((r) => r.channel === IPC.boardApply);
     expect(route?.args({ type: "remove", id: "a" }, 4)).toEqual({ op: { type: "remove", id: "a" }, baseRev: 4 });
+  });
+});
+
+describe("before the login shell answers", () => {
+  // A Finder launch: pi's folders came from the last launch, the rest of the environment takes 1–2 s more.
+  const waiting = createHostCore({ ...deps, shellEnv: new Promise<void>(() => undefined) });
+  const settled = (value: unknown) => Promise.race([Promise.resolve(value).then(() => true), new Promise((resolve) => setTimeout(() => resolve(false), 50))]);
+
+  it("lists the sessions and reads pi's settings, which only read pi's files", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const saved = { dir: process.env.PI_CODING_AGENT_DIR, sessions: process.env.PI_CODING_AGENT_SESSION_DIR };
+    process.env.PI_CODING_AGENT_DIR = await mkdtemp(`${tmpdir()}/pigna-agent-`);
+    delete process.env.PI_CODING_AGENT_SESSION_DIR;
+    try {
+      // Each resolves although the shell never answers.
+      expect(await dispatch(waiting, desktop(), "chat.list", {})).toEqual([]);
+      await dispatch(waiting, desktop(), "chat.compactionSettings", {});
+      await dispatch(waiting, desktop(), "settings.pi", {});
+    } finally {
+      if (saved.dir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = saved.dir;
+      if (saved.sessions !== undefined) process.env.PI_CODING_AGENT_SESSION_DIR = saved.sessions;
+    }
+  });
+
+  it("holds what spawns a process", async () => {
+    calls.length = 0;
+    expect(await settled(dispatch(waiting, desktop(), "plugins.state", {}))).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it("holds even the file reads until pi's folders are known", async () => {
+    const first = createHostCore({ ...deps, shellEnv: new Promise<void>(() => undefined), piDirs: new Promise<void>(() => undefined) });
+    expect(await settled(dispatch(first, desktop(), "chat.list", {}))).toBe(false);
   });
 });
 

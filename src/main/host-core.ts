@@ -74,7 +74,10 @@ export interface HostNative {
 }
 
 export interface HostDeps {
+  /** The login shell's environment: spawning pi, rg, git, gh or node waits for it. */
   shellEnv: Promise<void>;
+  /** pi's folders (PI_CODING_AGENT_DIR can come from the login shell): reading pi's files waits only for these. */
+  piDirs: Promise<void>;
   host: SessionHost;
   tasks: ChatTasks;
   board: BoardStore;
@@ -203,8 +206,10 @@ const answerImages = new WeakMap<AssistantMessage, string[]>();
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
-  // pi, rg and session listing depend on the login-shell environment (PATH, PI_CODING_AGENT_DIR, API keys).
+  // Spawning pi, rg, git, gh or node needs the login-shell environment (PATH, API keys); reading pi's files needs only
+  // its folders (PI_CODING_AGENT_DIR), which are known sooner.
   const env = () => deps.shellEnv;
+  const piDirs = () => deps.piDirs;
   /** clientId -> when it last asked for a Computer Use preview. */
   const previews = new Map<string, number>();
   /** A live chat's directory and the folders whose files it may open on a phone: the directory and its project. */
@@ -263,7 +268,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
   };
   return {
     "app.info": any("remote", () => deps.app),
-    "chat.list": any("remote", async () => (await env(), listSessions())),
+    "chat.list": any("remote", async () => (await piDirs(), listSessions())),
     "chat.open": any<{ request: OpenSessionRequest }>("remote", async (ctx, { request }) => {
       await env();
       const opened = await host.open(request, { client: presence(ctx) });
@@ -327,7 +332,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId, attachments, annotations);
     }),
     "chat.files": any<{ cwd: string }>("remote", async (_ctx, { cwd }) => (await env(), listFiles(cwd))),
-    "chat.compactionSettings": any("remote", async () => (await env(), readCompactionSettings())),
+    "chat.compactionSettings": any("remote", async () => (await piDirs(), readCompactionSettings())),
     "fs.browseFolders": any<{ path?: string; files?: boolean; hidden?: boolean }>("remote", (_ctx, { path, files, hidden }) => browse(deps.app.homeDir, path, files === true, hidden === true)),
     "uploads.discard": any<{ id: string }>("remote", async (ctx, { id }) => {
       await deps.uploads.discard(deviceOf(ctx), id);
@@ -611,14 +616,14 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       if (op?.type === "yolo" && ctx.client !== "desktop") throw new HostError("scope_denied", "yolo can only be changed on the Mac");
       return settings.apply(op, baseRev);
     }),
-    // PI_CODING_AGENT_DIR can come from the login shell.
     "ui.get": any("remote", () => uiState.get()),
     "ui.apply": any<{ op: UiOp; baseRev?: number }>("remote", (_ctx, { op, baseRev }) => uiState.apply(op, baseRev)),
     "ui.importLegacy": any<{ ui: unknown }>("desktop", async (_ctx, { ui }) => (await uiState.importLegacy(ui), null)),
-    "settings.pi": any("remote", async () => (await env(), readPiSettings())),
-    "settings.setPi": any<{ patch: unknown }>("remote", async (_ctx, { patch }) => (await env(), writePiSettings(patch))),
+    // pi's settings.json moves with PI_CODING_AGENT_DIR, which can come from the login shell.
+    "settings.pi": any("remote", async () => (await piDirs(), readPiSettings())),
+    "settings.setPi": any<{ patch: unknown }>("remote", async (_ctx, { patch }) => (await piDirs(), writePiSettings(patch))),
     "settings.revealPi": any("desktop", async () => {
-      await env();
+      await piDirs();
       native.showItemInFolder((await readPiSettings()).path);
     }),
 

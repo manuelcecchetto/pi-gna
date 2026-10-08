@@ -151,7 +151,10 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   default session grants only `clipboard-sanitized-write`; `<webview>` is refused.
 - **Launch modes.** From a terminal, `PIGNA_CWD` carries the launch directory and the environment is the
   shell's. From Finder the cwd is `/` (new chats start in your home) and `shell-env.ts` runs `$SHELL -ilc` once
-  (10 s timeout) in parallel with window creation; IPC that spawns pi or `rg` waits for it. To test a Finder
+  (10 s timeout) in parallel with window creation; IPC that spawns pi, `rg`, git, `gh` or node waits for it. IPC
+  that only reads pi's files (`chat.list`, pi's settings) waits only for pi's folders: `PI_CODING_AGENT_DIR` and
+  `PI_CODING_AGENT_SESSION_DIR` from the last good shell read, kept in `<userData>/shell-dirs.json` and applied at
+  once (the first launch waits for the shell), so the sidebar fills before the shell answers. To test a Finder
   launch, scrub the environment: `open` passes the caller's (including `PIGNA_CWD` from the pi-gna session an
   agent runs in), so use `env -i HOME="$HOME" USER="$USER" SHELL="$SHELL" PATH=/usr/bin:/bin open -n -g <app>
   --env PIGNA_USER_DATA=/tmp/<dir> --env PIGNA_BACKGROUND=1 --args --remote-debugging-port=<port>`.

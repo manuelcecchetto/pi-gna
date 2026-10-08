@@ -61,7 +61,7 @@ import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-c
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
 import { listSessions, sessionsDir } from "./session-index";
-import { loadShellEnv } from "./shell-env";
+import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
 import { Updater } from "./updater";
 import { initialWindowState, readWindowState, trackWindowState } from "./window-state";
 
@@ -380,7 +380,7 @@ const remoteContext = (device: { id: string }, clientId: string): HostContext =>
   authUpdate: (update) => void remoteServer?.notify(clientId, device.id, { kind: "providers.login", update }),
 });
 
-function registerIpc(shellEnv: Promise<void>): void {
+function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
   const tasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv });
   atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
   // Nothing listens until remote access is turned on in Settings (RemoteHost.sync, from applySettings).
@@ -412,6 +412,7 @@ function registerIpc(shellEnv: Promise<void>): void {
   });
   const core = createHostCore({
     shellEnv,
+    piDirs,
     devices,
     push: pushService,
     uploads,
@@ -611,7 +612,7 @@ function init(): void {
   registerAppScheme();
   // Set before ready so Electron never builds its default menu (performance checklist).
   buildMenu();
-  const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv() : Promise.resolve();
+  const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv(join(app.getPath("userData"), "shell-dirs.json")) : LAUNCH_ENV;
 
   updater = new Updater(logFile, (state) => publish({ kind: "update", state }));
   // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
