@@ -56,14 +56,15 @@ const current = (href: string) => path === href || (href !== '/' && path.startsW
 </header>
 
 <style>
+  /* Solid, with no backdrop-filter: Safari 26 on iPhone paints a sticky top bar's color into its own minimized
+     toolbar only when it can sample it (a backdrop-filter stops that, WebKit bug 319479). A frosted header let the
+     page scroll by above it. */
   .header {
     position: sticky;
     top: 0;
     z-index: 50;
     view-transition-name: header;
-    background: color-mix(in srgb, var(--paper) 86%, transparent);
-    backdrop-filter: blur(14px) saturate(1.4);
-    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    background: var(--paper);
     border-bottom: 2.5px solid transparent;
   }
 
