@@ -90,17 +90,21 @@ describe("lament ops", () => {
     for (const op of bad) expect(() => applyLamentOp(laments, op as LamentOp, 1)).toThrow(LamentError);
   });
 
-  it("lists a project's open laments worst first, then the most recent; resolved ones the most recent first", () => {
+  it("lists a project's open and resolved laments worst first, then the most recent", () => {
     const laments = run([
       file("aaaaaa", "annoying"),
       file("bbbbbb", "blocking"),
       file("cccccc", "annoying"),
       file("dddddd", "costly", "/other"),
       file("eeeeee", "blocking"),
+      file("ffffff", "annoying"),
+      file("gggggg", "annoying"),
       { type: "resolve", id: "eeeeee", resolved: true },
+      { type: "resolve", id: "ffffff", resolved: true },
+      { type: "resolve", id: "gggggg", resolved: true },
     ]);
     expect(projectLaments(laments, "/repo").map((lament) => lament.id)).toEqual(["bbbbbb", "cccccc", "aaaaaa"]);
-    expect(projectLaments(laments, "/repo", true).map((lament) => lament.id)).toEqual(["eeeeee"]);
+    expect(projectLaments(laments, "/repo", true).map((lament) => lament.id)).toEqual(["eeeeee", "gggggg", "ffffff"]);
     expect(projectLaments(laments, "/other").map((lament) => lament.id)).toEqual(["dddddd"]);
   });
 

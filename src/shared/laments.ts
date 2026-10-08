@@ -93,7 +93,7 @@ export function lamentSeverity(lament: Lament): Severity {
 export function projectLaments(laments: Laments, cwd: string, resolved = false): Lament[] {
   return laments.laments
     .filter((lament) => lament.cwd === cwd && Boolean(lament.resolvedAt) === resolved)
-    .sort((a, b) => (resolved ? 0 : rank(lamentSeverity(b)) - rank(lamentSeverity(a))) || b.updatedAt - a.updatedAt);
+    .sort((a, b) => rank(lamentSeverity(b)) - rank(lamentSeverity(a)) || b.updatedAt - a.updatedAt);
 }
 
 export function freshLamentId(laments: Laments, random: () => number = Math.random): string {
