@@ -98,6 +98,23 @@ describe("session registry", () => {
     expect(host.presence(first.handle).map((c) => c.clientId)).toEqual(["a", "b"]);
   });
 
+  it("joins a live chat without reading its file again: the host's state is newer, and comes through attach", async () => {
+    const { host } = await setup();
+    let reads = 0;
+    file.read = async () => (reads++, []);
+    try {
+      const { handle } = await host.open(request, { client: A });
+      fake.pis[0]!.handlers.onRecords(assistantTurn(1));
+      const second = await host.open(request, { client: B });
+      expect(second).toEqual({ handle, reused: true, entries: [] });
+      expect(reads).toBe(1);
+      expect(host.presence(handle).map((c) => c.clientId)).toEqual(["a", "b"]);
+      expect(host.stateOf(handle)!.items.map((item) => item.kind)).toEqual(["user", "assistant"]);
+    } finally {
+      file.read = async () => [];
+    }
+  });
+
   describe("pi boots while the session file is read", () => {
     const old = { type: "message", id: "e1", parentId: null, timestamp: "2026-10-08T00:00:00.000Z", message: { role: "user", content: "old", timestamp: 1 } };
     /** The next reads wait for `finish` (or `fail`); `reads` counts them. */
@@ -125,7 +142,7 @@ describe("session registry", () => {
         expect(host.attentionAll()).toEqual([]);
         read.finish([old]);
         const [a, b] = await Promise.all([first, second]);
-        expect(b).toMatchObject({ handle: a.handle, reused: true, entries: [old] });
+        expect(b).toEqual({ handle: a.handle, reused: true, entries: [] });
         expect(a.entries).toEqual([old]);
         expect(read.reads).toBe(1);
         expect(fake.pis).toHaveLength(1);

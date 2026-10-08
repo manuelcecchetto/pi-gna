@@ -717,6 +717,8 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   session file, so pi's boot no longer waits behind the read. Until the history is in, the chat is registered (one pi
   per file) but holds what pi says, including its exit, and applies it after the history in the old order; a second
   open of the file waits for that same read and joins. A failed read stops the booting pi without publishing anything.
+  Joining a live chat never reads the file: it returns no entries, and the joiner takes the host's state (newer than
+  the file) through `chat.attach`, as the desktop's `adopt` and the phone already do.
 - **Many clients.** Prompts from two clients arrive in order (a send while running is a steer). Dialogs and approvals:
   first answer wins, the rest get `already_answered` and drop the card on `dialog_resolved`. Store text edits conflict by
   `baseRev` (`409 conflict`); structural ops are last-writer-wins.

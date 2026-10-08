@@ -487,7 +487,7 @@ export interface OpenSessionResult {
   handle: string;
   /** The file was already live: this joined its chat instead of spawning pi. */
   reused?: boolean;
-  /** Active branch of the session file (root -> leaf), empty for new sessions. */
+  /** Active branch of the session file (root -> leaf); empty for new sessions and when `reused` (attach for the live state). */
   entries: SessionEntry[];
 }
 

@@ -167,14 +167,15 @@ export class SessionHost {
   }
 
   /**
-   * Open a chat, or join the live one when `sessionPath` is already open (the existing handle comes back).
+   * Open a chat, or join the live one when `sessionPath` is already open (the existing handle comes back, with no
+   * entries: the live state is newer than the file, and the joiner reads it through `chat.attach`).
    * `request.handle` is honored only while the desktop still picks its own; the host issues one otherwise.
    * The caller gets a lease: `client` (attach/detach) or `hold` (released by `release`).
    */
   async open(request: OpenSessionRequest, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
     const { cwd, sessionPath, atp } = request;
     const existing = sessionPath ? this.byFile.get(sessionPath) : undefined;
-    if (existing && this.live.has(existing)) return this.join(existing, sessionPath!, lease);
+    if (existing && this.live.has(existing)) return this.join(existing, lease);
     if (request.handle !== undefined && (!HANDLE.test(request.handle) || this.live.has(request.handle))) throw new Error("invalid session handle");
     const handle = request.handle ?? this.newHandle();
     if (atp && ((atp.role !== "worker" && atp.role !== "orchestrator") || (atp.plan !== undefined && !isPlanPath(atp.plan)))) throw new Error("invalid ATP session");
@@ -191,7 +192,7 @@ export class SessionHost {
     if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
     // A second open of the same file may have started its pi while this one resolved trust and features.
     const raced = sessionPath ? this.byFile.get(sessionPath) : undefined;
-    if (raced && this.live.has(raced)) return this.join(raced, sessionPath!, lease);
+    if (raced && this.live.has(raced)) return this.join(raced, lease);
     // pi boots (seconds) while the session file is read below; a failed read stops it without a trace.
     let abandoned = false;
     const pi = new PiProcess(
@@ -259,16 +260,11 @@ export class SessionHost {
     return { handle, entries: history };
   }
 
-  /** Join the chat that has the file open, once its history is in (the file is read again when it already was). */
-  private async join(handle: string, sessionPath: string, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
-    const loading = this.live.get(handle)?.loading;
-    if (!loading) {
-      this.lease(handle, lease);
-      return { handle, reused: true, entries: await readActiveBranch(sessionPath) };
-    }
-    const entries = await loading.entries;
+  /** Join the chat that has the file open, once its history is in; the file is not read again. */
+  private async join(handle: string, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
+    await this.live.get(handle)?.loading?.entries;
     this.lease(handle, lease);
-    return { handle, reused: true, entries };
+    return { handle, reused: true, entries: [] };
   }
 
   /** pi's process ended: settle what waited on it and forget the chat. */
