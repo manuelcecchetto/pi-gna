@@ -36,6 +36,13 @@ appear by step: `data-at="3"` shows from step 3, `data-off="5"` hides from step 
 console to hold a step. Every demo has a Pause button; with reduced motion it holds the last step instead. Keep them true to the app: pi's Computer Use cursor is the 🤌 hand from `native/computer-use`, and the shared
 browser has no agent cursor.
 
+### Pigna's reactions
+
+Poking the hero toggles classes (`jumping`, `is-happy`) for about a second. Keep one-shot animations such as the
+entrance on a different element from the toggled ones: when a class that swaps an element's `animation` comes off, the
+element's own animation replays from the start (that once made Pigna shrink to 70% after every poke). Review a
+reaction until its last class is gone, not only while it plays.
+
 ## Deploy
 
 Pushing to `main` deploys: [`.github/workflows/site.yml`](../.github/workflows/site.yml) runs when `site/`,
