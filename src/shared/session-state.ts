@@ -19,7 +19,7 @@ import type {
   ToolResultLike,
   UserMessage,
 } from "./protocol";
-import { parsePartialJson } from "./partial-json";
+import { appendPartialJson, completePartialJson, EMPTY_PARTIAL_JSON, type PartialJson } from "./partial-json";
 import { isTriage } from "./task-prompts";
 import { type StreamClock, tickStream } from "./token-rate";
 
@@ -61,8 +61,8 @@ export type Item =
       key: string;
       message: AssistantMessage;
       streaming: boolean;
-      /** Raw argument JSON per content index while a tool call streams. */
-      partialArgs?: Record<number, string>;
+      /** Argument JSON scanned so far per content index while a tool call streams. */
+      partialArgs?: Record<number, StreamingArgs>;
       times?: Record<number, BlockTime>;
       /** Time spent streaming, for the tok/s readout. */
       clock?: StreamClock;
@@ -74,6 +74,17 @@ export type Item =
   | { kind: "notice"; key: string; level: "info" | "error"; text: string };
 
 export type AssistantItem = Extract<Item, { kind: "assistant" }>;
+
+/** A streaming tool call's arguments and when they were last parsed into the block. */
+export interface StreamingArgs {
+  json: PartialJson;
+  /** Unset until the first parse. */
+  parsedAt?: number;
+}
+
+/** Arguments up to this size parse on every delta; larger ones at most every ARGS_PARSE_MS. */
+const ARGS_PARSE_EVERY_DELTA = 8 * 1024;
+const ARGS_PARSE_MS = 100;
 
 export interface SessionState {
   handle: string;
@@ -519,13 +530,18 @@ function updateAssistant(state: SessionState, event: AssistantMessageEvent, usag
       break;
     case "toolcall_start":
       content[i] = { type: "toolCall", id: event.id, name: event.toolName, arguments: {} };
-      partialArgs = { ...partialArgs, [i]: "" };
+      partialArgs = { ...partialArgs, [i]: { json: EMPTY_PARTIAL_JSON } };
       times[i] = { start: now };
       break;
     case "toolcall_delta": {
-      const raw = (partialArgs?.[i] ?? "") + event.delta;
-      partialArgs = { ...partialArgs, [i]: raw };
-      if (block?.type === "toolCall") content[i] = { ...block, arguments: parsePartialJson(raw) ?? block.arguments };
+      // Each delta scans only its own text; the whole text is parsed again only when it is small or
+      // ARGS_PARSE_MS has passed (toolcall_end replaces the arguments with the final ones anyway).
+      const previous = partialArgs?.[i];
+      const json = appendPartialJson(previous?.json ?? EMPTY_PARTIAL_JSON, event.delta);
+      const due = json.text.length <= ARGS_PARSE_EVERY_DELTA || previous?.parsedAt === undefined || now - previous.parsedAt >= ARGS_PARSE_MS;
+      const parsed = due && block?.type === "toolCall" ? completePartialJson(json) : undefined;
+      if (parsed && block?.type === "toolCall") content[i] = { ...block, arguments: parsed };
+      partialArgs = { ...partialArgs, [i]: { json, parsedAt: due ? now : previous?.parsedAt } };
       break;
     }
     case "toolcall_end": {

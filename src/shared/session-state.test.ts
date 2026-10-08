@@ -183,3 +183,54 @@ describe("hydrate", () => {
     expect(shape(again)).toEqual(shape(hydrate(createSession("h", "/repo"), entries)));
   });
 });
+
+describe("streaming tool-call arguments", () => {
+  const start = (state = play([{ type: "agent_start" }, ...userTurn("write it")])): SessionState =>
+    play(
+      [
+        { type: "message_start", message: assistant([], "pending") },
+        { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id: "w1", toolName: "write" } },
+      ],
+      state,
+    );
+  const delta = (state: SessionState, text: string, now: number): SessionState =>
+    reduceHostEvent(state, { kind: "rpc", record: { type: "message_update", assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: text } } }, now);
+  const args = (state: SessionState) => {
+    const item = state.items[1];
+    return item?.kind === "assistant" && item.message.content[0]?.type === "toolCall" ? item.message.content[0].arguments : undefined;
+  };
+
+  it("parses small arguments on every delta and large ones at most every 100 ms", () => {
+    let state = delta(start(), '{"path": "/repo/a.ts", "content": "', 10_000);
+    expect(args(state)).toEqual({ path: "/repo/a.ts", content: "" });
+    state = delta(state, "x".repeat(10_000), 10_100);
+    expect((args(state)?.content as string).length).toBe(10_000);
+    state = delta(state, "y", 10_150); // large and parsed 50 ms ago: keeps the earlier arguments
+    expect((args(state)?.content as string).length).toBe(10_000);
+    state = delta(state, "z", 10_200);
+    expect(args(state)?.content).toBe("x".repeat(10_000) + "yz");
+  });
+
+  it("streams a 100 KB write chunk by chunk and ends with the final arguments", () => {
+    const final = { path: "/repo/big.ts", content: 'const a = "b\\n";\n'.repeat(6_000) };
+    const text = JSON.stringify(final);
+    expect(text.length).toBeGreaterThan(100_000);
+    let state = start();
+    let shown = 0;
+    for (let i = 0, now = 0; i < text.length; i += 40, now += 2) {
+      state = delta(state, text.slice(i, i + 40), now);
+      const content = args(state)?.content;
+      if (typeof content === "string") {
+        expect(content.length).toBeGreaterThanOrEqual(shown);
+        shown = content.length;
+      }
+    }
+    expect(args(state)?.path).toBe("/repo/big.ts");
+    expect(shown).toBeGreaterThan(90_000);
+    const call: ToolCall = { type: "toolCall", id: "w1", name: "write", arguments: final };
+    state = play([{ type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall: call } }], state);
+    expect(args(state)).toEqual(final);
+    const item = state.items[1];
+    expect(item?.kind === "assistant" && item.partialArgs).toEqual({});
+  });
+});

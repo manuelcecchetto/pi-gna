@@ -6,6 +6,8 @@ moves those lines under the new version, and they become its GitHub release note
 ## Unreleased
 
 - Long chats open much faster: reading a chat's history no longer slows down with its length (an 11,500-entry chat took 3.6 s before the transcript could show, now under 10 ms).
+- Large file writes stream smoothly: the live arguments of a write or edit no longer get slower to update as they grow (100 KB of streamed arguments cost about 490 ms of parsing in each window and phone, now about 20 ms).
+
 ## 0.9.1 - 2026-10-08
 
 - Inline visuals can animate: agents can draw a flow that plays through its stages (work handed off, sent back, built in parallel) with Pause, Restart, speed and clickable stage chips. It plays once and stops on its last frame; with reduced motion it opens on the last frame. The visual prompt no longer sets a size budget beyond the 64 KB cap.
