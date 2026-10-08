@@ -83,6 +83,12 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Tilted bands and wide art bleed sideways: clip them per region. Clipping on body moves to the viewport, and iOS
+   Safari still lets you pan a viewport whose content is wider than the screen. */
+body > main,
+body > footer {
   overflow-x: clip;
 }
 
