@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "./protocol";
 import type { HostEvent } from "./host-api";
-import { attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
+import { attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, reduceSessionEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
 
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -105,5 +105,81 @@ describe("dialog_resolved / lease / closed host events", () => {
   it("lease and closed events do not change the transcript state", () => {
     expect(reduceHostEvent(open, { kind: "lease", clients: [] }, 2)).toBe(open);
     expect(reduceHostEvent(open, { kind: "closed", by: "host" }, 2)).toBe(open);
+  });
+});
+
+describe("hydrate", () => {
+  const at = (n: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString();
+  let id = 0;
+  const entry = <T extends Omit<SessionEntry, "id" | "parentId" | "timestamp">>(body: T, second = id) => ({ id: `e${++id}`, parentId: null, timestamp: at(second), ...body }) as unknown as SessionEntry;
+  const result = (toolCallId: string, isError = false) => entry({ type: "message", message: { role: "toolResult", toolCallId, toolName: "read", content: [{ type: "text", text: toolCallId }], isError, timestamp: 1 } });
+  const call = (callId: string): ToolCall => ({ ...readCall, id: callId });
+  const entries: SessionEntry[] = [
+    entry({ type: "model_change", provider: "p", modelId: "m" }),
+    entry({ type: "thinking_level_change", thinkingLevel: "high" }),
+    entry({ type: "session_info", name: "First name" }),
+    entry({ type: "message", message: { role: "user", content: "hi", timestamp: 1 } }),
+    entry({ type: "message", message: assistant([call("c1"), call("c2")], "toolUse") }),
+    result("c1"),
+    // After a tool-using turn: a steer.
+    entry({ type: "message", message: { role: "user", content: "also this", timestamp: 1 } }),
+    result("c2", true),
+    // A result before its call.
+    result("c3"),
+    entry({ type: "message", message: assistant([call("c3")], "toolUse") }),
+    entry({ type: "compaction", summary: "Earlier", tokensBefore: 1000, firstKeptEntryId: "e4" }),
+    entry({ type: "branch_summary", fromId: "e5", summary: "Tried another way" }),
+    entry({ type: "custom_message", customType: "note", content: "shown", display: true }),
+    entry({ type: "custom_message", customType: "note", content: "hidden", display: false }),
+    entry({ type: "message", message: { role: "custom", customType: "ext", content: "from an extension", display: true, timestamp: 1 } }),
+    entry({ type: "message", message: { role: "bashExecution", command: "ls", output: "a", exitCode: 0, cancelled: false, truncated: false, timestamp: 1 } }),
+    entry({ type: "message", message: assistant([{ type: "text", text: "done" }]) }),
+    entry({ type: "message", message: { role: "user", content: "follow-up", timestamp: 1 } }),
+    entry({ type: "custom", customType: "x" } as never),
+    entry({ type: "session_info", name: "" }),
+  ];
+
+  /** The live reducer, one immutable step per entry: what hydrate must produce. */
+  function fold(start: SessionState, list: SessionEntry[]): SessionState {
+    return list.reduce((state, item) => {
+      const now = Date.parse(item.timestamp);
+      const end = (message: Parameters<typeof reduceSessionEvent>[1] & { type: "message_end" }) => reduceSessionEvent(state, message, now);
+      switch (item.type) {
+        case "message":
+          return end({ type: "message_end", message: item.message });
+        case "compaction":
+          return end({ type: "message_end", message: { role: "compactionSummary", summary: item.summary, tokensBefore: item.tokensBefore, timestamp: now } });
+        case "branch_summary":
+          return end({ type: "message_end", message: { role: "branchSummary", summary: item.summary, fromId: item.fromId, timestamp: now } });
+        case "custom_message":
+          return item.display ? reduceSessionEvent(state, { type: "message_end", message: { role: "custom", customType: item.customType, content: item.content, display: true, details: item.details, timestamp: now } }, 0) : state;
+        case "session_info":
+          return reduceSessionEvent(state, { type: "session_info_changed", name: item.name ?? "" }, now);
+        case "thinking_level_change":
+          return reduceSessionEvent(state, { type: "thinking_level_changed", level: item.thinkingLevel }, now);
+        default:
+          return state;
+      }
+    }, start);
+  }
+  const shape = (state: SessionState) => ({ items: state.items, tools: state.tools, seq: state.seq, name: state.name, thinkingLevel: state.thinkingLevel });
+
+  it("builds what folding the entries through the live reducer builds", () => {
+    const hydrated = hydrate(createSession("h", "/repo"), entries);
+    expect(shape(hydrated)).toEqual(shape(fold(createSession("h", "/repo"), entries)));
+    expect(hydrated.modelRef).toEqual({ provider: "p", modelId: "m" });
+    expect(hydrated.items.filter((item) => item.kind === "user").map((item) => item.kind === "user" && !!item.steer)).toEqual([false, true, false]);
+    expect(Object.keys(hydrated.tools)).toEqual(["c1", "c2", "c3"]);
+  });
+
+  it("leaves the state it starts from untouched", () => {
+    const start = hydrate(createSession("h", "/repo"), entries.slice(0, 6));
+    const items = start.items.slice();
+    const tools = { ...start.tools };
+    const again = hydrate(start, entries);
+    expect(start.items).toEqual(items);
+    expect(start.tools).toEqual(tools);
+    expect(again.items).not.toBe(start.items);
+    expect(shape(again)).toEqual(shape(hydrate(createSession("h", "/repo"), entries)));
   });
 });

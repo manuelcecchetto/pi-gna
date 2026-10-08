@@ -1,5 +1,6 @@
 // Pure session reducer: pi RPC events (and session-file hydration) -> renderable session state.
-// Immutable updates so unchanged transcript items keep their identity for memoized rendering.
+// Immutable updates so unchanged transcript items keep their identity for memoized rendering; hydrate
+// alone mutates the fresh state it builds.
 import type { AtpSession } from "./atp";
 import type { HostEvent } from "./host-api";
 import type {
@@ -141,32 +142,36 @@ export function createSession(handle: string, cwd: string, sessionPath?: string,
 
 // ── Hydration ────────────────────────────────────────────────────────────────
 
+// Builds one new state, mutating only its own fresh items and tools: copying them per entry, as the live
+// reducer does, is quadratic (seconds for a 10k-entry session). Same keys and output as folding the entries
+// through the reducer.
 export function hydrate(state: SessionState, entries: SessionEntry[]): SessionState {
-  let next: SessionState = { ...state, items: [], tools: {}, compacting: undefined, seq: 0 };
+  const next: SessionState = { ...state, items: [], tools: {}, compacting: undefined, seq: 0 };
+  const add = (message: AgentMessage, at: number) => applyChange(next, messageChange(next, message, at));
   for (const entry of entries) {
     switch (entry.type) {
       case "message":
-        next = addMessage(next, entry.message, Date.parse(entry.timestamp) || entry.message.timestamp);
+        add(entry.message, Date.parse(entry.timestamp) || entry.message.timestamp);
         break;
       case "compaction":
-        next = pushItem(next, { kind: "compaction", status: "done", summary: entry.summary, tokensBefore: entry.tokensBefore });
+        appendItem(next, { kind: "compaction", status: "done", summary: entry.summary, tokensBefore: entry.tokensBefore });
         break;
       case "branch_summary":
-        next = pushItem(next, { kind: "branch", summary: entry.summary });
+        appendItem(next, { kind: "branch", summary: entry.summary });
         break;
       case "custom_message":
         if (entry.display) {
-          next = addMessage(next, { role: "custom", customType: entry.customType, content: entry.content, display: true, details: entry.details, timestamp: Date.parse(entry.timestamp) }, 0);
+          add({ role: "custom", customType: entry.customType, content: entry.content, display: true, details: entry.details, timestamp: Date.parse(entry.timestamp) }, 0);
         }
         break;
       case "session_info":
-        next = { ...next, name: entry.name || undefined };
+        next.name = entry.name || undefined;
         break;
       case "model_change":
-        next = { ...next, modelRef: { provider: entry.provider, modelId: entry.modelId } };
+        next.modelRef = { provider: entry.provider, modelId: entry.modelId };
         break;
       case "thinking_level_change":
-        next = { ...next, thinkingLevel: entry.thinkingLevel };
+        next.thinkingLevel = entry.thinkingLevel;
         break;
     }
   }
@@ -174,10 +179,23 @@ export function hydrate(state: SessionState, entries: SessionEntry[]): SessionSt
   // fresh key after hydration so it cannot collide with the rebuilt history.
   if (state.compacting) {
     const { key: _key, ...pending } = state.compacting;
-    next = pushItem(next, pending);
-    next = { ...next, compacting: next.items.at(-1) as SessionState["compacting"] };
+    appendItem(next, pending);
+    next.compacting = next.items.at(-1) as SessionState["compacting"];
   }
   return next;
+}
+
+/** Hydration only: append to the state hydrate is building. */
+function appendItem(state: SessionState, item: NewItem): void {
+  state.seq += 1;
+  state.items.push({ ...item, key: `i${state.seq}` } as Item);
+}
+
+/** Hydration only: apply a message's change to the state hydrate is building. */
+function applyChange(state: SessionState, change: MessageChange): void {
+  if (!change) return;
+  if ("item" in change) appendItem(state, change.item);
+  else state.tools[change.tool] = { ...state.tools[change.tool], ...change.patch } as ToolRun;
 }
 
 // ── Host events ──────────────────────────────────────────────────────────────
@@ -371,7 +389,7 @@ export function userText(message: UserMessage): string {
  * turn: pi injects steers after the current tool calls, before the next model call. Every user message
  * after a tool result in the user's sessions is a steer, so this also classifies sessions read from disk.
  */
-function followsToolUse(state: SessionState): boolean {
+function followsToolUse(state: Pick<SessionState, "items">): boolean {
   const last = state.items.at(-1);
   return last?.kind === "assistant" && last.message.stopReason === "toolUse";
 }
@@ -386,33 +404,45 @@ function isLiveSteer(state: SessionState, message: UserMessage): boolean {
 
 // ── Messages ─────────────────────────────────────────────────────────────────
 
-function addMessage(state: SessionState, message: AgentMessage, at: number, steer = message.role === "user" && followsToolUse(state)): SessionState {
-  switch (message.role) {
-    case "user":
-      return pushItem(state, steer ? { kind: "user", message, steer: true } : { kind: "user", message });
-    case "assistant":
-      return pushItem(state, { kind: "assistant", message, streaming: false });
-    case "toolResult":
-      return setTool(state, message.toolCallId, {
-        status: message.isError ? "error" : "done",
-        result: { content: message.content, details: message.details },
-        endedAt: state.tools[message.toolCallId]?.endedAt ?? at,
-      });
-    case "bashExecution":
-      return pushItem(state, { kind: "bash", message });
-    case "custom":
-      return message.display ? pushItem(state, { kind: "custom", message }) : state;
-    case "compactionSummary":
-      return pushItem(state, { kind: "compaction", status: "done", summary: message.summary, tokensBefore: message.tokensBefore });
-    case "branchSummary":
-      return pushItem(state, { kind: "branch", summary: message.summary });
-    default:
-      return state;
-  }
+function addMessage(state: SessionState, message: AgentMessage, at: number, steer?: boolean): SessionState {
+  const change = messageChange(state, message, at, steer);
+  if (!change) return state;
+  return "item" in change ? pushItem(state, change.item) : setTool(state, change.tool, change.patch);
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 type NewItem = DistributiveOmit<Item, "key">;
+
+/** What a message adds: a transcript item, or a patch to its tool call's run. Applied immutably live, in place by hydrate. */
+type MessageChange = { item: NewItem } | { tool: string; patch: Partial<ToolRun> } | undefined;
+
+function messageChange(state: Pick<SessionState, "items" | "tools">, message: AgentMessage, at: number, steer = message.role === "user" && followsToolUse(state)): MessageChange {
+  switch (message.role) {
+    case "user":
+      return { item: steer ? { kind: "user", message, steer: true } : { kind: "user", message } };
+    case "assistant":
+      return { item: { kind: "assistant", message, streaming: false } };
+    case "toolResult":
+      return {
+        tool: message.toolCallId,
+        patch: {
+          status: message.isError ? "error" : "done",
+          result: { content: message.content, details: message.details },
+          endedAt: state.tools[message.toolCallId]?.endedAt ?? at,
+        },
+      };
+    case "bashExecution":
+      return { item: { kind: "bash", message } };
+    case "custom":
+      return message.display ? { item: { kind: "custom", message } } : undefined;
+    case "compactionSummary":
+      return { item: { kind: "compaction", status: "done", summary: message.summary, tokensBefore: message.tokensBefore } };
+    case "branchSummary":
+      return { item: { kind: "branch", summary: message.summary } };
+    default:
+      return undefined;
+  }
+}
 
 function pushItem(state: SessionState, item: NewItem): SessionState {
   const seq = state.seq + 1;
