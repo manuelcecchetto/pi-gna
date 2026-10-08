@@ -42,52 +42,54 @@ const arc = (e: Ellipse) =>
   <span class="ground" aria-hidden="true"></span>
 
   <button class="poke" type="button" aria-label="Poke Pigna, the pi-gna mascot">
-    <span class="jump">
-      <span class="bob">
-        <span class="rig">
-          <Image
-            src={base}
-            alt=""
-            widths={[380, 520, 700, 1018]}
-            sizes="(min-width: 1100px) 470px, (min-width: 760px) 40vw, 68vw"
-            loading="eager"
-            fetchpriority="high"
-            quality={88}
-            class="body"
-          />
-          <svg class="face" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-            <defs>
-              <clipPath id="hm-mouth"><path d={face.mouth} /></clipPath>
-            </defs>
-            <g class="brows">
-              <path class="brow brow-l" d={face['brow-l']} />
-              <path class="brow brow-r" d={face['brow-r']} />
-            </g>
-            <g class="look">
-              {
-                eyes.map(({ side, eye, shine }) => (
-                  <g class={`eye eye-${side}`}>
-                    <ellipse cx={eye.cx} cy={eye.cy} rx={eye.rx} ry={eye.ry} transform={rot(eye)} />
-                    <ellipse
-                      class="shine"
-                      cx={shine.cx}
-                      cy={shine.cy}
-                      rx={shine.rx}
-                      ry={shine.ry}
-                      transform={rot(shine)}
-                    />
-                  </g>
-                ))
-              }
-            </g>
-            <g class="joy">
-              {eyes.map(({ eye }) => <path d={arc(eye)} />)}
-            </g>
-            <g class="mouth">
-              <path d={face.mouth} />
-              <path class="tongue" d={face.tongue} clip-path="url(#hm-mouth)" />
-            </g>
-          </svg>
+    <span class="enter">
+      <span class="jump">
+        <span class="bob">
+          <span class="rig">
+            <Image
+              src={base}
+              alt=""
+              widths={[380, 520, 700, 1018]}
+              sizes="(min-width: 1100px) 470px, (min-width: 760px) 40vw, 68vw"
+              loading="eager"
+              fetchpriority="high"
+              quality={88}
+              class="body"
+            />
+            <svg class="face" viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+              <defs>
+                <clipPath id="hm-mouth"><path d={face.mouth} /></clipPath>
+              </defs>
+              <g class="brows">
+                <path class="brow brow-l" d={face['brow-l']} />
+                <path class="brow brow-r" d={face['brow-r']} />
+              </g>
+              <g class="look">
+                {
+                  eyes.map(({ side, eye, shine }) => (
+                    <g class={`eye eye-${side}`}>
+                      <ellipse cx={eye.cx} cy={eye.cy} rx={eye.rx} ry={eye.ry} transform={rot(eye)} />
+                      <ellipse
+                        class="shine"
+                        cx={shine.cx}
+                        cy={shine.cy}
+                        rx={shine.rx}
+                        ry={shine.ry}
+                        transform={rot(shine)}
+                      />
+                    </g>
+                  ))
+                }
+              </g>
+              <g class="joy">
+                {eyes.map(({ eye }) => <path d={arc(eye)} />)}
+              </g>
+              <g class="mouth">
+                <path d={face.mouth} />
+                <path class="tongue" d={face.tongue} clip-path="url(#hm-mouth)" />
+              </g>
+            </svg>
+          </span>
         </span>
       </span>
     </span>
@@ -299,6 +301,7 @@ const arc = (e: Ellipse) =>
     outline-offset: -10px;
   }
 
+  .enter,
   .jump,
   .bob,
   .rig {
@@ -308,7 +311,9 @@ const arc = (e: Ellipse) =>
     transform-origin: 50% 100%;
   }
 
-  .jump {
+  /* The entrance and the poke leap live on separate elements: when a leap ends, its element must not fall back to
+     an animation that would replay from the start. */
+  .enter {
     animation: enter 1s var(--spring) 0.15s both;
   }
 
