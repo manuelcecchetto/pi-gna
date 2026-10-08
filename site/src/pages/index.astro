@@ -154,7 +154,7 @@ const jsonLd = [
   .hero {
     position: relative;
     isolation: isolate;
-    padding-block: clamp(36px, 6vw, 80px) clamp(70px, 9vw, 120px);
+    padding-block: clamp(28px, min(6vw, 5svh), 80px) clamp(70px, 9vw, 120px);
   }
 
   .hero::before {
@@ -177,7 +177,7 @@ const jsonLd = [
 
   .hero-copy {
     display: grid;
-    gap: 26px;
+    gap: clamp(16px, 3svh, 26px);
     justify-items: start;
   }
 
@@ -259,8 +259,9 @@ const jsonLd = [
     text-underline-offset: 3px;
   }
 
+  /* Pigna fits the first screen: no taller than the window below the header and some air. */
   .hero-art {
-    width: min(100%, 470px);
+    width: min(100%, 470px, calc((100svh - 190px) * 1018 / 1464));
     justify-self: center;
     margin-right: clamp(0px, 3vw, 40px);
   }
@@ -371,7 +372,7 @@ const jsonLd = [
 
     .hero-art {
       order: -1;
-      width: min(64vw, 330px);
+      width: min(64vw, 330px, calc(50svh * 1018 / 1464));
       margin: 0 auto 8px;
     }
 

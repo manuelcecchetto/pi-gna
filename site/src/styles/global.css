@@ -182,8 +182,9 @@ pre {
 
 /* Type */
 
+/* Capped by height too, so a hero headline still leaves room on a short laptop window. */
 .display {
-  font-size: clamp(3.1rem, 8.4vw, 7.2rem);
+  font-size: clamp(3.1rem, min(8.4vw, 13svh), 7.2rem);
   font-weight: 800;
   line-height: 0.9;
   letter-spacing: -0.045em;
