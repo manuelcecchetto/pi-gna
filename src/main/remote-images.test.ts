@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import * as crypto from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
 import { RemoteImages } from "./remote-images";
+
+vi.mock("node:crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, createHash: vi.fn(actual.createHash) };
+});
 
 const big = (fill: string) => Buffer.alloc(20_000, fill).toString("base64");
 
@@ -22,6 +28,32 @@ describe("RemoteImages", () => {
     const svg = { type: "image", mimeType: "image/svg+xml", data: big("b") };
     const card = { mimeType: "image/png", data: big("c") };
     expect(JSON.parse(JSON.stringify([small, svg, card], images.replacer))).toEqual([small, svg, card]);
+  });
+
+  it("hashes a block once however often it is serialized, and again once edited", () => {
+    const images = new RemoteImages();
+    const block = { type: "image", mimeType: "image/png", data: big("d") };
+    const hashes = vi.mocked(crypto.createHash);
+    hashes.mockClear();
+    const first = JSON.stringify([block], images.replacer);
+    expect(JSON.stringify({ again: block }, images.replacer)).toBe(JSON.stringify({ again: JSON.parse(first)[0] }));
+    expect(hashes).toHaveBeenCalledTimes(1);
+    block.data = big("e");
+    const edited = JSON.parse(JSON.stringify(block, images.replacer)).url.split("/").at(-1);
+    expect(hashes).toHaveBeenCalledTimes(2);
+    expect(images.get(edited)?.bytes.equals(Buffer.from(block.data, "base64"))).toBe(true);
+  });
+
+  it("serves a known block again after its bytes were evicted", () => {
+    const one = big("1");
+    const images = new RemoteImages(one.length);
+    const block = { type: "image", mimeType: "image/png", data: one };
+    const url = (b: object) => JSON.parse(JSON.stringify(b, images.replacer)).url.split("/").at(-1);
+    const a = url(block);
+    url({ type: "image", mimeType: "image/png", data: big("2") });
+    expect(images.get(a)).toBeUndefined();
+    expect(url(block)).toBe(a);
+    expect(images.get(a)).toBeDefined();
   });
 
   it("evicts the least recently used images past the cap", () => {
