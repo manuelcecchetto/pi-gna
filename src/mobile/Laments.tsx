@@ -1,12 +1,12 @@
-// The phone's Laments page: one project's laments as on the desktop (Laments.tsx), worst first. A row opens to its
+// The phone's Laments page: one project's laments as on the desktop (Laments.tsx), worst first or newest first. A row opens to its
 // reports and the chats that filed them; the actions sheet starts a Fix chat on the Mac, marks resolved/reopens, deletes.
-import { ChevronRight, CircleCheck, MessagesSquare, MoreHorizontal, RotateCcw, Trash2, Wrench } from "../renderer/src/components/icons";
+import { ChevronRight, ChevronsUpDown, CircleCheck, MessagesSquare, MoreHorizontal, RotateCcw, Trash2, Wrench } from "../renderer/src/components/icons";
 import { useMemo, useState } from "react";
 import { Markdown } from "../renderer/src/components/Markdown";
 import { baseName, formatStamp, relativeTime } from "../renderer/src/lib/format";
 import { fixChat, lamentSnippet, reportChat, SEVERITY_TONE } from "../renderer/src/lib/laments";
 import { useStore } from "../renderer/src/lib/store";
-import { type Lament, type LamentOp, lamentSeverity, projectLaments, SEVERITY, type Severity } from "../shared/laments";
+import { LAMENT_SORTS, type Lament, type LamentOp, type LamentSort, lamentSeverity, projectLaments, SEVERITY, type Severity } from "../shared/laments";
 import type { HostClient } from "./client/host-client";
 import type { Route } from "./nav";
 import { Header } from "./Screens";
@@ -29,10 +29,11 @@ export function LamentsScreen({ client, cwd, push, back }: { client: HostClient;
   const laments = useStore(client.store, (s) => s.global.laments);
   const projects = useStore(client.store, (s) => s.global.projects) ?? [];
   const [resolved, setResolved] = useState(false);
+  const [sort, setSort] = useState<LamentSort>("worst");
   const [expanded, setExpanded] = useState<string>();
   const [menu, setMenu] = useState<{ id: string; confirmDelete?: boolean }>();
-  const open = useMemo(() => (laments ? projectLaments(laments, cwd) : []), [laments, cwd]);
-  const done = useMemo(() => (laments ? projectLaments(laments, cwd, true) : []), [laments, cwd]);
+  const open = useMemo(() => (laments ? projectLaments(laments, cwd, false, sort) : []), [laments, cwd, sort]);
+  const done = useMemo(() => (laments ? projectLaments(laments, cwd, true, sort) : []), [laments, cwd, sort]);
   const shown = resolved ? done : open;
   const target = menu && [...open, ...done].find((lament) => lament.id === menu.id);
 
@@ -67,6 +68,16 @@ export function LamentsScreen({ client, cwd, push, back }: { client: HostClient;
             <span className="font-mono text-[11px] text-faint">{tab.count}</span>
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => setSort(sort === "worst" ? "recent" : "worst")}
+          className="ml-auto flex min-h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] text-muted active:bg-raised"
+          aria-label={`Sorted ${LAMENT_SORTS[sort].toLowerCase()}; tap to sort ${LAMENT_SORTS[sort === "worst" ? "recent" : "worst"].toLowerCase()}`}
+          data-testid="lament-sort"
+        >
+          <ChevronsUpDown size={13} />
+          {LAMENT_SORTS[sort]}
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-6">
         {!laments && <div className="p-6 text-center text-[13.5px] text-faint">Loading…</div>}

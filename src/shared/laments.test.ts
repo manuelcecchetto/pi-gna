@@ -106,6 +106,8 @@ describe("lament ops", () => {
     expect(projectLaments(laments, "/repo").map((lament) => lament.id)).toEqual(["bbbbbb", "cccccc", "aaaaaa"]);
     expect(projectLaments(laments, "/repo", true).map((lament) => lament.id)).toEqual(["eeeeee", "gggggg", "ffffff"]);
     expect(projectLaments(laments, "/other").map((lament) => lament.id)).toEqual(["dddddd"]);
+    expect(projectLaments(laments, "/repo", false, "recent").map((lament) => lament.id)).toEqual(["cccccc", "bbbbbb", "aaaaaa"]);
+    expect(projectLaments(laments, "/repo", true, "recent").map((lament) => lament.id)).toEqual(["gggggg", "ffffff", "eeeeee"]);
   });
 
   it("reads a laments file, skipping malformed laments", () => {

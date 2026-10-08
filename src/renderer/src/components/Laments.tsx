@@ -1,10 +1,10 @@
 // The Laments page: one project's laments, which agents file with the lament tool when a tool or capability they
-// needed was missing, unavailable or failing. Worst first, each with the emoji and colored name of its severity; open one to read its
+// needed was missing, unavailable or failing. Worst first (or newest first, the switch on top), each with the emoji and colored name of its severity; open one to read its
 // reports, open the chat that filed it, have a new chat fix it in a git worktree (Fix), and mark it resolved once
 // the fix is in (a repeat reopens it).
 import { Angry, Check, ChevronRight, CircleCheck, LoaderCircle, MessagesSquare, RotateCcw, Trash2, Wrench } from "./icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { type Lament, type LamentFix, type LamentReport, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
+import { LAMENT_SORTS, type Lament, type LamentFix, type LamentReport, type LamentSort, lamentSeverity, projectLaments, SEVERITIES, SEVERITY, type Severity } from "../../../shared/laments";
 import { findSummary } from "../lib/board";
 import { baseName, formatStamp, relativeTime } from "../lib/format";
 import { fixChat, lamentProjects, lamentSnippet, reportChat, SEVERITY_TONE } from "../lib/laments";
@@ -28,11 +28,12 @@ export function LamentsPage({ page }: { page: PageState }) {
   const inset = useApp((state) => state.sidebar.collapsed);
   useNow(60_000); // relative times
   const [resolved, setResolved] = useState(false);
+  const [sort, setSort] = useState<LamentSort>("worst");
   const [expanded, setExpanded] = useState<string>();
   const [menu, setMenu] = useState<Menu>();
   const closeMenu = useCallback(() => setMenu(undefined), []);
-  const open = useMemo(() => projectLaments(laments, page.cwd), [laments, page.cwd]);
-  const done = useMemo(() => projectLaments(laments, page.cwd, true), [laments, page.cwd]);
+  const open = useMemo(() => projectLaments(laments, page.cwd, false, sort), [laments, page.cwd, sort]);
+  const done = useMemo(() => projectLaments(laments, page.cwd, true, sort), [laments, page.cwd, sort]);
   const switchable = useMemo(() => lamentProjects(laments, projects, page.cwd), [laments, projects, page.cwd]);
   const shown = resolved ? done : open;
 
@@ -72,6 +73,19 @@ export function LamentsPage({ page }: { page: PageState }) {
         <span className="text-[13.5px] font-medium text-fg">Laments</span>
         <ProjectSwitch cwd={page.cwd} options={switchable} openTitle="Open laments" onPick={(cwd) => showPage("laments", cwd)} />
         <div className="flex-1" />
+        <div className="no-drag flex items-center gap-0.5 rounded-lg border border-line p-0.5" role="group" aria-label="Sort laments">
+          {(Object.keys(LAMENT_SORTS) as LamentSort[]).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={sort === value}
+              onClick={() => setSort(value)}
+              className={`rounded-md px-2 py-0.5 text-[12.5px] ${sort === value ? "bg-raised text-fg" : "text-muted hover:text-fg"}`}
+            >
+              {LAMENT_SORTS[value]}
+            </button>
+          ))}
+        </div>
         <div className="no-drag flex items-center gap-0.5 rounded-lg border border-line p-0.5">
           {[
             { label: "Open", count: open.length, value: false },

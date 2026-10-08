@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Laments: a Worst first / Newest first switch on top of the Laments page, on the Mac and the phone. Resolved laments now sort worst first too, as the page said.
+
 ## 0.11.1 - 2026-10-10
 
 - Phone notifications keep working: a push that arrived while pi-gna was open on the iPhone showed nothing, and after a few of those iOS silently ended the subscription, so notifications stopped for good while the host still sent them. Every push now shows a notification, and Settings > Notifications on the phone shows Off when iOS has ended the subscription, so turning it on again restores it. If notifications stopped on your phone, turn them on again there once.

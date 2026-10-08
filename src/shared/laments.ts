@@ -14,6 +14,10 @@ export const SEVERITY: Record<Severity, { emoji: string; label: string; about: s
   blocking: { emoji: "🤬", label: "Blocking", about: "it could not be done or verified at all" },
 };
 
+/** How a Laments page orders its tab: worst first (then the most recent), or the most recent first. */
+export const LAMENT_SORTS = { worst: "Worst first", recent: "Newest first" } as const;
+export type LamentSort = keyof typeof LAMENT_SORTS;
+
 export const LAMENT_LIMITS = { title: 200, text: 8_000, reports: 30, fixes: 10, branch: 200 } as const;
 
 /** One time an agent hit the gap: what it tried, what was missing and how it worked around it (Markdown). */
@@ -89,11 +93,11 @@ export function lamentSeverity(lament: Lament): Severity {
   return lament.reports.reduce<Severity>((worst, report) => (rank(report.severity) > rank(worst) ? report.severity : worst), "annoying");
 }
 
-/** A project's laments, worst first, then the most recent. */
-export function projectLaments(laments: Laments, cwd: string, resolved = false): Lament[] {
+/** A project's laments, worst first, then the most recent (or by `sort`). */
+export function projectLaments(laments: Laments, cwd: string, resolved = false, sort: LamentSort = "worst"): Lament[] {
   return laments.laments
     .filter((lament) => lament.cwd === cwd && Boolean(lament.resolvedAt) === resolved)
-    .sort((a, b) => rank(lamentSeverity(b)) - rank(lamentSeverity(a)) || b.updatedAt - a.updatedAt);
+    .sort((a, b) => (sort === "worst" ? rank(lamentSeverity(b)) - rank(lamentSeverity(a)) : 0) || b.updatedAt - a.updatedAt);
 }
 
 export function freshLamentId(laments: Laments, random: () => number = Math.random): string {

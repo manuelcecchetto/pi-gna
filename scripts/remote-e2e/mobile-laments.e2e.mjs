@@ -28,6 +28,13 @@ async function lamentChecks({ phone, A, shot, text, exists, present }) {
   await sleep(400);
   const open = await titles();
   check(open.length === 2 && open[0].includes("record a browser tab") && open[1].includes("Slow grep"), "Open lists the worst lament first, then the milder one", open);
+  await click("lament-sort");
+  await until("newest first", async () => (await titles())[0]?.includes("Slow grep"));
+  check((await text()).includes("Newest first"), "the sort switch lists the newest lament first");
+  await shot("21-laments-newest");
+  await click("lament-sort");
+  await until("worst first again", async () => (await titles())[0]?.includes("record a browser tab"));
+  check((await text()).includes("Worst first"), "and switches back to worst first");
   const body = await text();
   check(/Open\s*2/.test(body) && /Resolved\s*1/.test(body) && body.includes("×2"), "the tabs carry counts and the repeat shows ×2");
   await shot("21-laments");
