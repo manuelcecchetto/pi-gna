@@ -30,6 +30,12 @@ const ORDERED = new Set<RpcCommand["type"]>(["prompt", "steer", "follow_up", "cl
 /** The desktop window: trusted, the default caller. */
 const DESKTOP: HostCtx = { caller: "desktop", clientId: "desktop", bootId: "" };
 const HANDLE = /^[a-z0-9]{6,32}$/;
+/** A chat nobody needs stops its pi after this long idle (`stopIdle`); it opens again from its session file. */
+const IDLE_STOP_MS = 30 * 60_000;
+/** At most this many idle chats keep their pi: past that, the ones idle longest stop first. */
+const IDLE_KEPT = 8;
+/** How often idle chats are looked for. */
+const IDLE_CHECK_MS = 60_000;
 /** Tools that would compete with the integrated browser (Stagehand's). Override with PIGNA_EXCLUDE_TOOLS. */
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
@@ -50,8 +56,11 @@ interface Live {
   state: SessionState;
   /** `seq` of the last event `state` reflects. */
   seq: number;
-  /** Leases of clients (a window, a phone); `viewing` is the foreground chat of that client. */
-  clients: Map<string, { actor: ClientPresence["actor"]; viewing: boolean }>;
+  /**
+   * Leases of clients (a window, a phone); `viewing` is the foreground chat of that client, `shown` a chat it has on
+   * screen whether or not it is focused (the window's active chat, also behind a page).
+   */
+  clients: Map<string, { actor: ClientPresence["actor"]; viewing: boolean; shown: boolean }>;
   /** Leases of host-side owners (an ATP runner, a background task): the chat has no viewer but must not be disposed. */
   holds: Set<string>;
   settled?: { outcome: RunOutcome; at: number };
@@ -66,6 +75,8 @@ interface Live {
   /** Streaming deltas waiting for the next frame (`coalesce.ts`): not in `state` or `seq` yet. */
   waiting: HostEvent[];
   flush?: ReturnType<typeof setTimeout>;
+  /** When something last happened in the chat (an event, a client showing it or leaving it): idle chats stop by it. */
+  active: number;
 }
 
 export interface ChatPage {
@@ -120,6 +131,7 @@ export class SessionHost {
     kanban: onDisk("resources", "kanban-extension.ts"),
     laments: onDisk("resources", "lament-extension.ts"),
   };
+  private readonly idleCheck: ReturnType<typeof setInterval>;
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
   /** Skills pi-gna bundles: pr-review, which the GitHub page's Review starts a chat with. */
@@ -135,7 +147,10 @@ export class SessionHost {
     private readonly features: () => Promise<SessionFeatures> = async () => NONE,
     /** The yolo setting, read at each approval: on, an approval is allowed without a card (`autoApprove`). */
     private readonly yolo: () => boolean = () => false,
-  ) {}
+  ) {
+    this.idleCheck = setInterval(() => this.stopIdle(), IDLE_CHECK_MS);
+    this.idleCheck.unref?.();
+  }
 
   /** Yolo: answer an approval from pi as the user would allow it, instead of showing its card. A confirm is a yes, a
    * select takes its allowing option (yoloOption); a select without one, and inputs, still go to the user. */
@@ -259,6 +274,7 @@ export class SessionHost {
       resolved: new Set(),
       loading: { entries, held: [] },
       waiting: [],
+      active: Date.now(),
     };
     this.live.set(handle, chat);
     if (sessionPath) this.byFile.set(sessionPath, handle);
@@ -330,7 +346,7 @@ export class SessionHost {
   private send(handle: string, command: RpcCommand): Promise<RpcResponse> {
     const chat = this.live.get(handle);
     if (!chat) return Promise.resolve({ type: "response", command: command.type, success: false, error: "session is not running" });
-    // A chat you prompted from pi-gna stays alive when everyone navigates away.
+    // A chat you prompted from pi-gna stays alive when everyone navigates away, until it is idle a while (`stopIdle`).
     if (command.type === "prompt" || command.type === "steer" || command.type === "follow_up") chat.state = { ...chat.state, prompted: true };
     const sent = chat.pi.send(command);
     // The host's snapshot is what a client joining later (phone, another window) shows: keep its model and thinking level current.
@@ -403,6 +419,7 @@ export class SessionHost {
     events = coalesce(chat.waiting.length ? [...chat.waiting.splice(0), ...events] : events);
     if (!events.length) return;
     const now = Date.now();
+    chat.active = now;
     let state = chat.state;
     const settledNow: RunOutcome[] = [];
     for (const event of events) {
@@ -504,7 +521,7 @@ export class SessionHost {
   attach(handle: string, client: ClientPresence): void {
     const chat = this.live.get(handle);
     if (!chat) throw new Error("session is not running");
-    if (!chat.clients.has(client.clientId)) chat.clients.set(client.clientId, { actor: client.actor, viewing: false });
+    if (!chat.clients.has(client.clientId)) chat.clients.set(client.clientId, { actor: client.actor, viewing: false, shown: false });
     this.presenceChanged(handle);
   }
 
@@ -529,6 +546,15 @@ export class SessionHost {
     this.presenceChanged(handle);
   }
 
+  /** A client has the chat on screen, or no longer has (focused or not, unlike `viewing`): its pi is not stopped for being idle. */
+  shown(handle: string, clientId: string, shown: boolean): void {
+    const chat = this.live.get(handle);
+    const client = chat?.clients.get(clientId);
+    if (!chat || !client || client.shown === shown) return;
+    client.shown = shown;
+    chat.active = Date.now();
+  }
+
   /** Who is attached to the chat, and which of them have it in the foreground. */
   presence(handle: string): ClientPresence[] {
     return [...(this.live.get(handle)?.clients ?? [])].map(([clientId, client]) => ({ clientId, actor: client.actor, viewing: client.viewing }));
@@ -547,6 +573,31 @@ export class SessionHost {
   private disposeIfIdle(handle: string): void {
     const chat = this.live.get(handle);
     if (chat && !chat.clients.size && !chat.holds.size && chat.state.phase !== "exited" && isDisposable(chat.state)) void this.close(handle, "host");
+  }
+
+  /**
+   * A chat whose pi can stop to free its memory: ready, nothing running or waiting on the user, read, held by nothing
+   * host-side and on no client's screen. ATP chats follow their own runner and page (`AtpRunner`).
+   */
+  private idle(chat: Live): boolean {
+    const { state } = chat;
+    if (state.phase !== "ready" || state.running || state.compacting || state.unread || state.dialogs.length || state.atp) return false;
+    return !chat.holds.size && ![...chat.clients.values()].some((client) => client.shown || client.viewing);
+  }
+
+  /**
+   * Stop the pi of chats idle for IDLE_STOP_MS, and of the idle chats past the IDLE_KEPT most recently active. Clients
+   * leave them (`closed`); the sidebar opens one again from its session file.
+   * @internal exposed for tests
+   */
+  stopIdle(now = Date.now()): void {
+    const idle = [...this.live].filter(([, chat]) => this.idle(chat)).sort(([, a], [, b]) => b.active - a.active);
+    idle.forEach(([handle, chat], index) => {
+      if (index < IDLE_KEPT && now - chat.active < IDLE_STOP_MS) return;
+      const minutes = Math.round((now - chat.active) / 60_000);
+      log.info(`pi·${handle.slice(0, 4)}`, `stopped: idle ${minutes} min${index >= IDLE_KEPT ? `, more than ${IDLE_KEPT} idle chats` : ""}`);
+      void this.close(handle, "host");
+    });
   }
 
   /** The directory a live chat runs in (its worktree for worktree chats). */
@@ -717,6 +768,7 @@ export class SessionHost {
   }
 
   async closeAll(): Promise<void> {
+    clearInterval(this.idleCheck);
     await Promise.all([...this.live.values()].map((chat) => chat.pi.close()));
   }
 }

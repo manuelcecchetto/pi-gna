@@ -459,6 +459,8 @@ export interface HostMethods {
   "chat.attach": { args: { handle: string }; result: (ChatSnapshot & { seq: number }) | { seq: number } | null };
   /** This client shows (or stops showing) the chat in the foreground; that marks a finished run as seen. */
   "chat.viewing": { args: { handle: string; viewing: boolean }; result: null };
+  /** The window has the chat on screen, focused or not (its active chat, also behind a page): its pi is not stopped for being idle. */
+  "chat.shown": { args: { handle: string; shown: boolean }; result: null };
   /** Attention summaries of every live chat. */
   "chat.live": { args: Record<string, never>; result: AttentionSummary[] };
   "chat.detach": { args: { handle: string }; result: null };
@@ -655,6 +657,7 @@ export type BrowserInput =
 /** Methods that only the desktop window may call. Everything else in `HostMethods` is scope "remote". */
 export const DESKTOP_ONLY_METHODS = [
   "chat.rawCommand",
+  "chat.shown",
   "settings.revealPi",
   "themes.apply",
   "themes.active",

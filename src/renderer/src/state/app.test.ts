@@ -433,7 +433,7 @@ describe("the Settings page", () => {
 describe("a chat a page shows beside itself (the ATP side column)", () => {
   it("is the chat the host is told this window looks at while the page is open, and is read", () => {
     const viewing = vi.fn();
-    vi.stubGlobal("window", { studio: { command, viewing } });
+    vi.stubGlobal("window", { studio: { command, viewing, shown: vi.fn() } });
     const worker: SessionState = { ...createSession("w1", "/repo"), unread: "done" };
     store.set((s) => ({ ...s, sessions: { w1: worker }, active: undefined, page: { kind: "atp", cwd: "/repo" } }));
     showPageChat("w1");
@@ -441,6 +441,23 @@ describe("a chat a page shows beside itself (the ATP side column)", () => {
     expect(store.get().sessions.w1?.unread).toBeUndefined();
     showPageChat(undefined);
     expect(viewing).toHaveBeenLastCalledWith("w1", false);
+  });
+});
+
+describe("the chats this window has on screen (the host keeps their pi)", () => {
+  it("are the active chat, also behind a page, and a page's side chat, whether or not the window is focused", () => {
+    const shown = vi.fn();
+    vi.stubGlobal("window", { studio: { command, viewing: vi.fn(), shown } });
+    const chat = (handle: string) => createSession(handle, "/repo");
+    store.set((s) => ({ ...s, sessions: { c1: { ...chat("c1"), prompted: true }, c2: chat("c2"), w1: chat("w1") }, active: "c1", page: undefined }));
+    showPageChat(undefined);
+    expect(shown.mock.calls).toEqual([["c1", true]]);
+    store.set((s) => ({ ...s, page: { kind: "atp", cwd: "/repo" } }));
+    showPageChat("w1");
+    expect(shown.mock.calls.slice(1)).toEqual([["w1", true]]);
+    activate("c2");
+    showPageChat(undefined);
+    expect(shown.mock.calls.slice(2)).toEqual([["c1", false], ["w1", false], ["c2", true]]);
   });
 });
 

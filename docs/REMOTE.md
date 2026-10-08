@@ -69,7 +69,8 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `chat.list` | remote | no | `listSessions`. Projects with sessions (`ProjectGroup[]`). |
 | `chat.open` | remote | yes | `openSession`. Args `{ request: OpenSessionRequest }`. **Host issues the handle.** Opening a session file already live attaches to its handle (`reused: true`); otherwise spawns pi. Takes a lease. Returns `{ handle, reused }`; the desktop also gets `snapshot` (its first page with the outline of earlier turns, see DESIGN.md), a remote caller reads the chat with `chat.snapshot`. ATP sessions via `request.atp`. |
 | `chat.attach` | remote | no | new. Lease on a live chat + snapshot (reconnect, second client, adopt a chat another client started). Returns the flat `ChatSnapshot & { seq }` (the first page and the outline) to the desktop and only `{ seq }` to a remote caller (which pages through `chat.snapshot`), or null when the chat ended. |
-| `chat.viewing` | remote | yes | new. This client shows (or stops showing) the chat in the foreground; showing it clears the chat's unread mark. |
+| `chat.viewing` | remote | yes | new. This client shows (or stops showing) the chat in the foreground; showing it clears the chat's unread mark. A chat a client views is never stopped for being idle. |
+| `chat.shown` | desktop | yes | new. The window has the chat on screen, focused or not (its active chat, also behind a page, and a page's side chat): the host does not stop its pi for being idle. |
 | `chat.live` | remote | no | new. `AttentionSummary[]` of every live chat (first paint of the marks; `global` `attention` events carry the deltas). A summary carries the chat's `sessionPath`, which matches it to its row in `chat.list`, and `listed` (`isListed`: not a draft, triage or ATP chat), so the phone's lists show it before the index has its file. |
 | `chat.detach` | remote | yes | new. Releases the lease; the host may then dispose (section 5). |
 | `chat.close` | remote | yes | `closeSession`. Explicit stop of pi; broadcast to all clients. Mobile asks for confirmation. |
@@ -257,10 +258,10 @@ Every push goes through one in-process EventHub in main. The desktop window is o
 - A **lease** is `(handle, clientId)`. `chat.open`/`chat.attach` take one; `chat.detach` releases it. The desktop's
   clientId is `desktop`; a phone's is its stream id. A lease whose SSE stream closed is kept for a **60 s grace**
   (page suspended, reconnect) and then expires.
-- **Dispose rule (host decides):** pi stops for a chat only when it has no live leases and `isDisposable` holds
-  (not prompted, not running, not compacting, no dialogs, no unread outcome), or on an explicit `chat.close`. A lease
-  expiring never kills a prompted, running, compacting, dialog-holding or unread chat; closing or suspending a
-  client never cancels host work.
+- **Dispose rule (host decides):** pi stops for a chat when it has no live leases and `isDisposable` holds
+  (not prompted, not running, not compacting, no dialogs, no unread outcome), when it is idle (30 min, or past 8 idle
+  chats; DESIGN.md "Idle chats stop their pi"), or on an explicit `chat.close`. A lease expiring never kills a
+  running, compacting, dialog-holding or unread chat; closing or suspending a client never cancels host work.
 - **Background chats:** "close when done" (triage) and ATP worker auto-close check **presence** (no client holds a
   lease on the chat) instead of the renderer's `active !== handle`.
 - `lease` events on `chat:<handle>` (`{ clients: ClientPresence[] }`) let a client show who else is looking.

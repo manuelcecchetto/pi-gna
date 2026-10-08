@@ -308,6 +308,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       return ctx.client === "desktop" ? snapshot : { seq: snapshot.seq };
     }),
     "chat.viewing": any<{ handle: string; viewing: boolean }>("remote", (ctx, { handle, viewing }) => host.viewing(handle, ctx.clientId, viewing === true)),
+    "chat.shown": any<{ handle: string; shown: boolean }>("desktop", (ctx, { handle, shown }) => host.shown(handle, ctx.clientId, shown === true)),
     "chat.live": any("remote", () => host.attentionAll()),
     "chat.interrupt": any<{ handle: string }>("remote", (_ctx, { handle }) => host.interrupt(handle)),
     "chat.editQueue": any<{ handle: string; op: QueueEdit }>("remote", (_ctx, { handle, op }) => host.editQueue(handle, op)),
@@ -807,6 +808,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.attachSession, "chat.attach", (handle) => ({ handle })),
   route(IPC.pageSession, "chat.snapshot", (handle, before, turns) => ({ handle, before, turns })),
   route(IPC.viewing, "chat.viewing", (handle, viewing) => ({ handle, viewing }), true),
+  route(IPC.shown, "chat.shown", (handle, shown) => ({ handle, shown }), true),
   route(IPC.liveChats, "chat.live"),
   route(IPC.interrupt, "chat.interrupt", (handle) => ({ handle })),
   route(IPC.editQueue, "chat.editQueue", (handle, op) => ({ handle, op })),

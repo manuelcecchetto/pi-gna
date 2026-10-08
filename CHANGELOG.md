@@ -14,6 +14,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Opening a chat that is already running (on your phone, or a card's chat from the sidebar) no longer reads its whole session file again: it joins the running chat at once (a 115 MB chat took about 280 ms, now 1 ms).
 - Long chats open with their last turns instead of the whole history: the window loads earlier turns as you scroll up, jump on the turn rail or open a bookmark (a 71 MB chat sent 70 MB to the window and kept 81 MB in its memory, now 22 KB and 4 MB, and it shows about a third sooner).
 - Fast answers cost the window and your phone less: the text a model streams within a frame now reaches them as one update instead of one per piece (an answer streaming about 160 pieces a second sent 800 updates, now about 260; at 750 a second, 1,500 updates became about 115).
+- Chats you leave idle no longer keep a pi process running for the rest of the session: a chat that has been idle for 30 minutes, or that is past the 8 most recently used idle chats, stops its pi and opens again from the sidebar with its transcript and any unsent text. Chats that are running, waiting for an answer, unread, held by ATP or on screen (even with the window in the background) keep theirs. On the phone, Reopen on such a chat now opens it again instead of saying it has ended.
 
 ## 0.9.1 - 2026-10-08
 

@@ -697,7 +697,7 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
 
 | Area | Methods |
 |---|---|
-| `chat` | list, open, attach, detach, viewing, live, close, snapshot, send, command, interrupt, editQueue, respondDialog, startTask, files, compactionSettings |
+| `chat` | list, open, attach, detach, viewing, shown (desktop), live, close, snapshot, send, command, interrupt, editQueue, respondDialog, startTask, files, compactionSettings |
 | stores | `board`, `laments`, `settings`, `computer`, `ui` (`get`/`apply`; every value carries `rev`, free-text edits `baseRev`) |
 | `atp` | plans, read, start, stop, releaseInterrupted, liftHold, threads, orchestrator, state |
 | `browser`, `fs`, `github`, `providers`, `update` | tabs, input and view stream; folder browsing and uploads; gh reads; provider sign-in; update state and download |
@@ -718,9 +718,19 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   serializes each event once (`EventHub.json`), for the ring's size and every phone stream; only an event holding an
   image block goes through the image replacer again.
 - **Leases.** `chat.open` and `chat.attach` take a lease `(handle, clientId)`; the desktop is `desktop`, a phone is its
-  stream id. A lease whose stream closed lives 60 s. pi stops only with no leases and a disposable chat (not prompted,
-  running, compacting, holding a dialog or unread), or on an explicit `chat.close`: closing or suspending a client never
-  cancels host work. Subscribing never leases. Background chats (triage, ATP workers) check presence, not "active".
+  stream id. A lease whose stream closed lives 60 s. pi stops with no leases and a disposable chat (not prompted,
+  running, compacting, holding a dialog or unread), when the chat is idle (below), or on an explicit `chat.close`:
+  closing or suspending a client never cancels host work. Subscribing never leases. Background chats (triage, ATP
+  workers) check presence, not "active".
+- **Idle chats stop their pi.** A chat you prompted stays open when you switch away, but its pi (50 to 150 MB each)
+  stops once the chat is idle: ready, not running or compacting, no dialog, not unread, no host-side hold, not an ATP
+  chat (their runner and page manage them), and on no client's screen. "On screen" is `viewing` (a phone's chat, the
+  focused window's chat) or `shown`: the window reports its active chat, also behind a page or unfocused, and a page's
+  side chat (`chat.shown`, desktop only). `SessionHost.stopIdle` runs every minute: a chat idle 30 min stops, and past
+  8 idle chats the ones idle longest stop first (idle time counts from its last event or a client showing it). No
+  setting. Stopping is a `chat.close` by the host, so clients leave the chat and the sidebar row opens it again from
+  its session file; the composer's unsent text is kept by session file too, and the phone's chat screen reopens the
+  file when its handle is gone (Reopen, or a re-attach after a reconnect).
 - **Opening a file.** `SessionHost.open` resolves trust and features, starts pi, and only then reads and hydrates the
   session file, so pi's boot no longer waits behind the read. Until the history is in, the chat is registered (one pi
   per file) but holds what pi says, including its exit, and applies it after the history in the old order; a second

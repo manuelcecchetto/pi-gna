@@ -34,6 +34,7 @@ export const IPC = {
   attachSession: "studio:attach-session",
   pageSession: "studio:page-session",
   viewing: "studio:viewing",
+  shown: "studio:shown",
   liveChats: "studio:live-chats",
   attention: "studio:attention",
   interrupt: "studio:interrupt",
@@ -537,6 +538,8 @@ export interface StudioApi {
   pageSession(handle: string, before: number, turns: number): Promise<{ seq: number; value: ChatSnapshot }>;
   /** This window shows (or stops showing) the chat in the foreground. */
   viewing(handle: string, viewing: boolean): void;
+  /** This window has the chat on screen, focused or not (the active chat, also behind a page): the host keeps its pi. */
+  shown(handle: string, shown: boolean): void;
   /** Attention summaries of every live chat. */
   liveChats(): Promise<AttentionSummary[]>;
   onAttention(listener: (update: { chats: AttentionSummary[]; removed: string[] }) => void): () => void;

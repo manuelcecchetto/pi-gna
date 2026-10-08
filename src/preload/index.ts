@@ -35,6 +35,7 @@ const api: StudioApi = {
   attachSession: (handle) => ipcRenderer.invoke(IPC.attachSession, handle),
   pageSession: (handle, before, turns) => ipcRenderer.invoke(IPC.pageSession, handle, before, turns),
   viewing: (handle, viewing) => ipcRenderer.send(IPC.viewing, handle, viewing),
+  shown: (handle, shown) => ipcRenderer.send(IPC.shown, handle, shown),
   liveChats: () => ipcRenderer.invoke(IPC.liveChats),
   onAttention: (listener) => subscribe(IPC.attention, listener),
   interrupt: (handle) => ipcRenderer.invoke(IPC.interrupt, handle),

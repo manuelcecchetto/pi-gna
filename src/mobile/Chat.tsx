@@ -1,6 +1,6 @@
 // One chat: join it on the host (open, or attach to a live one), show its transcript and approvals, and let go on leave.
 // Leaving detaches only: the host keeps the run going (docs/REMOTE.md section 5).
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Globe, ListChevronsDownUp, ListChevronsUpDown } from "../renderer/src/components/icons";
 import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
@@ -27,6 +27,17 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
   const [handle, setHandle] = useState<string>();
   const [error, setError] = useState<string>();
   const connection = useStore(client.store, (s) => s.connection);
+  // A chat whose pi stopped meanwhile (idle on the Mac, or it exited) opens again from its session file. Not an ATP chat:
+  // a plain open would lose its role, and its runner and page start it again themselves.
+  const [reopen, setReopen] = useState(0);
+  const file = useRef(route.sessionPath);
+  const sessionPath = useStore(client.store, (s) => {
+    const session = handle ? s.chats[handle]?.session : undefined;
+    return session?.atp ? undefined : session?.sessionPath;
+  });
+  useEffect(() => {
+    if (sessionPath) file.current = sessionPath;
+  }, [sessionPath]);
 
   useEffect(() => {
     let dead = false;
@@ -42,11 +53,11 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
     (async () => {
       try {
         let h = route.handle;
-        if (h) {
-          if (!(await client.call("chat.attach", { handle: h }))) throw new Error("This chat has ended.");
-        } else {
-          h = (await client.call("chat.open", { request: { cwd: route.cwd, sessionPath: route.sessionPath } })).handle;
+        if (h && !(await client.call("chat.attach", { handle: h }))) {
+          if (!file.current) throw new Error("This chat has ended.");
+          h = undefined;
         }
+        h ??= (await client.call("chat.open", { request: { cwd: route.cwd, sessionPath: file.current } })).handle;
         joined = h;
         if (dead) return release(h);
         await client.setChats([h]);
@@ -62,7 +73,7 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
       void client.setChats([]);
       if (joined) release(joined);
     };
-  }, [client, route.cwd, route.sessionPath, route.handle, attempt]);
+  }, [client, route.cwd, route.sessionPath, route.handle, attempt, reopen]);
 
   // A suspended page may have lost its lease (60 s grace) while the stream was down: take it again once live.
   useEffect(() => {
@@ -70,8 +81,9 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
     void client
       .call("chat.attach", { handle })
       .then((snapshot) => {
-        if (!snapshot) setError("This chat has ended.");
-        else void client.call("chat.viewing", { handle, viewing: true }).catch(() => undefined);
+        if (snapshot) void client.call("chat.viewing", { handle, viewing: true }).catch(() => undefined);
+        else if (file.current) setReopen((n) => n + 1);
+        else setError("This chat has ended.");
       })
       .catch(() => undefined);
   }, [client, handle, connection]);

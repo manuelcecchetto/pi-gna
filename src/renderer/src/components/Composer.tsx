@@ -33,6 +33,7 @@ import { TokenRate } from "./TokenRate";
 import { Popover } from "./primitives";
 import { Widget } from "./Widget";
 
+/** Unsent text by chat, and by session file too: a chat that opens again (its pi stopped while idle) gets it back. */
 const drafts = new Map<string, string>();
 /** The editor text injection each chat has applied, so a remount (switching back to the chat) does not apply it again. */
 const injections = new Map<string, number>();
@@ -56,7 +57,8 @@ const ESC_ARM_MS = 2500;
  */
 export function Composer({ session, placeholder, floating = false }: { session: SessionState; placeholder?: string; floating?: boolean }) {
   const { handle } = session;
-  const [text, setTextState] = useState(() => drafts.get(handle) ?? "");
+  const sessionPath = session.sessionPath;
+  const [text, setTextState] = useState(() => drafts.get(handle) ?? (sessionPath && drafts.get(sessionPath)) ?? "");
   const [menu, setMenu] = useState<MenuState>();
   const [selected, setSelected] = useState(0);
   const [files, setFiles] = useState<string[]>([]);
@@ -74,9 +76,10 @@ export function Composer({ session, placeholder, floating = false }: { session: 
   const setText = useCallback(
     (value: string) => {
       drafts.set(handle, value);
+      if (sessionPath) drafts.set(sessionPath, value);
       setTextState(value);
     },
-    [handle],
+    [handle, sessionPath],
   );
 
   // Extensions can prefill the editor (set_editor_text), and so can pi-gna (prefill).

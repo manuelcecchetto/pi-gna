@@ -73,7 +73,20 @@ await scenario("mobile chat", async (ctx) => {
   await shot("7-stopped");
   check(!(await exists('[data-testid="stop"]')), "the phone no longer offers Stop");
   await composerChecks({ phone, A, handle, shot, text, tap, exists, present });
+  await reopenChecks({ phone, A, handle, sessionFile: ctx.sessionFile, tap, exists, present });
 });
+
+/** The chat's pi stops under the phone (closed elsewhere, or stopped on the Mac while idle): Reopen opens it again from its file. */
+async function reopenChecks({ phone, A, handle, sessionFile, tap, exists, present }) {
+  log("mobile reopen");
+  await A.ok("chat.close", { handle });
+  await until("the exited banner", present("pi exited."));
+  check(await tap("Reopen"), "an exited chat offers Reopen");
+  await until("the chat to open again", async () => !(await present("pi exited.")()) && (await exists('[data-testid="send"]')), 20_000);
+  const live = (await A.ok("chat.live")).find((chat) => chat.sessionPath === sessionFile);
+  check(live !== undefined && live.handle !== handle, "Reopen starts the chat again from its session file", live);
+  check(!(await phone.eval(`document.body.innerText.includes("This chat has ended.")`)), "the phone does not report the chat as ended");
+}
 
 /** While the phone's prompt streams: at the end the view follows it, and the jump-to-latest button shows exactly when it does not. */
 async function followChecks({ phone, present }) {

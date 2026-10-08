@@ -430,6 +430,7 @@ export function releasePageChat(handle: string): void {
 // Which chat the host is told this window is looking at.
 let reportedViewing: string | undefined;
 function syncViewing(): void {
+  syncShown();
   const { active, page, sessions } = store.get();
   const shown = page ? pageChat : active;
   const now = windowFocused && shown && sessions[shown] ? shown : undefined;
@@ -437,6 +438,18 @@ function syncViewing(): void {
   if (reportedViewing) studio().viewing(reportedViewing, false);
   if (now) studio().viewing(now, true);
   reportedViewing = now;
+}
+
+// The chats the host is told this window has on screen, focused or not: the active one (also behind a page) and a
+// page's side chat. The host does not stop their pi for being idle.
+let reportedShown: string[] = [];
+function syncShown(): void {
+  const { active, page, sessions } = store.get();
+  const now = [...new Set([active, page ? pageChat : undefined])].filter((handle): handle is string => handle !== undefined && sessions[handle] !== undefined);
+  if (now.length === reportedShown.length && now.every((handle, index) => handle === reportedShown[index])) return;
+  for (const handle of reportedShown) if (!now.includes(handle)) studio().shown(handle, false);
+  for (const handle of now) if (!reportedShown.includes(handle)) studio().shown(handle, true);
+  reportedShown = now;
 }
 
 export async function closeSession(handle: string, pickNext = true): Promise<void> {

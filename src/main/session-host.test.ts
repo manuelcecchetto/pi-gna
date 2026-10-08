@@ -69,7 +69,7 @@ describe("session registry", () => {
     rec("agent_settled"),
   ];
 
-  async function setup() {
+  async function setup(features?: SessionFeatures) {
     const { SessionHost: Host } = await import("./session-host");
     fake.pis.length = 0;
     const seen: { handle: string; events: { kind: string }[]; seq: number }[] = [];
@@ -79,7 +79,7 @@ describe("session registry", () => {
       seq += batch.events.length;
       seen.push({ ...batch, seq });
       return seq;
-    }, bridge, "/atp");
+    }, bridge, "/atp", features && (async () => features));
     host.onGlobal((event) => globals.push(event));
     return { host, seen, globals };
   }
@@ -428,6 +428,179 @@ describe("session registry", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("idle chats stop their pi", () => {
+    const MIN = 60_000;
+    let files = 0;
+    /** A chat that was prompted, ran and was read, then left on no screen: idle from now. */
+    async function idleChat(host: SessionHost, lease: { client?: { clientId: string; actor: string }; hold?: string } = { client: A }, extra: object = {}) {
+      const { handle } = await host.open({ cwd: "/tmp", sessionPath: `/tmp/idle-${++files}.jsonl`, ...extra }, lease);
+      await vi.waitFor(() => expect(host.stateOf(handle)!.phase).toBe("ready"));
+      await host.command(handle, { type: "prompt", message: "hi" });
+      const pi = fake.pis.at(-1)!;
+      pi.handlers.onRecords(assistantTurn(1));
+      if (lease.client) {
+        host.viewing(handle, lease.client.clientId, true);
+        host.viewing(handle, lease.client.clientId, false);
+      }
+      expect(host.stateOf(handle)).toMatchObject({ prompted: true, running: false, unread: undefined, dialogs: [] });
+      return { handle, pi };
+    }
+    const closedBy = (seen: { handle: string; events: { kind: string; by?: unknown }[] }[], handle: string) =>
+      seen.filter((batch) => batch.handle === handle).flatMap((batch) => batch.events).find((event) => event.kind === "closed")?.by;
+
+    it("stops a prompted chat nobody shows after 30 idle minutes, and its file opens again", async () => {
+      const { host, seen, globals } = await setup();
+      const { handle, pi } = await idleChat(host);
+      host.stopIdle(Date.now() + 29 * MIN);
+      expect(pi.closed).toBe(false);
+      host.stopIdle(Date.now() + 31 * MIN);
+      expect(pi.closed).toBe(true);
+      expect(closedBy(seen, handle)).toBe("host");
+      expect(globals).toContainEqual({ kind: "chat.closed", handle });
+      expect(host.stateOf(handle)).toBeUndefined();
+      const again = await host.open({ cwd: "/tmp", sessionPath: pi.opts.sessionPath }, { client: A });
+      expect(again.handle).not.toBe(handle);
+      expect(again.reused).toBeUndefined();
+      expect(fake.pis.at(-1)).not.toBe(pi);
+    });
+
+    it("counts idle time from the chat's last event", async () => {
+      const { host } = await setup();
+      const { pi } = await idleChat(host);
+      const later = Date.now() + 20 * MIN;
+      vi.spyOn(Date, "now").mockReturnValue(later);
+      try {
+        pi.handlers.onRecords([rec("queue_update", { steering: [], followUp: [] })]);
+      } finally {
+        vi.restoreAllMocks();
+      }
+      host.stopIdle(later + 29 * MIN);
+      expect(pi.closed).toBe(false);
+      host.stopIdle(later + 31 * MIN);
+      expect(pi.closed).toBe(true);
+    });
+
+    it("checks every minute on its own", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+      try {
+        const { host } = await setup();
+        const { pi } = await idleChat(host);
+        vi.advanceTimersByTime(29 * MIN);
+        expect(pi.closed).toBe(false);
+        vi.advanceTimersByTime(2 * MIN);
+        expect(pi.closed).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps the 8 most recently active idle chats and stops the rest", async () => {
+      const { host } = await setup();
+      const start = Date.now();
+      const chats = [];
+      for (let i = 0; i < 10; i++) {
+        vi.spyOn(Date, "now").mockReturnValue(start + i * 1000);
+        try {
+          chats.push(await idleChat(host));
+        } finally {
+          vi.restoreAllMocks();
+        }
+      }
+      host.stopIdle(start + 20_000);
+      expect(chats.map((chat) => chat.pi.closed)).toEqual([true, true, false, false, false, false, false, false, false, false]);
+    });
+
+    it("never stops a running chat", async () => {
+      const { host } = await setup();
+      const control = await idleChat(host);
+      const { pi } = await idleChat(host);
+      pi.handlers.onRecords([rec("agent_start")]);
+      host.stopIdle(Date.now() + 10 * 60 * MIN);
+      expect(control.pi.closed).toBe(true);
+      expect(pi.closed).toBe(false);
+    });
+
+    it("never stops a chat waiting on the user", async () => {
+      const { host } = await setup();
+      const control = await idleChat(host);
+      const { pi } = await idleChat(host);
+      pi.handlers.onRecords([rec("extension_ui_request", { id: "c1", method: "confirm", title: "Run rm?" })]);
+      host.stopIdle(Date.now() + 10 * 60 * MIN);
+      expect(control.pi.closed).toBe(true);
+      expect(pi.closed).toBe(false);
+    });
+
+    it("never stops an unread chat", async () => {
+      const { host } = await setup();
+      const control = await idleChat(host);
+      const { handle, pi } = await idleChat(host);
+      pi.handlers.onRecords(assistantTurn(2));
+      expect(host.stateOf(handle)!.unread).toBe("done");
+      host.stopIdle(Date.now() + 10 * 60 * MIN);
+      expect(control.pi.closed).toBe(true);
+      expect(pi.closed).toBe(false);
+    });
+
+    it("never stops a chat held host-side (an ATP worker's run, a card's task)", async () => {
+      const { host } = await setup();
+      const control = await idleChat(host);
+      const { pi } = await idleChat(host, { client: A, hold: "atp:run" });
+      host.stopIdle(Date.now() + 10 * 60 * MIN);
+      expect(control.pi.closed).toBe(true);
+      expect(pi.closed).toBe(false);
+    });
+
+    it("leaves ATP chats to their runner and page", async () => {
+      const { host } = await setup({ ...base, atp: true });
+      const control = await idleChat(host);
+      const { pi } = await idleChat(host, { client: A }, { atp: { role: "orchestrator", plan: "/p/x.atp.json" } });
+      host.stopIdle(Date.now() + 10 * 60 * MIN);
+      expect(control.pi.closed).toBe(true);
+      expect(pi.closed).toBe(false);
+    });
+
+    it("never stops a chat whose pi is still starting", async () => {
+      const { host } = await setup();
+      const control = await idleChat(host);
+      const send = fake.send;
+      fake.send = (command) => ((command as { type: string }).type === "get_state" ? new Promise(() => {}) : send(command, undefined));
+      try {
+        const { handle } = await host.open({ cwd: "/tmp", sessionPath: "/tmp/booting.jsonl" }, { client: A });
+        expect(host.stateOf(handle)!.phase).toBe("starting");
+        host.stopIdle(Date.now() + 10 * 60 * MIN);
+        expect(control.pi.closed).toBe(true);
+        expect(fake.pis.at(-1)!.closed).toBe(false);
+      } finally {
+        fake.send = send;
+      }
+    });
+
+    it("never stops a chat a client shows, focused or not, nor one a phone is viewing", async () => {
+      const { host } = await setup();
+      const control = await idleChat(host);
+      const shown = await idleChat(host);
+      host.shown(shown.handle, "a", true);
+      const viewed = await idleChat(host, { client: B });
+      host.viewing(viewed.handle, "b", true);
+      host.stopIdle(Date.now() + 10 * 60 * MIN);
+      expect(control.pi.closed).toBe(true);
+      expect(shown.pi.closed).toBe(false);
+      expect(viewed.pi.closed).toBe(false);
+      // Idle from when it left the screen.
+      const left = Date.now() + 20 * MIN;
+      vi.spyOn(Date, "now").mockReturnValue(left);
+      try {
+        host.shown(shown.handle, "a", false);
+      } finally {
+        vi.restoreAllMocks();
+      }
+      host.stopIdle(left + 29 * MIN);
+      expect(shown.pi.closed).toBe(false);
+      host.stopIdle(left + 31 * MIN);
+      expect(shown.pi.closed).toBe(true);
+    });
   });
 });
 
