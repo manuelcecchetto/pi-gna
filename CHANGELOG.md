@@ -10,6 +10,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Opening pi-gna from the Dock or Finder shows your chats sooner: the sidebar no longer waits for your login shell's environment (about 2.1 s after launch before, about 0.9 s now; the first launch still waits once to learn pi's folders).
 - Streaming answers no longer redraw the sidebar and the rest of the window on every frame: only the chat itself updates, and a chat answering in the background redraws nothing until its mark changes.
 - Long answers stream without slowing the window: each frame now renders only the paragraph being written instead of the whole answer again (a 45 KB answer kept the window busy for 10.4 s of its 13 s stream, now 4.5 s), and text you select in an answer stays selected while it streams.
+- Opening a long chat starts pi while its history is still being read, so it is ready to prompt sooner (a 115 MB chat was ready in about 1.9 s, now about 1.6 s).
 
 ## 0.9.1 - 2026-10-08
 

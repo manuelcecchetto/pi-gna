@@ -713,6 +713,10 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   stream id. A lease whose stream closed lives 60 s. pi stops only with no leases and a disposable chat (not prompted,
   running, compacting, holding a dialog or unread), or on an explicit `chat.close`: closing or suspending a client never
   cancels host work. Subscribing never leases. Background chats (triage, ATP workers) check presence, not "active".
+- **Opening a file.** `SessionHost.open` resolves trust and features, starts pi, and only then reads and hydrates the
+  session file, so pi's boot no longer waits behind the read. Until the history is in, the chat is registered (one pi
+  per file) but holds what pi says, including its exit, and applies it after the history in the old order; a second
+  open of the file waits for that same read and joins. A failed read stops the booting pi without publishing anything.
 - **Many clients.** Prompts from two clients arrive in order (a send while running is a steer). Dialogs and approvals:
   first answer wins, the rest get `already_answered` and drop the card on `dialog_resolved`. Store text edits conflict by
   `baseRev` (`409 conflict`); structural ops are last-writer-wins.

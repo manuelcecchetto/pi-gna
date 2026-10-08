@@ -21,7 +21,8 @@ vi.mock("./pi-process", () => ({
     }
   },
 }));
-vi.mock("./session-file", () => ({ readActiveBranch: async () => [] }));
+const file = vi.hoisted(() => ({ read: async (_path: string): Promise<unknown[]> => [] }));
+vi.mock("./session-file", () => ({ readActiveBranch: (path: string) => file.read(path) }));
 vi.mock("./pi-settings", () => ({ projectTrust: async () => undefined }));
 
 
@@ -95,6 +96,112 @@ describe("session registry", () => {
     expect(first.handle).toMatch(/^[a-z0-9]{6,32}$/);
     expect(fake.pis).toHaveLength(1);
     expect(host.presence(first.handle).map((c) => c.clientId)).toEqual(["a", "b"]);
+  });
+
+  describe("pi boots while the session file is read", () => {
+    const old = { type: "message", id: "e1", parentId: null, timestamp: "2026-10-08T00:00:00.000Z", message: { role: "user", content: "old", timestamp: 1 } };
+    /** The next reads wait for `finish` (or `fail`); `reads` counts them. */
+    function slowFile() {
+      const read = { reads: 0, finish: (_entries: unknown[]) => {}, fail: (_error: Error) => {} };
+      file.read = () => {
+        read.reads++;
+        return new Promise((resolve, reject) => {
+          read.finish = resolve;
+          read.fail = reject;
+        });
+      };
+      return read;
+    }
+    const afterRead = () => (file.read = async () => []);
+
+    it("starts pi before the read, and a second open of the file joins it once the history is in", async () => {
+      const { host, globals } = await setup();
+      const read = slowFile();
+      try {
+        const first = host.open(request, { client: A });
+        const second = host.open(request, { client: B });
+        await vi.waitFor(() => expect(fake.pis).toHaveLength(1));
+        expect(globals.some((event) => event.kind === "chat.opened")).toBe(false);
+        expect(host.attentionAll()).toEqual([]);
+        read.finish([old]);
+        const [a, b] = await Promise.all([first, second]);
+        expect(b).toMatchObject({ handle: a.handle, reused: true, entries: [old] });
+        expect(a.entries).toEqual([old]);
+        expect(read.reads).toBe(1);
+        expect(fake.pis).toHaveLength(1);
+        expect(host.stateOf(a.handle)!.items.map((item) => item.kind)).toEqual(["user"]);
+        expect(host.stateOf(a.handle)!.phase).toBe("ready");
+        expect(host.presence(a.handle).map((c) => c.clientId)).toEqual(["a", "b"]);
+      } finally {
+        afterRead();
+      }
+    });
+
+    it("applies what pi says during the read after the history, in order", async () => {
+      const { host, seen } = await setup();
+      const read = slowFile();
+      try {
+        const opening = host.open(request, { client: A });
+        await vi.waitFor(() => expect(fake.pis).toHaveLength(1));
+        await Promise.resolve();
+        fake.pis[0]!.handlers.onRecords(assistantTurn(1));
+        expect(seen).toEqual([]);
+        read.finish([old]);
+        const { handle } = await opening;
+        const state = host.stateOf(handle)!;
+        expect(state.items.map((item) => (item.kind === "user" ? `user ${String(item.message.content)}` : item.kind))).toEqual(["user old", "user q1", "assistant"]);
+        expect(state.phase).toBe("ready");
+        const kinds = seen.flatMap((batch) => batch.events.map((e) => (e.kind === "rpc" ? (e as unknown as { record: { type: string } }).record.type : e.kind)));
+        expect(kinds).toEqual(["lease", "ready", ...assistantTurn(1).map((record) => record.type)]);
+      } finally {
+        afterRead();
+      }
+    });
+
+    it("opens, then closes, a chat whose pi exits during the read", async () => {
+      const { host, seen, globals } = await setup();
+      const read = slowFile();
+      try {
+        const opening = host.open(request, { client: A });
+        await vi.waitFor(() => expect(fake.pis).toHaveLength(1));
+        await fake.pis[0]!.close();
+        expect(globals).toEqual([]);
+        expect(host.size).toBe(1);
+        read.finish([old]);
+        const { handle } = await opening;
+        const order = globals.map((event) => event.kind);
+        expect(order.indexOf("chat.opened")).toBeGreaterThan(-1);
+        expect(order.indexOf("chat.opened")).toBeLessThan(order.indexOf("chat.closed"));
+        expect(seen.flatMap((batch) => batch.events.map((e) => e.kind)).at(-1)).toBe("exit");
+        expect(host.stateOf(handle)).toBeUndefined();
+        expect(host.size).toBe(0);
+      } finally {
+        afterRead();
+      }
+    });
+
+    it("stops the booting pi without a trace when the file cannot be read", async () => {
+      const { host, seen, globals } = await setup();
+      const unregister = vi.spyOn(bridge, "unregister");
+      const read = slowFile();
+      try {
+        const opening = host.open(request, { client: A });
+        await vi.waitFor(() => expect(fake.pis).toHaveLength(1));
+        read.fail(new Error("ENOENT"));
+        await expect(opening).rejects.toThrow("ENOENT");
+        expect(fake.pis[0]!.closed).toBe(true);
+        expect(unregister).toHaveBeenCalled();
+        expect(host.size).toBe(0);
+        expect(seen).toEqual([]);
+        expect(globals).toEqual([]);
+        afterRead();
+        await host.open(request, { client: A });
+        expect(fake.pis).toHaveLength(2);
+      } finally {
+        unregister.mockRestore();
+        afterRead();
+      }
+    });
   });
 
   it("stops a disposable pi when its last lease goes, but not a prompted one", async () => {

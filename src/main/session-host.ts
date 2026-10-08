@@ -6,7 +6,7 @@ import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
 import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type ClientPresence, type DialogOutcome, type GlobalEvent, type HostCtx, HostError, type HostEvent, isAllowedRpc, type QueueEdit } from "../shared/host-api";
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
-import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState } from "../shared/protocol";
+import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState, type SessionEntry } from "../shared/protocol";
 import { type Feature, yoloOption } from "../shared/settings";
 import { attention, createSession, hydrate, isDisposable, isListed, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
 import { applyQueueOp, type Queues } from "../shared/queue";
@@ -14,7 +14,7 @@ import { atpSkills, librarianPath } from "./atp";
 import type { AgentBridge } from "./bridge";
 import { KeyedMutex } from "./command-layer";
 import { log } from "./log";
-import { PiProcess } from "./pi-process";
+import { type PiExit, PiProcess } from "./pi-process";
 import { projectTrust } from "./pi-settings";
 import { onDisk } from "./resources";
 import { readActiveBranch } from "./session-file";
@@ -56,6 +56,11 @@ interface Live {
   /** Dialogs waiting for an answer (pi's and main's own), with the timer that mirrors pi's timeout. */
   dialogs: Map<string, ReturnType<typeof setTimeout> | undefined>;
   resolved: Set<string>;
+  /**
+   * Set while the session file is read beside pi's boot (see `open`): what pi says meanwhile waits here and applies
+   * after the history, in order, as it did when the file was read first.
+   */
+  loading?: { entries: Promise<SessionEntry[]>; held: HostEvent[]; exit?: () => void };
 }
 
 export interface ChatPage {
@@ -169,10 +174,7 @@ export class SessionHost {
   async open(request: OpenSessionRequest, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
     const { cwd, sessionPath, atp } = request;
     const existing = sessionPath ? this.byFile.get(sessionPath) : undefined;
-    if (existing && this.live.has(existing)) {
-      this.lease(existing, lease);
-      return { handle: existing, reused: true, entries: await readActiveBranch(sessionPath!) };
-    }
+    if (existing && this.live.has(existing)) return this.join(existing, sessionPath!, lease);
     if (request.handle !== undefined && (!HANDLE.test(request.handle) || this.live.has(request.handle))) throw new Error("invalid session handle");
     const handle = request.handle ?? this.newHandle();
     if (atp && ((atp.role !== "worker" && atp.role !== "orchestrator") || (atp.plan !== undefined && !isPlanPath(atp.plan)))) throw new Error("invalid ATP session");
@@ -180,67 +182,109 @@ export class SessionHost {
     if (sessionPath !== undefined && (!isAbsolute(sessionPath) || !sessionPath.endsWith(".jsonl"))) throw new Error("invalid session path");
 
     const started = Date.now();
-    const entries = sessionPath ? await readActiveBranch(sessionPath) : [];
     const tag = `pi·${handle.slice(0, 4)}`;
-    if (sessionPath) log.info(tag, `loaded ${entries.length} entries in ${Date.now() - started} ms`);
     // pi looks up your trust in a project by the cwd's folders, and a card's worktree lives outside the project.
     const project = projectOf(cwd);
     const trust = project === cwd ? undefined : await projectTrust(project);
 
     const features = await this.features().catch(() => NONE);
     if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
-    // A second open of the same file may have finished its reads while this one was reading.
+    // A second open of the same file may have started its pi while this one resolved trust and features.
     const raced = sessionPath ? this.byFile.get(sessionPath) : undefined;
-    if (raced && this.live.has(raced)) {
-      this.lease(raced, lease);
-      return { handle: raced, reused: true, entries };
-    }
+    if (raced && this.live.has(raced)) return this.join(raced, sessionPath!, lease);
+    // pi boots (seconds) while the session file is read below; a failed read stops it without a trace.
+    let abandoned = false;
     const pi = new PiProcess(
       { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) },
       {
         onRecords: (records) => {
+          if (abandoned) return;
           const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi, tag, record)) : records;
           this.push(handle, shown.map((record) => ({ kind: "rpc", record })));
           if (records.some((record) => record.type === "agent_start")) this.started(handle);
           if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
         },
         onExit: (exit) => {
-          this.settleChoices(handle);
-          this.settleDialogs(handle, "exit");
-          this.ended(handle);
-          this.bridge.unregister(handle);
-          for (const listener of this.exitListeners) listener(handle);
-          this.push(handle, [{ kind: "exit", ...exit }]);
-          const gone = this.live.get(handle);
-          if (gone?.state.sessionPath && this.byFile.get(gone.state.sessionPath) === handle) this.byFile.delete(gone.state.sessionPath);
-          this.live.delete(handle);
-          this.summaries.delete(handle);
-          this.publishGlobal({ kind: "chat.closed", handle });
-          this.publishGlobal({ kind: "attention", chats: [], removed: [handle] });
+          if (abandoned) return;
+          const loading = this.live.get(handle)?.loading;
+          if (loading) {
+            loading.exit = () => this.exited(handle, exit);
+            return;
+          }
+          this.exited(handle, exit);
         },
       },
     );
-    this.live.set(handle, {
+    const entries = sessionPath ? readActiveBranch(sessionPath) : Promise.resolve([]);
+    const chat: Live = {
       pi,
       cwd,
-      state: hydrate(createSession(handle, cwd, sessionPath, atp), entries),
+      state: createSession(handle, cwd, sessionPath, atp),
       seq: 0,
       clients: new Map(),
       holds: new Set(),
       dialogs: new Map(),
       resolved: new Set(),
-    });
+      loading: { entries, held: [] },
+    };
+    this.live.set(handle, chat);
     if (sessionPath) this.byFile.set(sessionPath, handle);
-    this.lease(handle, lease);
-    this.publishGlobal({ kind: "chat.opened", handle, cwd, sessionPath });
-    this.touch(handle);
-
     void pi.send<RpcSessionState>({ type: "get_state" }).then((response) => {
-      if (!response.success || !response.data) return;
+      if (abandoned || !response.success || !response.data) return;
       log.info(tag, `ready in ${Date.now() - started} ms  (${response.data.model?.provider}/${response.data.model?.id}, ${response.data.thinkingLevel})`);
       this.push(handle, [{ kind: "ready", state: response.data }]);
     });
-    return { handle, entries };
+
+    const reading = Date.now();
+    let history: SessionEntry[];
+    try {
+      history = await entries;
+    } catch (error) {
+      abandoned = true;
+      this.live.delete(handle);
+      if (sessionPath && this.byFile.get(sessionPath) === handle) this.byFile.delete(sessionPath);
+      this.bridge.unregister(handle);
+      void pi.close();
+      throw error;
+    }
+    if (sessionPath) log.info(tag, `loaded ${history.length} entries in ${Date.now() - reading} ms`);
+    chat.state = hydrate(chat.state, history);
+    const { held, exit } = chat.loading!;
+    chat.loading = undefined;
+    this.lease(handle, lease);
+    this.publishGlobal({ kind: "chat.opened", handle, cwd, sessionPath });
+    this.touch(handle);
+    if (held.length) this.push(handle, held);
+    exit?.();
+    return { handle, entries: history };
+  }
+
+  /** Join the chat that has the file open, once its history is in (the file is read again when it already was). */
+  private async join(handle: string, sessionPath: string, lease?: { client?: ClientPresence; hold?: string }): Promise<OpenSessionResult> {
+    const loading = this.live.get(handle)?.loading;
+    if (!loading) {
+      this.lease(handle, lease);
+      return { handle, reused: true, entries: await readActiveBranch(sessionPath) };
+    }
+    const entries = await loading.entries;
+    this.lease(handle, lease);
+    return { handle, reused: true, entries };
+  }
+
+  /** pi's process ended: settle what waited on it and forget the chat. */
+  private exited(handle: string, exit: PiExit): void {
+    this.settleChoices(handle);
+    this.settleDialogs(handle, "exit");
+    this.ended(handle);
+    this.bridge.unregister(handle);
+    for (const listener of this.exitListeners) listener(handle);
+    this.push(handle, [{ kind: "exit", ...exit }]);
+    const gone = this.live.get(handle);
+    if (gone?.state.sessionPath && this.byFile.get(gone.state.sessionPath) === handle) this.byFile.delete(gone.state.sessionPath);
+    this.live.delete(handle);
+    this.summaries.delete(handle);
+    this.publishGlobal({ kind: "chat.closed", handle });
+    this.publishGlobal({ kind: "attention", chats: [], removed: [handle] });
   }
 
   /**
@@ -308,6 +352,10 @@ export class SessionHost {
     const chat = this.live.get(handle);
     if (!chat) {
       this.emit({ handle, events });
+      return;
+    }
+    if (chat.loading) {
+      chat.loading.held.push(...events);
       return;
     }
     const now = Date.now();
@@ -385,7 +433,7 @@ export class SessionHost {
 
   /** Attention of every live chat (a client's first paint of the sidebar marks). */
   attentionAll(): AttentionSummary[] {
-    return [...this.live].map(([handle, chat]) => this.summary(handle, chat));
+    return [...this.live].flatMap(([handle, chat]) => (chat.loading ? [] : [this.summary(handle, chat)]));
   }
 
   // ── Leases and presence ──────────────────────────────────────────────────────
