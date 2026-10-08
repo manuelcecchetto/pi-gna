@@ -47,6 +47,11 @@ export class AgentBridge {
     return token;
   }
 
+  /** A spare pi's token goes to the chat that adopts it (SessionHost): its tools then act for that chat. */
+  rename(from: string, to: string): void {
+    for (const [token, owner] of this.tokens) if (owner === from) this.tokens.set(token, to);
+  }
+
   unregister(handle: string): void {
     for (const [token, owner] of this.tokens) if (owner === handle) this.tokens.delete(token);
   }

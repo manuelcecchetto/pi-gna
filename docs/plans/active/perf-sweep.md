@@ -72,7 +72,9 @@ Respects the dependencies on P00, biggest wins first.
   Only a plain New chat (no sessionPath, no atp) with matching cwd, trust and feature fingerprint adopts it; the
   records it emitted while starting are buffered and replayed on adoption. Retired on any settings or features
   change, after 10 min unused, at the load or cap limit, and on quit. Logged as `spare+`, `adopted`, `spare-` with
-  the reason. No setting; no switch_session reuse.
+  the reason. No setting; no switch_session reuse. Done: adoption also needs pi's own files unchanged since the spare
+  started (`piInputs`: settings, models, trust, context files, resource folders), because `set_model` in any chat saves
+  pi's default model.
 - **P30:** the renderer keeps only loaded pages; a chat off screen for 60 s drops back to its latest page. Main keeps
   full items for the last 8 user turns; older turns lose tool-result payloads over 32 KB and all image data, re-read
   from the session file (a scan) when a client pages back, with the last restored page cached. chat-tasks, the push

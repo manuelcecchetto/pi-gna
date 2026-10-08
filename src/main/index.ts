@@ -182,6 +182,8 @@ const devices = new DeviceStore(
 const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"), (next) => {
   publish({ kind: "settings", settings: next });
   applySettings(next);
+  // A spare pi has the features it started with.
+  void host.retireSpare("settings changed");
 });
 /** The window's lease on the chats it opens (it keeps them until it closes them). */
 const DESKTOP = { clientId: "desktop", actor: "desktop" } as const;
@@ -201,7 +203,10 @@ const uploads = new Uploads(join(app.getPath("userData"), "remote-uploads"));
 void uploads.prune().catch((error: Error) => log.warn("remote", `could not prune old uploads: ${error.message}`));
 bridge.route("/browser", browserRoute(() => agent));
 const uiState = new UiStateStore(join(app.getPath("userData"), "ui-state.json"), (next) => publish({ kind: "ui", ui: next }));
-const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => publish({ kind: "computer", settings: next }));
+const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => {
+  publish({ kind: "computer", settings: next });
+  void host.retireSpare("Computer Use settings changed");
+});
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => publish({ kind: "laments", laments: next }));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.

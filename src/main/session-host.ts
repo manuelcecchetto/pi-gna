@@ -1,6 +1,7 @@
 // Maps renderer handles to pi processes and forwards their records to the window.
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import { availableParallelism, loadavg } from "node:os";
 import { basename, isAbsolute } from "node:path";
 import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
@@ -16,8 +17,8 @@ import type { AgentBridge } from "./bridge";
 import { COALESCE_MS, coalesce, isDelta } from "./coalesce";
 import { KeyedMutex } from "./command-layer";
 import { log } from "./log";
-import { type PiExit, PiProcess } from "./pi-process";
-import { projectTrust } from "./pi-settings";
+import { type PiExit, PiProcess, type PiProcessHandlers } from "./pi-process";
+import { piInputs, projectTrust } from "./pi-settings";
 import { onDisk } from "./resources";
 import { readActiveBranch } from "./session-file";
 
@@ -36,6 +37,10 @@ const IDLE_STOP_MS = 30 * 60_000;
 const IDLE_KEPT = 8;
 /** How often idle chats are looked for. */
 const IDLE_CHECK_MS = 60_000;
+/** A spare pi starts this long after a chat a client opened is ready, for the next New chat in its folder. */
+const SPARE_DELAY_MS = 2_000;
+/** A spare nobody adopts stops after this long. */
+const SPARE_KEPT_MS = 10 * 60_000;
 /** Tools that would compete with the integrated browser (Stagehand's). Override with PIGNA_EXCLUDE_TOOLS. */
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
@@ -78,6 +83,60 @@ interface Live {
   /** When something last happened in the chat (an event, a client showing it or leaving it): idle chats stop by it. */
   active: number;
 }
+
+/**
+ * A pi started ahead of the next New chat (`spawnSpare`), with what it was started with: a chat adopts it only when it
+ * would start its own pi the same way.
+ */
+interface Spare {
+  /** The handle its bridge token is registered under until a chat adopts it. */
+  handle: string;
+  tag: string;
+  cwd: string;
+  trust: boolean | undefined;
+  /** The features it has, as JSON. */
+  features: string;
+  /** pi's files as they were when it started (`piInputs`). */
+  inputs: string;
+  pi: PiProcess;
+  relay: Relay;
+  since: number;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** A spare's handlers: what its pi says waits here until a chat adopts it (`connect`), then goes to that chat. */
+class Relay implements PiProcessHandlers {
+  private readonly held: Parameters<PiProcessHandlers["onRecords"]>[0][] = [];
+  private target?: PiProcessHandlers;
+
+  /** `exited`: pi ended before any chat adopted it. */
+  constructor(private readonly exited: (exit: PiExit) => void) {}
+
+  onRecords(records: Parameters<PiProcessHandlers["onRecords"]>[0]): void {
+    if (this.target) this.target.onRecords(records);
+    else this.held.push(records);
+  }
+
+  onExit(exit: PiExit): void {
+    (this.target ?? { onExit: this.exited }).onExit(exit);
+  }
+
+  connect(target: PiProcessHandlers): void {
+    this.target = target;
+    for (const records of this.held.splice(0)) target.onRecords(records);
+  }
+}
+
+/** Why a spare is not the pi a New chat in its folder would start now; undefined when it is. */
+function stale(spare: Spare, trust: boolean | undefined, features: string, inputs: string): string | undefined {
+  if (spare.features !== features) return "features changed";
+  if (spare.trust !== trust) return "trust changed";
+  if (spare.inputs !== inputs) return "pi's settings or context files changed";
+  return undefined;
+}
+
+/** The machine is busy: the 1-minute load average is at its cores. */
+const busy = () => loadavg()[0]! >= availableParallelism();
 
 export interface ChatPage {
   /** Turns (user prompts) wanted, counting back from `beforeTurn` (default: the end). */
@@ -132,6 +191,12 @@ export class SessionHost {
     laments: onDisk("resources", "lament-extension.ts"),
   };
   private readonly idleCheck: ReturnType<typeof setInterval>;
+  /** At most one pi waiting for the next New chat (`spawnSpare`). */
+  private spare?: Spare;
+  private spareTimer?: ReturnType<typeof setTimeout>;
+  /** Bumped by each spare spawn and retire: a spawn that waited on the disk meanwhile gives up. */
+  private spareTurn = 0;
+  private closing = false;
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
   /** Skills pi-gna bundles: pr-review, which the GitHub page's Review starts a chat with. */
@@ -206,7 +271,7 @@ export class SessionHost {
   private newHandle(): string {
     let handle: string;
     do handle = randomUUID().replaceAll("-", "").slice(0, 12);
-    while (this.live.has(handle));
+    while (this.live.has(handle) || this.spare?.handle === handle);
     return handle;
   }
 
@@ -230,9 +295,7 @@ export class SessionHost {
 
     const started = Date.now();
     const tag = `pi·${handle.slice(0, 4)}`;
-    // pi looks up your trust in a project by the cwd's folders, and a card's worktree lives outside the project.
-    const project = projectOf(cwd);
-    const trust = project === cwd ? undefined : await projectTrust(project);
+    const trust = await this.trustOf(cwd);
 
     const features = await this.features().catch(() => NONE);
     if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
@@ -241,27 +304,31 @@ export class SessionHost {
     if (raced && this.live.has(raced)) return this.join(raced, lease, page);
     // pi boots (seconds) while the session file is read below; a failed read stops it without a trace.
     let abandoned = false;
-    const pi = new PiProcess(
-      { cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) },
-      {
-        onRecords: (records) => {
-          if (abandoned) return;
-          const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi, tag, record)) : records;
-          this.push(handle, shown.map((record) => ({ kind: "rpc", record })));
-          if (records.some((record) => record.type === "agent_start")) this.started(handle);
-          if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
-        },
-        onExit: (exit) => {
-          if (abandoned) return;
-          const loading = this.live.get(handle)?.loading;
-          if (loading) {
-            loading.exit = () => this.exited(handle, exit);
-            return;
-          }
-          this.exited(handle, exit);
-        },
+    const handlers: PiProcessHandlers = {
+      onRecords: (records) => {
+        if (abandoned) return;
+        const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi, tag, record)) : records;
+        this.push(handle, shown.map((record) => ({ kind: "rpc", record })));
+        if (records.some((record) => record.type === "agent_start")) this.started(handle);
+        if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
       },
-    );
+      onExit: (exit) => {
+        if (abandoned) return;
+        const loading = this.live.get(handle)?.loading;
+        if (loading) {
+          loading.exit = () => this.exited(handle, exit);
+          return;
+        }
+        this.exited(handle, exit);
+      },
+    };
+    // A New chat takes the spare pi, booted already, when it was started as this chat's would be.
+    const spare = sessionPath || atp ? undefined : await this.takeSpare(cwd, trust, features);
+    if (spare) {
+      this.bridge.rename(spare.handle, handle);
+      log.info(spare.tag, `adopted by ${tag}, warm for ${Math.round((Date.now() - spare.since) / 1000)} s`);
+    }
+    const pi = spare?.pi ?? new PiProcess({ cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) }, handlers);
     const entries = sessionPath ? readActiveBranch(sessionPath) : Promise.resolve([]);
     const chat: Live = {
       pi,
@@ -278,10 +345,14 @@ export class SessionHost {
     };
     this.live.set(handle, chat);
     if (sessionPath) this.byFile.set(sessionPath, handle);
+    // What the spare said while it waited follows, held with the rest until the history is in.
+    spare?.relay.connect(handlers);
     void pi.send<RpcSessionState>({ type: "get_state" }).then((response) => {
       if (abandoned || !response.success || !response.data) return;
-      log.info(tag, `ready in ${Date.now() - started} ms  (${response.data.model?.provider}/${response.data.model?.id}, ${response.data.thinkingLevel})`);
+      log.info(tag, `ready in ${Date.now() - started} ms  (${response.data.model?.provider}/${response.data.model?.id}, ${response.data.thinkingLevel})${spare ? "  spare" : ""}`);
       this.push(handle, [{ kind: "ready", state: response.data }]);
+      // The next New chat in this folder will want a pi too: start one while nobody waits on it.
+      if (lease?.client && !atp) this.planSpare(cwd);
     });
 
     const reading = Date.now();
@@ -308,6 +379,12 @@ export class SessionHost {
     if (held.length) this.push(handle, held);
     exit?.();
     return { handle, ...(snapshot && { snapshot }) };
+  }
+
+  /** pi looks up your trust in a project by the cwd's folders, and a card's worktree lives outside the project. */
+  private async trustOf(cwd: string): Promise<boolean | undefined> {
+    const project = projectOf(cwd);
+    return project === cwd ? undefined : await projectTrust(project);
   }
 
   /** Join the chat that has the file open, once its history is in; the file is not read again. */
@@ -592,12 +669,79 @@ export class SessionHost {
    */
   stopIdle(now = Date.now()): void {
     const idle = [...this.live].filter(([, chat]) => this.idle(chat)).sort(([, a], [, b]) => b.active - a.active);
+    // The spare counts as an idle chat and goes first; nor does it stay on a busy machine.
+    if (idle.length >= IDLE_KEPT) void this.retireSpare(`${IDLE_KEPT} idle chats`);
+    else if (busy()) void this.retireSpare("machine busy");
     idle.forEach(([handle, chat], index) => {
       if (index < IDLE_KEPT && now - chat.active < IDLE_STOP_MS) return;
       const minutes = Math.round((now - chat.active) / 60_000);
       log.info(`pi·${handle.slice(0, 4)}`, `stopped: idle ${minutes} min${index >= IDLE_KEPT ? `, more than ${IDLE_KEPT} idle chats` : ""}`);
       void this.close(handle, "host");
     });
+  }
+
+  // ── Spare pi ─────────────────────────────────────────────────────────────────
+
+  /** Start a spare pi for `cwd` in SPARE_DELAY_MS, unless another chat asks for one first. */
+  private planSpare(cwd: string): void {
+    if (this.closing) return;
+    clearTimeout(this.spareTimer);
+    this.spareTimer = setTimeout(() => void this.spawnSpare(cwd), SPARE_DELAY_MS);
+    this.spareTimer.unref?.();
+  }
+
+  /**
+   * Start a pi for the next New chat in `cwd`: one spare at most, for the folder of the chat opened last. Not while the
+   * machine is busy or the idle chats fill IDLE_KEPT (the spare counts as one). A current spare for `cwd` stays.
+   * @internal exposed for tests
+   */
+  async spawnSpare(cwd: string): Promise<void> {
+    const turn = ++this.spareTurn;
+    const full = [...this.live.values()].filter((chat) => this.idle(chat)).length >= IDLE_KEPT;
+    if (this.closing || full || busy()) return void this.retireSpare(full ? `${IDLE_KEPT} idle chats` : "machine busy");
+    const trust = await this.trustOf(cwd).catch(() => undefined);
+    const features = await this.features().catch(() => NONE);
+    const inputs = await piInputs(cwd);
+    if (turn !== this.spareTurn) return;
+    const current = this.spare;
+    const why = current && (current.cwd === cwd ? stale(current, trust, JSON.stringify(features), inputs) : "another folder");
+    if (current && !why) return;
+    if (why) void this.retireSpare(why);
+    const handle = this.newHandle();
+    const tag = `pi·${handle.slice(0, 4)}`;
+    log.info(tag, `spare+ for ${cwd}`);
+    const relay = new Relay((exit) => {
+      if (this.spare?.relay === relay) void this.retireSpare(`pi exited (${exit.error ?? exit.signal ?? `code ${exit.code}`})`);
+    });
+    const pi = new PiProcess({ cwd, tag, ...this.piArgs(handle, trust, undefined, features) }, relay);
+    const timer = setTimeout(() => this.spare?.pi === pi && void this.retireSpare(`unused for ${SPARE_KEPT_MS / 60_000} min`), SPARE_KEPT_MS);
+    timer.unref?.();
+    this.spare = { handle, tag, cwd, trust, features: JSON.stringify(features), inputs, pi, relay, since: Date.now(), timer };
+  }
+
+  /** The spare, for a New chat in `cwd` that would start the same pi; a stale one stops instead. */
+  private async takeSpare(cwd: string, trust: boolean | undefined, features: SessionFeatures): Promise<Spare | undefined> {
+    const spare = this.spare;
+    if (spare?.cwd !== cwd) return undefined;
+    const inputs = await piInputs(cwd);
+    if (this.spare !== spare) return undefined;
+    const why = stale(spare, trust, JSON.stringify(features), inputs);
+    if (why) return void this.retireSpare(why);
+    this.spare = undefined;
+    clearTimeout(spare.timer);
+    return spare;
+  }
+
+  /** Stop the spare pi, and a spawn still on its way (settings or features changed, unused, a busy machine, quit). */
+  retireSpare(reason: string): Promise<void> {
+    this.spareTurn++;
+    const spare = this.spare;
+    if (!spare) return Promise.resolve();
+    this.spare = undefined;
+    clearTimeout(spare.timer);
+    this.bridge.unregister(spare.handle);
+    log.info(spare.tag, `spare- ${reason}`);
+    return spare.pi.close();
   }
 
   /** The directory a live chat runs in (its worktree for worktree chats). */
@@ -769,7 +913,9 @@ export class SessionHost {
 
   async closeAll(): Promise<void> {
     clearInterval(this.idleCheck);
-    await Promise.all([...this.live.values()].map((chat) => chat.pi.close()));
+    this.closing = true;
+    clearTimeout(this.spareTimer);
+    await Promise.all([this.retireSpare("quit"), ...[...this.live.values()].map((chat) => chat.pi.close())]);
   }
 }
 

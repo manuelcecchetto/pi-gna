@@ -79,6 +79,30 @@ export async function writePiSettings(patch: unknown): Promise<PiSettingsState> 
   return { path, values: readPiValues(next) };
 }
 
+/** The context files pi looks for in each folder from the cwd up, and in its own folder. */
+const CONTEXT_FILES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"];
+
+/**
+ * What a starting pi reads besides its arguments: its settings, models and trust, the system prompt and context files
+ * (from the cwd up), and its resource folders (a file added or removed changes the folder). Their change times and sizes
+ * as one string: a pi started earlier is as current as a new one while this is unchanged (a spare pi, see SessionHost).
+ */
+export async function piInputs(cwd: string): Promise<string> {
+  const agent = agentDir();
+  const resources = ["SYSTEM.md", "APPEND_SYSTEM.md", "extensions", "skills", "prompts", "themes"];
+  const paths = [
+    ...["settings.json", "models.json", "trust.json", ...CONTEXT_FILES, ...resources].map((name) => join(agent, name)),
+    ...["settings.json", ...resources].map((name) => join(cwd, ".pi", name)),
+    join(cwd, ".agents", "skills"),
+  ];
+  for (let dir = cwd; ; dir = dirname(dir)) {
+    paths.push(...CONTEXT_FILES.map((name) => join(dir, name)));
+    if (dirname(dir) === dir) break;
+  }
+  const stamps = await Promise.all(paths.map((path) => stat(path).then((info) => `${info.mtimeMs}:${info.size}`, () => "-")));
+  return stamps.join(",");
+}
+
 export async function readCompactionSettings(): Promise<CompactionSettings> {
   try {
     const settings = JSON.parse(await readFile(join(agentDir(), "settings.json"), "utf8")) as { compaction?: CompactionSettings };

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app" } }));
 
@@ -23,17 +23,20 @@ vi.mock("./pi-process", () => ({
 }));
 const file = vi.hoisted(() => ({ read: async (_path: string): Promise<unknown[]> => [] }));
 vi.mock("./session-file", () => ({ readActiveBranch: (path: string) => file.read(path) }));
-vi.mock("./pi-settings", () => ({ projectTrust: async () => undefined }));
+// Busy by default, so that only the spare pi's tests start one (2 s after a chat a client opened is ready).
+const machine = vi.hoisted(() => ({ load: Number.POSITIVE_INFINITY, inputs: "inputs-1" }));
+vi.mock("node:os", async (original) => ({ ...(await original<typeof import("node:os")>()), loadavg: () => [machine.load, 0, 0], availableParallelism: () => 8 }));
+vi.mock("./pi-settings", () => ({ projectTrust: async () => undefined, piInputs: async () => machine.inputs }));
 
 
 import type { Item, SessionState } from "../shared/session-state";
 import type { AgentBridge } from "./bridge";
 import { type SessionFeatures, SessionHost } from "./session-host";
 
-const bridge = { url: "http://x", register: () => "token", unregister: () => {} } as unknown as AgentBridge;
+const bridge = { url: "http://x", register: vi.fn((_handle: string) => "token"), unregister: () => {}, rename: vi.fn() };
 const base: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false };
 const argsFor = (features: SessionFeatures, atp?: Parameters<SessionHost["piArgs"]>[2]) =>
-  new SessionHost(() => {}, bridge, "/atp").piArgs("abcdef", undefined, atp, features).args;
+  new SessionHost(() => {}, bridge as unknown as AgentBridge, "/atp").piArgs("abcdef", undefined, atp, features).args;
 
 describe("piArgs pr-review skill", () => {
   it("loads the bundled pr-review skill only when GitHub is on", () => {
@@ -79,7 +82,7 @@ describe("session registry", () => {
       seq += batch.events.length;
       seen.push({ ...batch, seq });
       return seq;
-    }, bridge, "/atp", features && (async () => features));
+    }, bridge as unknown as AgentBridge, "/atp", features && (async () => features));
     host.onGlobal((event) => globals.push(event));
     return { host, seen, globals };
   }
@@ -430,23 +433,24 @@ describe("session registry", () => {
     }
   });
 
+  let files = 0;
+  /** A chat that was prompted, ran and was read, then left on no screen: idle from now. */
+  async function idleChat(host: SessionHost, lease: { client?: { clientId: string; actor: string }; hold?: string } = { client: A }, extra: object = {}) {
+    const { handle } = await host.open({ cwd: "/tmp", sessionPath: `/tmp/idle-${++files}.jsonl`, ...extra }, lease);
+    await vi.waitFor(() => expect(host.stateOf(handle)!.phase).toBe("ready"));
+    await host.command(handle, { type: "prompt", message: "hi" });
+    const pi = fake.pis.at(-1)!;
+    pi.handlers.onRecords(assistantTurn(1));
+    if (lease.client) {
+      host.viewing(handle, lease.client.clientId, true);
+      host.viewing(handle, lease.client.clientId, false);
+    }
+    expect(host.stateOf(handle)).toMatchObject({ prompted: true, running: false, unread: undefined, dialogs: [] });
+    return { handle, pi };
+  }
+
   describe("idle chats stop their pi", () => {
     const MIN = 60_000;
-    let files = 0;
-    /** A chat that was prompted, ran and was read, then left on no screen: idle from now. */
-    async function idleChat(host: SessionHost, lease: { client?: { clientId: string; actor: string }; hold?: string } = { client: A }, extra: object = {}) {
-      const { handle } = await host.open({ cwd: "/tmp", sessionPath: `/tmp/idle-${++files}.jsonl`, ...extra }, lease);
-      await vi.waitFor(() => expect(host.stateOf(handle)!.phase).toBe("ready"));
-      await host.command(handle, { type: "prompt", message: "hi" });
-      const pi = fake.pis.at(-1)!;
-      pi.handlers.onRecords(assistantTurn(1));
-      if (lease.client) {
-        host.viewing(handle, lease.client.clientId, true);
-        host.viewing(handle, lease.client.clientId, false);
-      }
-      expect(host.stateOf(handle)).toMatchObject({ prompted: true, running: false, unread: undefined, dialogs: [] });
-      return { handle, pi };
-    }
     const closedBy = (seen: { handle: string; events: { kind: string; by?: unknown }[] }[], handle: string) =>
       seen.filter((batch) => batch.handle === handle).flatMap((batch) => batch.events).find((event) => event.kind === "closed")?.by;
 
@@ -602,6 +606,164 @@ describe("session registry", () => {
       expect(shown.pi.closed).toBe(true);
     });
   });
+
+  describe("a spare pi for the next New chat", () => {
+    const MIN = 60_000;
+    const hosts: SessionHost[] = [];
+    beforeEach(() => {
+      machine.load = 0;
+      machine.inputs = "inputs-1";
+    });
+    afterEach(async () => {
+      machine.load = Number.POSITIVE_INFINITY;
+      for (const host of hosts.splice(0)) await host.closeAll();
+    });
+    /** A host whose features can change between spawning the spare and opening the chat. */
+    async function spareHost(features: () => SessionFeatures = () => base) {
+      fake.pis.length = 0;
+      const host = new SessionHost(() => 0, bridge as unknown as AgentBridge, "/atp", async () => features());
+      hosts.push(host);
+      return { host };
+    }
+    const status = (text: string) => rec("extension_ui_request", { id: `s-${text}`, method: "setStatus", statusKey: "boot", statusText: text });
+
+    it("is taken by a New chat in its folder: no second pi, its tools act for the chat, what it said comes along", async () => {
+      const { host } = await spareHost();
+      await host.spawnSpare("/tmp");
+      expect(fake.pis).toHaveLength(1);
+      const spare = fake.pis[0]!;
+      expect(spare.opts.sessionPath).toBeUndefined();
+      const spareHandle = bridge.register.mock.lastCall![0];
+      spare.handlers.onRecords([status("booted")]);
+      const { handle } = await host.open({ cwd: "/tmp", handle: "newchat1" }, { client: A });
+      expect(handle).toBe("newchat1");
+      expect(fake.pis).toHaveLength(1);
+      expect(bridge.rename).toHaveBeenLastCalledWith(spareHandle, "newchat1");
+      await vi.waitFor(() => expect(host.stateOf(handle)!.phase).toBe("ready"));
+      expect(host.stateOf(handle)!.statuses).toEqual({ boot: "booted" });
+      spare.handlers.onRecords(assistantTurn(1));
+      expect(host.stateOf(handle)!.items.map((item) => item.kind)).toEqual(["user", "assistant"]);
+      await host.close(handle);
+      expect(spare.closed).toBe(true);
+      expect(host.stateOf(handle)).toBeUndefined();
+    });
+
+    it("is not taken by a session file, an ATP chat or a chat in another folder", async () => {
+      const { host } = await spareHost(() => ({ ...base, atp: true }));
+      await host.spawnSpare("/tmp");
+      await host.open({ cwd: "/tmp", sessionPath: "/tmp/s1.jsonl" }, { client: A });
+      await host.open({ cwd: "/tmp", atp: { role: "orchestrator" } }, { client: A });
+      await host.open({ cwd: "/" }, { client: A });
+      expect(fake.pis).toHaveLength(4);
+      expect(fake.pis[0]!.closed).toBe(false);
+      await host.open({ cwd: "/tmp" }, { client: A });
+      expect(fake.pis).toHaveLength(4);
+    });
+
+    it("stops instead of being taken when it is stale: other features, or pi's files changed since", async () => {
+      let features = base;
+      const { host } = await spareHost(() => features);
+      await host.spawnSpare("/tmp");
+      features = { ...base, kanban: true };
+      await host.open({ cwd: "/tmp" }, { client: A });
+      expect(fake.pis).toHaveLength(2);
+      expect(fake.pis[0]!.closed).toBe(true);
+      await host.spawnSpare("/tmp");
+      expect(fake.pis).toHaveLength(3);
+      machine.inputs = "inputs-2";
+      await host.open({ cwd: "/tmp" }, { client: A });
+      expect(fake.pis).toHaveLength(4);
+      expect(fake.pis[2]!.closed).toBe(true);
+    });
+
+    it("is one at most, for the folder opened last, kept while current, and not started on a busy machine", async () => {
+      const { host } = await spareHost();
+      machine.load = 8;
+      await host.spawnSpare("/tmp");
+      expect(fake.pis).toHaveLength(0);
+      machine.load = 7.9;
+      await host.spawnSpare("/tmp");
+      await host.spawnSpare("/tmp");
+      expect(fake.pis).toHaveLength(1);
+      await host.spawnSpare("/");
+      expect(fake.pis).toHaveLength(2);
+      expect(fake.pis[0]!.closed).toBe(true);
+      await Promise.all([host.spawnSpare("/tmp"), host.spawnSpare("/tmp")]);
+      expect(fake.pis).toHaveLength(3);
+      expect(fake.pis[1]!.closed).toBe(true);
+      // A settings change while a spawn reads pi's files cancels it.
+      await host.retireSpare("settings changed");
+      const spawning = host.spawnSpare("/tmp");
+      void host.retireSpare("settings changed");
+      await spawning;
+      expect(fake.pis).toHaveLength(3);
+      await host.spawnSpare("/tmp");
+      machine.load = 8;
+      host.stopIdle();
+      expect(fake.pis[3]!.closed).toBe(true);
+    });
+
+    it("counts as an idle chat: it goes first past the cap, and is not started when the idle chats fill it", async () => {
+      const { host } = await spareHost();
+      const chats = [];
+      for (let i = 0; i < 7; i++) chats.push(await idleChat(host));
+      await host.spawnSpare("/tmp");
+      const spare = fake.pis.at(-1)!;
+      host.stopIdle();
+      expect(spare.closed).toBe(false);
+      chats.push(await idleChat(host));
+      host.stopIdle();
+      expect(spare.closed).toBe(true);
+      expect(chats.some((chat) => chat.pi.closed)).toBe(false);
+      const count = fake.pis.length;
+      await host.spawnSpare("/tmp");
+      expect(fake.pis).toHaveLength(count);
+    });
+
+    it("goes when unused for 10 minutes, when its pi exits, on a settings change and at quit", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+      try {
+        const { host } = await spareHost();
+        await host.spawnSpare("/tmp");
+        vi.advanceTimersByTime(9 * MIN);
+        expect(fake.pis[0]!.closed).toBe(false);
+        vi.advanceTimersByTime(MIN);
+        expect(fake.pis[0]!.closed).toBe(true);
+        await host.spawnSpare("/tmp");
+        fake.pis[1]!.handlers.onExit({ code: 1, signal: null, stderrTail: "" });
+        await host.spawnSpare("/tmp");
+        expect(fake.pis).toHaveLength(3);
+        await host.retireSpare("settings changed");
+        expect(fake.pis[2]!.closed).toBe(true);
+        await host.spawnSpare("/tmp");
+        await host.closeAll();
+        expect(fake.pis[3]!.closed).toBe(true);
+        await host.spawnSpare("/tmp");
+        expect(fake.pis).toHaveLength(4);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("starts 2 s after a chat a client opened is ready, not after a host-held or ATP chat", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        const { host } = await spareHost(() => ({ ...base, atp: true }));
+        await host.open({ cwd: "/tmp", sessionPath: "/tmp/task.jsonl" }, { hold: "task:1" });
+        await host.open({ cwd: "/tmp", atp: { role: "orchestrator" } }, { client: A });
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(fake.pis).toHaveLength(2);
+        await host.open({ cwd: "/tmp", sessionPath: "/tmp/s2.jsonl" }, { client: A });
+        await vi.advanceTimersByTimeAsync(1900);
+        expect(fake.pis).toHaveLength(3);
+        await vi.advanceTimersByTimeAsync(200);
+        expect(fake.pis).toHaveLength(4);
+        expect(fake.pis[3]!.opts.sessionPath).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
 
 // ── Command semantics ────────────────────────────────────────────────────────
@@ -618,7 +780,7 @@ describe("command semantics", () => {
     fake.send = async () => undefined;
     const events: { kind: string; [key: string]: unknown }[] = [];
     const yolo = { on: false };
-    const host = new Host((batch) => void events.push(...(batch.events as never[])), bridge, "/atp", undefined, () => yolo.on);
+    const host = new Host((batch) => void events.push(...(batch.events as never[])), bridge as unknown as AgentBridge, "/atp", undefined, () => yolo.on);
     const { handle } = await host.open(request);
     return { host, handle, events, pi: fake.pis[0]!, yolo };
   }

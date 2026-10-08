@@ -2,7 +2,7 @@ import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, utimes, w
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { projectTrust, readPiSettings, writePiSettings } from "./pi-settings";
+import { piInputs, projectTrust, readPiSettings, writePiSettings } from "./pi-settings";
 
 let root: string;
 
@@ -33,6 +33,42 @@ describe("projectTrust", () => {
     expect(await projectTrust(join(root, "repo"))).toBeUndefined();
     await writeFile(join(root, "agent", "trust.json"), "{ not json");
     expect(await projectTrust(join(root, "repo"))).toBeUndefined();
+  });
+});
+
+describe("piInputs", () => {
+  it("changes with what a starting pi reads: its settings, context files from the cwd up, resource folders", async () => {
+    const cwd = join(root, "repo", "web");
+    let previous = await piInputs(cwd);
+    expect(await piInputs(cwd)).toBe(previous);
+    const changes = [
+      () => writeFile(join(root, "agent", "settings.json"), "{}"),
+      () => writeFile(join(root, "agent", "settings.json"), '{ "defaultModel": "opus" }'),
+      () => writeFile(join(root, "agent", "trust.json"), "{}"),
+      () => writeFile(join(root, "agent", "AGENTS.md"), "# global"),
+      () => writeFile(join(root, "repo", "AGENTS.md"), "# project"),
+      () => writeFile(join(cwd, "CLAUDE.md"), "# here"),
+      () => mkdir(join(cwd, ".pi", "extensions"), { recursive: true }),
+      () => writeFile(join(cwd, ".pi", "extensions", "tool.ts"), ""),
+    ];
+    for (const change of changes) {
+      await change();
+      const next = await piInputs(cwd);
+      expect(next).not.toBe(previous);
+      previous = next;
+    }
+    // Two saves within the clock's step (a coarse file system) still differ by size.
+    const settings = join(root, "agent", "settings.json");
+    const at = new Date(2026, 0, 1);
+    await utimes(settings, at, at);
+    previous = await piInputs(cwd);
+    await writeFile(settings, '{ "defaultModel": "sonnet" }');
+    await utimes(settings, at, at);
+    expect(await piInputs(cwd)).not.toBe(previous);
+    previous = await piInputs(cwd);
+    // A file pi does not read at start changes nothing.
+    await writeFile(join(cwd, "README.md"), "hi");
+    expect(await piInputs(cwd)).toBe(previous);
   });
 });
 

@@ -731,6 +731,17 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   setting. Stopping is a `chat.close` by the host, so clients leave the chat and the sidebar row opens it again from
   its session file; the composer's unsent text is kept by session file too, and the phone's chat screen reopens the
   file when its handle is gone (Reopen, or a re-attach after a reconnect).
+- **A spare pi for the next New chat.** pi takes about a second to boot, so 2 s after a chat a client opened is ready
+  (not a host-held or ATP chat), `SessionHost.spawnSpare` starts one more pi in that chat's folder, unless the 1-minute
+  load average is at the core count or the idle chats fill the 8 above (the spare counts as one, and goes first). There
+  is one spare at most, for the folder opened last. A New chat there (no session file, no ATP) adopts it when it would
+  start the same pi: the same trust and features, and pi's own files unchanged since (`piInputs`: its settings, models
+  and trust, the system prompt and context files from the cwd up, its resource folders, by change time and size, since
+  a model change in any chat saves pi's default). The spare's bridge token moves to the chat's handle
+  (`AgentBridge.rename`) and what it said while it waited (`Relay`) applies like a booting pi's records; a stale spare
+  stops and the chat starts its own. The spare also stops after 10 min unused, on any change to pi-gna's settings or
+  Computer Use's, on a busy machine and at quit. Logged as `spare+`, `adopted`, `spare-` with the reason; no setting,
+  and no reuse for a session file (pi's `switch_session` would change which file it has open behind the dedupe).
 - **Opening a file.** `SessionHost.open` resolves trust and features, starts pi, and only then reads and hydrates the
   session file, so pi's boot no longer waits behind the read. Until the history is in, the chat is registered (one pi
   per file) but holds what pi says, including its exit, and applies it after the history in the old order; a second
