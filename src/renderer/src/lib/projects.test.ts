@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { worktreeCwd } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
-import { projectViews } from "./projects";
+import { projectViews as viewsOfChats } from "./projects";
 import { createSession, type SessionState } from "../../../shared/session-state";
+import { openChat } from "../state/app";
+
+const projectViews = (projects: ProjectGroup[], open: SessionState[], pinned: string[], hidden?: string[]) => viewsOfChats(projects, open.map(openChat), pinned, hidden);
 
 const summary = (cwd: string, name: string, modifiedAt: number): SessionSummary => ({
   path: `${cwd}/${name}.jsonl`,
@@ -100,3 +103,23 @@ describe("projectViews", () => {
     expect(views[1]?.rows.map((r) => r.key)).toEqual(["n2", "/b/b1.jsonl"]);
   });
 });
+
+describe("openChat", () => {
+  const running: SessionState = { ...createSession("oc1", "/a"), prompted: true, running: true, items: [user("fix the flash", 500)] };
+
+  it("is the same object while a chat streams, so the sidebar rows do not render", () => {
+    const chat = openChat(running);
+    const streamed: SessionState = { ...running, items: [...running.items] };
+    expect(openChat(streamed)).toBe(chat);
+    expect(chat).toMatchObject({ handle: "oc1", title: "fix the flash", attention: "running", sentAt: 500, listed: true, draft: false, exited: false });
+  });
+
+  it("is a new object once what the row shows changes", () => {
+    const chat = openChat(running);
+    const settled = openChat({ ...running, running: false, unread: "done" });
+    expect(settled).not.toBe(chat);
+    expect(settled.attention).toBe("unread");
+    expect(openChat({ ...running, running: false, unread: "done", name: "Flash fix" }).title).toBe("Flash fix");
+  });
+});
+

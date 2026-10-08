@@ -8,7 +8,13 @@ import { Composer } from "./Composer";
 import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
 
-export function SessionPane({ session }: { session: SessionState }) {
+export function SessionPane({ handle }: { handle: string }) {
+  const session = useApp((state) => state.sessions[handle]);
+  if (!session) return null;
+  return <ChatPane session={session} />;
+}
+
+function ChatPane({ session }: { session: SessionState }) {
   const expandAll = useApp((state) => state.expandAll);
   const browserOpen = useApp((state) => state.pane.open);
   const inset = useApp((state) => state.sidebar.collapsed);

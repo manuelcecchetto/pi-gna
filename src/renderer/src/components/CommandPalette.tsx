@@ -12,7 +12,6 @@ import {
   newSession,
   openSession,
   openSettings,
-  sessionTitle,
   setOverlay,
   showBoard,
   showPage,
@@ -21,6 +20,7 @@ import {
   toggleExpandAll,
   toggleSidebar,
   useApp,
+  useOpenChats,
 } from "../state/app";
 import { showFileFinder } from "./BrowserPane";
 import {
@@ -200,7 +200,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
 /** Everything ⌘K can find, from the app state as it is now. */
 function useEntries(): Entry[] {
   const projects = useApp((state) => state.projects);
-  const sessions = useApp((state) => state.sessions);
+  const chats = useOpenChats();
   const active = useApp((state) => state.active);
   const page = useApp((state) => state.page);
   const cards = useApp((state) => state.board.cards);
@@ -209,8 +209,8 @@ function useEntries(): Entry[] {
   return useMemo(() => {
     const home = window.studio.homeDir;
     const now = Date.now();
-    const current = active ? sessions[active] : undefined;
-    const groups = projectViews(projects, Object.values(sessions), pinned);
+    const current = active ? chats.find((chat) => chat.handle === active) : undefined;
+    const groups = projectViews(projects, chats, pinned);
     const entries: Entry[] = [];
 
     for (const group of groups) {
@@ -222,7 +222,7 @@ function useEntries(): Entry[] {
           id: `chat:${row.key}`,
           group: "Chats",
           icon: MessageSquare,
-          title: live ? sessionTitle(live) : (row.summary?.title ?? "New chat"),
+          title: live ? live.title : (row.summary?.title ?? "New chat"),
           detail: project,
           time: row.time,
           aside: onScreen ? "Open" : row.time ? relativeTime(row.time, now) : "",
@@ -277,7 +277,7 @@ function useEntries(): Entry[] {
       });
     }
 
-    const chat = current && current.phase !== "exited" ? current : undefined;
+    const chat = current && !current.exited ? current : undefined;
     const commands: (Entry | false | undefined)[] = [
       { id: "cmd:new-chat", group: "Commands", icon: Plus, title: "New chat", keys: "⌘N", run: newChat },
       {
@@ -308,5 +308,5 @@ function useEntries(): Entry[] {
     ];
     for (const command of commands) if (command) entries.push(command);
     return entries;
-  }, [projects, sessions, active, page, cards, features, pinned]);
+  }, [projects, chats, active, page, cards, features, pinned]);
 }

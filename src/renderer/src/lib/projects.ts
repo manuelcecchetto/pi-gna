@@ -4,15 +4,33 @@
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
 import { isTriage } from "../../../shared/task-prompts";
-import { isListed, type SessionState } from "../../../shared/session-state";
+import type { Attention } from "../../../shared/session-state";
 import { applyUi, uiStore } from "./host-ui";
 import { useStore } from "./store";
+
+/**
+ * What the chat lists show of an open chat (state/app.ts openChat). Streaming changes none of it, so lists that select
+ * these instead of the sessions do not render on every frame.
+ */
+export interface OpenChat {
+  handle: string;
+  cwd: string;
+  sessionPath?: string;
+  title: string;
+  attention: Attention;
+  /** When you last sent a message from pi-gna; undefined for chats only opened from disk. */
+  sentAt?: number;
+  /** Shown in the chat lists (shared/session-state.ts isListed). */
+  listed: boolean;
+  draft: boolean;
+  exited: boolean;
+}
 
 export interface ProjectRow {
   key: string;
   time?: number;
   summary?: SessionSummary;
-  live?: SessionState;
+  live?: OpenChat;
 }
 
 export interface ProjectView {
@@ -26,7 +44,7 @@ export interface ProjectView {
  * Indexed projects plus open chats (matched by session file, grouped by projectOf), ordered for the sidebar; card
  * triage chats and ATP chats (reached from the ATP page) are left out.
  */
-export function projectViews(projects: ProjectGroup[], open: SessionState[], pinned: string[], hidden: string[] = []): ProjectView[] {
+export function projectViews(projects: ProjectGroup[], open: OpenChat[], pinned: string[], hidden: string[] = []): ProjectView[] {
   const groups = new Map<string, { cwd: string; activeAt: number; rows: ProjectRow[] }>();
   for (const project of projects) {
     const sessions = project.sessions.filter((summary) => !(summary.named && isTriage(summary.title)));
@@ -35,10 +53,10 @@ export function projectViews(projects: ProjectGroup[], open: SessionState[], pin
     groups.set(project.cwd, { cwd: project.cwd, activeAt: Math.max(...sessions.map((summary) => summary.modifiedAt)), rows });
   }
   for (const session of open) {
-    if (!isListed(session)) continue;
+    if (!session.listed) continue;
     const cwd = projectOf(session.cwd);
     const group = groups.get(cwd) ?? { cwd, activeAt: 0, rows: [] };
-    const sent = sentAt(session);
+    const sent = session.sentAt;
     const row = group.rows.find((r) => r.summary && r.summary.path === session.sessionPath);
     if (row) {
       row.live = session;
@@ -62,19 +80,6 @@ export function projectViews(projects: ProjectGroup[], open: SessionState[], pin
       // Chats not in the index yet (just started) have no time and stay on top until it catches up.
       rows: rows.sort((a, b) => (b.time ?? Number.POSITIVE_INFINITY) - (a.time ?? Number.POSITIVE_INFINITY)),
     }));
-}
-
-/**
- * When you last sent a message from pi-gna, so the chat and its project move up right away instead of when the
- * index refreshes after the run. Chats only opened from disk count as untouched: their file time already says it.
- */
-function sentAt(session: SessionState): number | undefined {
-  if (!session.prompted) return undefined;
-  for (let i = session.items.length - 1; i >= 0; i--) {
-    const item = session.items[i];
-    if (item?.kind === "user") return item.message.timestamp;
-  }
-  return undefined;
 }
 
 // ── Pins ─────────────────────────────────────────────────────────────────────

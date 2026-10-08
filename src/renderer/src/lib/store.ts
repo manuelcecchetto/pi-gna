@@ -1,6 +1,6 @@
 // Tiny external store: synchronous state for actions, one rAF-batched notification per frame
 // for React (useSyncExternalStore), so a burst of streaming deltas renders once.
-import { useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 
 export interface Store<T> {
   /** Latest state; use in actions. */
@@ -50,4 +50,27 @@ export function createStore<T>(initial: T): Store<T> {
 /** Select a stable slice; selectors must return existing references, not new objects. */
 export function useStore<T, S>(store: Store<T>, selector: (state: T) => S): S {
   return useSyncExternalStore(store.subscribe, () => selector(store.snapshot()));
+}
+
+/**
+ * Select a slice the selector builds anew (an array or object of existing references): the component keeps the
+ * previous one, and does not render, while the two are `shallow` equal.
+ */
+export function useStoreShallow<T, S>(store: Store<T>, selector: (state: T) => S): S {
+  const last = useRef<{ value: S }>(undefined);
+  return useSyncExternalStore(store.subscribe, () => {
+    const next = selector(store.snapshot());
+    if (last.current && shallow(last.current.value, next)) return last.current.value;
+    last.current = { value: next };
+    return next;
+  });
+}
+
+/** Same keys (or indexes) holding the same references. */
+export function shallow<S>(a: S, b: S): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => Object.hasOwn(b, key) && Object.is((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }

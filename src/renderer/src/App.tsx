@@ -59,7 +59,8 @@ export function App() {
     };
   }, []);
 
-  const session = useApp((state) => (state.active ? state.sessions[state.active] : undefined));
+  // Only which chat is open: SessionPane subscribes to the chat itself, so streaming does not render the shell.
+  const active = useApp((state) => (state.active && state.sessions[state.active] ? state.active : undefined));
   const page = useApp((state) => state.page);
   const paneState = useApp((state) => state.pane);
   // The browser belongs to the chat: a page (Kanban, Settings, ...) covers the window and hides it.
@@ -100,8 +101,8 @@ export function App() {
             <AtpPage key={page.cwd} page={page} />
           ) : page ? (
             <KanbanPage page={page} />
-          ) : session ? (
-            <SessionPane key={session.handle} session={session} />
+          ) : active ? (
+            <SessionPane key={active} handle={active} />
           ) : (
             <div className="drag relative flex h-full flex-col items-center justify-end overflow-hidden pb-[16vh]">
               <HeroBackdrop />

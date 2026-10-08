@@ -47,8 +47,9 @@ import { applyUi, bootUiState, uiStore } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { lightboxAt, lightboxStep, type LightboxView } from "../lib/lightbox";
 import { applyQueueOp, type QueueOp, type Queues } from "../../../shared/queue";
-import { createSession, hydrate, isDisposable, isDraft, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
-import { createStore, useStore } from "../lib/store";
+import { attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, type RunOutcome, runOutcome, type SessionState } from "../../../shared/session-state";
+import type { OpenChat } from "../lib/projects";
+import { createStore, shallow, useStore, useStoreShallow } from "../lib/store";
 
 export interface Toast {
   id: number;
@@ -160,6 +161,8 @@ export const store = createStore<AppState>({
 });
 
 export const useApp = <S>(selector: (state: AppState) => S): S => useStore(store, selector);
+/** useApp for a selector that builds a new array or object (lib/store.ts useStoreShallow). */
+export const useAppShallow = <S>(selector: (state: AppState) => S): S => useStoreShallow(store, selector);
 
 const studio = () => window.studio;
 
@@ -1191,4 +1194,52 @@ export function sessionTitle(session: SessionState): string {
     if (clean) return clean.replace(/\s+/g, " ").slice(0, 120);
   }
   return "New chat";
+}
+
+const chatsBySession = new WeakMap<SessionState, OpenChat>();
+const chatsByHandle = new Map<string, OpenChat>();
+
+/** What the chat lists show of a chat: the same object until one of its fields changes, so rows can skip rendering. */
+export function openChat(session: SessionState): OpenChat {
+  const known = chatsBySession.get(session);
+  if (known) return known;
+  const next: OpenChat = {
+    handle: session.handle,
+    cwd: session.cwd,
+    sessionPath: session.sessionPath,
+    title: sessionTitle(session),
+    attention: attention(session),
+    sentAt: sentAt(session),
+    listed: isListed(session),
+    draft: isDraft(session),
+    exited: session.phase === "exited",
+  };
+  const previous = chatsByHandle.get(session.handle);
+  const chat = previous && shallow(previous, next) ? previous : next;
+  chatsByHandle.set(session.handle, chat);
+  chatsBySession.set(session, chat);
+  return chat;
+}
+
+/** The open chats as the lists show them; streaming into a chat does not change this. */
+export const useOpenChats = (): OpenChat[] => useAppShallow((state) => openChats(state.sessions));
+
+function openChats(sessions: Record<string, SessionState>): OpenChat[] {
+  const chats = Object.values(sessions).map(openChat);
+  // Forget closed chats.
+  if (chatsByHandle.size > chats.length) for (const handle of chatsByHandle.keys()) if (!sessions[handle]) chatsByHandle.delete(handle);
+  return chats;
+}
+
+/**
+ * When you last sent a message from pi-gna, so the chat and its project move up right away instead of when the
+ * index refreshes after the run. Chats only opened from disk count as untouched: their file time already says it.
+ */
+function sentAt(session: SessionState): number | undefined {
+  if (!session.prompted) return undefined;
+  for (let i = session.items.length - 1; i >= 0; i--) {
+    const item = session.items[i];
+    if (item?.kind === "user") return item.message.timestamp;
+  }
+  return undefined;
 }

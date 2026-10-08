@@ -1,10 +1,11 @@
 import { Angry, Copy, Eye, EyeOff, Folder, FolderOpen, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "./icons";
-import { useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
 import type { Feature } from "../../../shared/settings";
 import { baseName, relativeTime, tildify } from "../lib/format";
-import { type Attention, attention, isDraft, strongestAttention } from "../../../shared/session-state";
+import { type Attention, strongestLevel } from "../../../shared/session-state";
+import { shallow } from "../lib/store";
 import { worstSeverity } from "../lib/laments";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
 import { type ProjectRow, type ProjectView, projectViews, setProjectHidden, togglePinnedProject, useHiddenProjects, usePinnedProjects } from "../lib/projects";
@@ -16,19 +17,19 @@ import {
   newSession,
   openSession,
   openSettings,
-  sessionTitle,
   setSidebar,
   showBoard,
   showPage,
   store,
   toggleSidebar,
   useApp,
+  useOpenChats,
 } from "../state/app";
 import { useAtp } from "../state/atp";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
-import { DigitHint, useCommandDigits } from "./primitives";
+import { DigitHint, useCommandDigits, useNow } from "./primitives";
 import { SettingsNav } from "./Settings";
 import { useThemeImage } from "./ThemeRoot";
 import { UpdateRow } from "./Update";
@@ -39,7 +40,8 @@ const SESSIONS_PAGE = 10;
 
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
-  const sessions = useApp((state) => state.sessions);
+  // What the rows show of each open chat, not the chats: streaming into one does not render the sidebar.
+  const chats = useOpenChats();
   // A page (the board, the laments, GitHub) covers the active chat: no chat row is highlighted then.
   const page = useApp((state) => state.page);
   // The project a page row opens: the open page's, else the active chat's.
@@ -60,18 +62,17 @@ export function Sidebar() {
   const [dragging, setDragging] = useState(false);
   const { open: openMenu, menu } = useContextMenu();
   const home = window.studio.homeDir;
-  const activeChat = active ? sessions[active]?.cwd : undefined;
-  const activeCwd = activeChat && projectOf(activeChat);
+  // You are in an empty new chat: highlight "New chat" instead of a row.
+  const activeChat = active ? chats.find((chat) => chat.handle === active) : undefined;
+  const activeCwd = activeChat && projectOf(activeChat.cwd);
+  const inDraft = Boolean(activeChat?.draft);
 
-  const all = useMemo(() => projectViews(projects, Object.values(sessions), pinned, hidden), [projects, sessions, pinned, hidden]);
+  const all = useMemo(() => projectViews(projects, chats, pinned, hidden), [projects, chats, pinned, hidden]);
   // Hidden projects come last and only show while you ask for them.
   const hiddenCount = all.filter((group) => group.hidden).length;
   // Once nothing is hidden, the next project you hide leaves the list again.
   if (showHidden && !hiddenCount) setShowHidden(false);
   const groups = showHidden ? all : all.filter((group) => !group.hidden);
-  // You are in an empty new chat: highlight "New chat" instead of a row.
-  const activeSession = active ? sessions[active] : undefined;
-  const inDraft = Boolean(activeSession && isDraft(activeSession));
   const width = clampSidebarWidth(layout.width, window.innerWidth);
 
   // Which projects are open and how many of their chats they show, here rather than in each section: ⌘1…⌘9 number the chat rows
@@ -87,7 +88,11 @@ export function Sidebar() {
   const numbered = visible.slice(0, 9);
   const settingsMode = page?.kind === "settings";
   const hints = useCommandDigits(numbered.map((row) => () => openRow(row)), !settingsMode);
-  const digits = new Map(numbered.map((row, index) => [row.key, index + 1]));
+  const digitKeys = numbered.map((row) => row.key).join("\n");
+  const digits = useMemo(() => new Map(digitKeys.split("\n").map((key, index) => [key, index + 1])), [digitKeys]);
+  // Stable, so the memoized project sections skip rendering when only another project changed.
+  const onOpen = useCallback((cwd: string, open: boolean) => setOpened((all) => ({ ...all, [cwd]: open })), []);
+  const onShown = useCallback((cwd: string, count: number) => setShown((all) => ({ ...all, [cwd]: count })), []);
 
   const openFolder = async () => {
     const folder = await window.studio.pickFolder();
@@ -223,9 +228,9 @@ export function Sidebar() {
                   active={active}
                   features={features}
                   open={isOpen(group.cwd)}
-                  onOpen={(open) => setOpened((all) => ({ ...all, [group.cwd]: open }))}
+                  onOpen={onOpen}
                   shown={shown[group.cwd] ?? SESSIONS_PER_PROJECT}
-                  onShown={(count) => setShown((all) => ({ ...all, [group.cwd]: count }))}
+                  onShown={onShown}
                   digits={hints ? digits : undefined}
                   onMenu={openMenu}
                 />
@@ -290,7 +295,13 @@ export function CollapsedSidebarControls() {
  */
 export const COLLAPSED_INSET = "calc(88px * var(--unzoom) + 72px)";
 
-function ProjectSection({
+/** projectViews builds new views each time it runs; a project whose rows show the same things is the same. */
+const sameGroup = (a: ProjectView, b: ProjectView): boolean =>
+  a.cwd === b.cwd && a.pinned === b.pinned && a.hidden === b.hidden && a.rows.length === b.rows.length && a.rows.every((row, index) => shallow(row, b.rows[index]));
+
+const ProjectSection = memo(ProjectSectionView, ({ group: a, ...rest }, { group: b, ...next }) => sameGroup(a, b) && shallow(rest, next));
+
+function ProjectSectionView({
   group,
   home,
   active,
@@ -307,10 +318,10 @@ function ProjectSection({
   active?: string;
   features: Record<Feature, boolean>;
   open: boolean;
-  onOpen: (open: boolean) => void;
+  onOpen: (cwd: string, open: boolean) => void;
   /** How many of the project's chats are listed. */
   shown: number;
-  onShown: (count: number) => void;
+  onShown: (cwd: string, count: number) => void;
   /** ⌘1…⌘9 of the rows that have one, while ⌘ is held. */
   digits?: Map<string, number>;
   onMenu: OpenMenu;
@@ -318,11 +329,11 @@ function ProjectSection({
   const rows = group.rows.slice(0, shown);
   const logo = useThemeImage(useApp((state) => state.themes), group.cwd, "logo");
   // A collapsed project still says when one of its chats is running, waiting or unread.
-  const rollup = open ? undefined : strongestAttention(group.rows.flatMap((row) => (row.live ? [row.live] : [])));
+  const rollup = open ? undefined : strongestLevel(group.rows.flatMap((row) => (row.live ? [row.live.attention] : [])));
   return (
     <div className="mb-1">
       <div className="group flex items-center rounded-lg pr-1 hover:bg-raised/50" onContextMenu={(event) => onMenu(event, projectMenu(group, features))}>
-        <button type="button" onClick={() => onOpen(!open)} title={tildify(group.cwd, home)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left">
+        <button type="button" onClick={() => onOpen(group.cwd, !open)} title={tildify(group.cwd, home)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left">
           {/* The folder is the disclosure mark: open while the project's chats show. */}
           {logo ? <img src={logo} alt="" className="size-4 shrink-0 object-contain" /> : open ? <FolderOpen size={16} className="shrink-0 text-muted" /> : <Folder size={16} className="shrink-0 text-muted" />}
           <span className={`truncate text-[14px] font-medium ${group.hidden ? "text-faint" : "text-fg/90"}`}>{baseName(group.cwd) || "/"}</span>
@@ -384,12 +395,12 @@ function ProjectSection({
           {group.rows.length > SESSIONS_PER_PROJECT && (
             <div className="flex pl-[23px]">
               {rows.length < group.rows.length && (
-                <button type="button" onClick={() => onShown(shown + SESSIONS_PAGE)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
+                <button type="button" onClick={() => onShown(group.cwd, shown + SESSIONS_PAGE)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
                   Show more
                 </button>
               )}
               {shown > SESSIONS_PER_PROJECT && (
-                <button type="button" onClick={() => onShown(SESSIONS_PER_PROJECT)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
+                <button type="button" onClick={() => onShown(group.cwd, SESSIONS_PER_PROJECT)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
                   Show less
                 </button>
               )}
@@ -430,7 +441,7 @@ function sessionMenu(row: ProjectRow, open: () => void, active: boolean, kanban:
   const path = live?.sessionPath ?? row.summary?.path;
   const card = path ? cardOfChat(store.get().board, path) : undefined;
   // As the chat header's card chip: an exited chat or an empty draft has nothing to put on the board.
-  const addable = live && !card && live.sessionPath && !isDraft(live) && live.phase !== "exited" ? live : undefined;
+  const addable = live && !card && live.sessionPath && !live.draft && !live.exited ? live : undefined;
   return [
     active ? [] : [{ label: "Open", icon: <MessagesSquare size={13} />, onSelect: open }],
     !kanban
@@ -450,10 +461,12 @@ function openRow(row: ProjectRow): void {
   else if (row.summary) openSession(row.summary);
 }
 
-function SessionRow({ row, active, kanban, digit, onMenu }: { row: ProjectRow; active: boolean; kanban: boolean; digit?: number; onMenu: OpenMenu }) {
+const SessionRow = memo(SessionRowView, ({ row: a, ...rest }, { row: b, ...next }) => shallow(a, b) && shallow(rest, next));
+
+function SessionRowView({ row, active, kanban, digit, onMenu }: { row: ProjectRow; active: boolean; kanban: boolean; digit?: number; onMenu: OpenMenu }) {
   const live = row.live;
-  const title = live ? sessionTitle(live) : (row.summary?.title ?? "New chat");
-  const level = live ? attention(live) : undefined;
+  const title = live ? live.title : (row.summary?.title ?? "New chat");
+  const level = live?.attention;
   const needsYou = level === "waiting" || level === "failed" || level === "unread";
   const onClick = () => openRow(row);
   return (
@@ -465,9 +478,15 @@ function SessionRow({ row, active, kanban, digit, onMenu }: { row: ProjectRow; a
     >
       <span className="grid w-4 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
       <span className={`min-w-0 flex-1 truncate text-[14px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
-      {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(row.time)}</span>}
+      {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <RowTime time={row.time} />}
     </button>
   );
+}
+
+/** Ticks on its own: the memoized rows render only when what they show of the chat changes. */
+function RowTime({ time }: { time: number }) {
+  useNow(60_000);
+  return <span className="shrink-0 font-mono text-[10.5px] text-faint">{relativeTime(time)}</span>;
 }
 
 /** The pi logo tells the state: spinning while working, one still logo color for what needs you. */

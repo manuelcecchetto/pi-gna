@@ -8,6 +8,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Long chats open much faster: reading a chat's history no longer slows down with its length (an 11,500-entry chat took 3.6 s before the transcript could show, now under 10 ms).
 - Large file writes stream smoothly: the live arguments of a write or edit no longer get slower to update as they grow (100 KB of streamed arguments cost about 490 ms of parsing in each window and phone, now about 20 ms).
 - Opening pi-gna from the Dock or Finder shows your chats sooner: the sidebar no longer waits for your login shell's environment (about 2.1 s after launch before, about 0.9 s now; the first launch still waits once to learn pi's folders).
+- Streaming answers no longer redraw the sidebar and the rest of the window on every frame: only the chat itself updates, and a chat answering in the background redraws nothing until its mark changes.
 
 ## 0.9.1 - 2026-10-08
 

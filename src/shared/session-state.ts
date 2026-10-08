@@ -593,11 +593,13 @@ export function attention(session: AttentionInput): Attention {
 
 /** Strongest signal across chats (for a collapsed project), ignoring idle. */
 export function strongestAttention(sessions: AttentionInput[]): Attention | undefined {
+  return strongestLevel(sessions.map(attention));
+}
+
+/** Strongest of these levels, ignoring idle. */
+export function strongestLevel(levels: Attention[]): Attention | undefined {
   let best: Attention | undefined;
-  for (const session of sessions) {
-    const level = attention(session);
-    if (level !== "idle" && (!best || ATTENTION_RANK[level] > ATTENTION_RANK[best])) best = level;
-  }
+  for (const level of levels) if (level !== "idle" && (!best || ATTENTION_RANK[level] > ATTENTION_RANK[best])) best = level;
   return best;
 }
 
