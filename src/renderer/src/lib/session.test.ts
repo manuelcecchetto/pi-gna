@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { HostEvent } from "../../../shared/host-api";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "../../../shared/protocol";
 import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEvent, runOutcome, type SessionState, strongestAttention } from "../../../shared/session-state";
-import { liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "./tools";
+import { liveComputerApp, presentCall, presentTool, summarizeTools, toolTimeoutMs } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
 /** A tool's run, from the assistant item that made the call. */
@@ -25,6 +25,10 @@ const assistant = (content: AssistantMessage["content"], stopReason: AssistantMe
 const readCall: ToolCall = { type: "toolCall", id: "c1", name: "read", arguments: { path: "/repo/src/a.ts" } };
 
 let clock = 1000;
+// Each test starts at the same time: a test must not read times that depend on the tests before it.
+beforeEach(() => {
+  clock = 1000;
+});
 function play(events: (SessionEvent | HostEvent)[], start: SessionState = createSession("h", "/repo")): SessionState {
   return events.reduce((state, event) => {
     const now = (clock += 100);
@@ -171,7 +175,14 @@ describe("hydrate + view", () => {
     const derive = createRunDeriver();
     const state = { ...hydrate(createSession("h", "/repo"), entries), running: true };
     const first = derive(state);
-    const next = play([{ type: "message_start", message: assistant([], "pending") }, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }], state);
+    const next = play(
+      [
+        { type: "message_start", message: assistant([], "pending") },
+        { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } },
+        { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "On it." } },
+      ],
+      state,
+    );
     const second = derive(next);
     expect(second[0]).toBe(first[0]);
     expect(second[1]).not.toBe(first[1]);
@@ -191,6 +202,165 @@ describe("hydrate + view", () => {
     expect(second.at(-1)).not.toBe(first.at(-1));
     const step = second.at(-1)?.blocks[0];
     expect(step?.kind === "activity" && step.steps[0]).toMatchObject({ kind: "tool", run: { status: "running", partial: { content: [{ text: "cc" }] } } });
+  });
+
+  describe("live rebuilds keep what did not change", () => {
+    const bash = (id: string, command: string): ToolCall => ({ type: "toolCall", id, name: "bash", arguments: { command } });
+    const think = (delta: string): SessionEvent => ({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta } });
+    const update = (id: string, text: string): SessionEvent => ({ type: "tool_execution_update", toolCallId: id, toolName: "bash", args: {}, partialResult: { content: [{ type: "text", text }] } });
+    // Two calls in one message: c1 done, c2 running; then commentary and a call in a second message.
+    const loop = (): SessionState =>
+      play([
+        { type: "agent_start" },
+        ...userTurn("build"),
+        { type: "message_end", message: assistant([{ type: "text", text: "Building." }, bash("c1", "make"), bash("c2", "make test")], "toolUse") },
+        { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: {} },
+        { type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: { content: [{ type: "text", text: "ok" }] }, isError: false },
+        { type: "tool_execution_start", toolCallId: "c2", toolName: "bash", args: {} },
+        update("c2", "1 passed"),
+      ]);
+    const group = (run: Run | undefined) => {
+      const block = run?.blocks.find((candidate) => candidate.kind === "activity");
+      if (block?.kind !== "activity") throw new Error("expected an activity group");
+      return block;
+    };
+
+    it("replaces only the step whose tool updated", () => {
+      const derive = createRunDeriver();
+      const state = loop();
+      const before = derive(state).at(-1);
+      const after = derive(play([update("c2", "1 passed\n2 passed")], state)).at(-1);
+      expect(after).not.toBe(before);
+      expect(after?.blocks[0]).toBe(before?.blocks[0]); // the commentary
+      expect(group(after)).not.toBe(group(before));
+      expect(group(after).steps[0]).toBe(group(before).steps[0]);
+      expect(group(after).steps[1]).not.toBe(group(before).steps[1]);
+      expect(group(after).steps[1]).toMatchObject({ kind: "tool", run: { status: "running", partial: { content: [{ text: "1 passed\n2 passed" }] } } });
+    });
+
+    it("keeps finished steps while a thought streams, and matches a fresh derive", () => {
+      const derive = createRunDeriver();
+      const started = play(
+        [
+          { type: "tool_execution_end", toolCallId: "c2", toolName: "bash", result: { content: [{ type: "text", text: "2 passed" }] }, isError: true },
+          { type: "message_start", message: assistant([], "pending") },
+          { type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
+          think("Tests"),
+        ],
+        loop(),
+      );
+      const before = derive(started).at(-1);
+      const next = play([think(" failed, read the log")], started);
+      const after = derive(next).at(-1);
+      expect(group(after).steps.map((step) => step.kind)).toEqual(["tool", "tool", "thinking"]);
+      expect(group(after).steps.slice(0, 2).every((step, index) => step === group(before).steps[index])).toBe(true);
+      expect(group(after).steps[2]).toMatchObject({ text: "Tests failed, read the log", streaming: true });
+      // Reused objects or not, the run reads exactly as one derived from scratch.
+      expect(after).toEqual(deriveRuns(next).at(-1));
+      expect(layoutRun(after!)).toEqual(layoutRun(deriveRuns(next).at(-1)!));
+    });
+
+    it("is the previous run when an update changes nothing it shows", () => {
+      const derive = createRunDeriver();
+      const started = play([{ type: "message_start", message: assistant([], "pending") }, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }], loop());
+      const before = derive(started);
+      // A leading newline is not a text block yet.
+      const blank = play([{ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "\n" } }], started);
+      expect(blank.items).not.toBe(started.items);
+      expect(derive(blank).at(-1)).toBe(before.at(-1));
+      const text = (delta: string): SessionEvent => ({ type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta } });
+      const saying = play([text("Done")], blank);
+      const said = derive(saying).at(-1);
+      expect(said).not.toBe(before.at(-1));
+      expect(said?.blocks.map((block) => block.kind)).toEqual(["text", "activity", "text"]);
+      expect(said?.blocks[0]).toBe(before.at(-1)?.blocks[0]);
+      // Text after it ends the group's live tail: a new group object, the same step objects.
+      expect(group(said).live).toBe(false);
+      expect(group(said).steps.every((step, index) => step === group(before.at(-1)).steps[index])).toBe(true);
+      const more = derive(play([text(" now")], saying)).at(-1);
+      expect(more?.blocks[2]).not.toBe(said?.blocks[2]);
+      expect(more?.blocks[2]).toMatchObject({ kind: "text", text: "\nDone now", streaming: true });
+    });
+
+    it("keeps a step whose position moved when one before it went away", () => {
+      const derive = createRunDeriver();
+      const event = (assistantMessageEvent: unknown) => ({ type: "message_update", assistantMessageEvent }) as SessionEvent;
+      // A thought that is still open shows as an empty streaming step; ended empty, it goes away.
+      const open = play(
+        [
+          { type: "message_start", message: assistant([], "pending") },
+          event({ type: "thinking_start", contentIndex: 0 }),
+          event({ type: "toolcall_start", contentIndex: 1, id: "c9", toolName: "bash" }),
+          event({ type: "toolcall_end", contentIndex: 1, toolCall: bash("c9", "ls") }),
+        ],
+        loop(),
+      );
+      const before = group(derive(open).at(-1));
+      expect(before.steps.map((step) => step.kind)).toEqual(["tool", "tool", "thinking", "tool"]);
+      const after = group(derive(play([event({ type: "thinking_end", contentIndex: 0, content: "" })], open)).at(-1));
+      expect(after.steps.map((step) => step.kind)).toEqual(["tool", "tool", "tool"]);
+      expect(after.steps[2]).toBe(before.steps[3]);
+    });
+
+    it("rebuilds a block that gained a field, such as a compaction's retry", () => {
+      const derive = createRunDeriver();
+      const compacting = play([{ type: "compaction_start", reason: "threshold" }], loop());
+      const before = derive(compacting).at(-1)?.blocks.at(-1);
+      expect(before).toMatchObject({ kind: "compaction", status: "running" });
+      const retrying = play([{ type: "summarization_retry_scheduled", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "429" }], compacting);
+      expect(derive(retrying).at(-1)?.blocks.at(-1)).toMatchObject({ kind: "compaction", status: "running", retry: { attempt: 1, waiting: true } });
+    });
+
+    it("rebuilds when the run stops, keeping its steps for rows that get live as a prop", () => {
+      const derive = createRunDeriver();
+      const state = loop();
+      const before = derive(state).at(-1);
+      const stopped = derive({ ...state, running: false }).at(-1);
+      expect(stopped).not.toBe(before);
+      expect(stopped?.live).toBe(false);
+      expect(group(stopped).live).toBe(false);
+      expect(group(before).live).toBe(true);
+      expect(group(stopped).steps.every((step, index) => step === group(before).steps[index])).toBe(true);
+      // An answer without tools has no group to change: the run itself must still stop.
+      const answer = play([...userTurn("hi"), { type: "message_end", message: assistant([{ type: "text", text: "Hello" }]) }]);
+      expect(derive({ ...answer, running: true }).at(-1)?.live).toBe(true);
+      expect(derive({ ...answer, running: false }).at(-1)?.live).toBe(false);
+    });
+
+    it("rebuilds what an item's own fields move: a group's time, the prompt", () => {
+      const derive = createRunDeriver();
+      const state = loop();
+      const before = derive(state).at(-1);
+      const index = state.items.findIndex((item) => item.kind === "assistant");
+      const item = state.items[index];
+      if (item?.kind !== "assistant") throw new Error("expected the assistant item");
+      const items = state.items.slice();
+      items[index] = { ...item, message: { ...item.message, timestamp: 99_999_999 } };
+      const later = derive({ ...state, items }).at(-1);
+      expect(group(later).at).toBe(99_999_999);
+      expect(group(later).steps.every((step, i) => step === group(before).steps[i])).toBe(true);
+      const prompt = state.items[0];
+      if (prompt?.kind !== "user") throw new Error("expected the prompt");
+      items[0] = { ...prompt, message: { ...prompt.message, content: "build it all" } };
+      expect(derive({ ...state, items }).at(-1)?.user?.message.content).toBe("build it all");
+    });
+  });
+
+  it("presents each call object once until its result details, cwd or home change", () => {
+    const call: ToolCall = { type: "toolCall", id: "p1", name: "edit", arguments: { path: "/repo/src/b.ts" } };
+    const first = presentCall(call, "/repo");
+    expect(presentCall(call, "/repo")).toBe(first);
+    expect(first).toMatchObject({ verb: "Edited", target: "src/b.ts", meta: undefined });
+    const details = { diff: "+1 a\n-1 b\n+2 c" };
+    const withDiff = presentCall(call, "/repo", details);
+    expect(withDiff).not.toBe(first);
+    expect(withDiff.meta).toBe("+2 −1");
+    expect(presentCall(call, "/repo", details)).toBe(withDiff);
+    expect(presentCall(call, "/repo/src", details).target).toBe("b.ts");
+    expect(presentCall(call, "/elsewhere", details).target).toBe("/repo/src/b.ts");
+    expect(presentCall(call, "/elsewhere", details, "/repo").target).toBe("~/src/b.ts");
+    // Streaming arguments replace the call object, so a changed call is presented again.
+    expect(presentCall({ ...call, arguments: { path: "/repo/c.ts" } }, "/repo").target).toBe("c.ts");
   });
 
   it("summarizes tools by category with unique files and failures", () => {

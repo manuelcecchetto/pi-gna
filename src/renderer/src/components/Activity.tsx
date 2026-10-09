@@ -15,13 +15,13 @@ import {
   SquareTerminal,
   Wrench,
 } from "./icons";
-import { memo, type ReactNode, useMemo, useState } from "react";
+import { memo, type ReactNode, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
 import { imageSrc } from "../lib/image-src";
 import type { ToolCall } from "../../../shared/protocol";
 import { type ToolRun, userText } from "../../../shared/session-state";
-import { type ToolCategory, liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "../lib/tools";
+import { type ToolCategory, liveComputerApp, presentCall, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { Markdown } from "./Markdown";
@@ -76,15 +76,12 @@ export const WorkAccordion = memo(function WorkAccordion({
   const open = useExpanded(`work:${run.key}:${layout.settled ? "done" : "working"}`, !layout.settled);
   const steps = layout.work.flatMap((block) => (block.kind === "activity" ? block.steps : []));
   const tools = steps.filter((step): step is ToolStep => step.kind === "tool");
-  const summary = useMemo(
-    () =>
-      summarizeTools(
-        tools.map((step) => ({
-          presentation: presentTool(step.call.name, step.call.arguments, cwd, step.run?.result?.details, home),
-          failed: step.run?.status === "error" && step.run.result !== undefined,
-        })),
-      ),
-    [tools, cwd, home],
+  // Presentations are cached per call, so this only counts while one step streams.
+  const summary = summarizeTools(
+    tools.map((step) => ({
+      presentation: presentCall(step.call, cwd, step.run?.result?.details, home),
+      failed: step.run?.status === "error" && step.run.result !== undefined,
+    })),
   );
   const usingApp = run.live
     ? liveComputerApp(tools.map((step) => ({ name: step.call.name, arguments: step.call.arguments, running: step.argsStreaming || !step.run || step.run.status === "running" })))
@@ -160,11 +157,12 @@ export const WorkAccordion = memo(function WorkAccordion({
   );
 });
 
-function StepView({ step, cwd, home, live }: { step: Step; cwd: string; home: string; live: boolean }) {
+/** Memoized: a live rebuild keeps unchanged steps as the same objects (buildRun), so only the changed one renders. */
+const StepView = memo(function StepView({ step, cwd, home, live }: { step: Step; cwd: string; home: string; live: boolean }) {
   if (step.kind === "thinking") return <ThinkingStep step={step} />;
   if (step.kind === "steer") return <SteerStep step={step} />;
   return <ToolRow step={step} cwd={cwd} home={home} live={live} />;
-}
+});
 
 /** Thinking reads like pi's terminal: the whole text inline, italic and muted, no label or toggle. */
 function ThinkingStep({ step }: { step: Extract<Step, { kind: "thinking" }> }) {
@@ -220,7 +218,7 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
   const [sheet, setSheet] = useState(false);
   const open = useExpanded(step.key, false);
   const { call, run } = step;
-  const presentation = presentTool(call.name, call.arguments, cwd, run?.result?.details, home);
+  const presentation = presentCall(call, cwd, run?.result?.details, home);
   const Icon = ICONS[presentation.category];
   const interrupted = !run ? !live && !step.argsStreaming : run.status === "error" && !run.result;
   const running = step.argsStreaming || (live && (!run || run.status === "running"));

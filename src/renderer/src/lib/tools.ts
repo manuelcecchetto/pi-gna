@@ -1,6 +1,7 @@
 // How tool calls read in the transcript: a category, a verb and a target. Pure, so the
 // collapsed one-liners and the activity summaries stay consistent and testable.
 import { parseLocalTarget } from "../../../shared/preview";
+import type { ToolCall } from "../../../shared/protocol";
 
 export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "think" | "other";
 
@@ -194,6 +195,20 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       return { category: "other", verb: name, activeVerb: name, target: firstString ? firstLine(firstString, 80) : "" };
     }
   }
+}
+
+const presented = new WeakMap<ToolCall, { cwd: string; home?: string; details: unknown; presentation: ToolPresentation }>();
+
+/**
+ * presentTool once per call object (the reducer replaces a call when its arguments change): a long
+ * loop's rows and summary are not presented again on every frame of the live run.
+ */
+export function presentCall(call: ToolCall, cwd: string, details?: unknown, home?: string): ToolPresentation {
+  const cached = presented.get(call);
+  if (cached && cached.cwd === cwd && cached.home === home && cached.details === details) return cached.presentation;
+  const presentation = presentTool(call.name, call.arguments, cwd, details, home);
+  presented.set(call, { cwd, home, details, presentation });
+  return presentation;
 }
 
 /**

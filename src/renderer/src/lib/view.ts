@@ -36,7 +36,8 @@ interface CacheEntry {
 /**
  * Derive runs, reusing the previous Run object when none of its items changed so memoized
  * components skip finished history while the live run streams. Tool runs are on the items that
- * made the calls, so a tool update changes its own item and run only.
+ * made the calls, so a tool update changes its own item and run only. A rebuilt run keeps the
+ * steps and blocks that came out the same (buildRun), so only the changed step re-renders.
  */
 export function createRunDeriver(): (state: Pick<SessionState, "items" | "running">) => Run[] {
   let cache = new Map<string, CacheEntry>();
@@ -47,7 +48,7 @@ export function createRunDeriver(): (state: Pick<SessionState, "items" | "runnin
       const live = state.running && index === slices.length - 1;
       const key = items[0]?.key ?? "empty";
       const previous = cache.get(key);
-      const run = previous && previous.live === live && sameRefs(previous.items, items) ? previous.run : buildRun(key, items, live);
+      const run = previous && previous.live === live && sameRefs(previous.items, items) ? previous.run : buildRun(key, items, live, previous?.run);
       nextCache.set(key, { items, live, run });
       return run;
     });
@@ -74,7 +75,41 @@ function sameRefs<T>(a: T[], b: T[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function buildRun(key: string, items: Item[], live: boolean): Run {
+/** Same own fields by reference: a rebuilt step or block equal to its previous build keeps the old object. */
+function shallowSame(a: object, b: object): boolean {
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  let fields = 0;
+  for (const key in left) {
+    if (left[key] !== right[key]) return false;
+    fields++;
+  }
+  for (const _key in right) fields--;
+  return fields === 0;
+}
+
+function reuseBlock(old: Block | undefined, block: Block): Block {
+  if (!old) return block;
+  if (block.kind === "activity" && old.kind === "activity") return old.live === block.live && old.at === block.at && sameRefs(old.steps, block.steps) ? old : block;
+  return shallowSame(old, block) ? old : block;
+}
+
+/**
+ * Build a run's blocks. Given the run's previous build, steps and blocks that come out the same keep
+ * their old objects, and a run whose blocks all did is the old run, so memoized step rows skip
+ * re-rendering while one step streams.
+ */
+function buildRun(key: string, items: Item[], live: boolean, previous?: Run): Run {
+  const oldSteps = previous ? previous.blocks.flatMap((block) => (block.kind === "activity" ? block.steps : [])) : [];
+  let cursor = 0;
+  let oldByKey: Map<string, Step> | undefined;
+  const reuseStep = (step: Step): Step => {
+    // Steps come out in the previous build's order (a run grows at its end), so the old one is usually next.
+    let old = oldSteps[cursor];
+    if (old?.key === step.key) cursor++;
+    else old = (oldByKey ??= new Map(oldSteps.map((candidate) => [candidate.key, candidate]))).get(step.key);
+    return old && shallowSame(old, step) ? old : step;
+  };
   const blocks: Block[] = [];
   let user: Run["user"];
   let group: Extract<Block, { kind: "activity" }> | undefined;
@@ -87,7 +122,7 @@ function buildRun(key: string, items: Item[], live: boolean): Run {
       group = { kind: "activity", key: `group:${step.key}`, steps: [], live: false, at };
       blocks.push(group);
     }
-    group.steps.push(step);
+    group.steps.push(reuseStep(step));
     const ended = step.kind === "tool" ? step.run?.endedAt : undefined;
     group.at = Math.max(group.at, at, ended ?? 0);
   };
@@ -165,7 +200,11 @@ function buildRun(key: string, items: Item[], live: boolean): Run {
   }
   const last = blocks.at(-1);
   if (live && last?.kind === "activity") last.live = true;
-  return { key, user, blocks, live };
+  if (!previous) return { key, user, blocks, live };
+  const oldBlocks = new Map(previous.blocks.map((block) => [block.key, block]));
+  const kept = blocks.map((block) => reuseBlock(oldBlocks.get(block.key), block));
+  const sameUser = previous.user?.key === user?.key && previous.user?.message === user?.message;
+  return previous.live === live && sameUser && sameRefs(previous.blocks, kept) ? previous : { key, user, blocks: kept, live };
 }
 
 /** Trailing text this long while streaming is treated as the final answer even before the turn ends. */
