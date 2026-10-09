@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.10.1 - 2026-10-10
+
 - The tok/s readout is accurate now: it divides the tokens the provider reports for a response by the time the whole response took, from request to last token. It used to estimate from text and thinking only and drop every pause over a second, which read too high on providers that stream in bursts and left out tool calls; tool-call arguments and reasoning now count too.
 
 ## 0.10.0 - 2026-10-10
