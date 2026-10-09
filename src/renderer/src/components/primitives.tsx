@@ -3,8 +3,9 @@ import { type AnsiStyle, parseAnsi } from "../lib/ansi";
 import { formatClock, formatDuration } from "../lib/format";
 import { clampPanel, type PanelBounds } from "../lib/layout";
 
-export function Ansi({ text }: { text: string }) {
-  const spans = useMemo(() => parseAnsi(text), [text]);
+/** `start`: the style in effect before `text`, when it is a slice of longer output (`styleAfter`). */
+export function Ansi({ text, start }: { text: string; start?: AnsiStyle }) {
+  const spans = useMemo(() => parseAnsi(text, start), [text, start]);
   return (
     <>
       {spans.map((span, index) => (

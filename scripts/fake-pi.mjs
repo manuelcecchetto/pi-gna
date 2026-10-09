@@ -11,7 +11,9 @@
 // `abort` ends the answer early, as Stop and Esc do with pi.
 // `[tools=N]` runs N bash calls before the answer, one assistant message each, every call streaming `[toolout=N]` lines of
 // output (default 4) one per `[delay=N]`; `[toolfail]` fails the last call (tool rows, live output, timings).
-// `[parallel]` makes them one assistant message whose calls run at once, as pi runs parallel calls.
+// `[parallel]` makes them one assistant message whose calls run at once, as pi runs parallel calls. `[toolchunk=N]` prints
+// N lines per update (pi sends at most one a 100 ms); `[toolansi]` colors them like a test runner. Like pi, a call's output
+// is its last 2000 lines or 50 KB.
 // `[think=N]` streams N paragraphs of thinking (with some Markdown) before the answer, one per `[delay=N]`.
 // Composer chrome: get_commands, thinking levels (large models offer them), set_model / set_thinking_level, compact and
 // session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
@@ -111,11 +113,28 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
 });
 
+/** pi's bash output limit (truncateTail): the last 2000 lines or 50 KB of whole lines. */
+function piTail(text) {
+  const lines = text.split("\n");
+  let start = lines.length;
+  let bytes = 0;
+  while (start > 0 && lines.length - start < 2000) {
+    const size = Buffer.byteLength(lines[start - 1]) + 1;
+    if (bytes + size > 50 * 1024) break;
+    bytes += size;
+    start--;
+  }
+  return start ? lines.slice(start).join("\n") : text;
+}
+
 /** `[tools=N]`: bash calls as pi runs them, each after the message that made it ends. */
 async function runTools(text) {
   const calls = directive(text, "tools", 0);
   const lines = directive(text, "toolout", 4);
   const delay = directive(text, "delay", DELAY);
+  const chunk = directive(text, "toolchunk", 1);
+  const ansi = text.includes("[toolansi]");
+  const line = (t, n) => (ansi ? `\x1b[32m✓\x1b[39m call ${t} \x1b[1mline ${n}\x1b[22m \x1b[2m(${n % 97} ms)\x1b[0m\n` : `call ${t} line ${n}\n`);
   const steps = Array.from({ length: calls }, (_, i) => i + 1);
   const batches = text.includes("[parallel]") ? [steps] : steps.map((t) => [t]);
   for (const batch of batches) {
@@ -136,13 +155,13 @@ async function runTools(text) {
     for (let i = 1; i <= lines && !aborted; i++) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       for (const m of made) {
-        m.output += `call ${m.t} line ${i}\n`;
-        out({ type: "tool_execution_update", toolCallId: m.id, toolName: "bash", args: m.call.arguments, partialResult: { content: [{ type: "text", text: m.output }] } });
+        for (let n = (i - 1) * chunk + 1; n <= i * chunk; n++) m.output += line(m.t, n);
+        out({ type: "tool_execution_update", toolCallId: m.id, toolName: "bash", args: m.call.arguments, partialResult: { content: [{ type: "text", text: piTail(m.output) }] } });
       }
     }
     for (const { t, id, output } of made) {
       const isError = t === calls && text.includes("[toolfail]");
-      const content = [{ type: "text", text: isError ? `${output}exit code 1` : output }];
+      const content = [{ type: "text", text: piTail(isError ? `${output}exit code 1` : output) }];
       out({ type: "tool_execution_end", toolCallId: id, toolName: "bash", result: { content }, isError });
       const result = { role: "toolResult", toolCallId: id, toolName: "bash", content, isError, timestamp: Date.now() };
       out({ type: "message_start", message: result });

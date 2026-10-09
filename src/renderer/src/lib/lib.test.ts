@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAnsi, stripAnsi } from "./ansi";
+import { parseAnsi, sameStyle, stripAnsi, styleAfter } from "./ansi";
 import { formatStamp, formatTokens } from "./format";
 import { type LexedMarkdown, lexMarkdown, markdownBlockLines, markdownBlockToHtml, markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
 import { applyQueueOp } from "../../../shared/queue";
@@ -36,6 +36,40 @@ describe("parseAnsi", () => {
       { text: "bold red", style: { bold: true, color: "#ff6b6b" } },
       { text: " bold", style: { bold: true, color: undefined } },
     ]);
+  });
+
+  it("keeps plain text as one span and merges runs that share a style", () => {
+    expect(parseAnsi("")).toEqual([]);
+    const plain = parseAnsi("a\nb");
+    expect(plain).toEqual([{ text: "a\nb", style: {} }]);
+    // A reset and the same color again, or a clear-line code in between, keep one span.
+    expect(parseAnsi("\x1b[31ma\x1b[0m\x1b[31mb\x1b[2Kc\x1b[0md\x1b[39me")).toEqual([
+      { text: "abc", style: { color: "#ff6b6b" } },
+      { text: "de", style: {} },
+    ]);
+    expect(parseAnsi("\x1b[1ma\x1b[22;1mb")).toEqual([{ text: "ab", style: { bold: true, dim: undefined } }]);
+  });
+
+  it("parses a slice of longer output in the style the output left it in", () => {
+    const head = "\x1b[1mbold \x1b[32mgreen\n";
+    const start = styleAfter(head);
+    expect(start).toEqual({ bold: true, color: "#5fd38d" });
+    expect(styleAfter("still\x1b[39m", start)).toEqual({ bold: true, color: undefined });
+    expect(styleAfter("plain", start)).toBe(start);
+    expect(styleAfter("x\x1b[2Ky")).toEqual({});
+    // From the last full reset on, whatever came before.
+    expect(styleAfter("\x1b[1ma\x1b[0mb\x1b[31mc", start)).toEqual({ color: "#ff6b6b" });
+    expect(styleAfter("\x1b[4ma\x1b[mb\x1b[3m\x1b[0m\x1b[1mc")).toEqual({ bold: true });
+    expect(styleAfter("\x1b[3mi\x1b[1mb")).toEqual({ italic: true, bold: true });
+    expect(parseAnsi("tail", start)).toEqual([{ text: "tail", style: start }]);
+    expect(parseAnsi("tail\x1b[0m end", start)).toEqual([{ text: "tail", style: start }, { text: " end", style: {} }]);
+  });
+
+  it("compares styles by value", () => {
+    expect(sameStyle({ color: "#fff", bold: true }, { bold: true, color: "#fff", dim: undefined })).toBe(true);
+    for (const key of ["color", "background", "bold", "dim", "italic", "underline"] as const) {
+      expect(sameStyle({}, { [key]: key === "color" || key === "background" ? "#fff" : true })).toBe(false);
+    }
   });
 
   it("strips non-SGR escapes and OSC hyperlinks", () => {

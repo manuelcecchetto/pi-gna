@@ -20,14 +20,18 @@ const BRIGHT = ["#7d7d85", "#ff8787", "#8ce99a", "#ffd479", "#82c3ff", "#e0a3ff"
 
 const ESCAPES = /\x1b\[([0-9;:]*)([A-Za-z])|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Z0-9]|\x1b[=>]/g;
 
-export function parseAnsi(input: string): AnsiSpan[] {
+/** Styled spans of `input`, starting in `start` (the style in effect before it, see `styleAfter`). */
+export function parseAnsi(input: string, start: AnsiStyle = {}): AnsiSpan[] {
+  // Plain text, the usual case: one span, no scan.
+  if (!input.includes("\x1b")) return input ? [{ text: input, style: start }] : [];
   const spans: AnsiSpan[] = [];
-  let style: AnsiStyle = {};
+  let style = start;
   let last = 0;
   const push = (text: string) => {
     if (!text) return;
     const previous = spans.at(-1);
-    if (previous && previous.style === style) previous.text += text;
+    // A reset followed by the same color, or a code repeated per line, makes an equal style anew: one span for them.
+    if (previous && sameStyle(previous.style, style)) previous.text += text;
     else spans.push({ text, style });
   };
   for (const match of input.matchAll(ESCAPES)) {
@@ -37,6 +41,20 @@ export function parseAnsi(input: string): AnsiSpan[] {
   }
   push(input.slice(last));
   return spans;
+}
+
+/** The style in effect at the end of `input` (begun in `start`), so a later slice of the same output can be parsed on its own. */
+export function styleAfter(input: string, start: AnsiStyle = {}): AnsiStyle {
+  let style = start;
+  if (!input.includes("\x1b")) return style;
+  // A full reset forgets every style before it: scan from the last one (most output resets on every line).
+  const reset = Math.max(input.lastIndexOf("\x1b[0m"), input.lastIndexOf("\x1b[m"));
+  for (const match of input.slice(Math.max(0, reset)).matchAll(ESCAPES)) if (match[2] === "m") style = applySgr(style, match[1] ?? "");
+  return style;
+}
+
+export function sameStyle(a: AnsiStyle, b: AnsiStyle): boolean {
+  return a.color === b.color && a.background === b.background && a.bold === b.bold && a.dim === b.dim && a.italic === b.italic && a.underline === b.underline;
 }
 
 export function stripAnsi(input: string): string {

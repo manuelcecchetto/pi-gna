@@ -1048,7 +1048,12 @@ Verified live (pi 1.0.0, Oct 2026):
   `timeoutSeconds`, `timeoutMs`): pi exposes no per-tool defaults, and bash runs unbounded without one. While a run
   streams, each rebuild keeps the steps and blocks that came out the same as their old objects (`buildRun`), step rows
   are memoized, and a call is presented once per call object (`presentCall`), so a long agent loop redraws only the
-  row that changed (a 150-call loop: about 46,000 row renders became 750).
+  row that changed (a 150-call loop: about 46,000 row renders became 750). A running bash call's open details show
+  its last 60 lines (`LiveTail` in `ToolDetails.tsx`) under a count of the earlier ones, kept scrolled to the bottom
+  unless you scroll up, so each output update draws 60 lines instead of the first 400; the full output (first 400
+  lines, Show all) shows once it ends. `parseAnsi` returns plain text as one span without a scan and merges equal
+  styles; the tail starts in the style the earlier output left (`styleAfter`, scanning from the last full reset).
+  Colored output past pi's 50 KB limit: about 165 ms of main-thread work a second became 85.
 - Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window);
   commentary between tool calls is normal (white) text, so the two stay distinct. While a thinking block streams it is
   plain text (a paragraph per blank-line run, in the same `.prose` box) and becomes Markdown once it ends, so its

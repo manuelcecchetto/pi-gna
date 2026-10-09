@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, ToolCall, ToolResultLike } from "../../../shared/protocol";
+import { styleAfter } from "../lib/ansi";
 import { langFromPath } from "../lib/highlight";
 import type { ToolRun } from "../../../shared/session-state";
 import { Ansi } from "./primitives";
@@ -39,12 +40,55 @@ function Clipped({ text, children }: { text: string; children: (visible: string)
   );
 }
 
-function Output({ text, error }: { text: string; error?: boolean }) {
+/** The last `count` lines of `text` (a trailing newline ends the last line), and how many lines come before them. */
+export function lastLines(text: string, count: number): { tail: string; before: number } {
+  let cut = text.endsWith("\n") ? text.length - 1 : text.length;
+  for (let n = 0; n < count; n++) {
+    cut = text.lastIndexOf("\n", cut - 1);
+    if (cut < 0) return { tail: text, before: 0 };
+  }
+  let before = 0;
+  for (let index = text.indexOf("\n"); index >= 0 && index <= cut; index = text.indexOf("\n", index + 1)) before++;
+  return { tail: text.slice(cut + 1), before };
+}
+
+/** Lines a running command shows: its box (max-h-96) holds about 19, so a few boxes to scroll back through. */
+const LIVE_LINES = 60;
+
+/**
+ * A running command's output as a terminal shows it: its last lines, kept scrolled to the bottom unless you scroll up.
+ * Each update then draws LIVE_LINES lines instead of the first MAX_LINES; the whole output comes back when it ends.
+ */
+function LiveTail({ text, className }: { text: string; className: string }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const following = useRef(true);
+  const { tail, before } = lastLines(text, LIVE_LINES);
+  // A style set before the tail (a red block of errors) carries into it.
+  const start = useMemo(() => styleAfter(text.slice(0, text.length - tail.length)), [text, tail]);
+  useLayoutEffect(() => {
+    const pre = ref.current;
+    if (pre && following.current) pre.scrollTop = pre.scrollHeight;
+  }, [text]);
+  const onScroll = (event: React.UIEvent<HTMLPreElement>) => {
+    const pre = event.currentTarget;
+    following.current = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 2;
+  };
+  return (
+    <pre ref={ref} onScroll={onScroll} className={className}>
+      {before > 0 && <span className="select-none text-faint">{`⋯ ${before} earlier lines\n`}</span>}
+      <Ansi text={tail} start={start} />
+    </pre>
+  );
+}
+
+function Output({ text, error, live }: { text: string; error?: boolean; live?: boolean }) {
   if (!text.trim()) return <div className="px-3 py-2 font-mono text-[12px] text-faint">(no output)</div>;
+  const className = `code selectable max-h-96 overflow-auto whitespace-pre-wrap break-words ${error ? "text-bad" : "text-muted"}`;
+  if (live) return <LiveTail text={text} className={className} />;
   return (
     <Clipped text={text}>
       {(visible) => (
-        <pre className={`code selectable max-h-96 overflow-auto whitespace-pre-wrap break-words ${error ? "text-bad" : "text-muted"}`}>
+        <pre className={className}>
           <Ansi text={visible} />
         </pre>
       )}
@@ -146,7 +190,7 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
             {str(args.command)}
           </pre>
           <Section>
-            <Output text={text} error={failed} />
+            <Output text={text} error={failed} live={run?.status === "running"} />
           </Section>
         </>
       );
