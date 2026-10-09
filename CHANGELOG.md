@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.9.2 - 2026-10-09
+
 - New wallpapers: Pigna painted into Monet's Impression, Sunrise, Van Gogh's The Starry Night and Hokusai's The Great Wave, at dusk for the dark theme and by day for the light one. They replace the painted 🤌 wallpapers. Sunrise is the new default, and a removed wallpaper picked in Settings or named in a project theme falls back to it.
 
 ## 0.9.1 - 2026-10-08
