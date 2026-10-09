@@ -1,7 +1,7 @@
 // What the phone's composer needs from pi besides the session reducer's state: models, thinking levels, slash
 // commands, session stats and the compaction settings, all read through the host (`chat.command` allowlist) and the
 // file list for @ mentions (`chat.files`). The reads are plain async functions so a fake call can test them.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CompactionSettings } from "../shared/compaction";
 import type { Model, RpcCommand, RpcResponse, RpcSessionState, SessionStats, SlashCommand, ThinkingLevel } from "../shared/protocol";
 import type { SessionState } from "../shared/session-state";
@@ -107,20 +107,40 @@ export function useComposerData(client: HostClient, session: SessionState): Comp
     };
   }, [client, call, ready]);
 
-  // Stats on opening and whenever a run or a compaction ends (context grows each turn and shrinks on compaction).
+  // Stats on opening, running or not, and whenever a run or a compaction starts or ends.
   const busy = session.running || Boolean(session.compacting);
+  const statsRead = useRef(0);
   useEffect(() => {
-    if (!ready || busy) return;
+    if (!ready) return;
     let alive = true;
+    const read = ++statsRead.current;
     void Promise.all([loadStats(call), loadState(call)]).then(([next, state]) => {
       if (!alive) return;
-      if (next) setStats(next);
+      if (next && read === statsRead.current) setStats(next);
       if (state) setChosen((current) => ({ model: state.model ?? current.model, thinkingLevel: state.thinkingLevel }));
     });
     return () => {
       alive = false;
     };
   }, [call, ready, busy]);
+
+  // During a run too, as on the desktop: context grows every turn and shrinks on compaction (get_session_stats is cheap).
+  useEffect(() => {
+    if (!ready) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = client.onChatEvent((from, event) => {
+      if (from !== handle || event.kind !== "rpc" || (event.record.type !== "turn_end" && event.record.type !== "compaction_end")) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const read = ++statsRead.current;
+        void loadStats(call).then((next) => next && read === statsRead.current && setStats(next));
+      }, 300);
+    });
+    return () => {
+      stop();
+      clearTimeout(timer);
+    };
+  }, [client, call, handle, ready]);
 
   const fail = (what: string, error: string) => toast(`${what}: ${error}`, "error");
 

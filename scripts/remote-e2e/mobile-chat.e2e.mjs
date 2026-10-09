@@ -35,6 +35,7 @@ await scenario("mobile chat", async (ctx) => {
   await sleep(800);
   await shot("3-chat");
   check(true, "the phone's chat ends with the last answer of the scenario");
+  await until("the context meter on a chat opened from its file", () => exists('button[aria-label^="Context usage"]'));
   // It opens on the last few turns; scrolling to the top pages the earlier ones in, with no button to tap.
   check(!(await text()).includes("Earlier answer 1."), "the chat opens on a short first page");
   await until("the earliest turn after scrolling up", async () => {
@@ -72,6 +73,7 @@ await scenario("mobile chat", async (ctx) => {
   await sleep(800);
   await shot("7-stopped");
   check(!(await exists('[data-testid="stop"]')), "the phone no longer offers Stop");
+  await until("the context meter after Stop", () => exists('button[aria-label^="Context usage"]'));
   await liveToolChecks({ phone, shot, exists, present });
   await composerChecks({ phone, A, handle, shot, text, tap, exists, present });
   await reopenChecks({ phone, A, handle, sessionFile: ctx.sessionFile, tap, exists, present });
@@ -114,6 +116,7 @@ async function reopenChecks({ phone, A, handle, sessionFile, tap, exists, presen
   const live = (await A.ok("chat.live")).find((chat) => chat.sessionPath === sessionFile);
   check(live !== undefined && live.handle !== handle, "Reopen starts the chat again from its session file", live);
   check(!(await phone.eval(`document.body.innerText.includes("This chat has ended.")`)), "the phone does not report the chat as ended");
+  await until("the context meter after Reopen", () => exists('button[aria-label^="Context usage"]'));
 }
 
 /** While the phone's prompt streams: at the end the view follows it, and the jump-to-latest button shows exactly when it does not. */
