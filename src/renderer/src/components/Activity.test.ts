@@ -67,4 +67,24 @@ describe("WorkAccordion", () => {
     const ended = play(done("c3", "bash", true).slice(1), updated);
     expect(text(render(ended))).toContain("· Ran 2 commands · edited 1 file · 2 failed");
   });
+
+  it("shimmers the live header alone, its sweep a hidden copy of the label", () => {
+    const render = (state: SessionState) => {
+      const run = createRunDeriver()(state).at(-1)!;
+      return renderToStaticMarkup(createElement(WorkAccordion, { run, layout: layoutRun(run), cwd: "/repo", home: "/home", renderBlock: () => null }));
+    };
+    const running = play([
+      { type: "agent_start" },
+      { type: "message_end", message: { role: "user", content: "go", timestamp: 1 } },
+      { type: "message_end", message: assistant([call("c1", "bash", { command: "make" })]) },
+      { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: {} },
+    ] as SessionEvent[]);
+    const live = render(running);
+    expect(live).toMatch(/<span class="shimmer tabular-nums">(Working for [^<]+)<span class="shimmer-band" aria-hidden="true"><span>\1<\/span><\/span><\/span>/);
+    expect(live.match(/shimmer"|shimmer /g)).toHaveLength(1);
+    expect(live).toContain('<span class="shrink-0 text-fg/90">Running</span>');
+    const settled = render(play([...done("c1", "bash").slice(1), { type: "agent_end", messages: [] }, { type: "agent_settled" }] as SessionEvent[], running));
+    expect(settled).not.toContain("shimmer");
+    expect(settled).toMatch(/<span class="text-muted group-hover:text-fg">Worked for [^<]+<\/span>/);
+  });
 });

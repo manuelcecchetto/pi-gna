@@ -1149,17 +1149,31 @@ Verified live (pi 1.0.0, Oct 2026):
   branch-summary retries do not start a compaction indicator. Stop/Esc aborts manual compaction through
   the same RPC action as an agent run. Pi still owns all compaction behavior.
 - Live state: the loader is the pi logo with its three colors sweeping around the glyph (`PiSpinner`); it marks
-  the "Working for" header, running tool rows and running chats in the sidebar. Waiting-for-you stays an amber
-  dot, exited red, idle green. "waiting for you" or model "retrying" are called out next to the header;
-  compaction has its own single inline record.
+  the "Working for" header, running tool rows and running chats in the sidebar. The header's label shimmers (the one
+  shimmer in a chat; a running tool row has its spinner). Waiting-for-you stays an amber dot, exited red, idle green.
+  "waiting for you" or model "retrying" are called out next to the header; compaction has its own single inline
+  record.
 - Prompt bar: Enter sends (steers while running), Alt+Enter queues a follow-up. Esc while running arms the stop
   button (it reads "esc", replacing the send button if there is a draft, for 2.5 s); a second Esc clears the queue
   and aborts (no separate "esc stop" hint: the toolbar has no room for it). `/` commands from `get_commands`, `@` files, model and thinking pickers, image paste.
 - Composer: always at least 2 lines tall (like beautifului.dev's Chat composer). A soft blurred glow in the pi
   logo colors mixed with grey sits behind it, and its hairline border is grey with faint logo tints. On focus the
   border brightens (beautifului.dev's only focus change, measured: `line` -> `line-strong`) and becomes a slowly
-  flowing coral/grey/blue/yellow gradient with a stronger glow (the Gemini-like part, ours). `.composer*` in
-  `styles.css`; motion stops with reduced motion.
+  flowing coral/grey/blue/yellow gradient with a stronger glow (the Gemini-like part, ours). Border and glow flow
+  together on focus and while you type, and come to rest at the end of a sweep once a sweep ends 2 s after the last
+  key (`data-flow`, `flowRests` in `Composer.tsx`), so a focused composer you are not typing in draws nothing.
+  `.composer*` in `styles.css`; motion stops with reduced motion.
+- Endless animations run on the compositor (`styles.test.ts` checks it): they move only `transform` or `opacity`
+  (an animated background, fill or filter restyled and repainted the page every frame: a focused composer cost
+  about 35 ms of main thread a second, a running tool's spinners and shimmers about 65 ms). The composer's gradients
+  are layers 220% of their box that slide; the shimmer is a copy of the label in a masked window that slides while
+  the copy slides back (`Shimmer` in `primitives.tsx`); the spinner is a strip of 84 frames of the logo that
+  steps by transform (`PiSpinner`). The spinner uses the Web Animations API, not CSS: React listens for
+  `animationiteration` on its root, so Chromium wakes the page at the end of every cycle of every CSS animation to
+  dispatch it. Chromium still samples running animations on every frame the page draws for another reason (a
+  streaming answer), which dirties style there, so fewer animated elements (one per spinner, not one per cell)
+  costs less. Panels over the ATP graph are solid: a backdrop blur is redone every frame the graph moves. The ATP
+  graph's running node (`atp-glow`, a shadow) and live edge (`atp-march`, a dash offset) are the exceptions.
 - `.prose` (Markdown) is plain CSS in `styles.css`, outside Tailwind's layers, so it beats any utility: a
   `text-[13px]` on a wrapper or `[&_.prose]:` variant does not resize it. Size it with a contextual rule beside it
   (`.thinking .prose`, `.lament-report .prose`).

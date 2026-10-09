@@ -53,6 +53,12 @@ interface MenuItem {
 
 /** How long a first Esc keeps the stop button armed for the second. */
 const ESC_ARM_MS = 2500;
+/**
+ * The focused border flows (.composer-ring in styles.css) while the composer has `data-flow`: set on focus and on every
+ * keystroke, taken off when a sweep ends at least this long after the last one, so the border rests where a sweep turns.
+ */
+const FLOW_REST_MS = 2000;
+export const flowRests = (animationName: string, sinceTyped: number) => animationName === "composer-flow" && sinceTyped >= FLOW_REST_MS;
 
 /**
  * The session fields the composer shows. A streaming delta changes none of them (it replaces the items), so a
@@ -103,6 +109,7 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
   /** The first Esc while pi runs arms the stop button (it shows "esc"); a second Esc stops. */
   const [armed, setArmed] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const typed = useRef(0);
   const commands = useApp((state) => state.commands[handle]);
   const compaction = useApp((state) => state.compaction);
   const annotations = useApp((state) => state.annotations[handle]) ?? NO_ANNOTATIONS;
@@ -240,7 +247,14 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
     }
   };
 
+  const flow = (from: Element) => {
+    typed.current = performance.now();
+    const composer = from.closest(".composer");
+    if (composer && !composer.hasAttribute("data-flow")) composer.setAttribute("data-flow", "");
+  };
+
   const onChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    flow(event.currentTarget);
     setText(event.target.value);
     const next = detectMenu(event.target.value, event.target.selectionStart);
     setMenu(next);
@@ -301,9 +315,15 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
         }}
       />
       {/* pi-colored glow behind the box; the box border becomes a flowing gradient on focus (see .composer). */}
-      <div className={`composer relative ${floating ? "composer-floating" : ""}`}>
+      <div
+        className={`composer relative ${floating ? "composer-floating" : ""}`}
+        onAnimationIteration={(event) => {
+          if (flowRests(event.animationName, performance.now() - typed.current)) event.currentTarget.removeAttribute("data-flow");
+        }}
+      >
         <div className="composer-glow" aria-hidden />
-      <div className="composer-box relative z-10 rounded-2xl">
+      <div className="composer-box relative z-10">
+        <div className="composer-ring" aria-hidden />
         {menu && items.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-line-strong bg-panel p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
             {items.map((item, index) => (
@@ -333,6 +353,7 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
           disabled={exited}
           placeholder={hint}
           onChange={onChange}
+          onFocus={(event) => flow(event.currentTarget)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onBlur={() => setMenu(undefined)}

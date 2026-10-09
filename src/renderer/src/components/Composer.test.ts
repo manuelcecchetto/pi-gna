@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, SessionEvent } from "../../../shared/protocol";
 import { createSession, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
 import { shallow } from "../lib/store";
-import { composerFields } from "./Composer";
+import { composerFields, flowRests } from "./Composer";
 
 vi.mock("../state/app", () => ({}));
 
@@ -39,5 +39,15 @@ describe("composerFields", () => {
     expect(shallow(composerFields(play([{ type: "queue_update", steering: ["later"], followUp: [] } as SessionEvent], state)), fields)).toBe(false);
     expect(shallow(composerFields(play([{ type: "agent_settled" }], state)), fields)).toBe(false);
     expect(composerFields(undefined)).toBeUndefined();
+  });
+});
+
+describe("flowRests", () => {
+  // The border flows while you type and comes to rest where a sweep turns, the first turn 2s after the last key.
+  it("rests the border at the end of a sweep once typing has stopped", () => {
+    expect(flowRests("composer-flow", 2000)).toBe(true);
+    expect(flowRests("composer-flow", 9000)).toBe(true);
+    expect(flowRests("composer-flow", 1999)).toBe(false);
+    expect(flowRests("shimmer-band", 9000)).toBe(false);
   });
 });

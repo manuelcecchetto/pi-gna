@@ -38,6 +38,18 @@ export function useNow(intervalMs: number, enabled = true): number {
   return now;
 }
 
+/** A live label with a bright band sweeping through it (.shimmer in styles.css: the band is a copy of the text). */
+export function Shimmer({ text, className = "" }: { text: string; className?: string }) {
+  return (
+    <span className={`shimmer ${className}`}>
+      {text}
+      <span className="shimmer-band" aria-hidden>
+        <span>{text}</span>
+      </span>
+    </span>
+  );
+}
+
 export function Elapsed({ since, plain = false }: { since: number; plain?: boolean }) {
   const now = useNow(plain ? 1000 : 100);
   const text = plain ? formatClock(now - since) : formatDuration(now - since);

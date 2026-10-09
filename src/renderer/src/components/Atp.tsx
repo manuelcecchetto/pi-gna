@@ -44,7 +44,7 @@ import {
 import { type GraphHandle, AtpGraph, LOOK_LABEL, lookOf, type NodeLook, StatusIcon } from "./AtpGraph";
 import { Composer } from "./Composer";
 import { Markdown } from "./Markdown";
-import { Elapsed, Popover, ResizeHandle, useNow } from "./primitives";
+import { Elapsed, Popover, ResizeHandle, Shimmer, useNow } from "./primitives";
 import { ProjectSwitch } from "./ProjectSwitch";
 import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
@@ -642,7 +642,7 @@ function RunnerState({ runner, onReveal, onOpenChat }: { runner: Runner; onRevea
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted">
       <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-      <span className="shimmer shrink-0">{PHASES[runner.phase]}</span>
+      <Shimmer className="shrink-0" text={PHASES[runner.phase]} />
       {runner.node && (
         <button type="button" onClick={() => onReveal(runner.node as string)} className="min-w-0 truncate font-mono text-fg hover:underline" title={runner.title}>
           {runner.node}
@@ -957,7 +957,7 @@ function OrchestratorDock({
         <div
           ref={bottom}
           role="alert"
-          className="pointer-events-auto flex w-full max-w-[720px] items-start gap-3 rounded-2xl border border-bad/40 bg-panel/90 px-4 py-3 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl"
+          className="pointer-events-auto flex w-full max-w-[720px] items-start gap-3 rounded-2xl border border-bad/40 bg-panel px-4 py-3 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)]"
         >
           <TriangleAlert size={15} className="mt-0.5 shrink-0 text-bad" />
           <div className="min-w-0 flex-1 text-[13px]">
@@ -982,7 +982,7 @@ function OrchestratorDock({
       <div className="flex min-h-0 w-full max-w-[720px] flex-col gap-2">
         {talked && (
           <div
-            className="pointer-events-auto relative flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-line-strong bg-canvas/90 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl"
+            className="pointer-events-auto relative flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-line-strong bg-canvas shadow-[0_24px_64px_-24px_rgb(0_0_0/0.6)]"
             style={{ height }}
           >
             <ResizeHandle edge="top" bounds={ATP_DOCK} giver={() => room.current} keep={24} onResize={onResize} />

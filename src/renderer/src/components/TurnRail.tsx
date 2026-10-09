@@ -8,6 +8,7 @@ import { toggleBookmark, useBookmarks } from "../lib/bookmarks";
 import { renderMarkdown } from "../lib/markdown";
 import { adjacentTurn, nearDistance, RAIL_MIN_ITEMS, type RailItem, railPreview, sameMarkers } from "../lib/rail";
 import { scrollToRun } from "../lib/turn-scroll";
+import { Shimmer } from "./primitives";
 
 /** Room the rail needs left of the transcript text; narrower windows hide it (the keys still work). */
 const GUTTER = 48;
@@ -303,7 +304,7 @@ function RailCard({ item, bookmarked, onBookmark }: { item: RailItem; bookmarked
       {html ? (
         <div className="rail-preview mt-1" dangerouslySetInnerHTML={{ __html: html }} />
       ) : item.live ? (
-        <div className="shimmer mt-1 w-fit">Working…</div>
+        <Shimmer className="mt-1 block w-fit" text="Working…" />
       ) : null}
     </>
   );

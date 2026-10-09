@@ -26,7 +26,7 @@ import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
-import { Elapsed, useNow } from "./primitives";
+import { Shimmer, useNow } from "./primitives";
 import { resultImages, resultText, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, IconComponent> = {
@@ -99,15 +99,13 @@ export const WorkAccordion = memo(function WorkAccordion({
         className="group flex w-full items-center gap-2 border-b border-line pb-2 text-left text-[13.5px]"
       >
         {run.live && <PiSpinner size={14} />}
-        <span className={run.live ? "shimmer" : "text-muted group-hover:text-fg"}>
-          {run.live ? "Working" : "Worked"}
-          {started !== undefined && (
-            <>
-              {" for "}
-              {run.live ? <Elapsed since={started} plain /> : formatClock((layout.endedAt ?? started) - started)}
-            </>
-          )}
-        </span>
+        {run.live ? (
+          <WorkingFor since={started} />
+        ) : (
+          <span className="text-muted group-hover:text-fg">
+            Worked{started !== undefined && ` for ${formatClock((layout.endedAt ?? started) - started)}`}
+          </span>
+        )}
         {usingApp && <span className="text-[12.5px] text-accent">· Using {usingApp}</span>}
         {status && <span className="text-[12.5px] text-warn">· {status}</span>}
         {(summary || steers > 0) && (
@@ -254,7 +252,7 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
         ) : (
           <Icon size={13} className={`shrink-0 ${failed ? "text-bad" : "text-faint"}`} />
         )}
-        <span className={`shrink-0 ${failed ? "text-bad" : running ? "shimmer" : "text-fg/90"}`}>{verb}</span>
+        <span className={`shrink-0 ${failed ? "text-bad" : "text-fg/90"}`}>{verb}</span>
         {presentation.target && <span className="min-w-0 truncate font-mono text-[12px] text-muted">{presentation.target}</span>}
         {presentation.meta && <span className="shrink-0 font-mono text-[11px] text-faint">{presentation.meta}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 font-mono text-[11px] text-faint">
@@ -315,6 +313,12 @@ function ToolSheetBody({ call, run }: { call: ToolCall; run?: ToolRun }) {
       <ToolDetails call={call} run={run} />
     </div>
   );
+}
+
+/** The live run's label: the one shimmer in a chat (a running call has its spinner). */
+function WorkingFor({ since }: { since?: number }) {
+  const now = useNow(1000, since !== undefined);
+  return <Shimmer className="tabular-nums" text={since === undefined ? "Working" : `Working for ${formatClock(now - since)}`} />;
 }
 
 /** A running call's live run time, kept faint; with a timeout, a pie fills toward it (amber past 80%). */

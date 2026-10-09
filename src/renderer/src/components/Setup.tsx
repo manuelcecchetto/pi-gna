@@ -20,6 +20,7 @@ import { createStore, useStore } from "../lib/store";
 import { applySettings, newChat, remoteError, setOverlay, store, useApp } from "../state/app";
 import { CodeText } from "./CodeText";
 import { PiSpinner } from "./PiLogo";
+import { Shimmer } from "./primitives";
 import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
 
@@ -510,9 +511,7 @@ function Installing({ persona, lines }: { persona: Persona; lines: string[] }) {
       <div className="setup-bar" />
       <div className="flex items-center gap-2 text-[12.5px]">
         <PiSpinner size={12} />
-        <span key={fun} className="setup-fun shimmer min-w-0 truncate">
-          {persona === "nerd" ? PI_INSTALL_COMMAND : FUN_LINES[fun]}
-        </span>
+        <Shimmer key={fun} className="setup-fun min-w-0 truncate" text={persona === "nerd" ? PI_INSTALL_COMMAND : (FUN_LINES[fun] ?? "")} />
         <div className="flex-1" />
         <button
           type="button"

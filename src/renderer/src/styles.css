@@ -160,50 +160,63 @@ body,
   border-top: 1px dashed var(--line-strong);
 }
 
-/* Shimmer label for live states. */
+/* Shimmer label for live states (Shimmer in primitives.tsx): muted text with a bright band sweeping through it. The
+   band is a copy of the text in fg, in a window that slides across while the copy inside slides back by as much, so
+   the text stays put. Both move by transform, which the compositor runs: animating the background of
+   `background-clip: text` restyled and repainted the label, and so the page, every frame. The window's mask is the
+   old gradient's band: 60% of the label wide, brightest in its middle. No padding on the label: the copy starts at its
+   padding edge. */
 .shimmer {
-  background: linear-gradient(90deg, var(--muted) 0%, var(--muted) 40%, var(--fg) 50%, var(--muted) 60%, var(--muted) 100%);
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 2.2s linear infinite;
+  position: relative;
+  color: var(--muted);
 }
-@keyframes shimmer {
+.shimmer-band {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  mask-image: linear-gradient(90deg, transparent 20%, #000 50%, transparent 80%);
+  animation: shimmer-band 2.2s linear infinite;
+}
+.shimmer-band > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+  animation: shimmer-copy 2.2s linear infinite;
+}
+@keyframes shimmer-band {
   from {
-    background-position: 100% 0;
+    transform: translateX(-100%);
   }
   to {
-    background-position: 0% 0;
+    transform: translateX(100%);
+  }
+}
+@keyframes shimmer-copy {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(-100%);
   }
 }
 
-/* Loader: pi logo with the three logo colors sweeping around it (PiSpinner). */
-.pi-spin {
-  animation-name: pi-spin;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
+/* Loader: the pi logo with the three logo colors sweeping around it (PiSpinner): the still logo, and over it while it
+   spins a strip of the sweep's frames that slides one frame at a time. */
+.pi-spinner {
+  display: inline-block;
+  overflow: hidden;
+  background: center / 100% 100% no-repeat;
 }
-/* Each cell holds a pure logo color and switches quickly, so mid-transition greys never show at 12px. */
-@keyframes pi-spin {
-  0%,
-  27%,
-  100% {
-    fill: #f09082;
-  }
-  33%,
-  60% {
-    fill: #4d9abf;
-  }
-  66%,
-  93% {
-    fill: #f1be58;
-  }
+.pi-spinner > span {
+  display: none;
+  height: 100%;
+  background: 0 0 / 100% 100% no-repeat;
 }
-@media (prefers-reduced-motion: reduce) {
-  .pi-spin {
-    animation: none;
-  }
+.pi-spinner[data-spinning] > span {
+  display: block;
 }
 
 .spin {
@@ -691,7 +704,12 @@ code.hl span {
 }
 
 /* Composer: grey hairline with faint pi-logo tints and a soft blurred pi glow behind it. On focus the border
-   brightens (beautifului.dev) and becomes a slowly flowing coral/blue/yellow gradient (Gemini-like). */
+   brightens (beautifului.dev) and becomes a slowly flowing coral/blue/yellow gradient (Gemini-like).
+   The border and the fill are the ring's pseudo-elements (.composer-ring, the box's first child, under its content),
+   and the glow's gradient is its ::before: each gradient is a layer 220% the size of its box that slides by transform,
+   which the compositor runs without repainting anything (animating background-position repainted the box and redid
+   the glow's blur every frame). Border and glow flow together on focus and while you type (Composer sets data-flow)
+   and rest at the end of a sweep once you stop, so a focused composer costs nothing while you read. */
 .composer {
   --pi-coral: #f09082;
   --pi-blue: #4d9abf;
@@ -700,82 +718,99 @@ code.hl span {
 }
 .composer-box {
   border: 1px solid transparent;
-  background:
-    linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
-    linear-gradient(
-        115deg,
-        color-mix(in srgb, var(--pi-coral) 45%, var(--line-strong)),
-        var(--line-strong) 28%,
-        var(--line-strong) 58%,
-        color-mix(in srgb, var(--pi-blue) 45%, var(--line-strong)) 80%,
-        color-mix(in srgb, var(--pi-yellow) 40%, var(--line-strong))
-      )
-      border-box;
-  background-size:
-    100% 100%,
-    220% 220%;
-  background-position:
-    0 0,
-    0% 50%;
+  border-radius: 1rem;
   transition: box-shadow 0.25s ease;
 }
 .composer-box:focus-within {
-  background:
-    linear-gradient(var(--composer-fill, var(--panel)), var(--composer-fill, var(--panel))) padding-box,
-    linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 30%, var(--pi-blue) 52%, var(--pi-gray) 74%, var(--pi-yellow), var(--pi-coral))
-      border-box;
-  background-size:
-    100% 100%,
-    220% 220%;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
-  animation: composer-flow 7s ease-in-out infinite alternate;
+}
+.composer-ring {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+/* The window onto the gradient starts at its left edge, halfway down (a 220% background at 0% 50%). */
+.composer-ring::before {
+  content: "";
+  position: absolute;
+  top: -60%;
+  left: 0;
+  width: 220%;
+  height: 220%;
+  background: linear-gradient(
+    115deg,
+    color-mix(in srgb, var(--pi-coral) 45%, var(--line-strong)),
+    var(--line-strong) 28%,
+    var(--line-strong) 58%,
+    color-mix(in srgb, var(--pi-blue) 45%, var(--line-strong)) 80%,
+    color-mix(in srgb, var(--pi-yellow) 40%, var(--line-strong))
+  );
+}
+.composer-box:focus-within > .composer-ring::before {
+  background: linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 30%, var(--pi-blue) 52%, var(--pi-gray) 74%, var(--pi-yellow), var(--pi-coral));
+  animation: composer-flow 7s ease-in-out infinite alternate paused;
+}
+.composer[data-flow] .composer-box:focus-within > .composer-ring::before,
+.composer[data-flow]:focus-within .composer-glow::before {
+  animation-play-state: running;
+}
+/* The padding box, inside the 1px border. */
+.composer-ring::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(1rem - 1px);
+  background: var(--composer-fill, var(--panel));
+}
+/* The window slides 120% of the box: 1.2 / 2.2 of the layer. */
+@keyframes composer-flow {
+  to {
+    transform: translateX(-54.5455%);
+  }
 }
 .composer-glow {
   position: absolute;
   inset: 10px 14px -6px;
   z-index: 0;
+  overflow: hidden;
   border-radius: 24px;
-  background: linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 35%, var(--pi-blue) 58%, var(--pi-gray) 78%, var(--pi-yellow));
-  background-size: 220% 220%;
   filter: blur(24px);
   opacity: 0.13;
   pointer-events: none;
   transition: opacity 0.4s ease;
 }
+/* A 220% background at 0% 0%, at 0% 50% while focused, like the border's. */
+.composer-glow::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 220%;
+  height: 220%;
+  background: linear-gradient(115deg, var(--pi-coral), var(--pi-gray) 35%, var(--pi-blue) 58%, var(--pi-gray) 78%, var(--pi-yellow));
+}
 .composer:focus-within .composer-glow {
   opacity: 0.3;
-  animation: composer-glow-flow 7s ease-in-out infinite alternate;
 }
-/* Floating over the ATP graph: the canvas shows through, blurred, and a shadow lifts the box off it. */
+.composer:focus-within .composer-glow::before {
+  top: -60%;
+  animation: composer-flow 7s ease-in-out infinite alternate paused;
+}
+/* Floating over the ATP graph: a shadow lifts the box off it, and the fill lets the border's gradient tint it. Under
+   both is the canvas, solid, where a blur of the graph behind was: a backdrop blur is redone every frame the graph
+   moves. */
 .composer-floating {
   --composer-fill: color-mix(in srgb, var(--panel) 80%, transparent);
 }
-.composer-floating .composer-box {
-  backdrop-filter: blur(16px) saturate(1.2);
-  box-shadow: 0 18px 48px -18px rgb(0 0 0 / 0.55);
+.composer-floating .composer-ring {
+  background: var(--canvas);
 }
+.composer-floating .composer-box,
 .composer-floating .composer-box:focus-within {
   box-shadow: 0 18px 48px -18px rgb(0 0 0 / 0.55);
-}
-@keyframes composer-glow-flow {
-  from {
-    background-position: 0% 50%;
-  }
-  to {
-    background-position: 100% 50%;
-  }
-}
-@keyframes composer-flow {
-  from {
-    background-position:
-      0 0,
-      0% 50%;
-  }
-  to {
-    background-position:
-      0 0,
-      100% 50%;
-  }
 }
 :root[data-theme-mode="light"] {
   .composer-glow {
@@ -785,9 +820,11 @@ code.hl span {
     opacity: 0.22;
   }
 }
+/* Still, both gradients sit at their start (0% 0%), as the focused border and glow did without their animation. */
 @media (prefers-reduced-motion: reduce) {
-  .composer-box:focus-within,
-  .composer:focus-within .composer-glow {
+  .composer-box:focus-within > .composer-ring::before,
+  .composer:focus-within .composer-glow::before {
+    top: 0;
     animation: none;
   }
 }
@@ -961,14 +998,14 @@ code.hl span {
   }
 }
 
-/* Kanban: the board settles in, a card's dialog (and the update dialog) rises over a dimmed page. */
+/* Kanban: the board settles in (opacity only: a blur over the whole page repainted it every frame of the fade), a
+   card's dialog (and the update dialog) rises over a dimmed page. */
 .page-enter {
   animation: page-in 180ms ease-out;
 }
 @keyframes page-in {
   from {
     opacity: 0;
-    filter: blur(3px);
   }
 }
 .card-dialog[open] {

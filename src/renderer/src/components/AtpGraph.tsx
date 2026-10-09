@@ -415,7 +415,7 @@ export const AtpGraph = forwardRef<
       </div>
       {/* One bottom row: on a view too narrow for both, the minimap wraps above the controls instead of covering them. */}
       <div style={{ bottom: inset + 12 }} className="pointer-events-none absolute inset-x-3 flex flex-wrap-reverse items-end justify-between gap-2">
-        <div ref={overlay} className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-line bg-panel/90 p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)] backdrop-blur">
+        <div ref={overlay} className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-line bg-panel p-0.5 text-faint shadow-[0_4px_16px_-8px_rgb(0_0_0/0.5)]">
           <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)} className="pointer-coarse:p-2.5 rounded-md p-1 hover:bg-raised hover:text-fg">
             <Minus size={13} />
           </button>
@@ -518,7 +518,7 @@ function Minimap({
       data-minimap
       onPointerDown={onPointerDown}
       title="The whole plan: press or drag to look elsewhere"
-      className="pointer-events-auto ml-auto cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-panel/90 p-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)] backdrop-blur"
+      className="pointer-events-auto ml-auto cursor-pointer overflow-hidden rounded-lg border border-line-strong bg-panel p-2 shadow-[0_8px_24px_-12px_rgb(0_0_0/0.6)]"
     >
       <div className="relative overflow-hidden" style={{ width, height }}>
         <canvas ref={canvas} style={{ width, height }} className="block" />
