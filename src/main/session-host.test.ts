@@ -313,18 +313,18 @@ describe("session registry", () => {
     const pi = fake.pis[0]!;
     pi.handlers.onRecords([...assistantTurn(1), ...assistantTurn(2), ...assistantTurn(3)]);
     const live = host.stateOf(handle)!;
-    const last = host.snapshot(handle, { turns: 1 })!;
+    const last = (await host.snapshot(handle, { turns: 1 }))!;
     expect(last.turns).toEqual({ total: 3, from: 2 });
     expect((last.state.items as Item[]).filter((i) => i.kind === "user")).toHaveLength(1);
-    const middle = host.snapshot(handle, { turns: 1, beforeTurn: 2 })!;
+    const middle = (await host.snapshot(handle, { turns: 1, beforeTurn: 2 }))!;
     expect(middle.turns).toEqual({ total: 3, from: 1 });
     expect(((middle.state.items as Item[]).find((i) => i.kind === "user") as { message: { content: string } }).message.content).toBe("q2");
-    const all = host.snapshot(handle, { turns: 10 })!;
+    const all = (await host.snapshot(handle, { turns: 10 }))!;
     expect(all.state.items).toEqual(live.items);
 
     // A snapshot cut mid-stream plus the events after it equals the live state.
     const { reduceHostEvent } = await import("../shared/session-state");
-    const cut = host.snapshot(handle, { turns: 10 })!;
+    const cut = (await host.snapshot(handle, { turns: 10 }))!;
     pi.handlers.onRecords(assistantTurn(4));
     let replay = cut.state as unknown as SessionState;
     for (const batch of seen.filter((b) => b.handle === handle && b.seq > cut.seq)) {
@@ -345,16 +345,16 @@ describe("session registry", () => {
       rec("agent_settled"),
     ];
     fake.pis[0]!.handlers.onRecords([...big(1, 50_000), ...big(2, 10), ...big(3, 30_000), ...big(4, 10), ...big(5, 10)]);
-    expect(host.snapshot(handle, { turns: 10 })!.turns).toEqual({ total: 5, from: 0 });
+    expect((await host.snapshot(handle, { turns: 10 }))!.turns).toEqual({ total: 5, from: 0 });
     // The third turn's 30 kB result does not fit in 20 kB beside the last two; in 40 kB only the first turn's does not.
-    expect(host.snapshot(handle, { turns: 10, bytes: 20_000 })!.turns).toEqual({ total: 5, from: 3 });
-    expect(host.snapshot(handle, { turns: 10, bytes: 40_000 })!.turns).toEqual({ total: 5, from: 1 });
+    expect((await host.snapshot(handle, { turns: 10, bytes: 20_000 }))!.turns).toEqual({ total: 5, from: 3 });
+    expect((await host.snapshot(handle, { turns: 10, bytes: 40_000 }))!.turns).toEqual({ total: 5, from: 1 });
     // Of the turn right before the cursor, too big alone, the page holds the last item: the answer, without its prompt.
-    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 3 })!.turns).toEqual({ total: 5, from: 2, offset: 1 });
-    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 2, offset: 1 })!.turns).toEqual({ total: 5, from: 1 });
-    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 1 })!.turns).toEqual({ total: 5, from: 0, offset: 1 });
+    expect((await host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 3 }))!.turns).toEqual({ total: 5, from: 2, offset: 1 });
+    expect((await host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 2, offset: 1 }))!.turns).toEqual({ total: 5, from: 1 });
+    expect((await host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 1 }))!.turns).toEqual({ total: 5, from: 0, offset: 1 });
     // A page's items carry the runs of their own calls, and no others.
-    const page = host.snapshot(handle, { turns: 2, beforeTurn: 3 })!.state as unknown as SessionState;
+    const page = (await host.snapshot(handle, { turns: 2, beforeTurn: 3 }))!.state as unknown as SessionState;
     expect(page.items.flatMap((item) => (item.kind === "assistant" ? Object.entries(item.runs ?? {}).map(([id, run]) => [id, run.status]) : []))).toEqual([["t2", "done"], ["t3", "done"]]);
     expect("tools" in page).toBe(false);
   });
@@ -367,7 +367,7 @@ describe("session registry", () => {
     fake.pis[0]!.handlers.onRecords([...assistantTurn(1), rec("agent_start"), userStart(2), ...Array.from({ length: 12 }, (_, n) => answer(n)), rec("agent_end"), rec("agent_settled")]);
     const items = host.stateOf(handle)!.items;
     const keys = (state: unknown) => ((state as SessionState).items as Item[]).map((item) => item.key);
-    const first = host.snapshot(handle, { turns: 6, bytes: 16_000, outline: true })!;
+    const first = (await host.snapshot(handle, { turns: 6, bytes: 16_000, outline: true }))!;
     // Three answers fit; the prompt of the turn and the turn before are outlined.
     expect(first.turns).toEqual({ total: 2, from: 1, offset: 10 });
     expect(keys(first.state)).toEqual(items.slice(-3).map((item) => item.key));
@@ -376,7 +376,7 @@ describe("session registry", () => {
     const pages = [keys(first.state)];
     let cursor = first.turns;
     while (cursor.from > 0 || cursor.offset) {
-      const page = host.snapshot(handle, { turns: 20, beforeTurn: cursor.from, offset: cursor.offset, bytes: 16_000, outline: true })!;
+      const page = (await host.snapshot(handle, { turns: 20, beforeTurn: cursor.from, offset: cursor.offset, bytes: 16_000, outline: true }))!;
       pages.unshift(keys(page.state));
       expect(page.outline).toHaveLength(page.turns.from + (page.turns.offset ? 1 : 0));
       cursor = page.turns;
@@ -384,9 +384,9 @@ describe("session registry", () => {
     expect(pages.flat()).toEqual(items.map((item) => item.key));
     expect(pages.map((page) => page.length)).toEqual([6, 3, 3, 3]); // turn 0 (2 items) joins the prompt and the first three answers
     // An answer bigger than a page comes alone; a cursor past the turn's end is its end.
-    expect(host.snapshot(handle, { turns: 6, bytes: 1_000 })!.turns).toEqual({ total: 2, from: 1, offset: 12 });
-    expect(keys(host.snapshot(handle, { turns: 6, beforeTurn: 1, offset: 99 })!.state)).toEqual(items.map((item) => item.key));
-    expect(keys(host.snapshot(handle, { turns: 1, beforeTurn: 0, offset: 99 })!.state)).toEqual(items.slice(0, 2).map((item) => item.key));
+    expect((await host.snapshot(handle, { turns: 6, bytes: 1_000 }))!.turns).toEqual({ total: 2, from: 1, offset: 12 });
+    expect(keys((await host.snapshot(handle, { turns: 6, beforeTurn: 1, offset: 99 }))!.state)).toEqual(items.map((item) => item.key));
+    expect(keys((await host.snapshot(handle, { turns: 1, beforeTurn: 0, offset: 99 }))!.state)).toEqual(items.slice(0, 2).map((item) => item.key));
   });
 
   it("gives clients the lean records and keeps no signatures in its state", async () => {
@@ -408,8 +408,8 @@ describe("session registry", () => {
       rec("tool_execution_end", { toolCallId: `s${n}`, toolName: "browser_screenshot", result: { content: [{ type: "image", mimeType: "image/png", data: "A".repeat(100_000) }] }, isError: false }),
     ];
     fake.pis[0]!.handlers.onRecords([rec("agent_start"), userStart(1), ...shot(1), ...shot(2), ...shot(3), rec("agent_end"), rec("agent_settled")]);
-    expect(host.snapshot(handle, { turns: 6, bytes: 20_000 })!.turns).toEqual({ total: 1, from: 0, offset: 3 });
-    expect(host.snapshot(handle, { turns: 6, bytes: 20_000, imagesByUrl: true })!.turns).toEqual({ total: 1, from: 0 });
+    expect((await host.snapshot(handle, { turns: 6, bytes: 20_000 }))!.turns).toEqual({ total: 1, from: 0, offset: 3 });
+    expect((await host.snapshot(handle, { turns: 6, bytes: 20_000, imagesByUrl: true }))!.turns).toEqual({ total: 1, from: 0 });
   });
 
   it("never cuts a page before the first prompt: what comes before it comes along", async () => {
@@ -418,7 +418,7 @@ describe("session registry", () => {
     const big = (text: string) => rec("message_end", { message: { role: "custom", customType: "note", content: text.padEnd(5_000, "."), display: true, timestamp: 1 } });
     const answer = (n: number) => rec("message_end", { message: { role: "assistant", content: [{ type: "text", text: `${n}`.padEnd(5_000, ".") }], stopReason: "stop", timestamp: n } });
     fake.pis[0]!.handlers.onRecords([big("before any prompt"), rec("agent_start"), userStart(1), answer(1), answer(2), rec("agent_end"), rec("agent_settled")]);
-    const page = host.snapshot(handle, { turns: 6, bytes: 11_000, outline: true })!;
+    const page = (await host.snapshot(handle, { turns: 6, bytes: 11_000, outline: true }))!;
     expect(page.turns).toEqual({ total: 1, from: 0 });
     expect((page.state.items as Item[]).map((item) => item.kind)).toEqual(["custom", "user", "assistant", "assistant"]);
     expect(page.outline).toEqual([]);
@@ -432,7 +432,7 @@ describe("session registry", () => {
     pi.handlers.onRecords([rec("agent_start"), rec("message_end", { message: { role: "user", content: mentions, timestamp: 1 } }), rec("agent_end", { messages: [] }), rec("agent_settled")]);
     pi.handlers.onRecords([...assistantTurn(2), ...assistantTurn(3), ...assistantTurn(4)]);
     const keys = host.stateOf(handle)!.items.flatMap((item) => (item.kind === "user" ? [item.key] : []));
-    const page = host.snapshot(handle, { turns: 1, outline: true })!;
+    const page = (await host.snapshot(handle, { turns: 1, outline: true }))!;
     expect(page.turns).toEqual({ total: 4, from: 3 });
     // pi-gna's mention block is not part of the line.
     expect(page.outline).toEqual([
@@ -440,9 +440,9 @@ describe("session registry", () => {
       { key: keys[1], at: 2, label: "q2" },
       { key: keys[2], at: 3, label: "q3" },
     ]);
-    expect(host.snapshot(handle, { turns: 2, beforeTurn: 3, outline: true })!.outline).toEqual([{ key: keys[0], at: 1, label: "look at this" }]);
-    expect(host.snapshot(handle, { turns: 4, outline: true })!.outline).toEqual([]);
-    expect(host.snapshot(handle, { turns: 1 })!.outline).toBeUndefined();
+    expect((await host.snapshot(handle, { turns: 2, beforeTurn: 3, outline: true }))!.outline).toEqual([{ key: keys[0], at: 1, label: "look at this" }]);
+    expect((await host.snapshot(handle, { turns: 4, outline: true }))!.outline).toEqual([]);
+    expect((await host.snapshot(handle, { turns: 1 }))!.outline).toBeUndefined();
 
     const joined = await host.open(request, { client: B }, { turns: 2, outline: true });
     expect(joined.reused).toBe(true);
@@ -480,7 +480,7 @@ describe("session registry", () => {
       pi.handlers.onRecords([delta("Hel")]);
       pi.handlers.onRecords([delta("lo")]);
       expect(seen).toHaveLength(batches);
-      const snap = host.snapshot(handle, { turns: 1 })!;
+      const snap = (await host.snapshot(handle, { turns: 1 }))!;
       expect(snap.seq).toBe(seen.at(-1)!.seq);
       expect(text()).toBe("");
       vi.advanceTimersByTime(16);
@@ -851,6 +851,63 @@ describe("session registry", () => {
       }
     });
   });
+
+  it("keeps the last turns whole and the big payloads of older ones in the session file, which pages read back", async () => {
+    const { mkdtempSync, rmSync, writeFileSync, appendFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { KEPT_TURNS } = await import("./payloads");
+    const dir = mkdtempSync(join(tmpdir(), "pigna-host-"));
+    try {
+      const path = join(dir, "s.jsonl");
+      let id = 0;
+      const line = (message: object) => JSON.stringify({ type: "message", id: `e${++id}`, parentId: null, timestamp: new Date(id).toISOString(), message });
+      const big = (n: number) => `${n}`.repeat(40_000);
+      const turnLines = (n: number) => [
+        line({ role: "user", content: `q${n}`, timestamp: n }),
+        line({ role: "assistant", content: [{ type: "toolCall", id: `t${n}`, name: "read", arguments: {} }], stopReason: "toolUse", timestamp: n }),
+        line({ role: "toolResult", toolCallId: `t${n}`, toolName: "read", content: [{ type: "text", text: big(n) }], isError: false, timestamp: n }),
+        line({ role: "assistant", content: [{ type: "text", text: `a${n}` }], stopReason: "stop", timestamp: n }),
+      ];
+      const lines = Array.from({ length: KEPT_TURNS + 2 }, (_, n) => turnLines(n)).flat();
+      file.read = async () => lines.map((text) => JSON.parse(text));
+      const resultOf = (items: unknown[], n: number) => (items as Item[]).flatMap((item) => (item.kind === "assistant" && item.runs?.[`t${n}`] ? [item.runs[`t${n}`]!] : []))[0];
+      const textOf = (items: unknown[], n: number) => (resultOf(items, n)?.result?.content[0] as { text?: string } | undefined)?.text;
+
+      const { host } = await setup();
+      const opened = await host.open({ cwd: "/tmp", sessionPath: path }, { client: A }, { turns: 100 });
+      // The first page comes from the whole history read (not the file again); then the two oldest turns leave main's state.
+      expect(textOf(opened.snapshot!.state.items as unknown[], 0)).toBe(big(0));
+      writeFileSync(path, `${lines.join("\n")}\n`);
+      const handle = opened.handle;
+      expect(resultOf(host.stateOf(handle)!.items, 0)).toMatchObject({ status: "done", evicted: expect.any(Number) });
+      expect(resultOf(host.stateOf(handle)!.items, 1)?.result).toBeUndefined();
+      expect(textOf(host.stateOf(handle)!.items, 2)).toBe(big(2));
+      // Pages bring them back, and size by them.
+      const all = (await host.snapshot(handle, { turns: 100 }))!;
+      expect([0, 1, 2].map((n) => textOf(all.state.items as unknown[], n))).toEqual([big(0), big(1), big(2)]);
+      expect((await host.snapshot(handle, { turns: 100, bytes: 100_000 }))!.turns).toEqual({ total: KEPT_TURNS + 2, from: KEPT_TURNS });
+
+      // A run that settles moves another turn out of the last ones kept whole.
+      const n = KEPT_TURNS + 2;
+      appendFileSync(path, `${turnLines(n).join("\n")}\n`);
+      fake.pis[0]!.handlers.onRecords([
+        rec("agent_start"),
+        userStart(n),
+        rec("message_end", { message: { role: "assistant", content: [{ type: "toolCall", id: `t${n}`, name: "read", arguments: {} }], stopReason: "toolUse", timestamp: n } }),
+        rec("tool_execution_end", { toolCallId: `t${n}`, toolName: "read", result: { content: [{ type: "text", text: big(n) }] }, isError: false }),
+        rec("message_end", { message: { role: "assistant", content: [{ type: "text", text: `a${n}` }], stopReason: "stop", timestamp: n } }),
+        rec("agent_end", { messages: [] }),
+      ]);
+      expect(textOf(host.stateOf(handle)!.items, 2)).toBe(big(2));
+      fake.pis[0]!.handlers.onRecords([rec("agent_settled")]);
+      expect(resultOf(host.stateOf(handle)!.items, 2)?.evicted).toBeGreaterThan(40_000);
+      expect(textOf((await host.snapshot(handle, { turns: 1, beforeTurn: 3 }))!.state.items as unknown[], 2)).toBe(big(2));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      file.read = async () => [];
+    }
+  });
 });
 
 // ── Command semantics ────────────────────────────────────────────────────────
@@ -912,7 +969,7 @@ describe("command semantics", () => {
     fake.send = async (command) => ((command as { type: string }).type === "get_state" ? { type: "response", success: true, data: { model: sonnet, thinkingLevel: "high" } } : undefined);
     await host.command(handle, { type: "set_model", provider: "anthropic", modelId: "sonnet" });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(host.snapshot(handle, { turns: 10 })?.state.model).toEqual(sonnet);
+    expect((await host.snapshot(handle, { turns: 10 }))?.state.model).toEqual(sonnet);
   });
 
   it("makes interrupt and editQueue atomic under concurrent calls", async () => {
@@ -946,10 +1003,10 @@ describe("command semantics", () => {
   it("lets the first answer to a dialog win and tells everyone", async () => {
     const { host, handle, events, pi } = await setup();
     pi.handlers.onRecords([{ type: "extension_ui_request", id: "d1", method: "confirm", title: "Run?" }]);
-    expect(host.snapshot(handle, { turns: 5 })!.state.dialogs).toHaveLength(1);
+    expect((await host.snapshot(handle, { turns: 5 }))!.state.dialogs).toHaveLength(1);
     host.respondDialog(handle, { type: "extension_ui_response", id: "d1", confirmed: true }, phone);
     expect(events.filter((e) => e.kind === "dialog_resolved")).toEqual([{ kind: "dialog_resolved", id: "d1", by: { device: "dev1" }, outcome: "answered" }]);
-    expect(host.snapshot(handle, { turns: 5 })!.state.dialogs).toHaveLength(0);
+    expect((await host.snapshot(handle, { turns: 5 }))!.state.dialogs).toHaveLength(0);
     expect(() => host.respondDialog(handle, { type: "extension_ui_response", id: "d1", confirmed: false })).toThrowError(expect.objectContaining({ code: "already_answered" }));
     expect(() => host.respondDialog(handle, { type: "extension_ui_response", id: "nope", confirmed: false })).toThrowError(expect.objectContaining({ code: "not_found" }));
     expect(fake.responded).toHaveLength(1);

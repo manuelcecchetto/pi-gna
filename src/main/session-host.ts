@@ -5,6 +5,7 @@ import { availableParallelism, loadavg } from "node:os";
 import { basename, isAbsolute } from "node:path";
 import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
+import { jsonBytes } from "../shared/chat-page";
 import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type ClientPresence, type DialogOutcome, type GlobalEvent, type HostCtx, HostError, type HostEvent, isAllowedRpc, type QueueEdit } from "../shared/host-api";
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState, type SessionEntry } from "../shared/protocol";
@@ -17,6 +18,7 @@ import type { AgentBridge } from "./bridge";
 import { COALESCE_MS, coalesce, isDelta } from "./coalesce";
 import { KeyedMutex } from "./command-layer";
 import { log } from "./log";
+import { evictPayloads, PayloadFiles, restorePayloads } from "./payloads";
 import { type PiExit, PiProcess, type PiProcessHandlers } from "./pi-process";
 import { piInputs, projectTrust } from "./pi-settings";
 import { onDisk } from "./resources";
@@ -83,6 +85,10 @@ interface Live {
   flush?: ReturnType<typeof setTimeout>;
   /** When something last happened in the chat (an event, a client showing it or leaving it): idle chats stop by it. */
   active: number;
+  /** The chat's session files, where the payloads dropped from `state` are read back from for a page. */
+  payloads: PayloadFiles;
+  /** Items before this one had their old payloads dropped (`evictPayloads`). */
+  evictedTo: number;
 }
 
 /**
@@ -154,23 +160,6 @@ export interface ChatPage {
   outline?: boolean;
   /** The page goes to a phone, which gets big images as a URL (`RemoteImages`): `bytes` counts them so. */
   imagesByUrl?: boolean;
-}
-
-/**
- * About the JSON size of a value (an item: with the runs of its tool calls), from its strings and keys: cheap next to
- * serializing it. With `imagesByUrl`, an image block a phone gets as a URL counts as one.
- */
-function jsonBytes(value: unknown, imagesByUrl = false): number {
-  if (typeof value === "string") return value.length + 2;
-  if (value === null || typeof value !== "object") return 8;
-  if (imagesByUrl && (value as { type?: unknown }).type === "image") {
-    const { data } = value as { data?: unknown };
-    if (typeof data === "string" && data.length >= MIN_INLINE_CHARS) return 128;
-  }
-  let size = 2;
-  if (Array.isArray(value)) for (const entry of value) size += jsonBytes(entry, imagesByUrl) + 1;
-  else for (const [key, entry] of Object.entries(value)) size += key.length + 4 + jsonBytes(entry, imagesByUrl);
-  return size;
 }
 
 export class SessionHost {
@@ -349,7 +338,10 @@ export class SessionHost {
       loading: { entries, held: [] },
       waiting: [],
       active: Date.now(),
+      payloads: new PayloadFiles(),
+      evictedTo: 0,
     };
+    chat.payloads.use(sessionPath);
     this.live.set(handle, chat);
     if (sessionPath) this.byFile.set(sessionPath, handle);
     // What the spare said while it waited follows, held with the rest until the history is in.
@@ -381,11 +373,13 @@ export class SessionHost {
     this.lease(handle, lease);
     this.publishGlobal({ kind: "chat.opened", handle, cwd, sessionPath });
     this.touch(handle);
-    // Before the held events and the exit: a pi that could not start still leaves the history to read.
+    // Before the held events and the exit: a pi that could not start still leaves the history to read. Taken from
+    // the whole history, before the old payloads leave it.
     const snapshot = page && this.snapshot(handle, page);
+    this.evict(chat);
     if (held.length) this.push(handle, held);
     exit?.();
-    return { handle, ...(snapshot && { snapshot }) };
+    return { handle, ...(snapshot && { snapshot: await snapshot }) };
   }
 
   /** pi looks up your trust in a project by the cwd's folders, and a card's worktree lives outside the project. */
@@ -398,7 +392,7 @@ export class SessionHost {
   private async join(handle: string, lease?: { client?: ClientPresence; hold?: string }, page?: ChatPage): Promise<OpenSessionResult> {
     await this.live.get(handle)?.loading?.entries;
     this.lease(handle, lease);
-    const snapshot = page && this.snapshot(handle, page);
+    const snapshot = page && (await this.snapshot(handle, page));
     return { handle, reused: true, ...(snapshot && { snapshot }) };
   }
 
@@ -521,7 +515,10 @@ export class SessionHost {
     if (state.sessionPath && this.byFile.get(state.sessionPath) !== handle) {
       for (const [file, owner] of this.byFile) if (owner === handle) this.byFile.delete(file);
       this.byFile.set(state.sessionPath, handle);
+      chat.payloads.use(state.sessionPath);
     }
+    // A run that settled moved a turn out of the ones kept whole: what it wrote is in the file now.
+    if (settledNow.length) this.evict(chat);
     chat.seq = this.emit({ handle, events }) || chat.seq;
     this.touch(handle);
     for (const outcome of settledNow) for (const listener of this.settleListeners) listener(handle, outcome);
@@ -533,9 +530,16 @@ export class SessionHost {
    * carry just their items. A page cut inside its first turn says so in `turns.offset`: that many items of turn
    * `turns.from` come before it. `outline` adds a line for each turn whose prompt is before the page.
    */
-  snapshot(handle: string, page: ChatPage): (ChatSnapshot & { seq: number }) | undefined {
+  async snapshot(handle: string, page: ChatPage): Promise<(ChatSnapshot & { seq: number }) | undefined> {
     const chat = this.live.get(handle);
-    if (!chat) return undefined;
+    // The page is cut now, in this turn; what it reads back from the file does not change which events it reflects.
+    const cut = chat && this.page(chat, page);
+    if (!cut) return undefined;
+    const items = await restorePayloads(cut.state.items as Item[], chat.payloads);
+    return items === cut.state.items ? cut : { ...cut, state: { ...cut.state, items } };
+  }
+
+  private page(chat: Live, page: ChatPage): ChatSnapshot & { seq: number } {
     const { items } = chat.state;
     const starts = items.flatMap((item, index) => (item.kind === "user" && !item.steer ? [index] : []));
     const total = starts.length;
@@ -553,7 +557,7 @@ export class SessionHost {
       for (let turn = newest; turn >= from; turn--) {
         let index = Math.min(tail(turn), end);
         while (index > head(turn)) {
-          const bytes = jsonBytes(items[index - 1], page.imagesByUrl);
+          const bytes = jsonBytes(items[index - 1], page.imagesByUrl ? MIN_INLINE_CHARS : undefined);
           // The page keeps its last item even when that alone is too big.
           if (size + bytes > page.bytes && size > 0) break;
           size += bytes;
@@ -573,9 +577,21 @@ export class SessionHost {
     return { seq: chat.seq, state: { ...chat.state, items: slice }, turns: { total, from, ...(offset > 0 && { offset }) }, ...(outline && { outline }) };
   }
 
-  /** The authoritative state, whole (tests, host-side decisions). */
+  /**
+   * The authoritative state (tests, host-side decisions), without the payloads dropped from its older turns
+   * (`evictPayloads`): clients read the chat through `snapshot`, which brings them back.
+   */
   stateOf(handle: string): SessionState | undefined {
     return this.live.get(handle)?.state;
+  }
+
+  /** Drop the payloads of the turns that are no longer among the last kept whole; the session file has them. */
+  private evict(chat: Live): void {
+    if (!chat.payloads.paths.length) return;
+    if (chat.evictedTo > chat.state.items.length) chat.evictedTo = 0;
+    const { items, to } = evictPayloads(chat.state.items, chat.evictedTo);
+    chat.evictedTo = to;
+    if (items !== chat.state.items) chat.state = { ...chat.state, items };
   }
 
   private summary(handle: string, chat: Live): AttentionSummary {

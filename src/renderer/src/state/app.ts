@@ -22,6 +22,7 @@ import {
 import type { AttentionSummary, ChatSnapshot, Revved, TaskTarget } from "../../../shared/host-api";
 import type { CardWorktree, HostEventBatch, OpenSessionResult, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
 import { patchProjects } from "../../../shared/session-list";
+import { PAGE_TURNS, toLatestPage } from "../../../shared/chat-page";
 import type {
   ExtensionUiResponse,
   ImageContent,
@@ -348,12 +349,13 @@ function install(handle: string, snapshot: ChatSnapshot & { seq: number }, buffe
     ...(editorText && { editorText }),
   };
   store.set((s) => ({ ...s, sessions: { ...s.sessions, [handle]: session }, open: s.open.includes(handle) ? s.open : [...s.open, handle] }));
+  if (!reportedShown.includes(handle)) leftScreen(handle);
   for (const batch of buffered) if ((batch.seq ?? Number.POSITIVE_INFINITY) > snapshot.seq) handleBatch(batch);
   if (session.phase === "ready") void onReady(handle, { messageCount: session.items.length } as RpcSessionState);
 }
 
 /** Turns per earlier page: the most the host serves at once. */
-const EARLIER_TURNS = 40;
+const EARLIER_TURNS = PAGE_TURNS;
 /** Paging of a chat runs one request after the other, so a jump and a scroll never load the same page twice. */
 const paging = new Map<string, Promise<void>>();
 
@@ -465,9 +467,29 @@ function syncShown(): void {
   const { active, page, sessions } = store.get();
   const now = [...new Set([active, page ? pageChat : undefined])].filter((handle): handle is string => handle !== undefined && sessions[handle] !== undefined);
   if (now.length === reportedShown.length && now.every((handle, index) => handle === reportedShown[index])) return;
-  for (const handle of reportedShown) if (!now.includes(handle)) studio().shown(handle, false);
-  for (const handle of now) if (!reportedShown.includes(handle)) studio().shown(handle, true);
+  for (const handle of reportedShown) if (!now.includes(handle)) (studio().shown(handle, false), leftScreen(handle));
+  for (const handle of now) if (!reportedShown.includes(handle)) (studio().shown(handle, true), backOnScreen(handle));
   reportedShown = now;
+}
+
+/** A chat off screen this long goes back to its latest page (`toLatestPage`); its earlier turns page in from the host again. */
+const OFF_SCREEN_MS = 60_000;
+/** The open chats this window does not show: since when, and the timer that drops their earlier pages. */
+const offScreen = new Map<string, { since: number; timer: ReturnType<typeof setTimeout> }>();
+
+function leftScreen(handle: string): void {
+  if (!offScreen.has(handle)) offScreen.set(handle, { since: Date.now(), timer: setTimeout(() => dropEarlier(handle), OFF_SCREEN_MS) });
+}
+
+function backOnScreen(handle: string): void {
+  clearTimeout(offScreen.get(handle)?.timer);
+  offScreen.delete(handle);
+}
+
+/** Keep only the latest page of a chat off screen for OFF_SCREEN_MS: then, and after each run it finishes there. */
+function dropEarlier(handle: string): void {
+  const off = offScreen.get(handle);
+  if (off && Date.now() - off.since >= OFF_SCREEN_MS) patchSession(handle, toLatestPage);
 }
 
 export async function closeSession(handle: string, pickNext = true): Promise<void> {
@@ -485,6 +507,7 @@ export async function closeSession(handle: string, pickNext = true): Promise<voi
 
 function removeSession(handle: string): void {
   removeComposerCard(handle);
+  backOnScreen(handle);
   store.set((state) => {
     const { [handle]: _removed, ...sessions } = state.sessions;
     return {
@@ -534,6 +557,7 @@ export function handleBatch(batch: HostEventBatch): void {
       // Finished while you were not looking: another chat or a page was open, or the window was in the background.
       // (A card's background chat that ended well is closed by the host, so it never gets here.)
       if (!viewing(handle)) patchSession(handle, (s) => ({ ...s, unread: outcome }));
+      dropEarlier(handle);
       void onSettled(handle);
     }
     // Context grows every turn and shrinks on compaction; get_session_stats is cheap (ms, even at 40 MB).

@@ -230,11 +230,11 @@ export class ChatTasks {
       failed = (error as Error).message;
       notices.push({ level: "warning", text: `Could not set up “${setup.name}”: ${failed}` });
     }
-    return { started: this.started(handle, notices), failed };
+    return { started: await this.started(handle, notices), failed };
   }
 
-  private started(handle: string, notices: TaskNotice[]): TaskStarted {
-    return { handle, snapshot: this.deps.host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER }) ?? null, notices };
+  private async started(handle: string, notices: TaskNotice[]): Promise<TaskStarted> {
+    return { handle, snapshot: (await this.deps.host.snapshot(handle, { turns: Number.MAX_SAFE_INTEGER })) ?? null, notices };
   }
 
   /** The first run ended: the chat is no longer held. A good one closes itself when nobody is looking; a failed one stays, marked. */

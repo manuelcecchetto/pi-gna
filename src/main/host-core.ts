@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path";
 import { isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import { type BoardOp, type Column, projectOf } from "../shared/board";
+import { PAGE_BYTES, PAGE_TURNS } from "../shared/chat-page";
 import { parseAnnotations } from "../shared/annotations";
 import type { Annotation, BrowserCommand } from "../shared/browser";
 import type { ComputerOp } from "../shared/computer";
@@ -126,12 +127,8 @@ const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown)
 /** Minimum gap between `computer.preview` calls of one client. */
 const PREVIEW_INTERVAL_MS = 1000;
 
-/** Turns (and bytes) in a snapshot page unless the caller asks for fewer (the phone opens a chat with a short first page). */
-const SNAPSHOT_TURNS = 40;
-/** About the most a page holds: a few turns of screenshots or big tool output are megabytes (a long chat, 100 MB). */
-const PAGE_BYTES = 2_000_000;
 /** The desktop's view of a chat: the last page and a line for each earlier turn (its turn rail pages them in). */
-const DESKTOP_PAGE = { turns: SNAPSHOT_TURNS, bytes: PAGE_BYTES, outline: true };
+const DESKTOP_PAGE = { turns: PAGE_TURNS, bytes: PAGE_BYTES, outline: true };
 
 const tabId = (raw: { id: unknown }) => {
   if (typeof raw.id !== "string") throw new Error("Invalid browser tab");
@@ -283,13 +280,13 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         if (typeof raw.handle !== "string") throw new Error("Invalid chat");
         if (raw.before !== undefined && !(Number.isInteger(raw.before) && raw.before >= 0)) throw new Error("Invalid turn cursor");
         if (raw.offset !== undefined && !(raw.before !== undefined && Number.isInteger(raw.offset) && raw.offset >= 0)) throw new Error("Invalid turn cursor");
-        if (raw.turns !== undefined && !(Number.isInteger(raw.turns) && raw.turns >= 1 && raw.turns <= SNAPSHOT_TURNS)) throw new Error("Invalid page size");
+        if (raw.turns !== undefined && !(Number.isInteger(raw.turns) && raw.turns >= 1 && raw.turns <= PAGE_TURNS)) throw new Error("Invalid page size");
         if (raw.bytes !== undefined && !(Number.isInteger(raw.bytes) && raw.bytes >= 1 && raw.bytes <= PAGE_BYTES)) throw new Error("Invalid page size");
         return { handle: raw.handle, before: raw.before as number | undefined, offset: raw.offset as number | undefined, turns: raw.turns as number | undefined, bytes: raw.bytes as number | undefined };
       },
-      (ctx, { handle, before, offset, turns, bytes }) => {
-        const page = { turns: turns ?? SNAPSHOT_TURNS, beforeTurn: before, offset, bytes: bytes ?? PAGE_BYTES };
-        const snapshot = host.snapshot(handle, ctx.client === "desktop" ? page : { ...page, imagesByUrl: true });
+      async (ctx, { handle, before, offset, turns, bytes }) => {
+        const page = { turns: turns ?? PAGE_TURNS, beforeTurn: before, offset, bytes: bytes ?? PAGE_BYTES };
+        const snapshot = await host.snapshot(handle, ctx.client === "desktop" ? page : { ...page, imagesByUrl: true });
         if (!snapshot) throw new HostError("not_found", "session is not running");
         const { seq, ...value } = snapshot;
         return { seq, value };
@@ -298,7 +295,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "chat.close": any<{ handle: string }>("remote", (_ctx, { handle }) => host.close(handle)),
     "chat.command": any<{ handle: string; command: RpcCommand }>("remote", (_ctx, { handle, command }) => host.command(handle, command)),
     "chat.detach": any<{ handle: string }>("remote", (ctx, { handle }) => host.detach(handle, ctx.clientId)),
-    "chat.attach": any<{ handle: string }>("remote", (ctx, { handle }) => {
+    "chat.attach": any<{ handle: string }>("remote", async (ctx, { handle }) => {
       try {
         host.attach(handle, presence(ctx));
       } catch {
@@ -306,7 +303,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       }
       // Attach and snapshot in one turn: the snapshot's seq says which events the client must still apply. Both page
       // the transcript in through chat.snapshot: the window gets its first page here, a phone only the seq.
-      const snapshot = host.snapshot(handle, ctx.client === "desktop" ? DESKTOP_PAGE : { turns: 1 });
+      const snapshot = await host.snapshot(handle, ctx.client === "desktop" ? DESKTOP_PAGE : { turns: 1 });
       if (!snapshot) return null;
       return ctx.client === "desktop" ? snapshot : { seq: snapshot.seq };
     }),

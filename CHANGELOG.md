@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Long chats you keep open take much less memory: pi-gna keeps the big tool output and images of a chat's older turns in its session file and reads them back when you scroll up (four 71–115 MB chats went from 341 MB to 133 MB), and a chat you have not looked at for a minute lets go of the earlier turns you scrolled back to.
 - The window shows its first screen a little sooner: Settings, Kanban, GitHub, Laments, ATP, the browser pane, the command palette and Setup now load just after it instead of before (the script the window reads at startup went from 852 KB to 558 KB).
 - The window opens a little sooner: it no longer waits for the local bridge that pi's tools use to start, which now starts while Electron gets ready (from a checkout, the Dock icon is also set after the window shows: about 140 ms sooner there).
 - Long chats open much faster: reading a chat's history no longer slows down with its length (an 11,500-entry chat took 3.6 s before the transcript could show, now under 10 ms).

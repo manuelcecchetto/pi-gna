@@ -31,6 +31,8 @@ export interface ToolRun {
   result?: ToolResultLike;
   startedAt?: number;
   endedAt?: number;
+  /** Main dropped `result` (an older turn's big output, `evictPayloads`): about its JSON size. Pages read it back. */
+  evicted?: number;
 }
 
 export interface BlockTime {
@@ -56,8 +58,11 @@ export type CompactionItem = CompactionBase & (
 );
 
 export type Item =
-  /** `steer`: delivered into a running turn (pi's steering queue), so it belongs to that turn. */
-  | { kind: "user"; key: string; message: UserMessage; steer?: boolean }
+  /**
+   * `steer`: delivered into a running turn (pi's steering queue), so it belongs to that turn. `evicted`: main dropped
+   * the data of its images (an older turn, `evictPayloads`), about this many characters; pages read it back.
+   */
+  | { kind: "user"; key: string; message: UserMessage; steer?: boolean; evicted?: number }
   | {
       kind: "assistant";
       key: string;
@@ -310,7 +315,8 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
     case "tool_execution_update":
       return setTool(state, event.toolCallId, { status: "running", partial: event.partialResult });
     case "tool_execution_end":
-      return setTool(state, event.toolCallId, { status: event.isError ? "error" : "done", result: event.result, endedAt: now });
+      // The result replaces the partial output (clients show `result ?? partial`).
+      return setTool(state, event.toolCallId, { status: event.isError ? "error" : "done", result: event.result, partial: undefined, endedAt: now });
     case "queue_update":
       return {
         ...state,
@@ -497,6 +503,7 @@ function messageChange(state: Pick<SessionState, "items">, message: AgentMessage
         patch: {
           status: message.isError ? "error" : "done",
           result: { content: message.content, details: message.details },
+          partial: undefined,
           endedAt: toolRun(state.items, message.toolCallId)?.endedAt ?? at,
         },
       };

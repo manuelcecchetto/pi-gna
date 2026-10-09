@@ -219,6 +219,53 @@ describe("opening a chat from the sidebar", () => {
     expect(session().items.filter((item) => item.kind === "user").map((item) => item.key)).toEqual(["i0", "i1", "i2"]);
   });
 
+  it("drops a chat off screen for a minute back to its latest page, and again after each run it finishes there", async () => {
+    const { handle, read, pageSession } = opening();
+    const studio = (window as unknown as { studio: object }).studio;
+    vi.stubGlobal("window", { studio: { ...studio, viewing: vi.fn(), shown: vi.fn(), detachSession: async () => undefined } });
+    showPageChat(undefined);
+    read({ handle, snapshot: snapshotOf({ ...turns(handle, 5, 50), prompted: true }, 3, 5) });
+    await vi.advanceTimersByTimeAsync(0);
+    const session = () => store.get().sessions[handle]!;
+    const prompts = () => session().items.flatMap((item) => (item.kind === "user" ? [item.message.content] : []));
+    const range = (from: number, to: number) => Array.from({ length: to - from }, (_, n) => `q${from + n}`);
+    expect(prompts()).toEqual(range(5, 50));
+
+    const finish = (n: number, seq: number) =>
+      handleBatch({ handle, seq, events: [
+        { kind: "rpc", record: { type: "message_end", message: { role: "user", content: `q${n}`, timestamp: n } } as never },
+        { kind: "rpc", record: { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: `answer ${n}` }], stopReason: "stop", timestamp: n } } as never },
+        { kind: "rpc", record: { type: "agent_settled" } as never },
+      ] });
+
+    // Another chat in front: a minute later this one keeps its latest 40 turns, and outlines the rest.
+    store.set((s) => ({ ...s, sessions: { ...s.sessions, other: createSession("other", "/repo") }, active: "other" }));
+    showPageChat(undefined);
+    finish(50, 10);
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(prompts()).toEqual(range(5, 51));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(prompts()).toEqual(range(11, 51));
+    expect(session().earlier?.map((turn) => turn.label)).toEqual(range(0, 11));
+    await earlierTurns(session())!.load();
+    expect(pageSession).toHaveBeenLastCalledWith(handle, 11, 11);
+    expect(prompts()).toEqual(range(0, 51));
+
+    // A run it finishes off screen drops it back again.
+    finish(51, 11);
+    expect(prompts()).toEqual(range(12, 52));
+    expect(session().earlier).toHaveLength(12);
+
+    // On screen it keeps what it loads.
+    activate(handle);
+    showPageChat(undefined);
+    await earlierTurns(session())!.load();
+    finish(52, 12);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(prompts()).toHaveLength(53);
+    expect(session().earlier).toBeUndefined();
+  });
+
   it("fetches the answer of a turn it has not loaded once, for the turn rail's card", async () => {
     const { handle, read, pageSession } = opening();
     read({ handle, snapshot: snapshotOf(turns(handle, 5, 6), 3, 5) });

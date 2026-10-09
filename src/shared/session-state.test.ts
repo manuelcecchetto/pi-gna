@@ -261,6 +261,15 @@ describe("tool runs", () => {
     expect(Object.keys((after.items[2] as AssistantItem).runs ?? {})).toEqual(["c2"]);
   });
 
+  it("drops the partial output once the result is in", () => {
+    const streamed = play([update("c2", "partial out")], running());
+    const ended = play([{ type: "tool_execution_end", toolCallId: "c2", toolName: "bash", result: { content: [{ type: "text", text: "out" }] }, isError: false }], streamed);
+    expect(runOf(ended, 2, "c2")).toMatchObject({ status: "done", result: { content: [{ text: "out" }] } });
+    expect(runOf(ended, 2, "c2")?.partial).toBeUndefined();
+    const messaged = play([{ type: "message_end", message: { role: "toolResult", toolCallId: "c2", toolName: "bash", content: [{ type: "text", text: "out" }], isError: false, timestamp: 1 } }], streamed);
+    expect(runOf(messaged, 2, "c2")?.partial).toBeUndefined();
+  });
+
   it("keeps the end time of the execution when the result message follows", () => {
     const ended = play([{ type: "tool_execution_end", toolCallId: "c2", toolName: "bash", result: { content: [] }, isError: true }], running());
     const result = play([{ type: "message_end", message: { role: "toolResult", toolCallId: "c2", toolName: "bash", content: [{ type: "text", text: "boom" }], isError: true, timestamp: 1 } }], ended);

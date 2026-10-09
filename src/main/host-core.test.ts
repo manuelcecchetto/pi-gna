@@ -233,10 +233,10 @@ describe("chat reads for a phone", () => {
     expect(opens).toEqual([{ turns: 40, bytes: 2_000_000, outline: true }, undefined]);
   });
 
-  it("attaches the window with its first page, a phone with only the seq", () => {
+  it("attaches the window with its first page, a phone with only the seq", async () => {
     snapshots.length = 0;
-    expect(dispatch(chats, desktop(), "chat.attach", { handle: "h1" })).toMatchObject({ seq: 7, state: { handle: "h1" } });
-    expect(dispatch(chats, phone(), "chat.attach", { handle: "h1" })).toEqual({ seq: 7 });
+    expect(await dispatch(chats, desktop(), "chat.attach", { handle: "h1" })).toMatchObject({ seq: 7, state: { handle: "h1" } });
+    expect(await dispatch(chats, phone(), "chat.attach", { handle: "h1" })).toEqual({ seq: 7 });
     expect(snapshots).toEqual([["h1", { turns: 40, bytes: 2_000_000, outline: true }], ["h1", { turns: 1 }]]);
   });
 
@@ -257,7 +257,7 @@ describe("chat reads for a phone", () => {
     expect(snapshots[3]).toEqual(["h1", { turns: 40, beforeTurn: 50, bytes: 2_000_000 }]);
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", bytes: 2_000_001 })).toThrow(expect.objectContaining({ code: "bad_request" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", bytes: 0 })).toThrow(expect.objectContaining({ code: "bad_request" }));
-    expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "gone" })).toThrow(expect.objectContaining({ code: "not_found" }));
+    await expect(dispatch(chats, phone(), "chat.snapshot", { handle: "gone" })).rejects.toMatchObject({ code: "not_found" });
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: -1 })).toThrow(expect.objectContaining({ code: "bad_request" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { before: 1 })).toThrow(expect.objectContaining({ code: "bad_request" }));
   });

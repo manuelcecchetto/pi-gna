@@ -787,6 +787,23 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   The window keeps the outline as `SessionState.earlier`; "Show earlier turns", a jump on the turn rail or ⌥↑ page
   turns in through `pageSession` (`chat.snapshot { before }`, one request after the other), and the rail's card
   fetches the answer of a turn it has not loaded (`pagePreview`). A chat's title comes from the outline's first line.
+- **Live chats hold their latest turns, not their whole history** (P30). Main keeps the last 8 turns of a live chat
+  whole (`KEPT_TURNS`, `src/main/payloads.ts`); before them, tool results of 32 KB or more (or with an image) keep only
+  their status, times and size (`ToolRun.evicted`), and user messages lose their image data (`evicted` on the item).
+  The open's first page is cut from the whole history first; then each settled run moves the window on. A page that
+  holds a dropped payload reads it back from the session file (`chat.snapshot` is async: the page is cut in the
+  caller's turn, so its `seq` holds, then filled): an index of byte ranges of each tool result and each user line
+  with an image, built by one scan of the file the first time a page needs it and extended from there as pi appends
+  (a line's head says what it is: pi writes the entry's id, parent and time, then the message, its role first). A
+  file that shrank, or a range that no longer holds the line it should, is scanned again; a chat pi moved to another
+  file (`/new`, `/resume`, forks) looks in its earlier files too. What no file has any more shows as a line saying so
+  (logged). Four chats of 71 to 115 MB went from 341 MB to 133 MB of main's heap, and every page serves the same
+  results and images as before. `stateOf` (main's own reads: the push preview, the run's outcome, the images answers
+  show, ATP's first prompt) never needed the dropped payloads. A result also replaces its run's streamed `partial`.
+  The window keeps what it pages in only while the chat is on screen: a chat off screen for a minute (not the active
+  chat, also behind a page, nor a page's side chat) drops back to its latest page (`toLatestPage`, 40 turns or about
+  2 MB, cut at a prompt, the dropped turns joining `earlier`), and again after each run it finishes there; scrolling
+  back pages them in again. A 115 MB chat paged in whole and left went from 133 MB to 9 MB of the window's heap.
 - **Many clients.** Prompts from two clients arrive in order (a send while running is a steer). Dialogs and approvals:
   first answer wins, the rest get `already_answered` and drop the card on `dialog_resolved`. Store text edits conflict by
   `baseRev` (`409 conflict`); structural ops are last-writer-wins.
