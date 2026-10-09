@@ -164,6 +164,21 @@ describe("authentication", () => {
     await expect(store.rename("nope", "x")).rejects.toThrow();
   });
 
+  it("a revocation is on disk at once, not after the save delay of other stores", async () => {
+    const { store, pair, file } = await setup();
+    const { device, token } = await pair();
+    await store.flushed();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await store.revoke(device.id);
+      for (let i = 0; i < 50 && (await readFile(file, "utf8")).includes(device.id); i++) await new Promise((resolve) => setImmediate(resolve));
+      expect(await readFile(file, "utf8")).not.toContain(device.id);
+      expect(await new DeviceStore(file, () => undefined).authenticate(token, phone.tailnetLogin)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("devices survive a restart", async () => {
     const { store, pair, file } = await setup();
     const { token } = await pair();

@@ -62,6 +62,7 @@ import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
 import { indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
+import { atMostEvery } from "./store";
 import { Updater } from "./updater";
 import { initialWindowState, readWindowState, trackWindowState } from "./window-state";
 
@@ -218,7 +219,7 @@ const pushService = new PushService(join(app.getPath("userData"), "remote-push.j
 push = pushService;
 hub.subscribe({ topics: ["global"], deliver: (batch) => batch.forEach(({ event }) => pushService.onGlobal(event as { kind: string })) });
 persistSessionIndex(join(app.getPath("userData"), "session-index.json"));
-const board = new BoardStore(join(app.getPath("userData"), "board.json"), (next) => publish({ kind: "board", board: next }));
+const board = new BoardStore(join(app.getPath("userData"), "board.json"), atMostEvery((next) => publish({ kind: "board", board: next })));
 const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 const uploads = new Uploads(join(app.getPath("userData"), "remote-uploads"));
 void uploads.prune().catch((error: Error) => log.warn("remote", `could not prune old uploads: ${error.message}`));
@@ -228,7 +229,7 @@ const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer
   publish({ kind: "computer", settings: next });
   void host.retireSpare("Computer Use settings changed");
 });
-const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), (next) => publish({ kind: "laments", laments: next }));
+const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), atMostEvery((next) => publish({ kind: "laments", laments: next })));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(

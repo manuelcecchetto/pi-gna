@@ -1,6 +1,7 @@
 // A JSON file that main owns and both the window and agents (through the bridge) change: the Kanban board and the
 // laments. Every change is an op applied by a pure function that checks it; the window gets the whole value after
-// each one.
+// each one (the board and the laments at most once per PUBLISH_MS, see `atMostEvery`). A change is saved SAVE_MS
+// later, with the ones after it, as compact JSON; `flushed` saves a pending one at once (before quitting).
 //
 // Every value has a revision (`rev`, see Revved): persisted in the file, 0 for files from before, +1 for each change
 // that alters the value. Free-text ops may carry the `baseRev` the editor saw; the store keeps the last HISTORY values
@@ -11,6 +12,35 @@ import { log } from "./log";
 
 /** How many past revisions are kept to check a stale `baseRev` against; an older one counts as conflicting. */
 const HISTORY = 64;
+/** A change waits this long to be saved, so a burst of ops (an agent's kanban calls, a drag) is one write. */
+export const SAVE_MS = 250;
+/** The shortest gap between two broadcasts of a whole value (`atMostEvery`). */
+export const PUBLISH_MS = 50;
+
+/**
+ * Wraps the broadcast of a whole value that changes in bursts (the board, the laments): the first change goes out at
+ * once, and later ones at most once per `ms`, only the latest value. The caller of `apply` still gets its value at once.
+ */
+export function atMostEvery<V>(send: (value: V) => void, ms = PUBLISH_MS): (value: V) => void {
+  let timer: NodeJS.Timeout | undefined;
+  let pending: { value: V } | undefined;
+  const tick = () => {
+    timer = undefined;
+    if (!pending) return;
+    const { value } = pending;
+    pending = undefined;
+    send(value);
+    timer = setTimeout(tick, ms);
+  };
+  return (value) => {
+    if (timer) {
+      pending = { value };
+      return;
+    }
+    send(value);
+    timer = setTimeout(tick, ms);
+  };
+}
 
 /** How a store's value starts, changes and is read back from disk. */
 export interface StoreModel<T, Op> {
@@ -28,6 +58,8 @@ export interface StoreModel<T, Op> {
    * undefined when too old to know) and `current`. Left out: no op of the model conflicts.
    */
   conflicts?(base: T | undefined, current: T, op: Op): boolean;
+  /** How long a change waits to be saved (default SAVE_MS); 0 saves at once, for changes that must survive a crash. */
+  saveMs?: number;
 }
 
 export class JsonStore<T, Op> {
@@ -36,6 +68,7 @@ export class JsonStore<T, Op> {
   private readonly loaded: Promise<void>;
   private dirty = false;
   private writing?: Promise<void>;
+  private timer?: NodeJS.Timeout;
 
   constructor(
     private readonly file: string,
@@ -69,21 +102,31 @@ export class JsonStore<T, Op> {
     this.value = { ...next, rev: rev + 1 };
     this.changed(this.value);
     this.dirty = true;
-    this.writing ??= this.write();
+    const delay = this.model.saveMs ?? SAVE_MS;
+    if (delay === 0) this.save();
+    else this.timer ??= setTimeout(() => this.save(), delay);
     return this.value;
   }
 
-  /** Resolves once the latest value is on disk (before quitting). */
+  /** Resolves once the latest value is on disk (before quitting): a save that is waiting starts now. */
   async flushed(): Promise<void> {
+    if (this.timer) this.save();
     while (this.writing) await this.writing;
+  }
+
+  private save(): void {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    this.writing ??= this.write();
   }
 
   /** One write at a time, always of the latest value; tmp + rename, so a crash never leaves half a file. */
   private async write(): Promise<void> {
     try {
-      while (this.dirty) {
+      // A change during a write waits for its own save (the timer), unless that already fired.
+      while (this.dirty && !this.timer) {
         this.dirty = false;
-        await writeFile(`${this.file}.tmp`, JSON.stringify(this.value, null, 2));
+        await writeFile(`${this.file}.tmp`, JSON.stringify(this.value));
         await rename(`${this.file}.tmp`, this.file);
       }
     } catch (error) {

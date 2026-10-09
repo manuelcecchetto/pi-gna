@@ -415,9 +415,12 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   window or an agent, is a `BoardOp` applied by the pure `applyOp` (`src/shared/board.ts`), which checks every
   field (ids, columns, absolute paths, title 300 / notes 20k / report 4k characters, at most 6 tags of 24 and 20
   GitHub links; the last 50 reports are kept). Tags are spelled one way (`normalizeTags`: "#UI Bug" is `ui-bug`); cards saved before tags
-  load with none. Writes are serialized, tmp + rename; a file that does not parse moves to `board.corrupt-<ts>.json`, and
-  skipped malformed cards keep a copy there. The renderer applies an op locally first (a drop lands at once), main
-  applies it again and pushes the whole board (`board:changed`).
+  load with none. Writes are serialized, tmp + rename, compact JSON, each 250 ms after the change (`SAVE_MS`, so a
+  burst of agent calls or a drag is one write; quitting flushes the waiting one); a file that does not parse moves to
+  `board.corrupt-<ts>.json`, and skipped malformed cards keep a copy there. The renderer applies an op locally first
+  (a drop lands at once), main applies it again and pushes the whole board (`board:changed`): the first change of a
+  burst at once, then the latest board at most once per 50 ms (`atMostEvery`), so a 1 MB board is not cloned to the
+  window and every phone for each op.
 - **Agent tools** (`resources/kanban-extension.ts`): `kanban_list` (the chat's project; `card` shows one in full),
   `kanban_claim` (take a card by id or create one; the chat leaves its previous card) and `kanban_update` (move the
   chat's card, report, and/or rename and retag it). They call `POST /kanban` on the browser tools' bridge (`src/main/bridge.ts`, a route
@@ -524,8 +527,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
 - **Main owns the laments** (`userData/laments.json`, `LamentStore`). It and `BoardStore` are a `JsonStore`
   (`src/main/store.ts`): ops applied by a pure function that checks every field (`applyLamentOp`,
   `src/shared/laments.ts`: title 200 / report 8k characters, a known severity, absolute paths; the first report
-  and the latest 29 are kept), serialized tmp + rename writes, a file that does not parse moved to
-  `laments.corrupt-<ts>.json`. The whole value is pushed after each change (`laments:changed`); the renderer only
+  and the latest 29 are kept), serialized tmp + rename writes (delayed and compact like the board's; the device
+  list, also a JsonStore, saves at once so a revocation survives a crash), a file that does not parse moved to
+  `laments.corrupt-<ts>.json`. The whole value is pushed after a change, at most once per 50 ms like the board (`laments:changed`); the renderer only
   sends resolve, reopen, remove and fix (`applyLament`), applied locally first like `applyBoard` (checked against
   the revision it was made on; when main refuses, its laments replace the local ones, or the ones from before when
   it cannot answer).

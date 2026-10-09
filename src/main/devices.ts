@@ -87,7 +87,7 @@ export class DeviceStore {
     this.now = options.now ?? Date.now;
     this.random = options.random ?? randomBytes;
     const parse = (raw: unknown) => parseDevices(raw);
-    this.store = new JsonStore(file, { name: "devices", item: "device", empty: emptyDevices, apply: (value, op) => applyDeviceOp(value, op), parse }, (value) => this.publish(value));
+    this.store = new JsonStore(file, { name: "devices", item: "device", empty: emptyDevices, apply: (value, op) => applyDeviceOp(value, op), parse, saveMs: 0 }, (value) => this.publish(value));
   }
 
   private publish({ devices }: Devices) {
