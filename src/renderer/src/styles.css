@@ -792,6 +792,22 @@ code.hl span {
   }
 }
 
+/* Past turns (Transcript's sections, all but the newest three) skip style, layout and paint while off screen, so the
+   streaming turn's growth, a resize or opening the chat lays out only what is in view. A turn that has not rendered yet
+   is 600px tall; once it has, it keeps the height it last rendered at (`auto`, on every turn so the newest ones have
+   one when they become past). Scroll anchoring holds the view while those heights turn real, so this applies only where
+   anchoring exists (not iOS Safari before 27). A jump lays every turn out first (`data-measuring`, `scrollToRun`) to land
+   on the real position. Containment would make a turn the containing block of an expanded visual (`position: fixed`)
+   and clip it, so that turn renders as usual. */
+@supports (overflow-anchor: auto) {
+  .transcript-runs > [data-run] {
+    contain-intrinsic-size: auto 600px;
+  }
+  .transcript-runs:not([data-measuring]) > [data-run]:nth-last-child(n + 4):not(:has(.visual-box.full)) {
+    content-visibility: auto;
+  }
+}
+
 /* Turn rail (TurnRail, Codex's user message navigation rail): a 2px line per message you sent, 6px at
    rest and 26px under the pointer, with the three neighbours on each side magnified like the Dock.
    Turns on screen are brighter; bookmarked ones stay lit and carry a dot. */

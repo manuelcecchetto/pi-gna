@@ -24,6 +24,7 @@ moves those lines under the new version, and they become its GitHub release note
 - A model's thinking streams as plain text and becomes formatted once it ends, instead of being formatted again on every frame (36 KB of streamed thinking cost the window about 470 ms of script, now about 375 ms; the finished thinking looks exactly as before).
 - The turn rail no longer redraws its lines or rebuilds the hover card's preview on every frame while an answer streams: the preview is built when you hover (in a chat with 150 messages, the window's script time while an answer streams fell by about a third).
 - Following a streaming answer no longer measures the transcript in the middle of each frame: the view now catches up with new output after the frame's own layout, and the chat redraws half as often while it streams (a 300-line answer redrew the transcript about 390 times and forced about 200 layouts, now about 195 redraws and one layout). A window you hide while it streams catches up when it shows again.
+- Long chats stay light: turns scrolled out of view are no longer laid out or painted, so opening a chat, resizing the window and streaming an answer touch only what is on screen (with 30 long turns, opening the chat went from about 95 ms to 40 ms, a resize from about 55 ms of layout to 8 ms, and a streamed answer cost about a fifth less). The scrollbar estimates turns you have not scrolled to yet; jumps on the turn rail still land exactly.
 
 ## 0.9.1 - 2026-10-08
 

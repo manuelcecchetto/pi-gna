@@ -7,6 +7,7 @@ import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo,
 import { toggleBookmark, useBookmarks } from "../lib/bookmarks";
 import { renderMarkdown } from "../lib/markdown";
 import { adjacentTurn, nearDistance, RAIL_MIN_ITEMS, type RailItem, railPreview, sameMarkers } from "../lib/rail";
+import { scrollToRun } from "../lib/turn-scroll";
 
 /** Room the rail needs left of the transcript text; narrower windows hide it (the keys still work). */
 const GUTTER = 48;
@@ -44,7 +45,7 @@ export function TurnRail({ items, scroller, column, topGap, reveal, sessionPath 
         behavior = "instant";
       }
       if (!section || ticket !== latest.current) return;
-      root.scrollTo({ top: section.offsetTop - topGap, behavior });
+      scrollToRun(root, section, topGap, behavior);
       flash(section);
     },
     [scroller, topGap, reveal],

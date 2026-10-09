@@ -1076,6 +1076,19 @@ Verified live (pi 1.0.0, Oct 2026):
   ResizeObserver, so a window hidden mid-stream catches up when it shows again. `viewport` and the ↓ button's
   state are set only when they change (each set renders the transcript). `followChecks` in `pnpm e2e:remote`
   checks it on the phone.
+- Past turns skip rendering (styles.css `.transcript-runs`): every turn but the newest three has `content-visibility:
+  auto`, so a turn out of view costs no style, layout or paint, and opening a chat, a resize or a streaming answer
+  lays out only what is in view (30 long turns: opening 95 → 40 ms, a resize's layout 55 → 8 ms, a stream's
+  pre-paint a fifth of before). A turn that has not rendered yet stands in at 600px (`contain-intrinsic-size`); once
+  it has rendered it keeps that height (`auto`, set on every turn so the newest have one when they become past).
+  Scroll anchoring holds the view while those estimates turn real as you scroll up, so it applies only where anchoring
+  exists (`@supports (overflow-anchor: auto)`: not iOS Safari before 27). Jumps (`scrollToRun` in
+  `lib/turn-scroll.ts`, the rail, ⌥↑/⌥↓ and the phone's turn list) mark the column `data-measuring`, which renders
+  every turn for the offset read and the next frame (that frame records their heights), so they land on the real
+  position; the first jump after opening a long chat pays the layout that opening skipped (about 60 ms for 30 long
+  turns), later ones about 2 ms. Containment makes a turn the containing block of `position: fixed` content, so a
+  turn with an expanded visual (`.visual-box.full`) renders as usual. The scrollbar reflects the estimates until the
+  turns have rendered, and a turn's text can sit up to a device pixel apart (paint containment snaps it).
 - Turn rail (`TurnRail`, Codex's "user message navigation rail", read from the Codex app bundle's
   `thread-user-message-navigation-rail-app` chunk and its CSS): a 2px line per message you sent, vertically
   centered left of the transcript, shown from 4 messages on and only while the column leaves a 48px gutter.

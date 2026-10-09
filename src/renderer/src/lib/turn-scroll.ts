@@ -21,6 +21,29 @@ export function followsAfterScroll(pinned: boolean, last: ScrollGeometry, now: S
   return pinned;
 }
 
+/**
+ * Scrolls a turn to `topGap` below the top of the view. Past turns skip layout while off screen (styles.css
+ * `.transcript-runs`) at the height they last rendered at, or an estimate before they have, so the turn's offset is real
+ * only once every turn is laid out: the column stops skipping (`data-measuring`) for the read and the next frame, which
+ * records the heights, and the turns skip again at them. A later jump's mark outlives an earlier one's frames.
+ */
+export function scrollToRun(
+  scroller: Pick<HTMLElement, "scrollTo">,
+  section: Pick<HTMLElement, "offsetTop" | "parentElement">,
+  topGap: number,
+  behavior: ScrollBehavior,
+): void {
+  const column = section.parentElement;
+  const mark = String(Number(column?.dataset.measuring ?? 0) + 1);
+  if (column) column.dataset.measuring = mark;
+  scroller.scrollTo({ top: section.offsetTop - topGap, behavior });
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (column?.dataset.measuring === mark) delete column.dataset.measuring;
+    }),
+  );
+}
+
 /** A scroller as `settleView` reads and moves it (an HTMLElement). */
 export interface Scroller {
   scrollTop: number;

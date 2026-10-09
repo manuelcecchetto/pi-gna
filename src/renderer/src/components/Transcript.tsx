@@ -21,7 +21,7 @@ import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/atta
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { previewClick } from "../lib/preview";
 import { outlineItems, type RailItem, railItems } from "../lib/rail";
-import { distanceToEnd, END_SLACK, followsAfterScroll, settleView, type ViewFollow } from "../lib/turn-scroll";
+import { distanceToEnd, END_SLACK, followsAfterScroll, scrollToRun, settleView, type ViewFollow } from "../lib/turn-scroll";
 import type { SessionState } from "../../../shared/session-state";
 import type { TurnOutline } from "../../../shared/turn-outline";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
@@ -129,7 +129,7 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
       behavior = "instant";
     }
     if (!section) return;
-    root.scrollTo({ top: section.offsetTop - TOP_GAP, behavior });
+    scrollToRun(root, section, TOP_GAP, behavior);
     flash(section);
   };
 
@@ -153,7 +153,7 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
         onTouchMove={onTouchMove}
         className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden"
       >
-        <div ref={content} className="mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
+        <div ref={content} className="transcript-runs mx-auto flex w-full min-w-0 max-w-[800px] flex-col gap-10 px-4 sm:px-8" style={{ paddingTop: TOP_GAP, paddingBottom: BOTTOM_GAP }}>
           {hidden === 0 && earlier && earlier.count > 0 && (
             <button
               type="button"
