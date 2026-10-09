@@ -20,7 +20,7 @@ describe("wallpapers", () => {
     const seen: string[] = [];
     let id = nextWallpaper("ink");
     for (let i = 0; i < WALLPAPERS.length - 1; i++, id = nextWallpaper(id)) seen.push(id);
-    expect(seen).toEqual(["fresco", "sky", "stars", "peak", "pines", "shadow", "ink"]);
+    expect(seen).toEqual(["fresco", "monet", "vangogh", "hokusai", "sky", "stars", "peak", "pines", "shadow", "ink"]);
     expect(nextWallpaper("none")).toBe("sky");
   });
 
@@ -29,7 +29,7 @@ describe("wallpapers", () => {
     const storage = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) };
     expect(loopWallpaper("ink", false, storage)).toBe("ink");
     expect(saved.size).toBe(0);
-    expect([1, 2, 3].map(() => loopWallpaper("ink", true, storage))).toEqual(["ink", "fresco", "sky"]);
+    expect([1, 2, 3].map(() => loopWallpaper("ink", true, storage))).toEqual(["ink", "fresco", "monet"]);
     expect(loopWallpaper("peak", true, storage)).toBe("peak");
     expect(loopWallpaper("peak", true, storage)).toBe("pines");
     expect(loopWallpaper("none", true, storage)).toBe("sky");

@@ -15,7 +15,7 @@ export type Theme = (typeof THEMES)[number];
 
 /** The empty state's backdrop, each a 🤌 in another form, painted at dusk (dark) and by day (light); none leaves the
  * canvas plain. The renderer maps each to its images (lib/wallpapers.ts). */
-export const WALLPAPERS = ["sky", "stars", "peak", "pines", "shadow", "ink", "fresco", "none"] as const;
+export const WALLPAPERS = ["sky", "stars", "peak", "pines", "shadow", "ink", "fresco", "monet", "vangogh", "hokusai", "none"] as const;
 export type Wallpaper = (typeof WALLPAPERS)[number];
 
 /** Who set pi up (Setup's first step): the nerd 🤌 wants commands and logs, the cool 🤌 plain words. Only Setup reads

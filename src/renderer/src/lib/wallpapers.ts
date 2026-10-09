@@ -1,5 +1,5 @@
-// The empty state's wallpapers (settings.wallpaper): each a 🤌 in another form, at dusk for dark mode and by day for
-// light mode, with small thumbnails for the picker in Settings. Files: assets/wallpapers/<id>-<dusk|day>.webp
+// The empty state's wallpapers (settings.wallpaper): each a 🤌 in another form, or Pigna, the mascot, painted into a
+// famous painting; at dusk for dark mode and by day for light mode, with small thumbnails for the picker in Settings. Files: assets/wallpapers/<id>-<dusk|day>.webp
 // (2560 × 1440; the sky is 2048 × 1152) and thumbs/<id>-<dusk|day>.webp (480 × 270).
 import type { CSSProperties } from "react";
 import { type Wallpaper, WALLPAPERS } from "../../../shared/settings";
@@ -12,6 +12,9 @@ export const WALLPAPER_LABELS: Readonly<Record<Wallpaper, string>> = {
   shadow: "Shadow",
   ink: "Ink wash",
   fresco: "Fresco",
+  monet: "Sunrise",
+  vangogh: "Starry night",
+  hokusai: "Great wave",
   none: "None",
 };
 

@@ -1096,9 +1096,15 @@ light and dark themes, the pi-logo spinner with shimmer text, compact chips that
 Empty states sit on a wallpaper picked in Settings > Appearance (`settings.wallpaper`, default `sky`; `none` leaves
 the canvas plain), masked into the canvas above the text and composer. Each is the 🤌 in another form: a painted hand
 raised into the sky (Shinkai-style with a halftone texture, outpainted to 16:9), a constellation, a Dolomite spire, a
-pine forest (a *pigna* is a pine cone), a shadow on a plaster wall, an ink wash and a fresco. Each has a dusk image
-(dark theme) and a day image (light), the day one generated from the dusk one as a reference so the scene stays the
-same; GPT Image 2.5 at 2560 × 1440, high, then `cwebp -q 72 -m 6 -sharp_yuv` (thumbnails: `-q 75 -resize 480 270`).
+pine forest (a *pigna* is a pine cone), a shadow on a plaster wall, an ink wash and a fresco. Three more put Pigna,
+the mascot, into public-domain paintings in their own brushwork: Monet's *Impression, Sunrise* (Pigna in the rowing
+boat), Van Gogh's *The Starry Night* (on the hill) and Hokusai's *Great Wave* (on the crest). Pigna is itself a hand,
+so it makes no hand gestures there (no waving or pointing; arms down), and it is painted in the medium, never a cartoon
+sticker. Image moderation refuses paintings with nudes (*The Birth of Venus*, *The Creation of Adam*) unless every
+figure is clothed. Each has a dusk image (dark theme) and a day image (light), the one generated from the other as a
+reference so the scene stays the same (the paintings start from their own light: Hokusai by day, the others at dusk);
+GPT Image 2.5 at 2560 × 1440, high, then `cwebp -q 72 -m 6 -sharp_yuv` (thumbnails: `-q 75 -resize 480 270`). Try
+compositions first at 1536 × 864, medium, in a mock of the empty state (canvas, `.hero` mask, layout).
 Files are `assets/wallpapers/<id>-<dusk|day>.webp` and `thumbs/`, found by `import.meta.glob` in
 `lib/wallpapers.ts`, whose test fails when one is missing; keep the hand in the upper middle and the bottom third calm
 and dark (dusk) or pale (day), since the mask fades it out under the text. With Loop on (`settings.wallpaperLoop`),
