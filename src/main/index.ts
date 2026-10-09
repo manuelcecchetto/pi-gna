@@ -16,7 +16,7 @@ import type { LamentOp } from "../shared/laments";
 import { HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared/protocol";
-import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
+import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
 import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
 import { AtpRuns } from "./atp-runner";
@@ -234,6 +234,8 @@ const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer
 });
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), atMostEvery((next) => publish({ kind: "laments", laments: next })));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
+// The chat titler (resources/title-extension.ts) asks at each new chat's first prompt, so a changed model applies at once.
+bridge.route("/title", async () => ({ model: taskModel(await settings.get(), "title") }));
 bridge.route("/threads", threadsRoute({ identify: (handle) => host.identify(handle), sessions: listSessions, live: () => host.attentionAll(), read: readActiveBranch }));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(

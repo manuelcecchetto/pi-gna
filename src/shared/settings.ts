@@ -1,8 +1,8 @@
 // pi-gna's own settings (userData/settings.json): which optional features are on, the window's appearance and the
-// models pi-gna starts its own chats on (card triage, ATP). Main owns the file and applies every change through
+// models pi-gna uses for its own work (chat titles, card triage, ATP). Main owns the file and applies every change through
 // applySettingsOp, so every field is checked. pi's settings stay in pi's settings.json (src/shared/pi-settings.ts),
 // and Computer Use keeps its own on/off switch with its policy (computer-use.json).
-import type { ThinkingLevel } from "./protocol";
+import type { Model, ThinkingLevel } from "./protocol";
 
 /** Features you can turn off: off hides their pages and menus, and new chats get none of their tools. */
 export const FEATURES = ["kanban", "laments", "github", "atp"] as const;
@@ -33,11 +33,13 @@ export interface TaskModel {
   thinking: ThinkingLevel;
 }
 
-/** The chats pi-gna starts itself. */
-export const TASKS = ["triage", "orchestrator", "worker"] as const;
+/** What pi-gna runs on a model of its choosing: a chat's title, and the chats it starts itself. */
+export const TASKS = ["title", "triage", "orchestrator", "worker"] as const;
 export type Task = (typeof TASKS)[number];
 
 export const TASK_DEFAULTS: Readonly<Record<Task, TaskModel>> = {
+  /** Names every chat from its first message (resources/title-extension.ts): one short call per chat. */
+  title: { id: "claude-haiku-4-5", thinking: "off" },
   /** Names, tags and briefly investigates every card you add: quick and cheap, since it runs for each one. */
   triage: { id: "claude-sonnet-5-5", thinking: "low" },
   /** Writes and replans ATP plans with you. */
@@ -140,6 +142,13 @@ function taskModelOf(raw: unknown): TaskModel | undefined {
 
 /** The model a task runs on: yours, else its default. */
 export const taskModel = (settings: Settings, task: Task): TaskModel => settings.models[task] ?? TASK_DEFAULTS[task];
+
+/** An explicit provider is mandatory. For an id-only selection, prefer the chat's provider, else any
+ * provider serving that exact model id. */
+export function pickModel<M extends Pick<Model, "provider" | "id">>(models: readonly M[], want: Pick<TaskModel, "provider" | "id">, chatProvider: string | undefined): M | undefined {
+  const by = (provider: string | undefined) => (provider === undefined ? undefined : models.find((model) => model.id === want.id && model.provider === provider));
+  return want.provider !== undefined ? by(want.provider) : by(chatProvider) ?? models.find((model) => model.id === want.id);
+}
 
 const sameModel = (a: TaskModel | undefined, b: TaskModel | undefined) => a?.provider === b?.provider && a?.id === b?.id && a?.thinking === b?.thinking;
 

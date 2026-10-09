@@ -44,7 +44,7 @@ import {
   stripStudioBlocks,
 } from "../lib/attachments";
 import type { CompactionSettings } from "../../../shared/compaction";
-import { cardBlock, inChatPrompt, pickModel } from "../../../shared/task-prompts";
+import { cardBlock, inChatPrompt } from "../../../shared/task-prompts";
 import { applyUi, bootUiState, uiStore } from "../lib/host-ui";
 import { loadSidebar, type SidebarLayout, saveSidebar } from "../lib/layout";
 import { lightboxAt, lightboxStep, type LightboxView } from "../lib/lightbox";

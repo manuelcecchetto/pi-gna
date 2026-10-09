@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applySettingsOp, emptySettings, parseSettings, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, yoloOption } from "./settings";
+import type { Model } from "./protocol";
+import { applySettingsOp, emptySettings, parseSettings, pickModel, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, yoloOption } from "./settings";
 
 const start = emptySettings();
 
@@ -171,5 +172,19 @@ describe("remote access and host lifecycle", () => {
     expect(settings.remote).toEqual({ enabled: true, port: 4517, keepAwake: "always" });
     expect(settings.openAtLogin).toBe(true);
     expect(dropped).toBe(1);
+  });
+});
+
+describe("pickModel", () => {
+  it("honors an explicit provider; id-only selections prefer the chat provider then any", () => {
+    const model = (provider: string, id: string) => ({ provider, id }) as Model;
+    const models = [model("anthropic", "claude-opus-5-5"), model("anthropic", "claude-sonnet-5-5"), model("claude-bridge", "claude-sonnet-5-5")];
+    const sonnet = { id: "claude-sonnet-5-5" };
+    expect(pickModel(models, sonnet, "claude-bridge")).toBe(models[2]);
+    expect(pickModel(models, sonnet, "openai")).toBe(models[1]);
+    expect(pickModel(models, sonnet, undefined)).toBe(models[1]);
+    expect(pickModel(models, { ...sonnet, provider: "anthropic" }, "claude-bridge")).toBe(models[1]);
+    expect(pickModel(models, { ...sonnet, provider: "openai" }, "claude-bridge")).toBeUndefined();
+    expect(pickModel(models, { id: "claude-sonnet-9" }, "anthropic")).toBeUndefined();
   });
 });

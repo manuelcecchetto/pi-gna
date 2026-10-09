@@ -18,6 +18,8 @@ files:
   - src/shared/themes.ts
   - src/shared/theme-presets.ts
   - src/shared/viewport.ts
+  - src/shared/chat-title.ts
+  - src/shared/file-mentions.ts
   - "!resources/icon.png"
   - "!resources/pigna-flag.ts"
 # pi reads these from disk (`pi -e`, `--append-system-prompt`), so every src/shared file the extensions import
@@ -33,6 +35,8 @@ asarUnpack:
   - src/shared/themes.ts
   - src/shared/theme-presets.ts
   - src/shared/viewport.ts
+  - src/shared/chat-title.ts
+  - src/shared/file-mentions.ts
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:

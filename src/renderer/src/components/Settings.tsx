@@ -313,7 +313,8 @@ function ShortcutsSection() {
   );
 }
 
-const TASK_INFO: Record<Task, { title: string; about: string; feature: Feature }> = {
+const TASK_INFO: Record<Task, { title: string; about: string; feature?: Feature }> = {
+  title: { title: "Chat titles", about: "Names each chat from its first message. One short call per chat, so a fast, cheap model is best. Without it, a chat keeps its first message as its title." },
   triage: { title: "Card triage", about: "Names, tags and briefly looks into every card you add. Quick and cheap, since it runs for each one.", feature: "kanban" },
   orchestrator: { title: "ATP orchestrator", about: "Writes and changes ATP plans with you.", feature: "atp" },
   worker: { title: "ATP worker", about: "Runs one node of a plan, in a fresh chat per node.", feature: "atp" },
@@ -323,7 +324,10 @@ function ModelsSection({ pi }: { pi: Pi }) {
   const features = useApp((state) => state.settings.features);
   const provider = pi.value("defaultProvider") as string | undefined;
   const id = pi.value("defaultModel") as string | undefined;
-  const tasks = TASKS.filter((task) => features[TASK_INFO[task].feature]);
+  const tasks = TASKS.filter((task) => {
+    const feature = TASK_INFO[task].feature;
+    return !feature || features[feature];
+  });
   return (
     <>
       <PiFileNote pi={pi} />
@@ -340,7 +344,7 @@ function ModelsSection({ pi }: { pi: Pi }) {
         </Row>
       </Card>
       {tasks.length > 0 && (
-        <Card title="Chats pi-gna starts" note="For that chat only: new chats keep your default. When pi does not have the model, the chat runs on your default model.">
+        <Card title="pi-gna's own work" note="For that work only: new chats keep your default. When pi does not have the model, a started chat runs on your default model.">
           {tasks.map((task) => (
             <TaskRow key={task} task={task} />
           ))}

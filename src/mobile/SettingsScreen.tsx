@@ -319,7 +319,10 @@ function ModelPick({ title, models, value, onPick, onReset, about, unset }: { ti
 function ModelsSection({ client, pi }: { client: HostClient; pi: Pi }) {
   const { settings, apply } = useHostSettings(client);
   const models = useModels(client);
-  const tasks = TASKS.filter((task) => settings.features[TASK_INFO[task].feature]);
+  const tasks = TASKS.filter((task) => {
+    const feature = TASK_INFO[task].feature;
+    return !feature || settings.features[feature];
+  });
   const provider = pi.value("defaultProvider") as string | undefined;
   const id = pi.value("defaultModel") as string | undefined;
   const setTask = (task: Task, model: TaskModel | null) => void apply({ type: "model", task, model });
@@ -348,7 +351,7 @@ function ModelsSection({ client, pi }: { client: HostClient; pi: Pi }) {
         />
       </Card>
       {tasks.length > 0 && (
-        <Card title="Chats pi-gna starts" note="For that chat only: new chats keep your default.">
+        <Card title="pi-gna's own work" note="For that work only: new chats keep your default.">
           {tasks.map((task) => {
             const custom = settings.models[task];
             const model = custom ?? TASK_DEFAULTS[task];

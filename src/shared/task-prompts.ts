@@ -5,8 +5,6 @@ import type { Board } from "./board";
 import { type GithubItem, type GithubRepo, itemRef, refLabel, refLine, tokenVariable } from "./github";
 import type { CardWorktree } from "./ipc";
 import { type Lament, lamentSeverity, SEVERITY } from "./laments";
-import type { Model } from "./protocol";
-import type { TaskModel } from "./settings";
 
 /** The project's tags, most used first, for new cards to reuse. */
 export function boardTags(board: Board, cwd: string): string[] {
@@ -59,12 +57,6 @@ const TRIAGE = "Triage: ";
 export const triageName = (card: Pick<Card, "title">): string => `${TRIAGE}${card.title}`;
 export const isTriage = (name: string | undefined): boolean => name?.startsWith(TRIAGE) ?? false;
 
-/** An explicit provider is mandatory. For an id-only selection, prefer the chat's provider, else any
- * provider serving that exact model id. */
-export function pickModel(models: Model[], want: Pick<TaskModel, "provider" | "id">, chatProvider: string | undefined): Model | undefined {
-  const by = (provider: string | undefined) => (provider === undefined ? undefined : models.find((model) => model.id === want.id && model.provider === provider));
-  return want.provider !== undefined ? by(want.provider) : by(chatProvider) ?? models.find((model) => model.id === want.id);
-}
 
 
 const RECENT_REPORTS = 5;

@@ -11,7 +11,7 @@ import { formatFileMentions } from "../shared/file-mentions";
 import type { CardWorktree, OpenSessionRequest, PickedPath } from "../shared/ipc";
 import type { Lament } from "../shared/laments";
 import type { Model, RpcCommand, RpcResponse } from "../shared/protocol";
-import { type Settings, type TaskModel, taskModel } from "../shared/settings";
+import { pickModel, type Settings, type TaskModel, taskModel } from "../shared/settings";
 import type { RunOutcome } from "../shared/session-state";
 import {
   boardTags,
@@ -21,7 +21,6 @@ import {
   fixPrompt,
   hasWorktree,
   investigatePrompt,
-  pickModel,
   qaPrompt,
   resolvePrompt,
   reviewName,

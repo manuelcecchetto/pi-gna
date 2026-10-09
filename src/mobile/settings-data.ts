@@ -28,7 +28,8 @@ export const HOST_ONLY_SECTIONS = SETTINGS_SECTIONS.filter((section) => !(MOBILE
 export const isMobileSection = (value: unknown): value is MobileSection => MOBILE_SECTIONS.includes(value as MobileSection);
 
 /** The chats pi-gna starts, with the feature each belongs to (a task of a feature that is off is not offered). */
-export const TASK_INFO: Record<Task, { title: string; about: string; feature: Feature }> = {
+export const TASK_INFO: Record<Task, { title: string; about: string; feature?: Feature }> = {
+  title: { title: "Chat titles", about: "Names each chat from its first message. A fast, cheap model is best." },
   triage: { title: "Card triage", about: "Names, tags and briefly looks into every card you add.", feature: "kanban" },
   orchestrator: { title: "ATP orchestrator", about: "Writes and changes ATP plans with you.", feature: "atp" },
   worker: { title: "ATP worker", about: "Runs one node of a plan, in a fresh chat per node.", feature: "atp" },
