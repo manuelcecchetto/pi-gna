@@ -61,12 +61,16 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
   const [homeDir, setHomeDir] = useState("");
   const { route, push, replace, back } = useRoute();
 
-  // A chat started here has a session file only once pi writes it, and the host announces nothing: ask again whenever
-  // a list screen comes up, and when the live chats start or finish a turn.
+  // A chat started here has a session file only once pi writes it, which the host does not announce: list again when
+  // a list screen comes up, and on one when a live chat starts, stops or gets its file. A settled run's row comes as
+  // `session.indexed`, so turns ending ask nothing.
   const liveKey = useStore(client.store, (s) =>
-    Object.values(s.global.attention).map((c) => `${c.handle}:${c.settled?.at ?? ""}:${c.sessionPath ?? ""}`).join("|"),
+    Object.values(s.global.attention).map((c) => `${c.handle}:${c.sessionPath ?? ""}`).join("|"),
   );
-  useEffect(() => void client.refreshProjects(), [client, liveKey, route.screen]);
+  const listing = route.screen === "projects" || route.screen === "chats";
+  useEffect(() => {
+    if (listing) void client.refreshProjects();
+  }, [client, liveKey, listing]);
 
   useEffect(() => {
     if ("cwd" in route) rememberProject(route.cwd);

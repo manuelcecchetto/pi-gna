@@ -28,6 +28,7 @@ const api: StudioApi = {
   zoomFactor: () => webFrame.getZoomFactor(),
   relaunch: () => ipcRenderer.invoke(IPC.relaunch),
   listSessions: () => ipcRenderer.invoke(IPC.listSessions),
+  onSessionIndexed: (listener) => subscribe(IPC.sessionIndexed, listener),
   openSession: (request) => ipcRenderer.invoke(IPC.openSession, request),
   closeSession: (handle) => ipcRenderer.invoke(IPC.closeSession, handle),
   command: (handle, command) => ipcRenderer.invoke(IPC.command, handle, command),

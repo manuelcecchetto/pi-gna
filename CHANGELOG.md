@@ -33,6 +33,7 @@ moves those lines under the new version, and they become its GitHub release note
 - A chat with many inline visuals runs only the ones near what you are reading: each visual is a process of its own, so a chat with 30 of them used about 1 GB and now uses about 0.37 GB, and it shows its first visual in about 0.2 s instead of 0.9 s. A visual you scroll back to draws again, starting from its first state.
 - Chats full of screenshots use less memory: your attached images and tool screenshots now show as small thumbnails made once, instead of full-size images kept twice (a chat with 98 Computer Use screenshots settled at about 520 MB instead of 610 once scrolled through; the lightbox still opens the full image). In the window, an image not yet scrolled to holds its exact place instead of growing when it loads.
 - pi-gna lists your chats sooner after a relaunch: it keeps the chat list's summaries on disk and reads only the session files that changed since, instead of every chat's first lines (941 chats took about 600 ms each launch, now about 17 ms). A chat whose first message carried a large image no longer goes missing from the list.
+- A finished run updates the chat lists without rereading every chat: the Mac re-reads only that chat's session file and sends its row to the window and the phones (each run used to list the whole sessions folder twice, about 1,900 files read for their size and date; now one).
 
 ## 0.9.1 - 2026-10-08
 

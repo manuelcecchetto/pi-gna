@@ -21,6 +21,7 @@ import {
 } from "../../../shared/settings";
 import type { AttentionSummary, ChatSnapshot, Revved, TaskTarget } from "../../../shared/host-api";
 import type { CardWorktree, HostEventBatch, OpenSessionResult, Page, ProjectGroup, SessionSummary, UpdateState } from "../../../shared/ipc";
+import { patchProjects } from "../../../shared/session-list";
 import type {
   ExtensionUiResponse,
   ImageContent,
@@ -211,6 +212,14 @@ export function refreshProjects(delay = 0): void {
     const projects = await studio().listSessions();
     store.set((state) => ({ ...state, projects, projectsLoaded: true }));
   }, delay);
+}
+
+/** A settled run's session file, re-indexed by the host: patch its row. Before the first listing there is nothing to patch. */
+function onSessionIndexed(path: string, summary: SessionSummary | null): void {
+  store.set((state) => {
+    const projects = state.projectsLoaded ? patchProjects(state.projects, path, summary) : state.projects;
+    return projects === state.projects ? state : { ...state, projects };
+  });
 }
 
 // ── Session lifecycle ────────────────────────────────────────────────────────
@@ -559,7 +568,7 @@ async function onSettled(handle: string): Promise<void> {
       autoCompaction: data.autoCompactionEnabled,
     }));
   }
-  refreshProjects(300);
+  // The chat's row in the sidebar comes from the host, which re-indexes the settled file (`onSessionIndexed`).
 }
 
 const statsTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1226,6 +1235,7 @@ export function boot(): void {
   booted = true;
   studio().onEvents(handleBatch);
   studio().onAttention(({ chats, removed }) => onAttention(chats, removed));
+  studio().onSessionIndexed(({ path, summary }) => onSessionIndexed(path, summary));
   store.subscribe(syncViewing);
   void studio()
     .windowFocused()
@@ -1240,6 +1250,8 @@ export function boot(): void {
     windowFocused = focused;
     syncViewing();
     if (focused) markRead(store.get().page ? pageChat : store.get().active);
+    // Back in the window: list the sessions folder again, for chats pi wrote outside pi-gna (pi in a terminal).
+    if (focused) refreshProjects();
   });
   // A phone asked to pair: show the approval prompt (Settings > Remote access).
   studio().remote.onPairing((pairing) => pairing.state === "pending_approval" && openSettings("remote"));

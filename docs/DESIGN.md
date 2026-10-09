@@ -981,7 +981,12 @@ Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-ag
   line (`cutUserTitle`: pi writes the text block before the images). Summaries are kept in
   `userData/session-index.json` (path, mtime, size to summary; `CACHE_VERSION`), loaded at launch and saved after a
   listing that changed them, with missing files dropped, so a relaunch stats the files and reads only changed ones
-  (941 files: about 600 ms cold, 15 to 18 ms warm).
+  (941 files: about 600 ms cold, 15 to 18 ms warm). After a run settles, main re-indexes only that chat's file
+  (`indexSettled`, the file pi reports in `get_state`: one stat, a read only when it changed) and publishes it on
+  `global` as `session.indexed`; the window and the phones patch their lists with it (`patchProjects` in
+  `shared/session-list.ts`, which also builds the full list). The sessions folder is listed again only at launch,
+  when the window gains focus (chats pi wrote outside pi-gna) and when the phone opens a list screen or a live chat
+  gets its file.
 
 Verified live (pi 1.0.0, Oct 2026):
 

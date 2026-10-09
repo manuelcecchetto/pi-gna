@@ -22,6 +22,7 @@ import {
 } from "../../shared/host-api";
 import type { LoginUpdate } from "../../shared/auth";
 import { reduceHostEvent, type SessionState } from "../../shared/session-state";
+import { patchProjects } from "../../shared/session-list";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "unreachable" | "unauthorized" | "outdated";
 
@@ -171,6 +172,9 @@ function applyGlobal(state: GlobalState, event: GlobalEvent): GlobalState {
     const { runners, notes, orchestrators } = event;
     return { ...state, atp: { runners, notes, orchestrators, held: state.atp?.held ?? [] } };
   }
+  if (event.kind === "session.indexed") {
+    return state.projects ? { ...state, projects: patchProjects(state.projects, event.path, event.summary) } : state;
+  }
   if (event.kind === "atp.held") {
     return state.atp ? { ...state, atp: { ...state.atp, held: event.plans } } : state;
   }
@@ -313,7 +317,7 @@ export class HostClient {
     this.env.clearTimeout(this.reconnectTimer);
   }
 
-  /** Re-reads the session index: the host publishes no event when a chat's file appears, so lists ask again. */
+  /** Re-reads the session index: the host announces a settled run's file (`session.indexed`), not a new chat's, so lists ask again. */
   async refreshProjects(): Promise<void> {
     try {
       const projects = await this.call("chat.list", {});

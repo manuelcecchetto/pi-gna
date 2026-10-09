@@ -37,6 +37,7 @@ export const IPC = {
   shown: "studio:shown",
   liveChats: "studio:live-chats",
   attention: "studio:attention",
+  sessionIndexed: "studio:session-indexed",
   interrupt: "studio:interrupt",
   editQueue: "studio:edit-queue",
   command: "studio:command",
@@ -527,6 +528,8 @@ export interface StudioApi {
   /** Quit and start pi-gna again from the build on disk, or as the staged update; running chats stop. */
   relaunch(): Promise<void>;
   listSessions(): Promise<ProjectGroup[]>;
+  /** A settled run's session file was re-indexed: patch the list with it (patchProjects) rather than listing again. */
+  onSessionIndexed(listener: (update: { path: string; summary: SessionSummary | null }) => void): () => void;
   openSession(request: OpenSessionRequest): Promise<OpenSessionResult>;
   /** Stop the chat's pi (explicit "Close chat"; also tells other clients). */
   closeSession(handle: string): Promise<void>;

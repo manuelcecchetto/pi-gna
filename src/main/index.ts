@@ -15,7 +15,7 @@ import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
 import { HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
-import type { ExtensionUiResponse, RpcCommand } from "../shared/protocol";
+import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared/protocol";
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, wantsKeepAwake } from "../shared/settings";
 import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
@@ -60,7 +60,7 @@ import { TailscaleCli } from "./tailscale";
 import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-core";
 import { debugRpc, log, logToFile } from "./log";
 import { SessionHost } from "./session-host";
-import { listSessions, persistSessionIndex, sessionsDir } from "./session-index";
+import { indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
 import { Updater } from "./updater";
 import { initialWindowState, readWindowState, trackWindowState } from "./window-state";
@@ -133,6 +133,7 @@ hub.subscribe({
       const e = event as Record<string, any>;
       switch (e.kind) {
         case "attention": send(IPC.attention, { chats: e.chats, removed: e.removed }); break;
+        case "session.indexed": send(IPC.sessionIndexed, { path: e.path, summary: e.summary }); break;
         case "settings": send(IPC.settingsChanged, e.settings); break;
         case "ui": send(IPC.uiChanged, e.ui); break;
         case "board": send(IPC.boardChanged, e.board); break;
@@ -194,6 +195,21 @@ const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`,
   visuals: (await settings.get()).visuals,
 }), () => current.yolo);
 host.onGlobal(publish);
+// A settled run changed its session file (its time, maybe its title): re-index that one file and upsert it into every
+// client's list, instead of each client listing the sessions folder again. pi names the file, since /new, /resume and
+// forks switch it; a short wait lets it finish writing, and settles of one file coalesce.
+const indexing = new Map<string, ReturnType<typeof setTimeout>>();
+host.onSettled((handle) => {
+  const known = host.stateOf(handle)?.sessionPath;
+  void host.command(handle, { type: "get_state" }).then((response) => (response.data as RpcSessionState | undefined)?.sessionFile ?? known, () => known).then((path) => {
+    if (!path) return;
+    clearTimeout(indexing.get(path));
+    indexing.set(path, setTimeout(() => {
+      indexing.delete(path);
+      void indexSettled(path).then((summary) => summary !== undefined && publish({ kind: "session.indexed", path, summary }));
+    }, 300));
+  });
+});
 const pushService = new PushService(join(app.getPath("userData"), "remote-push.json"), { viewing: (handle) => host.presence(handle).some((client) => client.viewing), preview: (handle) => responsePreview(host.stateOf(handle)?.items ?? []) });
 push = pushService;
 hub.subscribe({ topics: ["global"], deliver: (batch) => batch.forEach(({ event }) => pushService.onGlobal(event as { kind: string })) });

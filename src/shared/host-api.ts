@@ -20,7 +20,7 @@ import type { TailscaleStatus } from "./tailscale";
 import type { TurnOutline } from "./turn-outline";
 import type { UiOp } from "./ui-state";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
-import type { DialogAnswer, OpenSessionRequest, OpenSessionResult, PickedPath, ProjectGroup, UpdateState } from "./ipc";
+import type { DialogAnswer, OpenSessionRequest, OpenSessionResult, PickedPath, ProjectGroup, SessionSummary, UpdateState } from "./ipc";
 
 // ── Envelopes ────────────────────────────────────────────────────────────────
 
@@ -130,6 +130,8 @@ export type HostEvent =
 /** What the host pushes on `global`. Store values carry `rev`. */
 export type GlobalEvent =
   | { kind: "projects"; projects: ProjectGroup[] }
+  /** A run settled and its session file was re-indexed: clients patch their `chat.list` with it (patchProjects); null drops the row. */
+  | { kind: "session.indexed"; path: string; summary: SessionSummary | null }
   | { kind: "attention"; chats: AttentionSummary[]; removed: string[] }
   | { kind: "chat.opened"; handle: string; cwd: string; sessionPath?: string }
   | { kind: "chat.closed"; handle: string }

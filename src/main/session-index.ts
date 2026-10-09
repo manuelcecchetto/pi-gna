@@ -1,11 +1,11 @@
-// Lists pi sessions grouped by project (projectOf their cwd: a card's worktree counts as its project). Summaries
-// are cached by path + mtime + size, and the cache is kept on disk (persistSessionIndex) so a launch reads only the
-// files that changed since the last one.
+// Lists pi sessions grouped by project (groupSessions), and re-indexes one session file after its run settles
+// (indexSettled). Summaries are cached by path + mtime + size, and the cache is kept on disk (persistSessionIndex) so
+// a launch reads only the files that changed since the last one.
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { projectOf } from "../shared/board";
 import type { ProjectGroup, SessionSummary } from "../shared/ipc";
+import { groupSessions } from "../shared/session-list";
 import { log } from "./log";
 import { summarizeSessionFile } from "./session-file";
 
@@ -86,7 +86,7 @@ export async function listSessions(): Promise<ProjectGroup[]> {
     )
   ).flat();
 
-  const summaries = await mapLimit(files, 16, summarize);
+  const summaries = await mapLimit(files, 16, indexSession);
   // Forget files that are gone, so the cache does not keep every deleted session.
   const present = new Set(files);
   for (const path of cache.keys()) {
@@ -95,24 +95,24 @@ export async function listSessions(): Promise<ProjectGroup[]> {
     dirty = true;
   }
   saveCache();
-  const groups = new Map<string, ProjectGroup>();
-  for (const summary of summaries) {
-    if (!summary) continue;
-    const cwd = projectOf(summary.cwd);
-    const group = groups.get(cwd) ?? { cwd, modifiedAt: 0, sessions: [] };
-    group.sessions.push(summary);
-    group.modifiedAt = Math.max(group.modifiedAt, summary.modifiedAt);
-    groups.set(cwd, group);
-  }
-  for (const group of groups.values()) group.sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
-  const result = [...groups.values()].sort((a, b) => b.modifiedAt - a.modifiedAt);
+  const result = groupSessions(summaries);
 
   const elapsed = Date.now() - started;
   if (elapsed > 500) log.info("index", `indexed ${files.length} sessions in ${elapsed} ms`);
   return result;
 }
 
-async function summarize(path: string): Promise<SessionSummary | undefined> {
+/**
+ * A settled run's session file, re-indexed for the clients' lists (`session.indexed`, patchProjects): one stat, and a
+ * read only when it changed. Null when it lists nothing; undefined outside the sessions folder, which no listing shows.
+ */
+export async function indexSettled(path: string): Promise<SessionSummary | null | undefined> {
+  if (dirname(dirname(path)) !== sessionsDir()) return undefined;
+  return (await indexSession(path)) ?? null;
+}
+
+/** One session file's row: undefined when it lists nothing (no user message or name) or cannot be read. */
+async function indexSession(path: string): Promise<SessionSummary | undefined> {
   try {
     const info = await stat(path);
     const cached = cache.get(path);

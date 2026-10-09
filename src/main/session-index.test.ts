@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listSessions } from "./session-index";
+import { indexSettled, listSessions } from "./session-index";
 
 vi.mock("./log", () => ({ log: { info: () => undefined, warn: () => undefined } }));
 
@@ -69,5 +69,30 @@ describe("listSessions", () => {
       expect(await launch()).toEqual(["First chat"]);
     }
     vi.doUnmock("node:fs/promises");
+  });
+});
+
+describe("indexSettled", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("re-reads one settled file for the lists: its new time and name, null when it lists nothing, nothing outside the folder", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-gna-index-"));
+    const dir = join(root, "--repo--");
+    await mkdir(dir);
+    const chat = join(dir, "chat.jsonl");
+    await writeFile(chat, jsonl([header, user("u1", "Fix the login bug")]));
+    await writeFile(join(dir, "empty.jsonl"), jsonl([header]));
+    await writeFile(join(root, "loose.jsonl"), jsonl([header, user("u1", "Not in a project folder")]));
+    vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", root);
+    await utimes(chat, 1_000, 1_000);
+
+    expect(await indexSettled(chat)).toMatchObject({ path: chat, cwd: "/repo", title: "Fix the login bug", named: false, modifiedAt: 1_000_000 });
+    await appendFile(chat, jsonl([{ type: "session_info", id: "n1", parentId: "u1", timestamp: "2026-10-01T10:01:00.000Z", name: "Login fix" }]));
+    await utimes(chat, 2_000, 2_000);
+    expect(await indexSettled(chat)).toMatchObject({ title: "Login fix", named: true, modifiedAt: 2_000_000 });
+    expect(await indexSettled(join(dir, "empty.jsonl"))).toBeNull();
+    expect(await indexSettled(join(dir, "gone.jsonl"))).toBeNull();
+    expect(await indexSettled(join(root, "loose.jsonl"))).toBeUndefined();
+    expect(await indexSettled(join(tmpdir(), "elsewhere", "--repo--", "chat.jsonl"))).toBeUndefined();
   });
 });
