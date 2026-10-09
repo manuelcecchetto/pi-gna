@@ -41,8 +41,9 @@ import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/prev
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { entriesBelow, folderEntries, parentDir, type TreeEntry } from "../lib/file-tree";
 import { type FuzzySearch, fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
+import { FILES_EVENT, takeFilesPending } from "../lib/file-finder";
 import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
-import { openSettings, setPane, showBrowser, showPage, store, toast, useApp } from "../state/app";
+import { openSettings, setPane, showPage, store, toast, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { CardTab } from "./CardDialog";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -457,21 +458,6 @@ function AddressBar({ tab, onSuggesting }: { tab: BrowserTab; onSuggesting: (ope
   );
 }
 
-/** Set by ⌘P while the start tab that should show the file finder is still being opened. */
-let filesPending = false;
-const FILES_EVENT = "pigna:start-files";
-
-/** ⌘P: the file finder of the active start tab, or of a new one. */
-export function showFileFinder(): void {
-  const { browser: state, pane, active } = store.get();
-  if (!active) return;
-  const tab = state.tabs.find((entry) => entry.id === state.activeId);
-  filesPending = true;
-  if (tab?.start && pane.open) window.dispatchEvent(new Event(FILES_EVENT));
-  else if (!tab?.start) browser().newTab();
-  showBrowser();
-}
-
 /** A shortcut as the menu shows it, in a pill. */
 function Keys({ keys }: { keys: string }) {
   return <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 font-medium text-[11px] text-muted tracking-wider">{keys}</span>;
@@ -494,14 +480,10 @@ function Tool({ icon: Icon, label, keys, onClick, children }: { icon: IconCompon
  * tab every choice fills that tab; from the empty pane it opens one.
  */
 function StartPage({ tab }: { tab?: BrowserTab }) {
-  const [files, setFiles] = useState(() => {
-    const pending = filesPending;
-    filesPending = false;
-    return pending;
-  });
+  const [files, setFiles] = useState(takeFilesPending);
   useEffect(() => {
     const show = () => {
-      filesPending = false;
+      takeFilesPending();
       setFiles(true);
     };
     window.addEventListener(FILES_EVENT, show);

@@ -30,7 +30,7 @@ import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
 import { DigitHint, useCommandDigits, useNow } from "./primitives";
-import { SettingsNav } from "./Settings";
+import { SettingsNav } from "./SettingsNav";
 import { useThemeImage } from "./ThemeRoot";
 import { UpdateRow } from "./Update";
 

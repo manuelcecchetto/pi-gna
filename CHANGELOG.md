@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The window shows its first screen a little sooner: Settings, Kanban, GitHub, Laments, ATP, the browser pane, the command palette and Setup now load just after it instead of before (the script the window reads at startup went from 852 KB to 558 KB).
 - The window opens a little sooner: it no longer waits for the local bridge that pi's tools use to start, which now starts while Electron gets ready (from a checkout, the Dock icon is also set after the window shows: about 140 ms sooner there).
 - Long chats open much faster: reading a chat's history no longer slows down with its length (an 11,500-entry chat took 3.6 s before the transcript could show, now under 10 ms).
 - Large file writes stream smoothly: the live arguments of a write or edit no longer get slower to update as they grow (100 KB of streamed arguments cost about 490 ms of parsing in each window and phone, now about 20 ms).

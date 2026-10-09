@@ -1,26 +1,32 @@
 import { useEffect, useRef, useState } from "react";
-import { AtpPage } from "./components/Atp";
-import { BrowserPane, showFileFinder } from "./components/BrowserPane";
-import { CommandPalette } from "./components/CommandPalette";
-import { GithubPage } from "./components/GitHub";
-import { KanbanPage } from "./components/Kanban";
-import { LamentsPage } from "./components/Laments";
 import { ChevronLeft, ChevronRight } from "./components/icons";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
-import { SettingsPage } from "./components/Settings";
-import { SetupFlow } from "./components/Setup";
 import { HeroBackdrop } from "./components/Transcript";
 import { ThemeRoot } from "./components/ThemeRoot";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
+import { deferred, preloadDeferred } from "./lib/deferred";
+import { showFileFinder } from "./lib/file-finder";
 import { BROWSER_MIN, CHAT_BESIDE_BROWSER } from "./lib/layout";
 import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, showBrowser, stepLightbox, store, toggleExpandAll, useApp } from "./state/app";
+
+// Out of the startup bundle (lib/deferred.ts): the pages, the browser pane, the command palette and first-run Setup.
+// Each loads when first shown; all of them load once the window is idle after startup.
+const AtpPage = deferred(() => import("./components/Atp").then((m) => m.AtpPage));
+const BrowserPane = deferred(() => import("./components/BrowserPane").then((m) => m.BrowserPane));
+const CommandPalette = deferred(() => import("./components/CommandPalette").then((m) => m.CommandPalette));
+const GithubPage = deferred(() => import("./components/GitHub").then((m) => m.GithubPage));
+const KanbanPage = deferred(() => import("./components/Kanban").then((m) => m.KanbanPage));
+const LamentsPage = deferred(() => import("./components/Laments").then((m) => m.LamentsPage));
+const SettingsPage = deferred(() => import("./components/Settings").then((m) => m.SettingsPage));
+const SetupFlow = deferred(() => import("./components/Setup").then((m) => m.SetupFlow));
 
 export function App() {
   useEffect(() => {
     boot();
+    const cancelPreload = preloadDeferred();
     const onKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       if (event.ctrlKey && !event.metaKey && key === "o") {
@@ -53,6 +59,7 @@ export function App() {
     window.addEventListener("dragover", block);
     window.addEventListener("drop", block);
     return () => {
+      cancelPreload();
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("dragover", block);
       window.removeEventListener("drop", block);

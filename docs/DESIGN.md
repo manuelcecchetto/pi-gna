@@ -177,6 +177,16 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   gets its appearance and background color), then the window. A checkout's Dock icon is set once the window shows,
   at 512 px: macOS takes ~140 ms on the main thread to set the 1024 px PNG. Between ready and the window, the
   `session.defaultSession` permission handler (~13 ms) and `new BrowserWindow` (~105 ms) are the rest.
+- **Startup bundle** (P27). The window parses its whole entry chunk (what `main.tsx` reaches through static imports)
+  before its first paint. The pages (Settings, Kanban, GitHub, Laments, ATP), the browser pane, the command palette and
+  Setup are `deferred()` components (`lib/deferred.ts`): a dynamic import each, rendering nothing until loaded and then
+  synchronously (no Suspense, so no fallback flashes). Their chunks load after the first contentful paint, once the
+  window is idle (`preloadDeferred`, from App), so a page opened later shows in the click's frame and a rebuild of
+  `out/` (which deletes the old hashed chunks) cannot strand a running window. Not before the paint: the window is idle
+  while it waits on the empty state's wallpaper, and chunk requests to main's `app://` handler slowed that image, and
+  so the paint, by tens of ms. What eager code needs from them lives apart (`SettingsNav.tsx`, `lib/file-finder.ts`
+  for ⌘P); `startup-bundle.test.ts` walks the static imports and fails when one pulls a deferred module back in.
+  Entry 852 → 558 KB; navigation to first paint 180 → 158 ms (median of 5 startup traces each).
 
 ## Browser (M2)
 

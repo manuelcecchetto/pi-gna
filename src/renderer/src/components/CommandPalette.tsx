@@ -22,7 +22,7 @@ import {
   useApp,
   useOpenChats,
 } from "../state/app";
-import { showFileFinder } from "./BrowserPane";
+import { showFileFinder } from "../lib/file-finder";
 import {
   Angry,
   AppWindow,
@@ -43,7 +43,7 @@ import {
   SquarePen,
   X,
 } from "./icons";
-import { SECTIONS } from "./Settings";
+import { SECTIONS } from "./SettingsNav";
 
 interface Entry extends PaletteItem {
   icon: IconComponent;
