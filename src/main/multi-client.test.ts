@@ -35,7 +35,7 @@ import { BoardStore } from "./board";
 import { SessionHost } from "./session-host";
 
 // The desktop window and two phones against one host. The rules under test live in the host (main), not in any client.
-const bridge = { url: "http://x", register: () => "token", unregister: () => {} } as unknown as AgentBridge;
+const bridge = { url: "http://x", start: async () => {}, register: () => "token", unregister: () => {} } as unknown as AgentBridge;
 const DESKTOP = { clientId: "desktop", actor: "desktop" } as const;
 const P1 = { clientId: "p1", actor: "dev1", caller: { device: "dev1" } } as const;
 const P2 = { clientId: "p2", actor: "dev2", caller: { device: "dev2" } } as const;

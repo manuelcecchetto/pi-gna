@@ -304,6 +304,8 @@ export class SessionHost {
 
     const features = await this.features().catch(() => NONE);
     if (atp && !features.atp) throw new Error("ATP is turned off in pi-gna's Settings");
+    // The bridge starts beside the window, not before it; a pi learns its URL at spawn.
+    await this.bridge.start();
     // A second open of the same file may have started its pi while this one resolved trust and features.
     const raced = sessionPath ? this.byFile.get(sessionPath) : undefined;
     if (raced && this.live.has(raced)) return this.join(raced, lease, page);
@@ -722,6 +724,7 @@ export class SessionHost {
     const trust = await this.trustOf(cwd).catch(() => undefined);
     const features = await this.features().catch(() => NONE);
     const inputs = await piInputs(cwd);
+    await this.bridge.start();
     if (turn !== this.spareTurn) return;
     const current = this.spare;
     const why = current && (current.cwd === cwd ? stale(current, trust, JSON.stringify(features), inputs) : "another folder");

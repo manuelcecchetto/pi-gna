@@ -3,7 +3,7 @@ import { responsePreview } from "../shared/push-rules";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeTheme, powerSaveBlocker, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, session, shell } from "electron";
 import { bugs } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
@@ -186,7 +186,7 @@ const devices = new DeviceStore(
 );
 const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"), (next) => {
   publish({ kind: "settings", settings: next });
-  applySettings(next);
+  void applySettings(next);
   // A spare pi has the features it started with.
   void host.retireSpare("settings changed");
 });
@@ -527,15 +527,17 @@ async function checkForUpdates(): Promise<void> {
 }
 
 /** The window follows its appearance setting; the menu shows only the pages of features that are on. Remote access
- * adds the host lifecycle: closing hides the window, the Mac may be kept awake, and pi-gna may open at login. */
-function applySettings(next: Settings): void {
+ * adds the host lifecycle: closing hides the window, the Mac may be kept awake, and pi-gna may open at login.
+ * Resolves once the appearance is applied. */
+function applySettings(next: Settings): Promise<void> {
   current = next;
-  void applyAppearance();
+  const appearance = applyAppearance();
   buildMenu(next.features);
   syncKeepAwake();
   void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
   if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
+  return appearance;
 }
 
 /** Light, dark or the system's: the project on screen's theme, else the setting. Native too, so the window's
@@ -643,6 +645,8 @@ function init(): void {
   // Set before ready so Electron never builds its default menu (performance checklist).
   buildMenu();
   const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv(join(app.getPath("userData"), "shell-dirs.json")) : LAUNCH_ENV;
+  // Listens while Electron gets ready; nothing waits for it but the first pi spawn (SessionHost).
+  bridge.start().catch((error: Error) => log.error("bridge", `could not start the agent bridge: ${error.message}`));
 
   updater = new Updater(logFile, (state) => publish({ kind: "update", state }));
   // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
@@ -698,7 +702,6 @@ function init(): void {
   void app.whenReady().then(async () => {
     log.info("pigna", `${app.getName()} ${app.getVersion()} build ${__PIGNA_BUILD__}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
     log.info("pigna", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PIGNA_DEBUG=1 logs RPC traffic)"}`);
-    if (!app.isPackaged && process.platform === "darwin") app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
     // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
     session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
     serveVisual();
@@ -706,9 +709,12 @@ function init(): void {
     if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));
     registerIpc(shellEnv);
     // Before the window, so it opens in its appearance (and with its background color).
-    applySettings(await settings.get());
-    await bridge.start();
+    await applySettings(await settings.get());
     createWindow();
+    // A checkout's Dock icon (the packaged app has its own), once the window shows: macOS takes ~140 ms to set it at 1024 px.
+    if (!app.isPackaged && process.platform === "darwin") {
+      window?.once("ready-to-show", () => app.dock?.setIcon(nativeImage.createFromPath(join(app.getAppPath(), "resources", "icon.png")).resize({ width: 512 })));
+    }
     if (process.platform === "darwin") updater?.start();
   });
 }

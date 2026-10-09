@@ -16,13 +16,19 @@ export class AgentBridge {
   private server?: Server;
   private readonly tokens = new Map<string, string>();
   private readonly routes = new Map<string, Route>();
+  private listening?: Promise<void>;
   url = "";
 
   route(path: string, route: Route): void {
     this.routes.set(path, route);
   }
 
-  async start(): Promise<void> {
+  /** Listens once: pi-gna starts it before the window, and every pi spawn waits for it (SessionHost) to read `url`. */
+  start(): Promise<void> {
+    return (this.listening ??= this.listen());
+  }
+
+  private async listen(): Promise<void> {
     const server = createServer((request, response) => {
       void this.handle(request).then(
         (body) => {
@@ -35,7 +41,10 @@ export class AgentBridge {
         },
       );
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
     this.server = server;
     this.url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     log.info("bridge", `agent bridge on ${this.url}`);

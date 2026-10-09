@@ -33,7 +33,7 @@ import type { Item, SessionState } from "../shared/session-state";
 import type { AgentBridge } from "./bridge";
 import { type SessionFeatures, SessionHost } from "./session-host";
 
-const bridge = { url: "http://x", register: vi.fn((_handle: string) => "token"), unregister: () => {}, rename: vi.fn() };
+const bridge = { url: "http://x", start: async () => {}, register: vi.fn((_handle: string) => "token"), unregister: () => {}, rename: vi.fn() };
 const base: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false };
 const argsFor = (features: SessionFeatures, atp?: Parameters<SessionHost["piArgs"]>[2]) =>
   new SessionHost(() => {}, bridge as unknown as AgentBridge, "/atp").piArgs("abcdef", undefined, atp, features).args;
@@ -716,6 +716,23 @@ describe("session registry", () => {
       await host.close(handle);
       expect(spare.closed).toBe(true);
       expect(host.stateOf(handle)).toBeUndefined();
+    });
+
+    it("waits for the bridge before it spawns, so pi gets the bridge's URL", async () => {
+      let listen!: () => void;
+      const listening = new Promise<void>((resolve) => (listen = () => resolve(void (late.url = "http://127.0.0.1:4242"))));
+      const late = { ...bridge, url: "", start: () => listening };
+      fake.pis.length = 0;
+      const host = new SessionHost(() => 0, late as unknown as AgentBridge, "/atp", async () => base);
+      hosts.push(host);
+      const spare = host.spawnSpare("/tmp");
+      const opened = host.open({ cwd: "/tmp", sessionPath: "/tmp/s1.jsonl" }, { client: A });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fake.pis).toHaveLength(0);
+      listen();
+      await Promise.all([spare, opened]);
+      expect(fake.pis).toHaveLength(2);
+      for (const pi of fake.pis) expect((pi.opts as { env?: Record<string, string> }).env?.PIGNA_BRIDGE).toBe("http://127.0.0.1:4242");
     });
 
     it("is not taken by a session file, an ATP chat or a chat in another folder", async () => {

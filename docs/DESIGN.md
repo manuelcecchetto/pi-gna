@@ -171,6 +171,12 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   launches, spawn to first contentful paint / RSS of the app's processes): packaged 561 ms / 435 MB; the same code
   unpackaged 768 ms / 551 MB; before packaging (file://, node launcher) ~620 ms / ~500 MB. The main log prints
   `window ready <ms> after launch` on every start. App 242 MB (238 MB is Electron), asar 3.4 MB, arm64 dmg 112 MB.
+- **Startup order** (`src/main/index.ts`). The JSON stores start reading their files when main loads, and the agent
+  bridge starts listening while Electron gets ready; only a pi spawn waits for it (`SessionHost` awaits
+  `bridge.start()`, which listens once). On ready: protocols, IPC, then settings and themes (awaited, so the window
+  gets its appearance and background color), then the window. A checkout's Dock icon is set once the window shows,
+  at 512 px: macOS takes ~140 ms on the main thread to set the 1024 px PNG. Between ready and the window, the
+  `session.defaultSession` permission handler (~13 ms) and `new BrowserWindow` (~105 ms) are the rest.
 
 ## Browser (M2)
 
