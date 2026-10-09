@@ -86,6 +86,7 @@ const api: StudioApi = {
     previewReveal: (id) => ipcRenderer.invoke(IPC.browserPreviewReveal, id),
     previewOpen: (id) => ipcRenderer.invoke(IPC.browserPreviewOpen, id),
     history: () => ipcRenderer.invoke(IPC.browserHistory),
+    favicon: (key) => ipcRenderer.invoke(IPC.browserFavicon, key),
     state: () => ipcRenderer.invoke(IPC.browserGetState),
     onState: (listener) => subscribe<BrowserState>(IPC.browserState, listener),
     onReveal: (listener) => subscribe<string | undefined>(IPC.browserReveal, listener),

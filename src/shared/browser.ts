@@ -25,8 +25,9 @@ export interface BrowserTab {
   /** Set on a new tab that has not been given anything to show: the renderer draws the start page (open a URL, a file,
    * a recent dev server) and the native view stays hidden. Loading anything into the tab clears it. */
   start?: boolean;
-  /** The page's icon as a data URL (web tabs only, once known). */
-  favicon?: string;
+  /** Key of the page's icon (web tabs only, once known); its data URL comes from `browser.favicon`. The key names the
+   * icon's content, so a client asks for each icon once, and a tab change does not resend every tab's icon. */
+  faviconKey?: string;
 }
 
 /** How long after its last action a tab still counts as driven by the agent. */

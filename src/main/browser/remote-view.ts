@@ -13,9 +13,12 @@ import type { BrowserManager, Tab } from "./manager";
 import { previewContext, type SourceHint } from "./annotation-source";
 import { ISOLATED_WORLD, pickAt } from "./page-scripts";
 
-/** One screencast frame for a viewer. `cssWidth` x `cssHeight` is the page viewport the frame shows, in input coordinates. */
+/**
+ * One screencast frame for a viewer. `cssWidth` x `cssHeight` is the page viewport the frame shows, in input coordinates.
+ * `jpeg` decodes the frame on first read: a viewer's frame gate drops the frames a slow link cannot take, unsent and undecoded.
+ */
 export interface Frame {
-  jpeg: Buffer;
+  readonly jpeg: Buffer;
   cssWidth: number;
   cssHeight: number;
 }
@@ -100,7 +103,7 @@ export class RemoteBrowser {
       onMessage: (_event, method, params) => {
         if (method !== "Page.screencastFrame" || typeof params.data !== "string") return;
         const wc = tab.view.webContents;
-        // Ack at once, so Chromium keeps producing; delivery is throttled per viewer downstream.
+        // Ack at once, so Chromium keeps producing; delivery is throttled per viewer downstream, before decoding.
         void cdp(wc, "Page.screencastFrameAck", { sessionId: params.sessionId }).catch(() => undefined);
         deliver(cast, params.data);
       },
@@ -172,6 +175,7 @@ export class RemoteBrowser {
     try {
       return await this.perform(tab, watched, input);
     } finally {
+      this.browser.staleStill(tab);
       if (!watched) this.browser.release(id);
     }
   }
@@ -261,15 +265,32 @@ export class RemoteBrowser {
   }
 }
 
-/** The page viewport a tab shows, in CSS px: its emulated size, or the view's own size. */
 /** A frame of the tab's page to every viewer, kept for viewers who join later. */
 function deliver(cast: Cast, base64: string): void {
   const size = pageSize(cast.tab);
-  const frame: Frame = { jpeg: Buffer.from(base64, "base64"), cssWidth: size.width, cssHeight: size.height };
+  const frame = lazyFrame(base64, size.width, size.height);
   cast.last = frame;
   for (const viewer of cast.viewers) viewer.onFrame(frame);
 }
 
+/** A frame whose base64 is decoded once, when it is first read (exported for tests). */
+export function lazyFrame(base64: string, cssWidth: number, cssHeight: number): Frame {
+  let data: string | undefined = base64;
+  let jpeg: Buffer | undefined;
+  return {
+    get jpeg() {
+      if (!jpeg) {
+        jpeg = Buffer.from(data ?? "", "base64");
+        data = undefined;
+      }
+      return jpeg;
+    },
+    cssWidth,
+    cssHeight,
+  };
+}
+
+/** The page viewport a tab shows, in CSS px: its emulated size, or the view's own size. */
 function pageSize(tab: Tab): { width: number; height: number } {
   if (tab.viewport) return { width: tab.viewport.width, height: tab.viewport.height };
   const { width, height } = tab.view.getBounds();

@@ -67,6 +67,7 @@ export const IPC = {
   browserReturn: "browser:return",
   browserHistory: "browser:history",
   browserGetState: "browser:get-state",
+  browserFavicon: "browser:favicon",
   browserState: "browser:state",
   browserReveal: "browser:reveal",
   browserAnnotation: "browser:annotation",
@@ -441,6 +442,8 @@ export interface BrowserApi {
   /** Open a preview tab's file with its default app. */
   previewOpen(id: string): Promise<void>;
   history(): Promise<HistoryEntry[]>;
+  /** The data URL of a tab's icon by its `faviconKey`, or null once no tab shows it. */
+  favicon(key: string): Promise<string | null>;
   state(): Promise<BrowserState>;
   onState(listener: (state: BrowserState) => void): () => void;
   /** The agent is about to use the browser of `chat`: show its pane. */

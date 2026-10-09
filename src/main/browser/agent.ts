@@ -105,6 +105,7 @@ export class BrowserAgent {
     try {
       return await this.act(handle, request, tab);
     } finally {
+      this.browser.staleStill(tab);
       this.browser.release(tab.id);
     }
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { iconDataUrl, pickCandidate, tabFavicon } from "./favicon";
+import { IconCache, iconDataUrl, iconKey, pickCandidate, tabFavicon } from "./favicon";
 
 vi.mock("../site-icons", () => ({ siteIcon: vi.fn(async (url: string) => (url.includes("public.com") ? { mimeType: "image/png", data: "UFVC" } : null)) }));
 
@@ -42,5 +42,54 @@ describe("tabFavicon", () => {
     const missing = (async () => icon("", "text/html", 404)) as typeof fetch;
     expect(await tabFavicon("https://public.com/x", ["https://public.com/favicon.ico"], missing, shrinkOk)).toBe("data:image/png;base64,UFVC");
     expect(await tabFavicon("http://localhost:3000/", ["http://localhost:3000/favicon.ico"], missing, shrinkOk)).toBeNull();
+  });
+});
+
+describe("IconCache", () => {
+  const loader = (url: string | null) => vi.fn(async () => url);
+
+  it("loads a site's declared icon once and names it by its content", async () => {
+    const cache = new IconCache();
+    const load = loader("data:image/png;base64,QQ==");
+    const first = await cache.get("https://a.test", ["https://a.test/icon.png"], load);
+    expect(first).toEqual({ url: "data:image/png;base64,QQ==", key: iconKey("data:image/png;base64,QQ==") });
+    expect(await cache.get("https://a.test", ["https://a.test/icon.png"], load)).toBe(first);
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+  it("keeps origins and declared icons apart", async () => {
+    const cache = new IconCache();
+    const load = loader("data:image/png;base64,QQ==");
+    await cache.get("https://a.test", ["https://a.test/icon.png"], load);
+    await cache.get("https://b.test", ["https://a.test/icon.png"], load);
+    await cache.get("https://a.test", ["https://a.test/other.png"], load);
+    await cache.get("https://a.test", [], load);
+    await cache.get("https://a.test", [`data:image/svg+xml,${"x".repeat(5000)}`], load);
+    await cache.get("https://a.test", [`data:image/svg+xml,${"y".repeat(5000)}`], load);
+    expect(load).toHaveBeenCalledTimes(6);
+  });
+  it("does not keep a miss", async () => {
+    const cache = new IconCache();
+    const load = loader(null);
+    expect(await cache.get("https://a.test", ["https://a.test/icon.png"], load)).toBeNull();
+    expect(await cache.get("https://a.test", ["https://a.test/icon.png"], load)).toBeNull();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+  it("drops the least recently used icon past its limit", async () => {
+    const cache = new IconCache(2);
+    const load = loader("data:image/png;base64,QQ==");
+    await cache.get("https://a.test", [], load);
+    await cache.get("https://b.test", [], load);
+    await cache.get("https://a.test", [], load);
+    await cache.get("https://c.test", [], load);
+    expect(load).toHaveBeenCalledTimes(3);
+    await cache.get("https://a.test", [], load);
+    expect(load).toHaveBeenCalledTimes(3);
+    await cache.get("https://b.test", [], load);
+    expect(load).toHaveBeenCalledTimes(4);
+  });
+  it("gives the same icon the same short key and another icon another", () => {
+    expect(iconKey("data:image/png;base64,QQ==")).toBe(iconKey("data:image/png;base64,QQ=="));
+    expect(iconKey("data:image/png;base64,QQ==")).not.toBe(iconKey("data:image/png;base64,Qg=="));
+    expect(iconKey("data:image/png;base64,QQ==")).toMatch(/^[\w-]{16}$/);
   });
 });

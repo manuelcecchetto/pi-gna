@@ -17,7 +17,7 @@ import { fitViewport, resolveViewport, userAgentFor, type ViewportRequest, type 
 import { attachContextMenu } from "../context-menu";
 import { log } from "../log";
 import { cdp } from "./cdp";
-import { tabFavicon } from "./favicon";
+import { IconCache, tabFavicon, type TabIcon } from "./favicon";
 import { previewContext, type SourceHint } from "./annotation-source";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 import { previews } from "./preview-protocol";
@@ -26,6 +26,9 @@ import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFil
 export const PARTITION = "persist:pigna-browser";
 const CONSOLE_LIMIT = 300;
 const HISTORY_LIMIT = 500;
+/** A pane still is reused this long unless the page loads, navigates, takes input or is driven first, or the pane moves:
+ * a repaint no event reports (an animation, a dev server's hot reload) leaves it at most this old. */
+const STILL_MAX_AGE_MS = 3000;
 /** Standalone device windows open at once. */
 export const WINDOW_LIMIT = 4;
 
@@ -69,8 +72,8 @@ export interface Tab {
   agentAt?: number;
   /** Set while the tab shows a local file; web tabs have none. */
   preview?: PreviewState;
-  /** The page's icon as a data URL, and the origin it belongs to (a navigation elsewhere drops it). */
-  favicon?: { url: string; origin: string };
+  /** The page's icon, and the origin it belongs to (a navigation elsewhere drops it). */
+  favicon?: TabIcon & { origin: string };
   /** Bumped per favicon request, so a slow one for an earlier page cannot win. */
   faviconSeq?: number;
 }
@@ -121,6 +124,11 @@ export class BrowserManager {
   private annotating = false;
   private annotateGeneration = 0;
   private stateTimer?: ReturnType<typeof setTimeout>;
+  /** The state last published, serialized: an unchanged one is not sent again. */
+  private published?: string;
+  private readonly icons = new IconCache();
+  /** The pane's last still while it may be reused (see `still`). */
+  private stillCache?: { view: WebContentsView; bounds: string; at: number; image: Promise<string | undefined> };
   private visibleWaiters: (() => void)[] = [];
   private history: HistoryEntry[] = [];
   private historyTimer?: ReturnType<typeof setTimeout>;
@@ -177,7 +185,7 @@ export class BrowserManager {
             preview: tab.preview?.info,
             card: tab.card,
             start: tab.start,
-            favicon: tab.preview || tab.card || tab.favicon?.origin !== originOf(wc.getURL()) ? undefined : tab.favicon?.url,
+            faviconKey: tab.preview || tab.card || tab.favicon?.origin !== originOf(wc.getURL()) ? undefined : tab.favicon?.key,
           },
         ];
       }),
@@ -186,7 +194,19 @@ export class BrowserManager {
 
   private emitState(): void {
     clearTimeout(this.stateTimer);
-    this.stateTimer = setTimeout(() => this.events.state(this.snapshot()), 30);
+    this.stateTimer = setTimeout(() => {
+      const state = this.snapshot();
+      const serialized = JSON.stringify(state);
+      if (serialized === this.published) return;
+      this.published = serialized;
+      this.events.state(state);
+    }, 30);
+  }
+
+  /** The data URL of the icon a tab's `faviconKey` names, while a tab shows it. */
+  favicon(key: string): string | null {
+    for (const tab of this.tabs.values()) if (tab.favicon?.key === key) return tab.favicon.url;
+    return null;
   }
 
   getHistory(): HistoryEntry[] {
@@ -218,11 +238,16 @@ export class BrowserManager {
 
   private wire(tab: Tab): void {
     const wc = tab.view.webContents;
-    const changed = () => this.emitState();
+    const changed = () => {
+      this.staleStill(tab);
+      this.emitState();
+    };
     wc.on("did-start-loading", changed);
     wc.on("did-stop-loading", changed);
     wc.on("page-title-updated", changed);
     wc.on("did-navigate-in-page", changed);
+    // Clicks, keys and wheel scrolls repaint the page under the pane's still.
+    wc.on("input-event", () => this.staleStill(tab));
     wc.on("page-favicon-updated", (_event, favicons) => void this.loadFavicon(tab, favicons));
     wc.on("did-navigate", (_event, url) => {
       if (tab.favicon && tab.favicon.origin !== originOf(url)) tab.favicon = undefined;
@@ -265,9 +290,10 @@ export class BrowserManager {
     if (!/^https?:/i.test(page)) return;
     const seq = (tab.faviconSeq ?? 0) + 1;
     tab.faviconSeq = seq;
-    const url = await tabFavicon(page, favicons, (input, init) => wc.session.fetch(input as string, init), shrinkIcon).catch(() => null);
+    const origin = originOf(page);
+    const icon = await this.icons.get(origin, favicons, () => tabFavicon(page, favicons, (input, init) => wc.session.fetch(input as string, init), shrinkIcon).catch(() => null));
     if (tab.faviconSeq !== seq || wc.isDestroyed()) return;
-    tab.favicon = url ? { url, origin: originOf(page) } : undefined;
+    tab.favicon = icon ? { ...icon, origin } : undefined;
     this.emitState();
   }
 
@@ -760,10 +786,33 @@ export class BrowserManager {
     }
   }
 
-  /** A still of the page drawn in the pane, which the renderer shows in its place while a DOM overlay hides it. */
-  async still(): Promise<string | undefined> {
-    const image = await this.attached?.webContents.capturePage().catch(() => undefined);
-    return image && !image.isEmpty() ? `data:image/jpeg;base64,${image.toJPEG(90).toString("base64")}` : undefined;
+  /**
+   * A still of the page drawn in the pane, which the renderer shows in its place while a DOM overlay hides it. Overlays
+   * come and go over the same picture, so a still is reused until the page loads, navigates, takes input or is driven,
+   * the pane moves, or it is STILL_MAX_AGE_MS old.
+   */
+  still(): Promise<string | undefined> {
+    const view = this.attached;
+    if (!view) return Promise.resolve(undefined);
+    const bounds = JSON.stringify(view.getBounds());
+    const cached = this.stillCache;
+    if (cached?.view === view && cached.bounds === bounds && Date.now() - cached.at < STILL_MAX_AGE_MS) return cached.image;
+    const image = view.webContents.capturePage().then(
+      (shot) => (shot.isEmpty() ? undefined : `data:image/jpeg;base64,${shot.toJPEG(75).toString("base64")}`),
+      () => undefined,
+    );
+    const entry = { view, bounds, at: Date.now(), image };
+    this.stillCache = entry;
+    // A failed capture is not reused.
+    void image.then((still) => {
+      if (!still && this.stillCache === entry) this.stillCache = undefined;
+    });
+    return image;
+  }
+
+  /** The page may look different now (the agent or a phone just acted on it): the pane's still of it is not reused. */
+  staleStill(tab: Tab): void {
+    if (this.stillCache?.view === tab.view) this.stillCache = undefined;
   }
 
   private detach(): void {

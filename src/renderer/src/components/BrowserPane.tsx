@@ -39,6 +39,7 @@ import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
+import { useFavicon } from "../lib/favicons";
 import { entriesBelow, folderEntries, parentDir, type TreeEntry } from "../lib/file-tree";
 import { type FuzzySearch, fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
 import { FILES_EVENT, takeFilesPending } from "../lib/file-finder";
@@ -333,6 +334,7 @@ function TabPill({ tab, active, onContextMenu }: { tab: BrowserTab; active: bool
   const card = useApp((s) => (tab.card ? s.board.cards.find((entry) => entry.id === tab.card) : undefined));
   const label = tab.card ? (card?.title ?? tab.card) : tab.start ? "New tab" : tab.url === "about:blank" && (!tab.title || tab.title === tab.url) ? "New page" : (tab.preview?.name ?? (tab.title || tab.url.replace(/^https?:\/\//, "") || "New tab"));
   const FileIcon = tab.preview ? iconForKind(tab.preview.kind) : undefined;
+  const favicon = useFavicon(tab.faviconKey, (key) => browser().favicon(key));
   return (
     <div
       onContextMenu={onContextMenu}
@@ -345,12 +347,12 @@ function TabPill({ tab, active, onContextMenu }: { tab: BrowserTab; active: bool
           <SquareKanban size={12} className="shrink-0 text-faint" />
         ) : tab.start ? (
           <Plus size={12} className="shrink-0 text-faint" />
-        ) : tab.agent && (agentRunning || !tab.favicon) ? (
+        ) : tab.agent && (agentRunning || !favicon) ? (
           <Bot size={12} className={`shrink-0 ${agentRunning ? "pulse-dot text-accent" : "text-faint"}`} />
         ) : FileIcon ? (
           <FileIcon size={12} className="shrink-0 text-faint" />
-        ) : tab.favicon ? (
-          <img src={tab.favicon} alt="" draggable={false} className={`size-3.5 shrink-0 rounded-[3px] object-contain ${tab.loading ? "opacity-60" : ""}`} />
+        ) : favicon ? (
+          <img src={favicon} alt="" draggable={false} className={`size-3.5 shrink-0 rounded-[3px] object-contain ${tab.loading ? "opacity-60" : ""}`} />
         ) : (
           <Globe size={12} className={`shrink-0 text-faint ${tab.loading ? "pulse-dot" : ""}`} />
         )}

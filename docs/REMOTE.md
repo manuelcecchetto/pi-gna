@@ -121,6 +121,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | Method | Scope | Mutates | Replaces / notes |
 |---|---|---|---|
 | `browser.state`, `browser.history` | remote | no | `browserGetState`, `browserHistory`. |
+| `browser.favicon` | remote | no | `browserFavicon`. `{ key }`: the data URL of the tab icon `BrowserTab.faviconKey` names, or null once no tab shows it. |
 | `chat.resolveLinks`, `chat.linkImage`, `chat.openFile` | remote | no / no / yes | new. A chat's file links on the phone, confined to the chat's cwd and project, except the images the chat's answers embed (docs/FILE_PREVIEW.md, Phone). `from` resolves the first two from a shown file's folder. |
 | `chat.readFile` | remote | no | new. A text file of the chat's folders (first 2 MB) for the phone's File screen (docs/FILE_PREVIEW.md, Phone). |
 | `browser.newTab`, `browser.closeTab`, `browser.activate`, `browser.navigate`, `browser.command`, `browser.annotate`, `browser.inspect`, `browser.viewport` | remote | yes | the same-named channels. |
@@ -248,7 +249,7 @@ Every push goes through one in-process EventHub in main. The desktop window is o
   in; same auth as `/api/events`, at most 6 at once) answers `multipart/x-mixed-replace; boundary=pigna-frame`, one JPEG per
   part with `X-Css-Width`/`X-Css-Height` headers, so an `<img>` shows it; never SSE. The host runs a CDP screencast
   (`Page.startScreencast`, JPEG, size/quality/fps from the viewer: at most dpr 3, 30 fps for small frames down to 12) only
-  while a response is open, acks every frame, and delivers latest-only: a frame waits for the previous part to drain and for
+  while a response is open, acks every frame, decodes only the frames it sends, and delivers latest-only: a frame waits for the previous part to drain and for
   the viewer's fps cap, newer frames replace it. Closing the response, revoking the device or stopping remote access stops
   the screencast. Several viewers of one tab share one screencast (largest ask), each throttled by its own gate.
   A tab outside the pane or a window is parked in an invisible keeper window while watched (no pane reveal), because a view in

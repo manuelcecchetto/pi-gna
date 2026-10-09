@@ -5,6 +5,7 @@
 import { AppWindow, ArrowLeft, ArrowRight, Bot, File, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "../renderer/src/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { useWakeAt } from "../renderer/src/components/primitives";
+import { useFavicon } from "../renderer/src/lib/favicons";
 import { useStore } from "../renderer/src/lib/store";
 import type { Annotation, BrowserTab, HistoryEntry } from "../shared/browser";
 import type { BrowserInput } from "../shared/host-api";
@@ -93,7 +94,7 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
                 className="flex min-h-9 max-w-40 items-center gap-1.5"
               >
                 {t.preview && <File size={13} className="shrink-0 text-faint" data-testid="preview-icon" />}
-                {!t.preview && t.favicon && <img src={t.favicon} alt="" className="size-3.5 shrink-0 rounded-[3px] object-contain" />}
+                {!t.preview && t.faviconKey && <TabIcon client={client} iconKey={t.faviconKey} />}
                 <span className="truncate">{tabTitle(t)}</span>
                 {t.agent && (
                   <span className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${agentActive(t, now) ? "bg-accent/20 text-accent" : "text-faint"}`} data-testid="agent-badge" title={agentActive(t, now) ? "The agent is using this tab" : "Opened by an agent"}>
@@ -165,6 +166,12 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
       )}
     </div>
   );
+}
+
+/** A tab's page icon, asked of the Mac once per icon. */
+function TabIcon({ client, iconKey }: { client: HostClient; iconKey: string }) {
+  const src = useFavicon(iconKey, (key) => client.call("browser.favicon", { key }));
+  return src ? <img src={src} alt="" className="size-3.5 shrink-0 rounded-[3px] object-contain" /> : null;
 }
 
 /** Typing into the focused element on the Mac, and the keys a phone keyboard lacks. */

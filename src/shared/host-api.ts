@@ -539,6 +539,8 @@ export interface HostMethods {
   // browser
   "browser.state": { args: Record<string, never>; result: Snapshot<BrowserState> };
   "browser.history": { args: Record<string, never>; result: HistoryEntry[] };
+  /** The data URL of a tab's icon by its `faviconKey`, or null once no tab shows it. */
+  "browser.favicon": { args: { key: string }; result: string | null };
   "browser.newTab": { args: { url?: string; agent?: string }; result: { id: string } | null };
   "browser.closeTab": { args: { id: string }; result: null };
   "browser.activate": { args: { id: string }; result: null };
@@ -752,6 +754,7 @@ export const READ_ONLY_METHODS = [
   "atp.state",
   "browser.state",
   "browser.history",
+  "browser.favicon",
   "fs.browseFolders",
   "fs.describePaths",
   "devices.list",

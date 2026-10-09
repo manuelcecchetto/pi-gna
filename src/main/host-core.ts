@@ -545,6 +545,14 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
     ),
     "browser.history": any("remote", () => deps.browser()?.getHistory() ?? []),
+    "browser.favicon": method<{ key: string }>(
+      "remote",
+      (raw) => {
+        if (typeof raw.key !== "string" || raw.key.length > 64) throw new Error("Invalid favicon key");
+        return { key: raw.key };
+      },
+      (_ctx, { key }) => deps.browser()?.favicon(key) ?? null,
+    ),
     "browser.state": any("remote", () => deps.browser()?.snapshot()),
 
     "board.get": any("remote", () => board.get()),
@@ -844,6 +852,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserSiteIcon, "browser.siteIcon", (url) => ({ url })),
   route(IPC.browserPreviewOpen, "browser.previewOpen", (id) => ({ id })),
   route(IPC.browserHistory, "browser.history"),
+  route(IPC.browserFavicon, "browser.favicon", (key) => ({ key })),
   route(IPC.browserGetState, "browser.state"),
   route(IPC.boardGet, "board.get"),
   route(IPC.boardApply, "board.apply", (op, baseRev) => ({ op, baseRev })),
