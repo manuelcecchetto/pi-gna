@@ -381,7 +381,7 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
 ## 12. Static app, CSP, limits
 
 - The remote server serves `out/mobile` (T16) at `/`: `/assets/*`, `/sw.js`, `/manifest.webmanifest`, icons.
-  The service worker caches only the app shell by build id (never `/api`). `GET /api/hello` returns `buildId`; a mismatch reloads.
+  The service worker caches by build id and never `/api`. `GET /api/hello` returns `buildId`; a mismatch reloads.
   Build: `pnpm build` runs `scripts/build.mjs` (electron-vite, then `vite build -c vite.mobile.config.ts` into `out/mobile`) with one
   `PIGNA_BUILD` id for both; `out/**` already ships in the asar and the server reads it with plain `fs` (no `onDisk`). `pnpm dev:mobile`
   rebuilds `out/mobile` on change; the RemoteServer serves it (no Vite dev server). `sw.js` is generated with the build id and shell file list.
@@ -392,6 +392,12 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
   go out as they are. A cold phone load went from 745 KB to 206 KB on the wire (the entry 674 → 195 KB); emulated 3G
   (1.6 Mbps, 150 ms) reaches the Projects screen in 1.7 s instead of 4.4 s. Quality 11 would save 14 KB more on the
   entry but takes 1.4 s, which the first phone to load a new build would wait for.
+- **Shell-only precache** (P36): `sw.js` (`src/mobile/service-worker.ts`) installs only what the first screen needs:
+  `/`, the manifest, the icons, the entry chunk with the chunks it imports statically and their CSS. Every other hashed
+  `/assets/*` file (grammars, the wallpaper a new chat shows) is kept, cache-first, the first time it loads; failed
+  answers are not kept. An install went from 65 files and 5.9 MB (every grammar and all 28 wallpaper images, full size
+  and thumbnails) to 7 files and 875 KB; on emulated 3G the worker is ready after 2.8 s instead of 18.5 s. The
+  full-size wallpapers stay in the build because the phone's empty chat shows one; `.webp` is served as `image/webp`.
 - **CSP** (`REMOTE_CSP` in `host-api.ts`): `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;
   connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`.
   Visual frames are served from a dedicated path with their own frame CSP and rendered with `sandbox="allow-scripts"`

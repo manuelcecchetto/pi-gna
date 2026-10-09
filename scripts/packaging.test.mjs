@@ -58,6 +58,10 @@ describe("mobile bundle", () => {
       expect(existsSync(join(out, file)), file).toBe(true);
     }
     expect(readFileSync(join(out, "index.html"), "utf8")).not.toMatch(/<script(?![^>]*\bsrc=)/);
+    // One missing file fails the worker's whole install.
+    const shell = JSON.parse(readFileSync(join(out, "sw.js"), "utf8").match(/const SHELL = (\[.*\]);/)[1]);
+    expect(shell).toContain("/");
+    for (const path of shell.filter((path) => path !== "/")) expect(existsSync(join(out, path)), path).toBe(true);
   });
 });
 

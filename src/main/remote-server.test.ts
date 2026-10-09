@@ -312,6 +312,7 @@ describe("RemoteServer", () => {
     const mtime = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
     utimesSync(file, mtime, mtime);
     writeFileSync(join(dir, "mobile", "assets", "pic.png"), Buffer.alloc(8000, 7));
+    writeFileSync(join(dir, "mobile", "assets", "sky-dusk.webp"), Buffer.alloc(8000, 9));
     const get = (path: string, encoding?: string, method = "GET") => send(method, path, encoding === undefined ? {} : { headers: { "accept-encoding": encoding } });
 
     const br = await get("/assets/big.js", "gzip, deflate, br");
@@ -360,6 +361,10 @@ describe("RemoteServer", () => {
     expect(png.headers["content-encoding"]).toBeUndefined();
     expect(png.headers.vary).toBeUndefined();
     expect(png.raw.equals(Buffer.alloc(8000, 7))).toBe(true);
+    const webp = await get("/assets/sky-dusk.webp", "br, gzip");
+    expect(webp.headers["content-type"]).toBe("image/webp");
+    expect(webp.headers["content-encoding"]).toBeUndefined();
+    expect(webp.raw.equals(Buffer.alloc(8000, 9))).toBe(true);
 
     const tiny = await get("/assets/a.js", "br");
     expect(tiny.headers["content-encoding"]).toBeUndefined();

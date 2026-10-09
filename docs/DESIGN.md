@@ -843,8 +843,9 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   `pnpm build`, one `PIGNA_BUILD` id for both; `pnpm dev:mobile` rebuilds on change). It has feature parity, not the same
   layout: projects and chats, composer (models, thinking, commands, mentions, queue, attachments), transcript with tool
   sheets, lightbox and visuals, Kanban, Laments, GitHub, ATP, Browser, Settings (except Shortcuts). `src/mobile` may bundle
-  devDependencies through Vite; main and preload still import only Node and Electron. The service worker caches the app
-  shell by build id, never `/api`; a `buildId` mismatch in `hello` reloads. Shared renderer components take props
+  devDependencies through Vite; main and preload still import only Node and Electron. The service worker
+  (`src/mobile/service-worker.ts`) precaches only the shell by build id and keeps other hashed files the first time they
+  load, never `/api`; a `buildId` mismatch in `hello` reloads. Shared renderer components take props
   instead of forks (`ChatUiActions`, `ContextMeter`, `QueueCard`).
 - **Not on the phone:** operating Mac apps (Computer Use is a view-only preview with approvals and Stop), pop-out browser
   windows, native pickers, `update.restart`, enabling remote access, pairing, Shortcuts, `pi --pigna`. No native iOS app.
