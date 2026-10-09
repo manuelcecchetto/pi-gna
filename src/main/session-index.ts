@@ -1,8 +1,9 @@
 // Lists pi sessions grouped by project (projectOf their cwd: a card's worktree counts as its project). Summaries
-// are cached by path + mtime + size.
+// are cached by path + mtime + size, and the cache is kept on disk (persistSessionIndex) so a launch reads only the
+// files that changed since the last one.
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { projectOf } from "../shared/board";
 import type { ProjectGroup, SessionSummary } from "../shared/ipc";
 import { log } from "./log";
@@ -21,10 +22,55 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
+/** Where the cache is kept (userData/session-index.json) and its load from there. */
+let persisted: { file: string; loaded: Promise<void> } | undefined;
+let dirty = false;
+let saving: Promise<void> = Promise.resolve();
+
+/** Bump when SessionSummary or the way it is derived changes: an older file is then ignored. */
+const CACHE_VERSION = 1;
+
+interface CacheFile {
+  version: number;
+  entries: [string, { mtimeMs: number; size: number; summary: SessionSummary | null }][];
+}
+
+/** Keep the summary cache in `file`: loaded now, saved after each listing that changed it. */
+export function persistSessionIndex(file: string): void {
+  persisted = { file, loaded: loadCache(file) };
+}
+
+async function loadCache(file: string): Promise<void> {
+  try {
+    const saved = JSON.parse(await readFile(file, "utf8")) as CacheFile;
+    if (saved.version !== CACHE_VERSION) return;
+    for (const [path, entry] of saved.entries) cache.set(path, { mtimeMs: entry.mtimeMs, size: entry.size, summary: entry.summary ?? undefined });
+  } catch {
+    // First launch or a damaged file: whatever is missing is read from the session files. An entry only counts while
+    // its file's mtime and size match.
+  }
+}
+
+/** Saves run one after another, each a temp file renamed over the last. */
+function saveCache(): void {
+  if (!persisted || !dirty) return;
+  dirty = false;
+  const { file } = persisted;
+  const data: CacheFile = { version: CACHE_VERSION, entries: [...cache].map(([path, entry]) => [path, { ...entry, summary: entry.summary ?? null }]) };
+  saving = saving.then(async () => {
+    try {
+      await writeFile(`${file}.tmp`, JSON.stringify(data));
+      await rename(`${file}.tmp`, file);
+    } catch (error) {
+      log.warn("index", `save ${file}: ${(error as Error).message}`);
+    }
+  });
+}
 
 export async function listSessions(): Promise<ProjectGroup[]> {
   const root = sessionsDir();
   const started = Date.now();
+  await persisted?.loaded;
   let dirs: string[];
   try {
     dirs = (await readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => join(root, d.name));
@@ -41,6 +87,14 @@ export async function listSessions(): Promise<ProjectGroup[]> {
   ).flat();
 
   const summaries = await mapLimit(files, 16, summarize);
+  // Forget files that are gone, so the cache does not keep every deleted session.
+  const present = new Set(files);
+  for (const path of cache.keys()) {
+    if (present.has(path)) continue;
+    cache.delete(path);
+    dirty = true;
+  }
+  saveCache();
   const groups = new Map<string, ProjectGroup>();
   for (const summary of summaries) {
     if (!summary) continue;
@@ -76,6 +130,7 @@ async function summarize(path: string): Promise<SessionSummary | undefined> {
       modifiedAt: info.mtimeMs,
     } : undefined;
     cache.set(path, { mtimeMs: info.mtimeMs, size: info.size, summary });
+    dirty = true;
     return summary;
   } catch (error) {
     log.warn("index", `skip ${path}: ${(error as Error).message}`);

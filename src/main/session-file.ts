@@ -63,7 +63,9 @@ const TAIL_BYTES = 64 * 1024;
 
 /**
  * Header, first user message and latest name, without reading whole (often multi-MB) files.
- * The first user message follows a ~100 KB system message, so the head is streamed until found.
+ * The first user message follows a ~100 KB system message, so the head is streamed until found. Only the lines that
+ * can be the header, a name or a user message are parsed: pi writes compact JSON and escapes quotes inside strings,
+ * so these markers match a record's own keys, never the system prompt's text.
  */
 export async function summarizeSessionFile(path: string, size: number): Promise<SessionFileSummary | undefined> {
   let header: SessionHeader | undefined;
@@ -75,6 +77,7 @@ export async function summarizeSessionFile(path: string, size: number): Promise<
   try {
     outer: for await (const chunk of stream) {
       for (const line of splitter.push(chunk as Buffer)) {
+        if (!line.includes('"type":"session') && !line.includes('"role":"user"')) continue;
         const record = safeParse(line);
         if (!record) continue;
         if (record.type === "session") header = record;
@@ -89,6 +92,8 @@ export async function summarizeSessionFile(path: string, size: number): Promise<
     stream.destroy();
   }
   if (!header) return undefined;
+  // A first prompt with large images runs past HEAD_LIMIT: its text comes before the images, so read it from the cut line.
+  title ??= cutUserTitle(splitter.partial);
 
   if (size > HEAD_LIMIT || title !== undefined) {
     const tailName = await latestNameInTail(path, size);
@@ -115,6 +120,40 @@ async function latestNameInTail(path: string, size: number): Promise<string | un
     return name;
   } finally {
     await handle.close();
+  }
+}
+
+const USER_CONTENT = '"role":"user","content":';
+const TEXT_BLOCK = '{"type":"text","text":';
+
+/** The title of a user message whose line was cut off: its first text block, or "" when the cut came first. */
+export function cutUserTitle(line: string): string | undefined {
+  const at = line.indexOf(USER_CONTENT);
+  if (at === -1) return undefined;
+  let rest = line.slice(at + USER_CONTENT.length);
+  if (rest.startsWith("[")) {
+    const text = rest.indexOf(TEXT_BLOCK);
+    if (text === -1) return "";
+    rest = rest.slice(text + TEXT_BLOCK.length);
+  }
+  return rest.startsWith('"') ? textOf(cutString(rest)) : "";
+}
+
+/** The JSON string literal `source` starts with, up to its closing quote or the cut; an escape split by the cut is dropped. */
+function cutString(source: string): string {
+  let index = 1;
+  let escape = -1;
+  while (index < source.length && source.charCodeAt(index) !== 34) {
+    if (source.charCodeAt(index) === 92) {
+      escape = index;
+      index += source[index + 1] === "u" ? 6 : 2;
+    } else index++;
+  }
+  const end = index > source.length ? escape : index;
+  try {
+    return JSON.parse(`"${source.slice(1, end)}"`) as string;
+  } catch {
+    return "";
   }
 }
 

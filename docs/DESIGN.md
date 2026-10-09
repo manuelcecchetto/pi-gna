@@ -975,7 +975,13 @@ Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-ag
 - Session files: `~/.pi/agent/sessions/--<cwd, / -> ->--/<ts>_<uuid>.jsonl`; header
   `{type:"session",version:3,id,timestamp,cwd,parentSession?}`; the latest `session_info` entry holds the name.
   The first user message sits ~100 KB in (after the system message), so the index streams the head and reads a
-  64 KB tail for names instead of parsing whole (up to 50 MB) files.
+  64 KB tail for names instead of parsing whole (up to 50 MB) files. Only head lines that can be the header, a name or
+  a user message are parsed (`"type":"session` or `"role":"user"`; pi writes compact JSON with escaped quotes, so
+  the system prompt never matches). A first prompt whose images run past the 1 MB head gets its title from the cut
+  line (`cutUserTitle`: pi writes the text block before the images). Summaries are kept in
+  `userData/session-index.json` (path, mtime, size to summary; `CACHE_VERSION`), loaded at launch and saved after a
+  listing that changed them, with missing files dropped, so a relaunch stats the files and reads only changed ones
+  (941 files: about 600 ms cold, 15 to 18 ms warm).
 
 Verified live (pi 1.0.0, Oct 2026):
 

@@ -11,6 +11,11 @@ export class JsonlSplitter {
     return this.drain();
   }
 
+  /** The record received so far that has no LF yet (a read that stopped mid-line). */
+  get partial(): string {
+    return this.buffer;
+  }
+
   /** Returns a trailing record that had no final LF. */
   end(): string[] {
     this.buffer += this.decoder.end();
