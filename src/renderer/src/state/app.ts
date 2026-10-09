@@ -427,10 +427,14 @@ export function earlierTurns(session: SessionState): EarlierTurns | undefined {
   return earlier;
 }
 
-/** Attention updates: a chat that is doing something and is not here yet was started elsewhere; join it. */
+/** Attention updates: a chat that is doing something and is not here yet was started elsewhere; join it. One the host
+ * reports idle was seen by another client (the phone opened it): drop this window's unread mark too. */
 function onAttention(chats: AttentionSummary[], removed: string[]): void {
   for (const handle of removed) if (store.get().sessions[handle]?.phase !== "exited" && !attaching.has(handle)) removeSession(handle);
-  for (const chat of chats) if (chat.attention !== "idle" && !store.get().sessions[chat.handle]) void adopt(chat.handle);
+  for (const chat of chats) {
+    if (chat.attention === "idle") markRead(chat.handle);
+    else if (!store.get().sessions[chat.handle]) void adopt(chat.handle);
+  }
 }
 
 /** A chat a page shows beside itself (the ATP page's side column): looked at while that page is open. */

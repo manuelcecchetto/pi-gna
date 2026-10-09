@@ -1127,7 +1127,8 @@ Verified live (pi 1.0.0, Oct 2026):
   the one you are in. Those three states also make the title bold, and a collapsed project shows its strongest
   mark. "Not seen" means the run settled while another chat was open or the app window was not focused (main
   reports BrowserWindow focus; `document.hasFocus()` would be false while you use the browser pane). It clears
-  when you open the chat, or when the window regains focus with it open. Unread is in memory: a restart clears it.
+  when you open the chat, when the window regains focus with it open, or when another client (the phone) opens it:
+  the host clears its own mark and its attention summary turns `idle`. Unread is in memory: a restart clears it.
 - Transcript: a **run** is everything between two user messages. Your messages are right-aligned bubbles without
   an avatar, Codex-style; finished answers end with a Copy button. Times ("Yesterday 5:22 PM", full date in the
   tooltip) appear while hovering a message or answer; a centered time divider is always shown above the first
