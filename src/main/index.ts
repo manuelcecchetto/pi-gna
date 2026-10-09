@@ -236,7 +236,19 @@ const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), a
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
 // The chat titler (resources/title-extension.ts) asks at each new chat's first prompt, so a changed model applies at once.
 bridge.route("/title", async () => ({ model: taskModel(await settings.get(), "title") }));
-bridge.route("/threads", threadsRoute({ identify: (handle) => host.identify(handle), sessions: listSessions, live: () => host.attentionAll(), read: readActiveBranch }));
+bridge.route(
+  "/threads",
+  threadsRoute({
+    identify: (handle) => host.identify(handle),
+    sessions: listSessions,
+    live: () => host.attentionAll(),
+    read: readActiveBranch,
+    deliver: async (thread, message, mode) => {
+      if (!chatTasks) throw new Error("pi-gna is still starting; try again in a moment");
+      return chatTasks.message(thread, message, mode);
+    },
+  }),
+);
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
   defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
@@ -418,8 +430,11 @@ const remoteContext = (device: { id: string }, clientId: string): HostContext =>
   authUpdate: (update) => void remoteServer?.notify(clientId, device.id, { kind: "providers.login", update }),
 });
 
+/** Made once the shell environment is known (registerIpc); thread_send delivers through it. */
+let chatTasks: ChatTasks | undefined;
+
 function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
-  const tasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv });
+  const tasks = (chatTasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv }));
   atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
   // Nothing listens until remote access is turned on in Settings (RemoteHost.sync, from applySettings).
   remoteServer = new RemoteServer({

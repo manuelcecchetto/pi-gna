@@ -12,12 +12,14 @@ import {
   GitBranch,
   ImageIcon,
   MessageSquare,
+  MessagesSquare,
   SquareKanban,
   SquareTerminal,
 } from "./icons";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
+import { splitThreadMessage, type ThreadSender } from "../../../shared/threads";
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { previewClick } from "../lib/preview";
 import { outlineItems, type RailItem, railItems } from "../lib/rail";
@@ -464,7 +466,8 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
   const parts = userParts(message);
   const [withoutFiles, mentions] = splitFileMentions(parts.text);
   const [withoutCard, card] = splitCardBlock(withoutFiles);
-  const [text, comments] = splitComments(withoutCard);
+  const [withoutThread, sender] = splitThreadMessage(withoutCard);
+  const [text, comments] = splitComments(withoutThread);
   const images = parts.images;
   const [expanded, setOpen] = useState(false);
   const [tapped, setTapped] = useState(false);
@@ -475,6 +478,11 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {divider && (
         <div title={new Date(message.timestamp).toLocaleString()} className="self-center pb-2 text-[12px] text-faint">
           {formatStamp(message.timestamp)}
+        </div>
+      )}
+      {sender && (
+        <div className="flex w-full items-center justify-end">
+          <FromThread sender={sender} />
         </div>
       )}
       {card && (
@@ -538,6 +546,16 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
         </div>
       )}
     </div>
+  );
+}
+
+/** A message another thread's agent sent (thread_send), not the user. */
+function FromThread({ sender }: { sender: ThreadSender }) {
+  return (
+    <span title={`Sent by the agent of thread ${sender.id}, not by you`} className="flex max-w-72 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 text-[12px] text-muted">
+      <MessagesSquare size={12} className="shrink-0 text-faint" />
+      <span className="truncate">From thread: {sender.title}</span>
+    </span>
   );
 }
 

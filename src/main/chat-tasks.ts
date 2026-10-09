@@ -32,7 +32,7 @@ import { log } from "./log";
 import type { SessionHost } from "./session-host";
 
 export interface ChatTasksDeps {
-  host: Pick<SessionHost, "open" | "command" | "identify" | "stateOf" | "presence" | "release" | "close" | "snapshot" | "onSettled" | "onExit">;
+  host: Pick<SessionHost, "open" | "command" | "identify" | "stateOf" | "presence" | "release" | "close" | "snapshot" | "onSettled" | "onExit" | "attentionAll">;
   board: { get(): Promise<Board>; apply(op: BoardOp, baseRev?: number): Promise<Board> };
   laments: { get(): Promise<{ laments: Lament[] }>; apply(op: { type: "fix"; id: string; chat: { path: string; cwd: string }; branch?: string }): Promise<unknown> };
   settings: { get(): Promise<Settings> };
@@ -132,6 +132,45 @@ export class ChatTasks {
     if (!response.success) return { accepted: false, error: response.error };
     if (card) await this.attach(handle, card.id).catch((error: Error) => log.warn("tasks", `could not put the chat on card ${card.id}: ${error.message}`));
     return { accepted: true };
+  }
+
+  /**
+   * A message another thread sent (thread_send): prompt the thread when it is open (`mode` while it runs), else open it
+   * in the background, held until that run ends like a task's chat. Returns without waiting for the run or the open.
+   */
+  async message(thread: { path: string; cwd: string }, message: string, mode: "steer" | "followUp"): Promise<"started" | "steer" | "followUp" | "opening"> {
+    const { host } = this.deps;
+    const live = host.attentionAll().find((chat) => chat.sessionPath === thread.path);
+    if (live) {
+      const running = host.stateOf(live.handle)?.running === true;
+      const sent = await host.command(live.handle, { type: "prompt", message, ...(running ? { streamingBehavior: mode } : {}) });
+      if (!sent.success) throw new Error(sent.error ?? "the thread did not take the message");
+      return running ? mode : "started";
+    }
+    void this.wake(thread, message).catch((error: Error) => log.warn("tasks", `could not deliver a thread message to ${thread.path}: ${error.message}`));
+    return "opening";
+  }
+
+  private async wake(thread: { path: string; cwd: string }, message: string): Promise<void> {
+    await this.deps.shellEnv;
+    const { host } = this.deps;
+    const hold = `thread:${randomUUID()}`;
+    const { handle } = await host.open({ cwd: thread.cwd, sessionPath: thread.path }, { hold });
+    try {
+      const ready = await host.command(handle, { type: "get_state" });
+      if (!ready.success) throw new Error(ready.error ?? "pi did not start");
+      // Opened meanwhile by someone who prompted it: queue behind that run.
+      const running = host.stateOf(handle)?.running === true;
+      // A task already holds it until its run ends, and this message rides on that run.
+      if (this.running.has(handle)) host.release(handle, hold);
+      else this.running.set(handle, { hold, closeWhenDone: false });
+      const sent = await host.command(handle, { type: "prompt", message, ...(running ? { streamingBehavior: "followUp" as const } : {}) });
+      if (!sent.success) throw new Error(sent.error ?? "the prompt was not accepted");
+    } catch (error) {
+      if (this.running.get(handle)?.hold === hold) this.running.delete(handle);
+      host.release(handle, hold);
+      throw error;
+    }
   }
 
   private triage(id: string): Promise<TaskStarted> {

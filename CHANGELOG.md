@@ -5,7 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
-- Agents can look at your other chats: `threads_list` lists the project's chats (or every project's) newest first, marking the ones open or running now, and `thread_read` reads one's latest turns, prompts and replies in full with each tool call on one line, paging back with `before`. Ask a chat what another one found, or to pick up where it stopped. They only read; no chat can write to another.
+- Agents can look at your other chats: `threads_list` lists the project's chats (or every project's) newest first, marking the ones open or running now, and `thread_read` reads one's latest turns, prompts and replies in full with each tool call on one line, paging back with `before`. Ask a chat what another one found, or to pick up where it stopped. `thread_send` messages another chat of the same project: the message shows as "From thread" in that chat, its agent is told it came from another chat and not from you, an idle chat starts on it, a running one gets it after its current step or when its run ends (the sender picks), and a closed one is opened. The call returns at once; the sender reads the answer later with `thread_read`.
 
 ## 0.10.1 - 2026-10-10
 

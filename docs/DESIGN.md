@@ -450,9 +450,15 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `thread_read` (a thread's newest turns from its session file's active branch: prompts and the last reply of a turn
   up to 6,000 characters, earlier replies 600, tool calls one line each with results left out, a run of more than 7
   calls kept to its first and last 3; about 40k characters a page, `before` pages back). `POST /threads` reads the
-  sidebar's `listSessions` and the host's `attentionAll` (open, running, waiting). Read-only. A thread id is the end
-  of its session id: pi's are UUIDv7, whose start is a timestamp, so 8-character prefixes collided on real sessions
-  started the same minute.
+  sidebar's `listSessions` and the host's `attentionAll` (open, running, waiting). A thread id is the end of its
+  session id: pi's are UUIDv7, whose start is a timestamp, so 8-character prefixes collided on real sessions started
+  the same minute. `thread_send` (same project only, not to itself) wraps the message in a `<thread-message>` block
+  (`threadMessageBlock`: the sender's id and title, a note that the user did not write it; a `</thread-message>` in
+  the body is escaped so it cannot forge text after the block) and hands it to `ChatTasks.message`: an open thread
+  gets a `prompt` (with `streamingBehavior` steer or followUp, the sender's pick, default followUp, while it runs); a
+  closed one is opened in the background under a `thread:` hold released when that run settles, like a task's chat.
+  It returns at once, never waiting for the answer. Deliberately no approval card and no hop limit (user decision):
+  the label is the safeguard. The transcript shows the block as a "From thread" chip (`splitThreadMessage`).
 - **Chat tasks run on the host** (`src/main/chat-tasks.ts`, `ChatTasks`; methods `chat.startTask`, `board.addCard`,
   `chat.send`): the chat a card's triage, Investigate, Resolve or QA, a lament's Fix or a pull request's Review starts
   is set up in main, so it works from any client and with no window. `start` opens the chat under a host lease

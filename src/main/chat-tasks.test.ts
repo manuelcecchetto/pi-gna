@@ -51,6 +51,7 @@ function fakeHost(options: { models?: unknown[]; failPrompt?: boolean; noFile?: 
     snapshot: vi.fn((handle: string) => ({ seq: 3, state: { handle }, turns: { total: 0, from: 0 } })),
     onSettled: (listener: (handle: string, outcome: RunOutcome) => void) => void settle.push(listener),
     onExit: () => undefined,
+    attentionAll: vi.fn((): { handle: string; sessionPath?: string }[] => []),
   };
   return { host, log, opened, holds, viewing, closed, settle: (handle: string, outcome: RunOutcome = "done") => settle.forEach((listener) => listener(handle, outcome)) };
 }
@@ -356,5 +357,37 @@ describe("sending to a chat about a card", () => {
     s.host.stateOf.mockReturnValue({ running: true } as never);
     await s.tasks.send("chat1", "more", "followUp");
     expect(prompt(s.log)).toMatchObject({ message: "more", streamingBehavior: "followUp" });
+  });
+});
+
+describe("a message from another thread", () => {
+  const thread = { path: "/s/t.jsonl", cwd: "/repo" };
+
+  it("prompts an open idle thread at once, and a running one as the sender chose", async () => {
+    const s = setup();
+    s.host.attentionAll.mockReturnValue([{ handle: "live", sessionPath: "/s/t.jsonl" }]);
+    expect(await s.tasks.message(thread, "hi", "steer")).toBe("started");
+    expect(s.log.at(-1)).toEqual({ handle: "live", command: { type: "prompt", message: "hi" } });
+    s.host.stateOf.mockReturnValue({ running: true } as never);
+    expect(await s.tasks.message(thread, "more", "steer")).toBe("steer");
+    expect(s.log.at(-1)?.command).toEqual({ type: "prompt", message: "more", streamingBehavior: "steer" });
+    expect(s.opened).toEqual([]);
+  });
+
+  it("opens a closed thread in the background, held until that run ends", async () => {
+    const s = setup();
+    expect(await s.tasks.message(thread, "wake up", "followUp")).toBe("opening");
+    await vi.waitFor(() => expect(prompt(s.log)?.message).toBe("wake up"));
+    expect(s.host.open).toHaveBeenCalledWith({ cwd: "/repo", sessionPath: "/s/t.jsonl" }, { hold: expect.stringMatching(/^thread:/) });
+    expect(s.holds.size).toBe(1);
+    s.settle("chat1");
+    expect(s.holds.size).toBe(0);
+    expect(s.closed).toEqual([]);
+  });
+
+  it("lets go of a closed thread it could not prompt", async () => {
+    const s = setup({ failPrompt: true });
+    await s.tasks.message(thread, "wake up", "followUp");
+    await vi.waitFor(() => expect(s.holds.size).toBe(0));
   });
 });

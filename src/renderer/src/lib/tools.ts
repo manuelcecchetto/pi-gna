@@ -174,6 +174,8 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       return { category: "agent", verb: "Listed threads", activeVerb: "Listing threads", target: str(args.query) || (args.all ? "every project" : "") };
     case "thread_read":
       return { category: "agent", verb: "Read thread", activeVerb: "Reading thread", target: str(args.thread) };
+    case "thread_send":
+      return { category: "agent", verb: "Messaged thread", activeVerb: "Messaging thread", target: `${str(args.thread)}: ${firstLine(str(args.message), 80)}` };
     case "kanban_list":
       return { category: "board", verb: "Read the board", activeVerb: "Reading the board", target: str(args.card) || str(args.column) };
     case "kanban_claim":
