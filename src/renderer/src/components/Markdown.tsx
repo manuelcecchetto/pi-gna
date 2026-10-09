@@ -2,7 +2,7 @@ import { memo, type MouseEvent, useEffect, useLayoutEffect, useMemo, useRef, use
 import { createRoot, type Root } from "react-dom/client";
 import { type ChatLinks, type ChatUi, ChatUiProvider, type ChatUiState, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
-import { highlight, highlightWithin } from "../lib/highlight";
+import { highlightWithin, observeHighlight } from "../lib/highlight";
 import { type LexedMarkdown, lexMarkdown, renderMarkdownBlocks, renderMarkdownCached } from "../lib/markdown";
 import { decorateWebLinks, loadChatImages, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
 
@@ -133,9 +133,8 @@ export const Markdown = memo(function Markdown({
     if (!streaming) decorateWebLinks(root, true);
     else for (const element of added) decorateWebLinks(element as HTMLElement, false);
   }, [blocks, streaming]);
-  useEffect(() => {
-    if (!streaming) highlightWithin(ref.current);
-  }, [blocks, streaming]);
+  // Code blocks highlight as they near the viewport, once the message is complete.
+  useEffect(() => (streaming ? undefined : highlightWithin(ref.current)), [blocks, streaming]);
   // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
     if (!streaming) void resolveFileLinks(ref.current, links, homeDir).then(() => loadChatImages(ref.current, links));
@@ -210,21 +209,17 @@ export const Markdown = memo(function Markdown({
   );
 });
 
-/** Plain code with async highlighting; shows unhighlighted text first. */
+/** Plain code, highlighted once it nears the viewport; shows unhighlighted text first. */
 export function CodeView({ code, lang, className = "" }: { code: string; lang?: string; className?: string }) {
+  const ref = useRef<HTMLPreElement>(null);
   const [html, setHtml] = useState<string>();
-  useEffect(() => {
-    let alive = true;
+  useLayoutEffect(() => {
     setHtml(undefined);
-    void highlight(code, lang).then((result) => {
-      if (alive) setHtml(result);
-    });
-    return () => {
-      alive = false;
-    };
+    // A cached result applies before paint, so a remounted view does not flash plain text.
+    return ref.current ? observeHighlight(ref.current, code, lang, setHtml) : undefined;
   }, [code, lang]);
   return (
-    <pre className={`code selectable ${className}`}>
+    <pre ref={ref} className={`code selectable ${className}`}>
       {html ? <code className="hl" dangerouslySetInnerHTML={{ __html: html }} /> : <code>{code}</code>}
     </pre>
   );

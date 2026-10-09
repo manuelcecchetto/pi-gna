@@ -1120,7 +1120,13 @@ Verified live (pi 1.0.0, Oct 2026):
   component replaces only the blocks whose HTML changed, so earlier blocks keep their nodes (a selection, icons) and a
   long answer costs the same per frame as a short one. Raw HTML that leaves a tag open (`<details>`, an unclosed `<b>`)
   keeps the blocks up to its close together; link reference definitions make every frame lex whole. Joined, the blocks
-  are byte-identical to the whole text's HTML (`lib.test.ts`, "markdown blocks"). pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the
+  are byte-identical to the whole text's HTML (`lib.test.ts`, "markdown blocks"). Code blocks highlight once their
+  message is complete and as they near the screen (`observeHighlight` in `lib/highlight.ts`: an IntersectionObserver
+  per scroller with an 800 px margin), nearest first, one block per idle callback and about 1,000 characters of
+  lines at a time within 8 ms of idle time, each slice going on from the grammar state the last ended in, so the
+  joined slices are byte-identical to the whole block's HTML (`highlight.test.ts`). Blocks over 30 KB stay plain
+  (TypeScript costs up to ~9 ms per KB); the cache keys by language, length and a cyrb53 hash. `CodeView` (tool
+  results, a visual's source) highlights the same way; `highlight()` runs at once for the file previews. pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the
   model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
   footnotes or Mermaid). It only applies to pi-gna sessions; opening a terminal session in pi-gna adds that
   prompt section on its next request.
