@@ -43,6 +43,7 @@ import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
 import { ThemeStore, themeRoute } from "./themes";
+import { threadsRoute } from "./threads";
 import { PiAuth } from "./pi-auth";
 import { PiPlugins } from "./plugins";
 import { PiSetup } from "./setup";
@@ -60,6 +61,7 @@ import { RemoteServer } from "./remote-server";
 import { TailscaleCli } from "./tailscale";
 import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-core";
 import { debugRpc, log, logToFile } from "./log";
+import { readActiveBranch } from "./session-file";
 import { SessionHost } from "./session-host";
 import { indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
@@ -232,6 +234,7 @@ const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer
 });
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), atMostEvery((next) => publish({ kind: "laments", laments: next })));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
+bridge.route("/threads", threadsRoute({ identify: (handle) => host.identify(handle), sessions: listSessions, live: () => host.attentionAll(), read: readActiveBranch }));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
   defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),

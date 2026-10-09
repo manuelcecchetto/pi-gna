@@ -13,6 +13,7 @@ files:
   - src/shared/preview.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+  - src/shared/threads.ts
   - src/shared/settings.ts
   - src/shared/themes.ts
   - src/shared/theme-presets.ts
@@ -27,6 +28,7 @@ asarUnpack:
   - src/shared/preview.ts
   - src/shared/board.ts
   - src/shared/laments.ts
+  - src/shared/threads.ts
   - src/shared/settings.ts
   - src/shared/themes.ts
   - src/shared/theme-presets.ts

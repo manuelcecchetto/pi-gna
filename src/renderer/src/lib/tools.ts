@@ -170,6 +170,10 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
     }
     case "browser_console":
       return { category: "browser", verb: "Read the console", activeVerb: "Reading the console", target: "" };
+    case "threads_list":
+      return { category: "agent", verb: "Listed threads", activeVerb: "Listing threads", target: str(args.query) || (args.all ? "every project" : "") };
+    case "thread_read":
+      return { category: "agent", verb: "Read thread", activeVerb: "Reading thread", target: str(args.thread) };
     case "kanban_list":
       return { category: "board", verb: "Read the board", activeVerb: "Reading the board", target: str(args.card) || str(args.column) };
     case "kanban_claim":

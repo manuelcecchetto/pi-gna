@@ -445,6 +445,14 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `get_state` (`/new` and forks switch files; pi answers RPC commands while one of its tools awaits the bridge,
   verified live), and its project is `projectOf` the cwd SessionHost started it in (a card's worktree counts as its
   project).
+- **Threads tools** (`resources/threads-extension.ts`, `src/main/threads.ts`, always loaded): `threads_list` (the
+  chat's project by `projectOf`, worktree chats included; `all` for every project, `query` on titles) and
+  `thread_read` (a thread's newest turns from its session file's active branch: prompts and the last reply of a turn
+  up to 6,000 characters, earlier replies 600, tool calls one line each with results left out, a run of more than 7
+  calls kept to its first and last 3; about 40k characters a page, `before` pages back). `POST /threads` reads the
+  sidebar's `listSessions` and the host's `attentionAll` (open, running, waiting). Read-only. A thread id is the end
+  of its session id: pi's are UUIDv7, whose start is a timestamp, so 8-character prefixes collided on real sessions
+  started the same minute.
 - **Chat tasks run on the host** (`src/main/chat-tasks.ts`, `ChatTasks`; methods `chat.startTask`, `board.addCard`,
   `chat.send`): the chat a card's triage, Investigate, Resolve or QA, a lament's Fix or a pull request's Review starts
   is set up in main, so it works from any client and with no window. `start` opens the chat under a host lease

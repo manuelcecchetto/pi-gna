@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Agents can look at your other chats: `threads_list` lists the project's chats (or every project's) newest first, marking the ones open or running now, and `thread_read` reads one's latest turns, prompts and replies in full with each tool call on one line, paging back with `before`. Ask a chat what another one found, or to pick up where it stopped. They only read; no chat can write to another.
+
 ## 0.10.1 - 2026-10-10
 
 - The tok/s readout is accurate now: it divides the tokens the provider reports for a response by the time the whole response took, from request to last token. It used to estimate from text and thinking only and drop every pause over a second, which read too high on providers that stream in bursts and left out tool calls; tool-call arguments and reasoning now count too.
