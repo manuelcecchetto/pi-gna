@@ -14,7 +14,9 @@ What came back needs cleaning before use, every time:
 - Alpha that tops out around 250 instead of 255, so the whole character is very slightly see-through.
 
 `clean.py in.png out.png` cuts alpha outside a 2 px band around the solid drawing (alpha >= 128), snaps alpha >= 240
-to 255, zeroes the color of transparent pixels and trims to the drawing. Check results with
+to 255, zeroes the color of transparent pixels and trims to the drawing. It warns when the drawing touches the edge of the source:
+the generator cut something off there, and trimming would hide it. That is how the hero's wave lines shipped
+half-cut on the features page; they were removed from `hero-full` (the faceless `hero-base` never had them). Check results with
 `sheet.py out.jpg FBF5EA files...` (contact sheet on the site's cream) and `zoom.py` (3x crops on coral and cream);
 look at the edges, not the thumbnails. The sources are then stored as lossless WebP (`cwebp -lossless -z 9 -exact`).
 
