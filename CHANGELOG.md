@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-10
+
 - New chats get a title from their first message, written by a title model you choose in Settings > Models > Chat titles.
 - The phone's context meter stays current: it shows on a chat opened idle, on one that finished while the phone was away, and during a run (it updates after every turn and compaction), as on the desktop.
 - A chat that finished while you were away and that you then read on the phone no longer stays marked unread (blue) in the desktop sidebar.
