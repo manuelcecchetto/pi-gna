@@ -243,7 +243,20 @@ describe("chat reads for a phone", () => {
   it("pages snapshots by turn cursor and nests the seq beside the value", async () => {
     snapshots.length = 0;
     expect(await dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: 50 })).toEqual({ seq: 7, value: { state: { handle: "h1" }, turns: { total: 90, from: 50 } } });
-    expect(snapshots).toEqual([["h1", { turns: 40, beforeTurn: 50, bytes: 2_000_000 }]]);
+    expect(snapshots).toEqual([["h1", { turns: 40, beforeTurn: 50, bytes: 2_000_000, imagesByUrl: true }]]);
+    // Inside a turn that came in part: the offset goes along, and needs a turn.
+    await dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: 50, offset: 3, turns: 20 });
+    expect(snapshots[1]).toEqual(["h1", { turns: 20, beforeTurn: 50, offset: 3, bytes: 2_000_000, imagesByUrl: true }]);
+    expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", offset: 3 })).toThrow(expect.objectContaining({ code: "bad_request" }));
+    expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: 50, offset: 1.5 })).toThrow(expect.objectContaining({ code: "bad_request" }));
+    // A smaller page than the host's own (the phone's first), never a bigger one.
+    await dispatch(chats, phone(), "chat.snapshot", { handle: "h1", turns: 6, bytes: 256_000 });
+    expect(snapshots[2]).toEqual(["h1", { turns: 6, bytes: 256_000, imagesByUrl: true }]);
+    // The window's pages count images as their bytes: they cross IPC inline.
+    await dispatch(chats, desktop(), "chat.snapshot", { handle: "h1", before: 50 });
+    expect(snapshots[3]).toEqual(["h1", { turns: 40, beforeTurn: 50, bytes: 2_000_000 }]);
+    expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", bytes: 2_000_001 })).toThrow(expect.objectContaining({ code: "bad_request" }));
+    expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", bytes: 0 })).toThrow(expect.objectContaining({ code: "bad_request" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "gone" })).toThrow(expect.objectContaining({ code: "not_found" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { handle: "h1", before: -1 })).toThrow(expect.objectContaining({ code: "bad_request" }));
     expect(() => dispatch(chats, phone(), "chat.snapshot", { before: 1 })).toThrow(expect.objectContaining({ code: "bad_request" }));

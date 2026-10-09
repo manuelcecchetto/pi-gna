@@ -373,9 +373,13 @@ export type SessionStateJson = Record<string, unknown>;
 
 export interface ChatSnapshot {
   state: SessionStateJson;
-  /** Turns in the session and the first one `state` holds (earlier ones come from `chat.snapshot({ before })`). */
-  turns: { total: number; from: number };
-  /** The turns before `turns.from`, one line each, when asked for: the desktop's turn rail shows them before they load. */
+  /**
+   * Turns in the session and the first one `state` holds (earlier ones come from `chat.snapshot({ before })`). A turn
+   * too big for one page comes in parts, its last items first: `offset` items of turn `from` are before `state`, and
+   * come from `chat.snapshot({ before: from, offset })`.
+   */
+  turns: { total: number; from: number; offset?: number };
+  /** The turns whose prompt is before `state`, one line each, when asked for: the desktop's turn rail shows them before they load. */
   outline?: TurnOutline[];
 }
 
@@ -466,7 +470,7 @@ export interface HostMethods {
   "chat.detach": { args: { handle: string }; result: null };
   "chat.close": { args: { handle: string }; result: null };
   /** `turns`: page size, 1 to 40 (default 40). */
-  "chat.snapshot": { args: { handle: string; before?: number; turns?: number }; result: Snapshot<ChatSnapshot> };
+  "chat.snapshot": { args: { handle: string; before?: number; offset?: number; turns?: number; bytes?: number }; result: Snapshot<ChatSnapshot> };
   "chat.send": {
     args: { handle: string; text: string; mode: "send" | "followUp"; attachments?: AttachmentRef[]; annotations?: Annotation[]; cardId?: string };
     result: { accepted: boolean; error?: string };

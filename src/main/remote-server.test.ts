@@ -2,6 +2,8 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app", getPath: () => "/tmp" }, shell: {}, dialog: {} }));
@@ -10,7 +12,7 @@ import { HostError, methodScope, type HostMethod } from "../shared/host-api";
 import { IdempotencyCache } from "./command-layer";
 import { DeviceStore } from "./devices";
 import { EventHub } from "./event-hub";
-import { RemoteServer, type RemoteServerOptions } from "./remote-server";
+import { RemoteServer, type RemoteServerOptions, replyEncoding } from "./remote-server";
 
 const HOST = "mac.tail.ts.net";
 const LOGIN = "me@example.com";
@@ -20,6 +22,7 @@ interface Reply {
   headers: IncomingMessage["headers"];
   text: string;
   json: any;
+  raw: Buffer;
 }
 
 let port = 0;
@@ -35,18 +38,19 @@ const send = (method: string, path: string, opts: { body?: unknown; cookie?: str
       const chunks: Buffer[] = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
-        const body = Buffer.concat(chunks).toString();
+        const raw = Buffer.concat(chunks);
+        const body = raw.toString();
         let json: any;
         try {
           json = JSON.parse(body);
         } catch {
           // not json
         }
-        resolve({ status: res.statusCode ?? 0, headers: res.headers, text: body, json });
+        resolve({ status: res.statusCode ?? 0, headers: res.headers, text: body, json, raw });
       });
     });
     // A 413 can hang up while the big body is still being written; the reply is then lost (status 0).
-    req.on("error", (error: NodeJS.ErrnoException) => (error.code === "EPIPE" || error.code === "ECONNRESET" ? resolve({ status: 0, headers: {}, text: "", json: undefined }) : reject(error)));
+    req.on("error", (error: NodeJS.ErrnoException) => (error.code === "EPIPE" || error.code === "ECONNRESET" ? resolve({ status: 0, headers: {}, text: "", json: undefined, raw: Buffer.alloc(0) }) : reject(error)));
     req.end(text);
   });
 
@@ -104,7 +108,12 @@ let cookie: string;
 let deviceId: string;
 let boot = "boot1";
 
-const names = new Set<string>(["board.get", "board.apply", "chat.command", "chat.list", "atp.state", "fs.pickFolder"]);
+const names = new Set<string>(["board.get", "board.apply", "chat.command", "chat.list", "chat.snapshot", "atp.state", "fs.pickFolder"]);
+/** What chat.snapshot answers here: a page big enough to compress, with a screenshot. */
+const PAGE = {
+  items: Array.from({ length: 200 }, (_, index) => ({ kind: "assistant", text: `step ${index}: ${"ran the tests again ".repeat(10)}` })),
+  shot: { type: "image", mimeType: "image/png", data: "A".repeat(20_000) },
+};
 
 async function pairDevice(): Promise<{ cookie: string; id: string }> {
   devices.startPairing();
@@ -131,6 +140,7 @@ async function start(extra: Partial<RemoteServerOptions> = {}) {
     call: (ctx, method, args) => {
       calls.push({ method, args, client: ctx.client, clientId: ctx.clientId });
       if (method === "board.get") return { rev: 3 };
+      if (method === "chat.snapshot") return PAGE;
       if (method === "chat.list") throw new HostError("conflict", "nope", { rev: 1 });
       if (method === "atp.state") throw new Error("secret detail");
       return { ok: method };
@@ -168,7 +178,42 @@ afterEach(async () => {
 const post = (method: string, body: unknown = {}, headers: Record<string, string> = {}) =>
   send("POST", `/api/call/${method}`, { body, cookie, headers: { "idempotency-key": "k" + Math.random(), ...headers } });
 
+describe("replyEncoding", () => {
+  it("takes br, else gzip, unless the client refuses it with q=0", () => {
+    expect(replyEncoding(undefined)).toBeUndefined();
+    expect(replyEncoding("identity")).toBeUndefined();
+    expect(replyEncoding("gzip, deflate, br")).toBe("br");
+    expect(replyEncoding("GZIP")).toBe("gzip");
+    expect(replyEncoding("br;q=0, gzip")).toBe("gzip");
+    expect(replyEncoding("br; q=0.5")).toBe("br");
+    expect(replyEncoding("gzip;q=0")).toBeUndefined();
+    expect(replyEncoding("deflate, gzip;q=1.0")).toBe("gzip");
+  });
+});
+
 describe("RemoteServer", () => {
+  it("compresses a big call answer as the client allows, and says the answer varies by it", async () => {
+    // Big images leave the answer for their URL, compressed or not.
+    const text = JSON.stringify({ ...PAGE, shot: { ...PAGE.shot, data: "", url: `/api/image/${createHash("sha256").update("image/png\n").update(PAGE.shot.data).digest("hex")}` } });
+    const br = await post("chat.snapshot", {}, { "accept-encoding": "gzip, deflate, br" });
+    expect(br.headers["content-encoding"]).toBe("br");
+    expect(br.headers.vary).toBe("Accept-Encoding");
+    expect(Number(br.headers["content-length"])).toBe(br.raw.length);
+    expect(br.raw.length).toBeLessThan(text.length / 5);
+    expect(brotliDecompressSync(br.raw).toString()).toBe(text);
+    const gz = await post("chat.snapshot", {}, { "accept-encoding": "br;q=0, gzip" });
+    expect(gz.headers["content-encoding"]).toBe("gzip");
+    expect(gunzipSync(gz.raw).toString()).toBe(text);
+    const plain = await post("chat.snapshot");
+    expect(plain.headers["content-encoding"]).toBeUndefined();
+    expect(plain.headers.vary).toBe("Accept-Encoding");
+    expect(plain.text).toBe(text);
+    // A small answer is not worth it.
+    const small = await post("board.get", {}, { "accept-encoding": "br" });
+    expect(small.headers["content-encoding"]).toBeUndefined();
+    expect(small.json).toEqual({ rev: 3 });
+  });
+
   it("listens only between start and stop", async () => {
     const idle = new RemoteServer({ ...(server as any).o });
     expect(idle.listening).toBe(false);

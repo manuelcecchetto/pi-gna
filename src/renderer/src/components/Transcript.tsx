@@ -161,7 +161,8 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
               onClick={() => void loadEarlier()}
               className="self-center rounded-full border border-line px-3 py-1.5 text-[12px] text-muted hover:text-fg disabled:opacity-60"
             >
-              {paging ? "Loading…" : `Show earlier turns (${earlier.count} more)`}
+              {/* A first run without its prompt is the end of a turn too big for one page: its start comes first. */}
+              {paging ? "Loading…" : runs[0] && !runs[0].user ? "Show earlier steps" : `Show earlier turns (${earlier.count} more)`}
             </button>
           )}
           {hidden > 0 && (

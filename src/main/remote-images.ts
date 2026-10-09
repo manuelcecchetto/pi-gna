@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 
 /** Smaller ones (icons, thumbnails) ride inline: a request each would cost more than the bytes. */
-const MIN_INLINE_CHARS = 16 * 1024;
+export const MIN_INLINE_CHARS = 16 * 1024;
 /** Base64 characters kept for serving, newest use last; an evicted image comes back with the next snapshot. */
 const DEFAULT_CAP_CHARS = 128 * 1024 * 1024;
 /** Types a browser renders as an image and never as a document. */

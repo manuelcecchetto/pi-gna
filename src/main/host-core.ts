@@ -126,7 +126,7 @@ const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown)
 /** Minimum gap between `computer.preview` calls of one client. */
 const PREVIEW_INTERVAL_MS = 1000;
 
-/** Turns in a snapshot page unless the caller asks for fewer (the phone opens a chat with a short first page). */
+/** Turns (and bytes) in a snapshot page unless the caller asks for fewer (the phone opens a chat with a short first page). */
 const SNAPSHOT_TURNS = 40;
 /** About the most a page holds: a few turns of screenshots or big tool output are megabytes (a long chat, 100 MB). */
 const PAGE_BYTES = 2_000_000;
@@ -277,16 +277,19 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       // The window gets its first page with the answer; a phone reads the chat through chat.snapshot (a shorter page).
       return host.open(request, { client: presence(ctx) }, ctx.client === "desktop" ? DESKTOP_PAGE : undefined);
     }),
-    "chat.snapshot": method<{ handle: string; before?: number; turns?: number }>(
+    "chat.snapshot": method<{ handle: string; before?: number; offset?: number; turns?: number; bytes?: number }>(
       "remote",
       (raw) => {
         if (typeof raw.handle !== "string") throw new Error("Invalid chat");
         if (raw.before !== undefined && !(Number.isInteger(raw.before) && raw.before >= 0)) throw new Error("Invalid turn cursor");
+        if (raw.offset !== undefined && !(raw.before !== undefined && Number.isInteger(raw.offset) && raw.offset >= 0)) throw new Error("Invalid turn cursor");
         if (raw.turns !== undefined && !(Number.isInteger(raw.turns) && raw.turns >= 1 && raw.turns <= SNAPSHOT_TURNS)) throw new Error("Invalid page size");
-        return { handle: raw.handle, before: raw.before as number | undefined, turns: raw.turns as number | undefined };
+        if (raw.bytes !== undefined && !(Number.isInteger(raw.bytes) && raw.bytes >= 1 && raw.bytes <= PAGE_BYTES)) throw new Error("Invalid page size");
+        return { handle: raw.handle, before: raw.before as number | undefined, offset: raw.offset as number | undefined, turns: raw.turns as number | undefined, bytes: raw.bytes as number | undefined };
       },
-      (_ctx, { handle, before, turns }) => {
-        const snapshot = host.snapshot(handle, { turns: turns ?? SNAPSHOT_TURNS, beforeTurn: before, bytes: PAGE_BYTES });
+      (ctx, { handle, before, offset, turns, bytes }) => {
+        const page = { turns: turns ?? SNAPSHOT_TURNS, beforeTurn: before, offset, bytes: bytes ?? PAGE_BYTES };
+        const snapshot = host.snapshot(handle, ctx.client === "desktop" ? page : { ...page, imagesByUrl: true });
         if (!snapshot) throw new HostError("not_found", "session is not running");
         const { seq, ...value } = snapshot;
         return { seq, value };
@@ -806,7 +809,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.command, "chat.command", (handle, command) => ({ handle, command })),
   route(IPC.detachSession, "chat.detach", (handle) => ({ handle })),
   route(IPC.attachSession, "chat.attach", (handle) => ({ handle })),
-  route(IPC.pageSession, "chat.snapshot", (handle, before, turns) => ({ handle, before, turns })),
+  route(IPC.pageSession, "chat.snapshot", (handle, before, turns, offset) => ({ handle, before, turns, ...(offset !== undefined && { offset }) })),
   route(IPC.viewing, "chat.viewing", (handle, viewing) => ({ handle, viewing }), true),
   route(IPC.shown, "chat.shown", (handle, shown) => ({ handle, shown }), true),
   route(IPC.liveChats, "chat.live"),

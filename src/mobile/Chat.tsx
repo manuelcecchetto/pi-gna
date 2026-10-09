@@ -153,7 +153,9 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
     showChat(chatHandle && chatCwd ? { handle: chatHandle, cwd: chatCwd } : undefined);
     return () => showChat(undefined);
   }, [chatHandle, chatCwd]);
-  const earlier = entry?.turns && entry.turns.from > 0 && handle ? { count: entry.turns.from, load: () => client.loadEarlier(handle) } : undefined;
+  // A first turn that came in part counts as one more: its prompt is still on the host.
+  const hidden = entry?.turns ? entry.turns.from + (entry.turns.offset ? 1 : 0) : 0;
+  const earlier = hidden > 0 && handle ? { count: hidden, load: () => client.loadEarlier(handle) } : undefined;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

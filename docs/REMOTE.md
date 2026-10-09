@@ -74,7 +74,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `chat.live` | remote | no | new. `AttentionSummary[]` of every live chat (first paint of the marks; `global` `attention` events carry the deltas). A summary carries the chat's `sessionPath`, which matches it to its row in `chat.list`, and `listed` (`isListed`: not a draft, triage or ATP chat), so the phone's lists show it before the index has its file. |
 | `chat.detach` | remote | yes | new. Releases the lease; the host may then dispose (section 5). |
 | `chat.close` | remote | yes | `closeSession`. Explicit stop of pi; broadcast to all clients. Mobile asks for confirmation. |
-| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last `turns` turns (1 to 40, default 40; the phone opens with 6 and pages 20), fewer when they pass about 2 MB (never none); `before` (a turn index, the previous page's `turns.from`) pages earlier ones, whose `state` carries just their items (each tool run is on the assistant item that made the call). The desktop pages through it too (`pageSession`). |
+| `chat.snapshot` | remote | no | new. `{ seq, value: ChatSnapshot }`, the last `turns` turns (1 to 40, default 40; the phone opens with 6 and pages 20), fewer when they pass `bytes` (default and most about 2 MB; the phone's first page asks 256 KB; a big image counts as its URL, as a phone gets it), of a newest turn too big alone its last items (never none, `turns.offset` items of turn `turns.from` before them); `before` (a turn index, the previous page's `turns.from`, with its `offset`) pages earlier ones, whose `state` carries just their items (each tool run is on the assistant item that made the call). The desktop pages through it too (`pageSession`). |
 | `chat.send` | remote | yes | the `send` action in `state/app.ts` plus `command(prompt)`. Args: text, mode (`send`/`followUp`), `attachments` (upload ids or host paths), `annotationIds`, `cardId`. Host composes the message (card block, annotations, file mentions, images), picks `streamingBehavior`, marks the chat prompted. |
 | `chat.command` | remote | yes | `command`, restricted to the RPC allowlist (section 7). Result `RpcResponse`. |
 | `chat.interrupt` | remote | yes | `interrupt` (`app.ts:560`): clear_queue then abort under the chat mutex; returns the restored queued texts (`string[]`). |
@@ -223,9 +223,10 @@ Every push goes through one in-process EventHub in main. The desktop window is o
 - **Handles are host-issued** (`^[a-z0-9]{6,32}$`, as `HANDLE` in `session-host.ts`). The host keeps
   `sessionPath → handle`; `chat.open` on a live file returns the existing handle (point 3 of the plan: no two pi
   processes on one session file).
-- **Snapshot:** `ChatSnapshot = { state: SessionStateJson, turns: { total, from } }`; the state is the reducer's
-  output over the active branch plus live events, trimmed to the most recent N turns (default 40);
-  `chat.snapshot({ handle, before })` pages older turns (the desktop's "Show earlier turns" model).
+- **Snapshot:** `ChatSnapshot = { state: SessionStateJson, turns: { total, from, offset? } }`; the state is the reducer's
+  output over the active branch plus live events, trimmed to the most recent N turns (default 40) and about 2 MB (a
+  turn too big alone is cut, `offset` items of it before the page); `chat.snapshot({ handle, before, offset })` pages
+  older turns (the desktop's "Show earlier turns" model).
 - **Composer drafts are per client** and not synced.
 - **Prompts from two clients** deliver in arrival order; while running, a send is a steer unless
   `mode: "followUp"`.
@@ -562,7 +563,21 @@ so about 40 MB crossed Tailscale before "Opening…" cleared. Now:
   downloads once. The bytes stay in an LRU of 256 M base64 characters (strings the session state already holds); an
   evicted id is a 404 until the next snapshot or event names it again. The host's state and the desktop are untouched;
   the renderer reads `imageSrc(block)` (`url` or a data URL) and lazy-loads.
-- **Short first page:** the phone opens with `chat.snapshot { turns: 6 }` and pages 20 at a time.
+- **Short first page:** the phone opens with `chat.snapshot { turns: 6, bytes: 256_000 }` and pages 20 at a time.
+
+### A long run on a phone (2026-10-09, P43)
+
+The perf-sweep chat (28 MB session, its last turn a run of 1,517 items) sat on "Opening…" for about a minute on an
+iPhone: P06's byte cap never split a turn, so its first page was 12.2 MB of JSON, uncompressed. Over a link emulated
+at 2 Mbps with 100 ms latency it took 76.6 s; now 0.72 s (a three-turn chat: 0.41 s). Three changes:
+
+- **Lean records** (DESIGN.md, Remote access): no signatures, no repeated messages; the page went to 8.0 MB (32.7 s).
+- **Compressed answers:** `/api/call` answers of 1 KB or more go out in brotli (quality 4, in the thread pool), else
+  gzip, as `Accept-Encoding` allows, with `Vary: Accept-Encoding`; 8.0 MB became 1.46 MB (6.3 s). Stream events (SSE)
+  stay uncompressed.
+- **Pages inside a turn:** a newest turn too big for a page comes as its last items (`turns.offset`); the phone's first
+  page asks 256 KB: 62 KB on the wire. Scrolling up ("Show earlier steps") brings the rest of the turn, then the turns
+  before it.
 - **Attach without the transcript:** for a remote caller `chat.attach` returns `{ seq }`; the desktop gets its first
   page over IPC.
 

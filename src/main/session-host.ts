@@ -9,7 +9,7 @@ import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type Cli
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
 import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState, type SessionEntry } from "../shared/protocol";
 import { type Feature, yoloOption } from "../shared/settings";
-import { attention, createSession, hydrate, isDisposable, isListed, type Item, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
+import { attention, createSession, hydrate, isDisposable, isListed, type Item, leanRecord, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
 import { applyQueueOp, type Queues } from "../shared/queue";
 import { turnOutline } from "../shared/turn-outline";
 import { atpSkills, librarianPath } from "./atp";
@@ -20,6 +20,7 @@ import { log } from "./log";
 import { type PiExit, PiProcess, type PiProcessHandlers } from "./pi-process";
 import { piInputs, projectTrust } from "./pi-settings";
 import { onDisk } from "./resources";
+import { MIN_INLINE_CHARS } from "./remote-images";
 import { readActiveBranch } from "./session-file";
 
 /** How long an approval card waits for the user before it counts as a refusal. */
@@ -142,26 +143,33 @@ export interface ChatPage {
   /** Turns (user prompts) wanted, counting back from `beforeTurn` (default: the end). */
   turns: number;
   beforeTurn?: number;
-  /** At most about this much JSON: fewer turns when they are big (tool output, screenshots), but always one. */
+  /** The page ends this many items into turn `beforeTurn` (the start of a page cut inside that turn: `turns.offset`). */
+  offset?: number;
+  /**
+   * At most about this much JSON: fewer turns when they are big (tool output, screenshots), and of a newest turn too
+   * big alone (a run of hours) its last items, but always one.
+   */
   bytes?: number;
-  /** Also a line for each turn before the page (the desktop's turn rail). */
+  /** Also a line for each turn whose prompt is before the page (the desktop's turn rail). */
   outline?: boolean;
+  /** The page goes to a phone, which gets big images as a URL (`RemoteImages`): `bytes` counts them so. */
+  imagesByUrl?: boolean;
 }
 
-/** About the JSON size of a turn: its items, with the runs of their tool calls (results, screenshots). */
-function turnBytes(items: Item[]): number {
-  let size = 0;
-  for (const item of items) size += jsonBytes(item);
-  return size;
-}
-
-/** About the JSON size of a value, from its strings and keys: cheap next to serializing it. */
-function jsonBytes(value: unknown): number {
+/**
+ * About the JSON size of a value (an item: with the runs of its tool calls), from its strings and keys: cheap next to
+ * serializing it. With `imagesByUrl`, an image block a phone gets as a URL counts as one.
+ */
+function jsonBytes(value: unknown, imagesByUrl = false): number {
   if (typeof value === "string") return value.length + 2;
   if (value === null || typeof value !== "object") return 8;
+  if (imagesByUrl && (value as { type?: unknown }).type === "image") {
+    const { data } = value as { data?: unknown };
+    if (typeof data === "string" && data.length >= MIN_INLINE_CHARS) return 128;
+  }
   let size = 2;
-  if (Array.isArray(value)) for (const entry of value) size += jsonBytes(entry) + 1;
-  else for (const [key, entry] of Object.entries(value)) size += key.length + 4 + jsonBytes(entry);
+  if (Array.isArray(value)) for (const entry of value) size += jsonBytes(entry, imagesByUrl) + 1;
+  else for (const [key, entry] of Object.entries(value)) size += key.length + 4 + jsonBytes(entry, imagesByUrl);
   return size;
 }
 
@@ -305,7 +313,7 @@ export class SessionHost {
       onRecords: (records) => {
         if (abandoned) return;
         const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi, tag, record)) : records;
-        this.push(handle, shown.map((record) => ({ kind: "rpc", record })));
+        this.push(handle, shown.map((record) => ({ kind: "rpc", record: leanRecord(record) })));
         if (records.some((record) => record.type === "agent_start")) this.started(handle);
         if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
       },
@@ -518,9 +526,10 @@ export class SessionHost {
   }
 
   /**
-   * The chat's state paged by user turns: the last `turns` before `beforeTurn` (default the end). `seq` is the
-   * last event the state reflects; a client applies only events after it. Earlier pages carry just their items.
-   * `outline` adds a line for each turn before the page.
+   * The chat's state paged by user turns: the last `turns` before `beforeTurn` (default the end), or before `offset`
+   * items into it. `seq` is the last event the state reflects; a client applies only events after it. Earlier pages
+   * carry just their items. A page cut inside its first turn says so in `turns.offset`: that many items of turn
+   * `turns.from` come before it. `outline` adds a line for each turn whose prompt is before the page.
    */
   snapshot(handle: string, page: ChatPage): (ChatSnapshot & { seq: number }) | undefined {
     const chat = this.live.get(handle);
@@ -528,22 +537,38 @@ export class SessionHost {
     const { items } = chat.state;
     const starts = items.flatMap((item, index) => (item.kind === "user" && !item.steer ? [index] : []));
     const total = starts.length;
-    const end = Math.min(page.beforeTurn ?? total, total);
-    const bounds = (turn: number): [number, number] => [turn === 0 ? 0 : starts[turn]!, turn + 1 >= total ? items.length : starts[turn + 1]!];
-    let from = Math.max(0, end - Math.max(1, page.turns));
+    // A turn's items run from its prompt (the first turn's from the start) to the next prompt.
+    const head = (turn: number) => (turn === 0 ? 0 : starts[turn]!);
+    const tail = (turn: number) => (turn + 1 >= total ? items.length : starts[turn + 1]!);
+    const cursor = Math.min(page.beforeTurn ?? total, total);
+    const inside = cursor < total ? Math.min(Math.max(0, page.offset ?? 0), tail(cursor) - head(cursor)) : 0;
+    const end = inside > 0 ? head(cursor) + inside : cursor >= total ? items.length : starts[cursor]!;
+    const newest = inside > 0 ? cursor : cursor - 1;
+    let from = Math.max(0, newest + 1 - Math.max(1, page.turns));
+    let start = head(from);
     if (page.bytes !== undefined) {
       let size = 0;
-      for (let turn = end - 1; turn >= from; turn--) {
-        size += turnBytes(items.slice(...bounds(turn)));
-        if (size > page.bytes && turn < end - 1) {
-          from = turn + 1;
-          break;
+      for (let turn = newest; turn >= from; turn--) {
+        let index = Math.min(tail(turn), end);
+        while (index > head(turn)) {
+          const bytes = jsonBytes(items[index - 1], page.imagesByUrl);
+          // The page keeps its last item even when that alone is too big.
+          if (size + bytes > page.bytes && size > 0) break;
+          size += bytes;
+          index--;
         }
+        if (index === head(turn)) continue;
+        // An older turn that does not fit stays out whole; the newest one comes from where its items stop fitting.
+        [from, start] = turn === newest ? [turn, index] : [turn + 1, head(turn + 1)];
+        break;
       }
+      // Never cut before the first prompt: the items before it come with it.
+      if (from === 0 && total > 0 && start <= starts[0]!) start = 0;
     }
-    const slice = items.slice(from === 0 ? 0 : starts[from], end >= total ? items.length : starts[end]);
-    const outline = page.outline ? starts.slice(0, from).map((index) => turnOutline(items[index] as Extract<Item, { kind: "user" }>)) : undefined;
-    return { seq: chat.seq, state: { ...chat.state, items: slice }, turns: { total, from }, ...(outline && { outline }) };
+    const offset = start - head(from);
+    const slice = items.slice(start, end);
+    const outline = page.outline ? starts.slice(0, offset > 0 ? from + 1 : from).map((index) => turnOutline(items[index] as Extract<Item, { kind: "user" }>)) : undefined;
+    return { seq: chat.seq, state: { ...chat.state, items: slice }, turns: { total, from, ...(offset > 0 && { offset }) }, ...(outline && { outline }) };
   }
 
   /** The authoritative state, whole (tests, host-side decisions). */

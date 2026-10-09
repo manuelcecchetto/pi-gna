@@ -5,6 +5,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { RemoteImages } from "./remote-images";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
+import { promisify } from "node:util";
+import { brotliCompress, constants as zlib, gzip } from "node:zlib";
 import {
   DEVICE_COOKIE,
   DEVICE_COOKIE_MAX_AGE_S,
@@ -39,6 +41,22 @@ const HEADER_LOGIN = "tailscale-user-login";
 export const STREAM_CAP_BYTES = 1024 * 1024;
 export const STREAM_HARD_CAP_BYTES = 4 * 1024 * 1024;
 export const STREAM_HARD_MS = 10_000;
+
+/** Call answers below this go out as they are: compressing them saves less than it costs. */
+const COMPRESS_MIN_BYTES = 1024;
+const brotli = promisify(brotliCompress);
+const gzipped = promisify(gzip);
+
+/** How a call's answer may be compressed: br, else gzip, as the client's Accept-Encoding allows (`q=0` refuses one). */
+export function replyEncoding(accept: string | undefined): "br" | "gzip" | undefined {
+  const allowed = new Set<string>();
+  for (const part of (accept ?? "").split(",")) {
+    const [name, ...params] = part.split(";").map((token) => token.trim().toLowerCase());
+    const q = params.find((param) => param.startsWith("q="));
+    if (name && !(q && Number(q.slice(2)) === 0)) allowed.add(name);
+  }
+  return allowed.has("br") ? "br" : allowed.has("gzip") ? "gzip" : undefined;
+}
 
 const PAIR_WINDOW_MS = 60_000;
 const PAIR_MAX_PER_WINDOW = 10;
@@ -304,10 +322,27 @@ export class RemoteServer {
     });
   }
 
-  private json(res: ServerResponse, status: number, value: unknown, extra: Record<string, string | string[]> = {}, images = false) {
-    const text = JSON.stringify(value ?? null, images ? this.images.replacer : undefined);
+  private json(res: ServerResponse, status: number, value: unknown, extra: Record<string, string | string[]> = {}) {
+    const text = JSON.stringify(value ?? null);
     res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(text), ...extra });
     res.end(text);
+  }
+
+  /**
+   * A call's answer, compressed when the client takes it: a long chat's page is megabytes of JSON, a fifth of that in
+   * brotli at a fast level (in the thread pool, off the main thread).
+   */
+  private async answer(req: IncomingMessage, res: ServerResponse, value: unknown) {
+    const text = JSON.stringify(value ?? null, this.images.replacer);
+    const encoding = text.length >= COMPRESS_MIN_BYTES ? replyEncoding(header(req, "accept-encoding")) : undefined;
+    const body =
+      encoding === "br"
+        ? await brotli(text, { params: { [zlib.BROTLI_PARAM_QUALITY]: 4, [zlib.BROTLI_PARAM_MODE]: zlib.BROTLI_MODE_TEXT, [zlib.BROTLI_PARAM_SIZE_HINT]: Buffer.byteLength(text) } })
+        : encoding === "gzip"
+          ? await gzipped(text)
+          : text;
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(body), Vary: "Accept-Encoding", ...(encoding && { "Content-Encoding": encoding }) });
+    res.end(body);
   }
 
   private fail(res: ServerResponse, error: unknown) {
@@ -397,7 +432,7 @@ export class RemoteServer {
       } else {
         result = await run();
       }
-      this.json(res, 200, result ?? null, {}, true);
+      await this.answer(req, res, result);
     } catch (error) {
       status = error instanceof HostError ? error.status : 500;
       throw error;

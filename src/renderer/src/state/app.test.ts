@@ -186,6 +186,39 @@ describe("opening a chat from the sidebar", () => {
     expect(earlierTurns(session())).toBeUndefined();
   });
 
+  it("pages in the rest of a turn that came in part before the turns before it, and jumps to its prompt", async () => {
+    const { handle, read, pageSession } = opening();
+    // Turn 2 has a prompt and 9 answers; the snapshot holds its last 3 (6 of its items are still on the host).
+    const long = (from: number, to: number): Item[] => Array.from({ length: to - from }, (_, i) => (from + i === 0 ? user(2) : { ...answer(2), key: `b${from + i}` }));
+    const page = (items: Item[], from: number, offset?: number) => ({ seq: 9, value: { state: { ...turns(handle, 0, 0), items } as unknown as SessionStateJson, turns: { total: 3, from, ...(offset && { offset }) } } });
+    read({ handle, snapshot: { seq: 3, state: { ...turns(handle, 0, 0), items: long(7, 10) } as unknown as SessionStateJson, turns: { total: 3, from: 2, offset: 7 }, outline: outline(3) } });
+    await vi.runAllTimersAsync();
+    const session = () => store.get().sessions[handle]!;
+    expect(session().earlierOffset).toBe(7);
+    expect(earlierTurns(session())?.count).toBe(3);
+
+    // A page that is still inside the turn keeps it outlined, from where the loaded items now start.
+    pageSession.mockResolvedValueOnce(page(long(4, 7), 2, 4));
+    await earlierTurns(session())!.load();
+    expect(pageSession.mock.calls).toEqual([[handle, 2, 3, 7]]);
+    expect(session().earlier?.map((turn) => turn.key)).toEqual(["i0", "i1", "i2"]);
+    expect(session().earlierOffset).toBe(4);
+
+    // A jump to turn 2's prompt pages back inside the turn until the prompt is in.
+    pageSession.mockResolvedValueOnce(page(long(2, 4), 2, 2)).mockResolvedValueOnce(page(long(0, 2), 2));
+    await earlierTurns(session())!.reach!("i2");
+    expect(pageSession.mock.calls.slice(1)).toEqual([[handle, 2, 1, 4], [handle, 2, 1, 2]]);
+    expect(session().items.map((item) => item.key)).toEqual(["i2", ...Array.from({ length: 9 }, (_, n) => `b${n + 1}`)]);
+    expect(session().earlier?.map((turn) => turn.key)).toEqual(["i0", "i1"]);
+    expect(session().earlierOffset).toBeUndefined();
+
+    // Then whole turns again.
+    await earlierTurns(session())!.load();
+    expect(pageSession.mock.calls[3]).toEqual([handle, 2, 2]);
+    expect(session().earlier).toBeUndefined();
+    expect(session().items.filter((item) => item.kind === "user").map((item) => item.key)).toEqual(["i0", "i1", "i2"]);
+  });
+
   it("fetches the answer of a turn it has not loaded once, for the turn rail's card", async () => {
     const { handle, read, pageSession } = opening();
     read({ handle, snapshot: snapshotOf(turns(handle, 5, 6), 3, 5) });

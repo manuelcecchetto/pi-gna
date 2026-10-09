@@ -74,9 +74,10 @@ export function outlineItems(outline: TurnOutline[], preview?: (index: number) =
   return items;
 }
 
-/** The preview of the turn a one-turn page holds (`pageSession(handle, index + 1, 1)`). */
+/** The preview of the turn a one-turn page holds (`pageSession(handle, index + 1, 1)`): only its last items when it is too big for a page. */
 export function pagePreview(page: Pick<SessionState, "items">): string {
-  const run = deriveRuns({ ...page, running: false }).findLast((candidate) => candidate.user);
+  const runs = deriveRuns({ ...page, running: false });
+  const run = runs.findLast((candidate) => candidate.user) ?? runs.at(-1);
   return run ? buildPreview(run) : "";
 }
 

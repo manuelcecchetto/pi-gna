@@ -333,7 +333,11 @@ export async function adopt(handle: string, show = false): Promise<void> {
 /** Show a chat as the host's snapshot has it, then the events that came after the snapshot (`buffered` meanwhile). */
 function install(handle: string, snapshot: ChatSnapshot & { seq: number }, buffered: HostEventBatch[], editorText?: SessionState["editorText"]): void {
   const state = snapshot.state as unknown as SessionState;
-  const session: SessionState = { ...state, ...(snapshot.outline?.length && { earlier: snapshot.outline }), ...(editorText && { editorText }) };
+  const session: SessionState = {
+    ...state,
+    ...(snapshot.outline?.length && { earlier: snapshot.outline, ...(snapshot.turns.offset && { earlierOffset: snapshot.turns.offset }) }),
+    ...(editorText && { editorText }),
+  };
   store.set((s) => ({ ...s, sessions: { ...s.sessions, [handle]: session }, open: s.open.includes(handle) ? s.open : [...s.open, handle] }));
   for (const batch of buffered) if ((batch.seq ?? Number.POSITIVE_INFINITY) > snapshot.seq) handleBatch(batch);
   if (session.phase === "ready") void onReady(handle, { messageCount: session.items.length } as RpcSessionState);
@@ -356,20 +360,26 @@ export function loadEarlier(handle: string, to?: number): Promise<void> {
 }
 
 async function pageIn(handle: string, to: number | undefined): Promise<void> {
-  const outline = store.get().sessions[handle]?.earlier;
-  if (!outline?.length) return;
+  const session = store.get().sessions[handle];
+  if (!session?.earlier?.length) return;
+  const outline = session.earlier;
   const target = to === undefined ? 0 : Math.max(0, Math.min(to, outline.length - 1));
   const pages: SessionState[] = [];
-  let before = outline.length;
+  // Where the loaded items start: a turn's prompt, or `offset` items into the turn (the last outlined one).
+  let offset = session.earlierOffset ?? 0;
+  let before = offset ? outline.length - 1 : outline.length;
   do {
-    const page = await studio().pageSession(handle, before, Math.min(EARLIER_TURNS, before - target));
+    const turns = Math.min(EARLIER_TURNS, before + (offset ? 1 : 0) - target);
+    const page = await studio().pageSession(handle, before, turns, ...(offset ? [offset] : []));
     pages.unshift(page.value.state as unknown as SessionState);
     before = page.value.turns.from;
-  } while (to !== undefined && before > target);
+    offset = page.value.turns.offset ?? 0;
+  } while (to !== undefined && (before > target || (before === target && offset > 0)));
   patchSession(handle, (s) => {
     if (s.earlier !== outline) return s; // the chat was replaced meanwhile
     const items = [...pages.flatMap((page) => page.items), ...s.items];
-    return { ...s, items, earlier: before > 0 ? outline.slice(0, before) : undefined };
+    const left = offset ? before + 1 : before;
+    return { ...s, items, earlier: left > 0 ? outline.slice(0, left) : undefined, earlierOffset: offset || undefined };
   });
 }
 

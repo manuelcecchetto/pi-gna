@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "./protocol";
 import type { HostEvent } from "./host-api";
-import { type AssistantItem, attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, reduceSessionEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
+import { type AssistantItem, attention, createSession, hydrate, isDisposable, isDraft, isListed, leanRecord, reduceHostEvent, reduceSessionEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
 
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -180,6 +180,53 @@ describe("hydrate", () => {
     expect(start.items).toEqual(items);
     expect(again.items).not.toBe(start.items);
     expect(shape(again)).toEqual(shape(hydrate(createSession("h", "/repo"), entries)));
+  });
+});
+
+describe("leanRecord (what clients get of a pi record)", () => {
+  const signed = assistant([
+    { type: "thinking", thinking: "plan", thinkingSignature: "sig".repeat(1000) },
+    { type: "thinking", thinking: "[Reasoning redacted]", thinkingSignature: "enc", redacted: true },
+    { type: "text", text: "answer", textSignature: "{\"id\":\"msg_1\"}" },
+    readCall,
+  ]);
+  const lean = assistant([{ type: "thinking", thinking: "plan" }, { type: "thinking", thinking: "[Reasoning redacted]", redacted: true }, { type: "text", text: "answer" }, readCall]);
+
+  it("drops the signatures of an assistant message, keeping the rest and the original", () => {
+    const original = structuredClone(signed);
+    const ended = leanRecord({ type: "message_end", message: signed }) as { message: AssistantMessage };
+    expect(ended).toEqual({ type: "message_end", message: lean });
+    expect(ended.message.content[3]).toBe(readCall);
+    expect(leanRecord({ type: "message_start", message: signed })).toEqual({ type: "message_start", message: lean });
+    expect(signed).toEqual(original);
+  });
+
+  it("passes unsigned messages and other records through as they are", () => {
+    const unsigned = assistant([{ type: "text", text: "hi" }, readCall]);
+    const end: SessionEvent = { type: "message_end", message: unsigned };
+    expect((leanRecord(end) as typeof end).message).toBe(unsigned);
+    const user: SessionEvent = { type: "message_end", message: { role: "user", content: "hi", timestamp: 1 } };
+    expect(leanRecord(user)).toBe(user);
+    const update: SessionEvent = { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "a" } };
+    expect(leanRecord(update)).toBe(update);
+    const ended: SessionEvent = { type: "tool_execution_end", toolCallId: "c1", toolName: "read", result: { content: [] }, isError: false };
+    expect(leanRecord(ended)).toBe(ended);
+  });
+
+  it("drops what turn_end, agent_end and tool events repeat", () => {
+    expect(leanRecord({ type: "turn_end", message: signed, toolResults: [{ role: "toolResult", toolCallId: "c1", toolName: "read", content: [], isError: false, timestamp: 1 }] })).toEqual({ type: "turn_end" });
+    expect(leanRecord({ type: "agent_end", messages: [signed], willRetry: true })).toEqual({ type: "agent_end", willRetry: true });
+    expect(leanRecord({ type: "agent_end", messages: [signed] })).toEqual({ type: "agent_end" });
+    expect(leanRecord({ type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: { path: "a" } })).toEqual({ type: "tool_execution_start", toolCallId: "c1", toolName: "read" });
+    const partialResult = { content: [{ type: "text" as const, text: "so far" }] };
+    expect(leanRecord({ type: "tool_execution_update", toolCallId: "c1", toolName: "read", args: { path: "a" }, partialResult })).toEqual({ type: "tool_execution_update", toolCallId: "c1", toolName: "read", partialResult });
+  });
+
+  it("is what hydrate keeps of a session file's assistant messages", () => {
+    const entry = { type: "message", id: "e1", parentId: null, timestamp: new Date(0).toISOString(), message: signed } as unknown as SessionEntry;
+    const item = hydrate(createSession("h", "/repo"), [entry]).items[0] as AssistantItem;
+    expect(item.message).toEqual(lean);
+    expect((entry as { message: AssistantMessage }).message).toBe(signed);
   });
 });
 

@@ -534,8 +534,11 @@ export interface StudioApi {
   detachSession(handle: string): Promise<void>;
   /** Join a live chat (one another client started, or one this window had before a reload); null when it ended. */
   attachSession(handle: string): Promise<(ChatSnapshot & { seq: number }) | null>;
-  /** The `turns` turns before turn `before` of a live chat (an earlier page, or one turn for the rail's preview). */
-  pageSession(handle: string, before: number, turns: number): Promise<{ seq: number; value: ChatSnapshot }>;
+  /**
+   * The `turns` turns before turn `before` of a live chat (an earlier page, or one turn for the rail's preview); with
+   * `offset`, before that many items into it (the rest of a turn whose last items came first).
+   */
+  pageSession(handle: string, before: number, turns: number, offset?: number): Promise<{ seq: number; value: ChatSnapshot }>;
   /** This window shows (or stops showing) the chat in the foreground. */
   viewing(handle: string, viewing: boolean): void;
   /** This window has the chat on screen, focused or not (the active chat, also behind a page): the host keeps its pi. */

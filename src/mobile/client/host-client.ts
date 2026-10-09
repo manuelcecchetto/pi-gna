@@ -9,6 +9,7 @@ import {
   WATCHDOG_MS,
   methodMutates,
   type AttentionSummary,
+  type ChatSnapshot,
   type EventEnvelope,
   type GlobalEvent,
   type HostArgs,
@@ -24,8 +25,12 @@ import { reduceHostEvent, type SessionState } from "../../shared/session-state";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "unreachable" | "unauthorized" | "outdated";
 
-/** Turns a chat opens with: enough to fill the screen, so it shows at once; the rest pages in on scroll. */
+/**
+ * Turns a chat opens with, and about the most JSON: enough to fill the screen, so it shows at once (a long run's
+ * last steps, a quarter of a second over a slow link); the rest pages in on scroll.
+ */
 const FIRST_TURNS = 6;
+const FIRST_BYTES = 256_000;
 /** Turns per page when scrolling up. */
 const EARLIER_TURNS = 20;
 /** Failed reconnects in a row before the UI is told the host is unreachable (it keeps trying meanwhile). */
@@ -95,7 +100,7 @@ export interface GlobalState {
 export interface ChatEntry {
   /** Absent until the first snapshot arrives. */
   session?: SessionState;
-  turns?: { total: number; from: number };
+  turns?: ChatSnapshot["turns"];
   /** `seq` the session reflects. */
   seq: number;
   error?: string;
@@ -572,20 +577,23 @@ export class HostClient {
   }
 
   /**
-   * Prepends the turns before the ones the chat shows (`turns.from`, the snapshot cursor). Events keep applying to the
-   * end of the transcript meanwhile; a resync that replaces the chat drops the older turns again.
+   * Prepends the turns before the ones the chat shows (`turns.from`, the snapshot cursor; `turns.offset` items into it
+   * when the first shown turn came in part). Events keep applying to the end of the transcript meanwhile; a resync
+   * that replaces the chat drops the older turns again.
    */
   async loadEarlier(handle: string): Promise<void> {
     const entry = this.store.get().chats[handle];
-    if (!entry?.session || !entry.turns || entry.turns.from === 0) return;
-    const page = await this.call("chat.snapshot", { handle, before: entry.turns.from, turns: EARLIER_TURNS });
+    const cursor = entry?.turns;
+    if (!entry?.session || !cursor || (cursor.from === 0 && !cursor.offset)) return;
+    const page = await this.call("chat.snapshot", { handle, before: cursor.from, ...(cursor.offset && { offset: cursor.offset }), turns: EARLIER_TURNS });
     const older = page.value.state as unknown as SessionState;
     this.store.set((s) => {
       const current = s.chats[handle];
       // A resync or another page landed meanwhile: this one no longer joins the transcript's start.
-      if (!current?.session || current.turns?.from !== entry.turns!.from) return s;
+      if (!current?.session || current.turns !== cursor) return s;
       const session = { ...current.session, items: [...older.items, ...current.session.items] };
-      return { ...s, chats: { ...s.chats, [handle]: { ...current, session, turns: { total: current.turns.total, from: page.value.turns.from } } } };
+      const { from, offset } = page.value.turns;
+      return { ...s, chats: { ...s.chats, [handle]: { ...current, session, turns: { total: cursor.total, from, ...(offset && { offset }) } } } };
     });
   }
 
@@ -593,7 +601,7 @@ export class HostClient {
     const topic = `chat:${handle}`;
     if (!this.pending.has(topic)) this.pending.set(topic, []);
     try {
-      const snapshot = await this.call("chat.snapshot", { handle, turns: FIRST_TURNS });
+      const snapshot = await this.call("chat.snapshot", { handle, turns: FIRST_TURNS, bytes: FIRST_BYTES });
       this.store.set((s) => ({
         ...s,
         chats: {

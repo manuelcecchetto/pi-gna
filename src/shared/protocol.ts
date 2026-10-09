@@ -20,6 +20,7 @@ export interface ImageContent {
 export interface ThinkingContent {
   type: "thinking";
   thinking: string;
+  /** Opaque, for the provider: pi resends it from the session file. The host drops it before clients (`leanRecord`). */
   thinkingSignature?: string;
   redacted?: boolean;
 }
@@ -227,21 +228,25 @@ export interface ToolResultLike {
   details?: unknown;
 }
 
+// Optional fields marked "repeats" are ones pi sends that clients never get: the host drops them (`leanRecord`).
 export type SessionEvent =
   | { type: "agent_start" }
-  | { type: "agent_end"; messages: AgentMessage[]; willRetry?: boolean }
+  /** `messages` repeats every message of the run. */
+  | { type: "agent_end"; messages?: AgentMessage[]; willRetry?: boolean }
   | { type: "agent_settled" }
   | { type: "turn_start" }
-  | { type: "turn_end"; message: AgentMessage; toolResults: ToolResultMessage[] }
+  /** `message` and `toolResults` repeat what message_end and tool_execution_end brought. */
+  | { type: "turn_end"; message?: AgentMessage; toolResults?: ToolResultMessage[] }
   | { type: "message_start"; message: AgentMessage }
   | { type: "message_update"; usage?: Usage; assistantMessageEvent: AssistantMessageEvent }
   | { type: "message_end"; message: AgentMessage }
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: Record<string, unknown> }
+  /** `args` repeats the tool call's arguments (and on every update). */
+  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args?: Record<string, unknown> }
   | {
       type: "tool_execution_update";
       toolCallId: string;
       toolName: string;
-      args: Record<string, unknown>;
+      args?: Record<string, unknown>;
       partialResult: ToolResultLike;
     }
   | { type: "tool_execution_end"; toolCallId: string; toolName: string; result: ToolResultLike; isError: boolean }

@@ -96,6 +96,8 @@ describe("turns the client has not loaded", () => {
     ];
     expect(pagePreview({ ...createSession("h", "/p"), items })).toBe("Done.");
     expect(pagePreview({ ...createSession("h", "/p"), items: [] })).toBe("");
+    // A turn too big for a page comes as its last items, without the prompt.
+    expect(pagePreview({ ...createSession("h", "/p"), items: items.slice(1) })).toBe("Done.");
   });
 });
 

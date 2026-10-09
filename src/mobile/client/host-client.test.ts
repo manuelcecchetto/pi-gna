@@ -244,6 +244,35 @@ describe("stream", () => {
     expect(served).toBe(2);
   });
 
+  it("pages back inside a first turn that came in part, then before it", async () => {
+    const item = (text: string) => ({ kind: "user", message: { role: "user", content: text, timestamp: 1 } });
+    const page = (items: unknown[], from: number, offset?: number) => ({ seq: 10, value: { state: { ...createSession("abc123", "/p"), items }, turns: { total: 2, from, ...(offset && { offset }) } } });
+    const t = setup((call) => {
+      if (call.path !== "chat.snapshot") return reads()(call);
+      if (call.body.before === undefined) return ok(page([item("e"), item("f")], 1, 3));
+      if (call.body.before === 0) return ok(page([item("a1")], 0));
+      return ok(call.body.offset === 3 ? page([item("c"), item("d")], 1, 1) : call.body.offset === 1 ? page([item("b")], 1) : page([item("a2")], 0, 1));
+    });
+    t.client.start();
+    t.src().hello();
+    await flush();
+    await t.client.setChats(["abc123"]);
+    await flush();
+    expect(t.client.store.get().chats.abc123!.turns).toEqual({ total: 2, from: 1, offset: 3 });
+    // The first turn comes in part too: turn 0 with an offset still has items before it.
+    for (let n = 0; n < 5; n++) await t.client.loadEarlier("abc123");
+    const entry = t.client.store.get().chats.abc123!;
+    expect(entry.session!.items.map((i) => (i as any).message.content)).toEqual(["a1", "a2", "b", "c", "d", "e", "f"]);
+    expect(entry.turns).toEqual({ total: 2, from: 0 });
+    expect(t.calls.filter((c) => c.path === "chat.snapshot").map((c) => c.body)).toEqual([
+      { handle: "abc123", turns: 6, bytes: 256_000 },
+      { handle: "abc123", before: 1, offset: 3, turns: 20 },
+      { handle: "abc123", before: 1, offset: 1, turns: 20 },
+      { handle: "abc123", before: 1, turns: 20 },
+      { handle: "abc123", before: 0, offset: 1, turns: 20 },
+    ]);
+  });
+
   it("subscribes again and rereads the chats when the browser's own retry brings the stream back", async () => {
     const t = setup(reads());
     t.client.start();

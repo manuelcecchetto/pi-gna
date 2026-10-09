@@ -29,6 +29,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Live timers tick together: run times, "Working for", tok/s and dialog countdowns share one clock, so a chat waiting on four parallel commands wakes the window once a second instead of seven times, and tok/s stops ticking while nothing streams. On the phone, the browser screen and a chat's globe no longer redraw every second once an agent has used a tab: they update once, when "the agent is using this" fades.
 - A running command's output, opened under its tool row, shows its newest lines and follows them like a terminal (it showed the first 400 lines until the command ended), and keeping it up to date costs about half as much: colored output past pi's 50 KB limit took about 165 ms of work a second, now 85.
 - Code in a chat highlights as it scrolls into view, in small pieces while the window is idle, instead of all at once when a chat opens or an answer ends (opening a chat with 160 code blocks froze the window for about 3 seconds, now its longest pause is about 60 ms). Code blocks over 30 KB stay plain.
+- A chat whose last run went on for hours opens on a phone in under a second instead of about a minute: the phone gets the run's last steps first and the earlier ones as you scroll up, answers to the phone are compressed, and pi's thinking signatures (about a third of a long chat) no longer travel to the phone or the window.
 
 ## 0.9.1 - 2026-10-08
 

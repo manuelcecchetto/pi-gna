@@ -708,9 +708,17 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   events past its snapshot. One ring (2000 events or 8 MiB). A reconnect sends `Last-Event-ID`; a gap, a new `bootId` or
   backpressure (1 MiB queued, closed at 4 MiB after 10 s) ends in a `resync` and the client refetches snapshots. The
   reducer runs in main (`src/shared/session-state.ts`), so `chat.snapshot` (last 40 turns, older ones paged) is always
-  authoritative. A page is also about 2 MB at most (`PAGE_BYTES`, sized from the strings of its turns; at least one
-  turn): a few turns of screenshots or big tool output can be most of a 100 MB chat. Browser frames and
-  `computer.preview` never enter the ring.
+  authoritative. A page is also about 2 MB at most (`PAGE_BYTES`, sized from the strings of its items; at least one
+  item): a few turns of screenshots or big tool output can be most of a 100 MB chat. Older turns come whole or not at
+  all, but a newest turn too big alone (a run of hours: 1,500 items, 12 MB) is cut: the page holds its last items and
+  `turns.offset` says how many of that turn's items come before them; the next page back (`{ before: from, offset }`)
+  goes on from there. The outline then lists that turn too (its prompt is not loaded), and the transcript's earlier
+  control reads "Show earlier steps" while its first run has no prompt. Browser frames and `computer.preview` never
+  enter the ring.
+- **Clients get lean records** (`leanRecord`, applied by the host before it reduces and publishes, and by `hydrate` to
+  the session file's messages): no thinking or text signatures (opaque provider blobs, about 3.5 KB each, a third of a
+  long chat's JSON, which pi resends from its session file), and none of what `turn_end`, `agent_end` and tool events
+  repeat (the run's messages, the call's arguments). `protocol.ts` marks those fields optional.
 - **Streaming deltas are merged in main.** Text, thinking and tool-call deltas wait up to a frame (16 ms,
   `src/main/coalesce.ts`) and are merged per block before the reducer, so a fast model costs one reduce, ring entry,
   IPC send and SSE frame per frame, not per stdout chunk. Any other event sends the waiting ones first, in order.

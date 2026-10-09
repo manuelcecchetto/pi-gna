@@ -349,13 +349,79 @@ describe("session registry", () => {
     // The third turn's 30 kB result does not fit in 20 kB beside the last two; in 40 kB only the first turn's does not.
     expect(host.snapshot(handle, { turns: 10, bytes: 20_000 })!.turns).toEqual({ total: 5, from: 3 });
     expect(host.snapshot(handle, { turns: 10, bytes: 40_000 })!.turns).toEqual({ total: 5, from: 1 });
-    // The turn right before the cursor comes even when it alone is too big.
-    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 3 })!.turns).toEqual({ total: 5, from: 2 });
-    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 1 })!.turns).toEqual({ total: 5, from: 0 });
+    // Of the turn right before the cursor, too big alone, the page holds the last item: the answer, without its prompt.
+    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 3 })!.turns).toEqual({ total: 5, from: 2, offset: 1 });
+    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 2, offset: 1 })!.turns).toEqual({ total: 5, from: 1 });
+    expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 1 })!.turns).toEqual({ total: 5, from: 0, offset: 1 });
     // A page's items carry the runs of their own calls, and no others.
     const page = host.snapshot(handle, { turns: 2, beforeTurn: 3 })!.state as unknown as SessionState;
     expect(page.items.flatMap((item) => (item.kind === "assistant" ? Object.entries(item.runs ?? {}).map(([id, run]) => [id, run.status]) : []))).toEqual([["t2", "done"], ["t3", "done"]]);
     expect("tools" in page).toBe(false);
+  });
+
+  it("pages a turn too big alone from its last items back, and the pages join into the whole chat", async () => {
+    const { host } = await setup();
+    const { handle } = await host.open(request, { client: A });
+    // Turn 0 is small; turn 1 is a long run: 12 answers of about 5 kB each.
+    const answer = (n: number) => rec("message_end", { message: { role: "assistant", content: [{ type: "text", text: `${n}`.padEnd(5_000, ".") }], stopReason: "stop", timestamp: n } });
+    fake.pis[0]!.handlers.onRecords([...assistantTurn(1), rec("agent_start"), userStart(2), ...Array.from({ length: 12 }, (_, n) => answer(n)), rec("agent_end"), rec("agent_settled")]);
+    const items = host.stateOf(handle)!.items;
+    const keys = (state: unknown) => ((state as SessionState).items as Item[]).map((item) => item.key);
+    const first = host.snapshot(handle, { turns: 6, bytes: 16_000, outline: true })!;
+    // Three answers fit; the prompt of the turn and the turn before are outlined.
+    expect(first.turns).toEqual({ total: 2, from: 1, offset: 10 });
+    expect(keys(first.state)).toEqual(items.slice(-3).map((item) => item.key));
+    expect(first.outline!.map((turn) => turn.label)).toEqual(["q1", "q2"]);
+    // Paging back from the cursor until the start gives every item once, in order.
+    const pages = [keys(first.state)];
+    let cursor = first.turns;
+    while (cursor.from > 0 || cursor.offset) {
+      const page = host.snapshot(handle, { turns: 20, beforeTurn: cursor.from, offset: cursor.offset, bytes: 16_000, outline: true })!;
+      pages.unshift(keys(page.state));
+      expect(page.outline).toHaveLength(page.turns.from + (page.turns.offset ? 1 : 0));
+      cursor = page.turns;
+    }
+    expect(pages.flat()).toEqual(items.map((item) => item.key));
+    expect(pages.map((page) => page.length)).toEqual([6, 3, 3, 3]); // turn 0 (2 items) joins the prompt and the first three answers
+    // An answer bigger than a page comes alone; a cursor past the turn's end is its end.
+    expect(host.snapshot(handle, { turns: 6, bytes: 1_000 })!.turns).toEqual({ total: 2, from: 1, offset: 12 });
+    expect(keys(host.snapshot(handle, { turns: 6, beforeTurn: 1, offset: 99 })!.state)).toEqual(items.map((item) => item.key));
+    expect(keys(host.snapshot(handle, { turns: 1, beforeTurn: 0, offset: 99 })!.state)).toEqual(items.slice(0, 2).map((item) => item.key));
+  });
+
+  it("gives clients the lean records and keeps no signatures in its state", async () => {
+    const { host, seen } = await setup();
+    const { handle } = await host.open(request, { client: A });
+    const signed = { role: "assistant", content: [{ type: "thinking", thinking: "plan", thinkingSignature: "sig".repeat(1000) }, { type: "text", text: "a" }], stopReason: "stop", timestamp: 1 };
+    fake.pis[0]!.handlers.onRecords([rec("agent_start"), userStart(1), rec("message_end", { message: signed }), rec("turn_end", { message: signed, toolResults: [] }), rec("agent_end", { messages: [signed] }), rec("agent_settled")]);
+    const sent = JSON.stringify(seen.filter((batch) => batch.handle === handle));
+    expect(sent).not.toContain("thinkingSignature");
+    expect(sent).toContain('{"type":"turn_end"}');
+    expect(JSON.stringify(host.stateOf(handle))).not.toContain("thinkingSignature");
+  });
+
+  it("counts a big image as its URL in a phone's page, as the phone gets it", async () => {
+    const { host } = await setup();
+    const { handle } = await host.open(request, { client: A });
+    const shot = (n: number) => [
+      rec("message_end", { message: { role: "assistant", content: [{ type: "toolCall", id: `s${n}`, name: "browser_screenshot", arguments: {} }], stopReason: "toolUse", timestamp: n } }),
+      rec("tool_execution_end", { toolCallId: `s${n}`, toolName: "browser_screenshot", result: { content: [{ type: "image", mimeType: "image/png", data: "A".repeat(100_000) }] }, isError: false }),
+    ];
+    fake.pis[0]!.handlers.onRecords([rec("agent_start"), userStart(1), ...shot(1), ...shot(2), ...shot(3), rec("agent_end"), rec("agent_settled")]);
+    expect(host.snapshot(handle, { turns: 6, bytes: 20_000 })!.turns).toEqual({ total: 1, from: 0, offset: 3 });
+    expect(host.snapshot(handle, { turns: 6, bytes: 20_000, imagesByUrl: true })!.turns).toEqual({ total: 1, from: 0 });
+  });
+
+  it("never cuts a page before the first prompt: what comes before it comes along", async () => {
+    const { host } = await setup();
+    const { handle } = await host.open(request, { client: A });
+    const big = (text: string) => rec("message_end", { message: { role: "custom", customType: "note", content: text.padEnd(5_000, "."), display: true, timestamp: 1 } });
+    const answer = (n: number) => rec("message_end", { message: { role: "assistant", content: [{ type: "text", text: `${n}`.padEnd(5_000, ".") }], stopReason: "stop", timestamp: n } });
+    fake.pis[0]!.handlers.onRecords([big("before any prompt"), rec("agent_start"), userStart(1), answer(1), answer(2), rec("agent_end"), rec("agent_settled")]);
+    const page = host.snapshot(handle, { turns: 6, bytes: 11_000, outline: true })!;
+    expect(page.turns).toEqual({ total: 1, from: 0 });
+    expect((page.state.items as Item[]).map((item) => item.kind)).toEqual(["custom", "user", "assistant", "assistant"]);
+    expect(page.outline).toEqual([]);
   });
 
   it("outlines the turns before a page, one line each, and a paged join gets the live state", async () => {

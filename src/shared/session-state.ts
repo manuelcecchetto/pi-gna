@@ -16,6 +16,7 @@ import type {
   SessionEntry,
   SessionEvent,
   SessionStats,
+  TextContent,
   ThinkingLevel,
   ToolResultLike,
   UserMessage,
@@ -124,8 +125,10 @@ export interface SessionState {
   fromDisk: boolean;
   /** Opened from the sidebar and its history is still being read: the sidebar's title stands in meanwhile. */
   loading?: { title: string };
-  /** A client's paged view of the chat: one line for each turn before `items` that the host has and it has not loaded. */
+  /** A client's paged view of the chat: one line for each turn whose prompt the host has and it has not loaded. */
   earlier?: TurnOutline[];
+  /** The last of the `earlier` turns came in part: this many of its items, from its prompt, are still on the host. */
+  earlierOffset?: number;
   /** Set once the user prompts from pi-gna; such sessions stay alive when switching away. */
   prompted: boolean;
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
@@ -357,6 +360,50 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
   }
 }
 
+/**
+ * A pi record as clients get it: without what they never read. Signatures are opaque provider blobs (about 3.5 KB a
+ * thinking block) that pi resends from its session file; `turn_end` and `agent_end` repeat the messages that
+ * message_end and tool_execution_end brought, and tool events the arguments of their call. The host reduces and
+ * publishes the lean record; history read from the session file is leaned by `hydrate`.
+ */
+export function leanRecord(record: SessionEvent | ExtensionUiRequest): SessionEvent | ExtensionUiRequest {
+  switch (record.type) {
+    case "message_start":
+    case "message_end":
+      return record.message.role === "assistant" ? { ...record, message: leanMessage(record.message) } : record;
+    case "turn_end":
+      return { type: "turn_end" };
+    case "agent_end":
+      return { type: "agent_end", willRetry: record.willRetry };
+    case "tool_execution_start":
+    case "tool_execution_update": {
+      const { args: _args, ...lean } = record;
+      return lean;
+    }
+    default:
+      return record;
+  }
+}
+
+/** The message without its blocks' signatures; the same object when it has none. */
+function leanMessage(message: AssistantMessage): AssistantMessage {
+  const signed = (block: AssistantMessage["content"][number]) =>
+    (block.type === "thinking" && block.thinkingSignature !== undefined) || (block.type === "text" && block.textSignature !== undefined);
+  if (!message.content.some(signed)) return message;
+  return {
+    ...message,
+    content: message.content.map((block) => {
+      if (!signed(block)) return block;
+      if (block.type === "thinking") {
+        const { thinkingSignature: _signature, ...lean } = block;
+        return lean;
+      }
+      const { textSignature: _signature, ...lean } = block as TextContent;
+      return lean;
+    }),
+  };
+}
+
 function startCompaction(state: SessionState, now: number, reason?: CompactionReason): SessionState {
   if (state.compacting) return reason ? updateCompaction(state, (item) => ({ ...item, reason })) : state;
   const next = pushItem(state, { kind: "compaction", status: "running", reason, startedAt: now });
@@ -443,7 +490,7 @@ function messageChange(state: Pick<SessionState, "items">, message: AgentMessage
     case "user":
       return { item: steer ? { kind: "user", message, steer: true } : { kind: "user", message } };
     case "assistant":
-      return { item: { kind: "assistant", message, streaming: false } };
+      return { item: { kind: "assistant", message: leanMessage(message), streaming: false } };
     case "toolResult":
       return {
         tool: message.toolCallId,
