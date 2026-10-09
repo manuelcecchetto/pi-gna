@@ -3,6 +3,7 @@
 // device cookie, CSRF headers, Tailscale login. AgentBridge tokens are never looked at here.
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { RemoteImages } from "./remote-images";
+import type { Stats } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { promisify } from "node:util";
@@ -42,12 +43,12 @@ export const STREAM_CAP_BYTES = 1024 * 1024;
 export const STREAM_HARD_CAP_BYTES = 4 * 1024 * 1024;
 export const STREAM_HARD_MS = 10_000;
 
-/** Call answers below this go out as they are: compressing them saves less than it costs. */
+/** Call answers and built files below this go out as they are: compressing them saves less than it costs. */
 const COMPRESS_MIN_BYTES = 1024;
 const brotli = promisify(brotliCompress);
 const gzipped = promisify(gzip);
 
-/** How a call's answer may be compressed: br, else gzip, as the client's Accept-Encoding allows (`q=0` refuses one). */
+/** How a reply may be compressed: br, else gzip, as the client's Accept-Encoding allows (`q=0` refuses one). */
 export function replyEncoding(accept: string | undefined): "br" | "gzip" | undefined {
   const allowed = new Set<string>();
   for (const part of (accept ?? "").split(",")) {
@@ -138,6 +139,11 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
   ".map": "application/json; charset=utf-8",
 };
+
+/** Built files sent compressed when the client takes it; images and fonts are compressed already and go out as they are. */
+const COMPRESSIBLE = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".map"]);
+/** Built files whose compressed bodies are kept (the mobile build has about 40; a rebuild's old ones fall out first). */
+const PACKED_FILES = 64;
 
 const PLACEHOLDER = "<!doctype html><meta charset=utf-8><title>pi-gna</title><body style=\"font:16px system-ui;padding:2rem\"><h1>pi-gna remote</h1><p>The mobile app is not built yet.</p>";
 
@@ -656,6 +662,32 @@ export class RemoteServer {
     res.end(req.method === "HEAD" ? undefined : data);
   }
 
+  /** Compressed built files by path, for the version (size and mtime) they were made from; most recently used last. */
+  private readonly packed = new Map<string, { version: string; bodies: Partial<Record<"br" | "gzip", Promise<Buffer>>> }>();
+
+  /**
+   * A built file's body in `encoding`, compressed once per version, in the thread pool, and shared by concurrent
+   * requests. Brotli quality 9: the mobile entry (674 KB) is 195 KB in 40 ms; quality 11 saves 14 KB more in 1.4 s, which
+   * the first phone to load a new build would wait for.
+   */
+  private packedBody(file: string, version: string, encoding: "br" | "gzip"): Promise<Buffer> {
+    const known = this.packed.get(file);
+    const entry = known?.version === version ? known : { version, bodies: {} };
+    this.packed.delete(file);
+    this.packed.set(file, entry);
+    if (this.packed.size > PACKED_FILES) this.packed.delete(this.packed.keys().next().value!);
+    const made = entry.bodies[encoding];
+    if (made) return made;
+    const body = readFile(file).then((data) =>
+      encoding === "br"
+        ? brotli(data, { params: { [zlib.BROTLI_PARAM_QUALITY]: 9, [zlib.BROTLI_PARAM_MODE]: zlib.BROTLI_MODE_TEXT, [zlib.BROTLI_PARAM_SIZE_HINT]: data.length } })
+        : gzipped(data),
+    );
+    entry.bodies[encoding] = body;
+    body.catch(() => entry.bodies[encoding] === body && delete entry.bodies[encoding]);
+    return body;
+  }
+
   private async serveStatic(req: IncomingMessage, res: ServerResponse, path: string) {
     if (req.method !== "GET" && req.method !== "HEAD") throw new HostError("bad_request", "method not allowed");
     const root = this.o.staticDir;
@@ -668,14 +700,16 @@ export class RemoteServer {
     if (rel.includes("\0")) throw new HostError("bad_request", "bad path");
     const file = normalize(join(root ?? "/nonexistent", rel === "/" ? "index.html" : rel));
     let target: string | undefined;
+    let found: Stats | undefined;
     if (root && (file === root || file.startsWith(root + sep))) {
-      const found = await stat(file).catch(() => undefined);
+      found = await stat(file).catch(() => undefined);
       if (found?.isFile()) target = file;
     }
     // Unknown paths without an extension are app routes: the shell answers.
     if (!target && root && !extname(rel)) {
       const index = join(root, "index.html");
-      if ((await stat(index).catch(() => undefined))?.isFile()) target = index;
+      found = await stat(index).catch(() => undefined);
+      if (found?.isFile()) target = index;
     }
     const base: Record<string, string> = { "Content-Security-Policy": REMOTE_CSP, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer" };
     if (!target) {
@@ -684,14 +718,19 @@ export class RemoteServer {
       res.writeHead(200, { ...base, "Content-Type": MIME[".html"]!, "Content-Length": body.length, "Cache-Control": "no-cache" });
       return void res.end(req.method === "HEAD" ? undefined : body);
     }
-    const data = await readFile(target);
     const hashed = target.includes(`${sep}assets${sep}`);
-    res.writeHead(200, {
+    const headers: Record<string, string> = {
       ...base,
       "Content-Type": MIME[extname(target)] ?? "application/octet-stream",
-      "Content-Length": data.length,
       "Cache-Control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
-    });
+    };
+    // Only the built app's own files, the same for every caller: nothing secret shares a body with them.
+    const compressible = COMPRESSIBLE.has(extname(target)) && found!.size >= COMPRESS_MIN_BYTES;
+    const encoding = compressible ? replyEncoding(header(req, "accept-encoding")) : undefined;
+    if (compressible) headers.Vary = "Accept-Encoding";
+    if (encoding) headers["Content-Encoding"] = encoding;
+    const data = encoding ? await this.packedBody(target, `${found!.size}:${found!.mtimeMs}`, encoding) : await readFile(target);
+    res.writeHead(200, { ...headers, "Content-Length": String(data.length) });
     res.end(req.method === "HEAD" ? undefined : data);
   }
 }

@@ -1,9 +1,9 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { brotliDecompressSync, gunzipSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync, constants as zlib, gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app", getPath: () => "/tmp" }, shell: {}, dialog: {} }));
@@ -302,6 +302,99 @@ describe("RemoteServer", () => {
     expect((await send("GET", "/assets/missing.js")).status).toBe(404);
     expect((await send("GET", "/chat/abc")).text).toContain("<title>app</title>");
     expect((await send("GET", "/..%2f..%2fdevices.json")).status).not.toBe(200);
+  });
+
+  it("compresses the app's text files once per version, as the client allows, and never images or tiny files", async () => {
+    const js = "export const word = 'compressible';\n".repeat(400);
+    const file = join(dir, "mobile", "assets", "big.js");
+    writeFileSync(file, js);
+    // Whole seconds, so that setting it again gives the same mtimeMs.
+    const mtime = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
+    utimesSync(file, mtime, mtime);
+    writeFileSync(join(dir, "mobile", "assets", "pic.png"), Buffer.alloc(8000, 7));
+    const get = (path: string, encoding?: string, method = "GET") => send(method, path, encoding === undefined ? {} : { headers: { "accept-encoding": encoding } });
+
+    const br = await get("/assets/big.js", "gzip, deflate, br");
+    expect(br.headers["content-encoding"]).toBe("br");
+    expect(br.headers.vary).toBe("Accept-Encoding");
+    expect(Number(br.headers["content-length"])).toBe(br.raw.length);
+    expect(br.raw.length).toBeLessThan(js.length / 20);
+    const quality9 = { [zlib.BROTLI_PARAM_QUALITY]: 9, [zlib.BROTLI_PARAM_MODE]: zlib.BROTLI_MODE_TEXT, [zlib.BROTLI_PARAM_SIZE_HINT]: js.length };
+    expect(br.raw.equals(brotliCompressSync(js, { params: quality9 }))).toBe(true);
+    expect(br.headers["content-type"]).toBe("text/javascript; charset=utf-8");
+    expect(br.headers["content-security-policy"]).toContain("default-src");
+    expect(br.headers["x-content-type-options"]).toBe("nosniff");
+    expect(br.headers["referrer-policy"]).toBe("no-referrer");
+    expect(br.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+
+    const gz = await get("/assets/big.js", "br;q=0, gzip");
+    expect(gz.headers["content-encoding"]).toBe("gzip");
+    expect(Number(gz.headers["content-length"])).toBe(gz.raw.length);
+    expect(gunzipSync(gz.raw).toString()).toBe(js);
+
+    for (const plain of [await get("/assets/big.js", "identity"), await get("/assets/big.js")]) {
+      expect(plain.headers["content-encoding"]).toBeUndefined();
+      expect(plain.headers.vary).toBe("Accept-Encoding");
+      expect(plain.text).toBe(js);
+    }
+
+    const head = await get("/assets/big.js", "br", "HEAD");
+    expect(head.headers["content-encoding"]).toBe("br");
+    expect(head.headers["content-length"]).toBe(br.headers["content-length"]);
+    expect(head.raw.length).toBe(0);
+
+    // Made once: the same size and mtime is the same version, even if the bytes were swapped underneath.
+    const swapped = js.replace(/compressible/g, "COMPRESSIBLE");
+    writeFileSync(file, swapped);
+    utimesSync(file, mtime, mtime);
+    expect(brotliDecompressSync((await get("/assets/big.js", "br")).raw).toString()).toBe(js);
+    expect(gunzipSync((await get("/assets/big.js", "gzip")).raw).toString()).toBe(js);
+    // A rebuilt file is a new version and is compressed again.
+    utimesSync(file, mtime, new Date(mtime.getTime() + 5000));
+    expect(brotliDecompressSync((await get("/assets/big.js", "br")).raw).toString()).toBe(swapped);
+    writeFileSync(file, js + "x");
+    utimesSync(file, mtime, new Date(mtime.getTime() + 5000));
+    expect(brotliDecompressSync((await get("/assets/big.js", "br")).raw).toString()).toBe(js + "x");
+
+    const png = await get("/assets/pic.png", "br, gzip");
+    expect(png.headers["content-encoding"]).toBeUndefined();
+    expect(png.headers.vary).toBeUndefined();
+    expect(png.raw.equals(Buffer.alloc(8000, 7))).toBe(true);
+
+    const tiny = await get("/assets/a.js", "br");
+    expect(tiny.headers["content-encoding"]).toBeUndefined();
+    expect(tiny.headers.vary).toBeUndefined();
+    expect(tiny.text).toBe("1");
+
+    // The shell answers app routes, compressed too once it is big enough.
+    const shell = "<!doctype html><title>app</title>" + "<!-- padding -->".repeat(100);
+    writeFileSync(join(dir, "mobile", "index.html"), shell);
+    const route = await get("/chats/abc", "br");
+    expect(route.headers["content-encoding"]).toBe("br");
+    expect(route.headers["cache-control"]).toBe("no-cache");
+    expect(brotliDecompressSync(route.raw).toString()).toBe(shell);
+  });
+
+  it("keeps the compressed bodies of the most recently served 64 files, and forgets a failed one", async () => {
+    const big = (i: number) => `export const n${i} = ${i};\n`.repeat(100);
+    for (let i = 0; i < 66; i++) writeFileSync(join(dir, "mobile", "assets", `f${i}.js`), big(i));
+    const get = (i: number) => send("GET", `/assets/f${i}.js`, { headers: { "accept-encoding": "br" } });
+    for (let i = 0; i < 64; i++) await get(i);
+    // f0 is used again, so f1 and f2 are the oldest when f64 and f65 come in.
+    await get(0);
+    await get(64);
+    await get(65);
+    const packed: Map<string, { bodies: Record<string, unknown> }> = (server as any).packed;
+    const names = [...packed.keys()].map((key) => key.split(/[\\/]/).pop());
+    expect(packed.size).toBe(64);
+    expect(names).not.toContain("f1.js");
+    expect(names).not.toContain("f2.js");
+    expect(names.slice(-3)).toEqual(["f0.js", "f64.js", "f65.js"]);
+    expect(Object.keys(packed.get(join(dir, "mobile", "assets", "f65.js"))!.bodies)).toEqual(["br"]);
+
+    const missing = join(dir, "mobile", "assets", "gone.js");
+    await expect((server as any).packedBody(missing, "1:1", "br")).rejects.toThrow();
+    expect(packed.get(missing)!.bodies).toEqual({});
   });
 
   it("serves the visual frame with the frame CSP and without credentials", async () => {
