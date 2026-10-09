@@ -26,21 +26,30 @@ const model = (saveMs?: number): StoreModel<Counter, Op> => ({
   ...(saveMs === undefined ? {} : { saveMs }),
 });
 
+/** Every store a test made: each is flushed after the test, so no write of one test lands in the next one's count. */
+const stores: JsonStore<Counter, Op>[] = [];
+
 async function setup(saveMs?: number) {
   const file = join(await mkdtemp(join(tmpdir(), "pigna-store-")), "counter.json");
   const pushed: number[] = [];
   const store = new JsonStore(file, model(saveMs), (value) => pushed.push(value.rev));
+  stores.push(store);
   await store.get();
   const saved = async () => JSON.parse(await readFile(file, "utf8")) as Counter & { rev: number };
   return { file, store, pushed, saved };
 }
 
-/** Lets fs callbacks run while the fake setTimeout holds every save timer. */
-async function settle(): Promise<void> {
-  for (let i = 0; i < 50; i++) await new Promise((resolve) => setImmediate(resolve));
+/**
+ * Lets fs callbacks run while the fake setTimeout holds every save timer: until `done` holds (up to 5 s; a slow disk
+ * takes more than a fixed number of turns), or for 50 turns when nothing should happen.
+ */
+async function settle(done?: () => boolean): Promise<void> {
+  const until = Date.now() + 5_000;
+  for (let i = 0; done ? !done() && Date.now() < until : i < 50; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(stores.splice(0).map((store) => store.flushed()));
   vi.useRealTimers();
   writes.count = 0;
 });
@@ -55,7 +64,9 @@ describe("JsonStore saves", () => {
     await settle();
     expect(writes.count).toBe(0);
     vi.advanceTimersByTime(1);
-    await settle();
+    await settle(() => writes.count === 1);
+    expect(writes.count).toBe(1);
+    await store.flushed();
     expect(writes.count).toBe(1);
     expect(await saved()).toEqual({ n: 3, notes: ["a", "b", "c"], rev: 3 });
     expect(await readFile(file, "utf8")).toBe('{"n":3,"notes":["a","b","c"],"rev":3}');
@@ -82,7 +93,9 @@ describe("JsonStore saves", () => {
     await settle();
     expect(writes.count).toBe(1);
     vi.advanceTimersByTime(SAVE_MS);
-    await settle();
+    await settle(() => writes.count === 2);
+    expect(writes.count).toBe(2);
+    await store.flushed();
     expect(writes.count).toBe(2);
     expect(await saved()).toMatchObject({ notes: ["a", "b"], rev: 2 });
   });
@@ -99,7 +112,9 @@ describe("JsonStore saves", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { store, saved } = await setup(0);
     await store.apply({ type: "add", note: "revoked" });
-    await settle();
+    // No timer was advanced: the write started on its own.
+    expect(writes.count).toBe(1);
+    await store.flushed();
     expect(await saved()).toMatchObject({ n: 1, rev: 1 });
   });
 });
