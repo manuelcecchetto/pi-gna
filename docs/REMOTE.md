@@ -206,11 +206,16 @@ Every push goes through one in-process EventHub in main. The desktop window is o
 - **Ring buffer:** one ring for all topics: at most **2000 events and 8 MiB** of serialized events, whichever first
   (oldest dropped). Browser frames and `computer.preview` frames never enter the ring.
 - **Resync rules:**
-  1. Client reconnects with `Last-Event-ID: <bootId>:<seq>`.
-  2. Same `bootId` and `seq + 1` still in the ring → replay the gap, then live.
-  3. Different `bootId` (host restarted), or the gap fell out of the ring, or no `Last-Event-ID` → the server sends a
-     `resync` SSE event (no replay) and the client refetches snapshots for `global` and its subscribed chats, then
-     applies events with `seq` greater than each snapshot's.
+  1. Client reconnects with `Last-Event-ID: <bootId>:<seq>` (the browser's own retry), or, on a stream it opens anew
+     (a page shown again, the watchdog; a new EventSource cannot set the header), with `&since=<bootId>:<seq>` in the
+     URL: the newest event it applied, or the `hello` seq of a stream that resynced. The header wins over `since`.
+  2. Same `bootId` and `seq + 1` still in the ring → replay the gap, then live. The client reads nothing: on `hello`
+     it rereads only the chats the stream's URL did not hold (a browser retry keeps the URL it first opened with), chats
+     without a current snapshot, and chats whose `subscribe` failed; a global read that failed makes that `hello` a
+     full resync.
+  3. Different `bootId` (host restarted), or the gap fell out of the ring, or no `Last-Event-ID` or `since` → the
+     server sends a `resync` SSE event (no replay) and the client refetches snapshots for `global` and its subscribed
+     chats, then applies events with `seq` greater than each snapshot's.
   4. Backpressure (section 4) also ends in `resync`.
   5. A client never trusts its local state across a `resync`; it replaces it from snapshots.
 - **Chat events carry no host-side loss:** because the reducer in main (T05) runs on every event, `chat.snapshot` is
@@ -234,7 +239,7 @@ Every push goes through one in-process EventHub in main. The desktop window is o
 
 ## 4. SSE, subscriptions, backpressure
 
-- `GET /api/events?stream=<uuid>[&chats=h1,h2]` (EventSource). `stream` is chosen by the client, once per page
+- `GET /api/events?stream=<uuid>[&chats=h1,h2][&since=<bootId>:<seq>]` (EventSource; `since`: section 2). `stream` is chosen by the client, once per page
   instance, and doubles as the **client id** for leases and presence.
 - **Framing:** `id: <bootId>:<seq>`, `event: host`, `data: <event envelope JSON>`. Other event names: `hello`
   (`{ bootId, seq, buildId }`, first frame), `resync` (`{ reason }`, no `id:`), and `: hb` comment lines every 15 s.
@@ -566,7 +571,7 @@ service-worker `push`/`notificationclick`, doc updates in `docs/DESIGN.md`, a CH
 - **Joining a chat:** `chat.open { request: { cwd, sessionPath } }` (or `chat.attach` for a handle the list already knows), then `HostClient.setChats([handle])` subscribes the stream and reads `chat.snapshot`; `chat.viewing` marks it seen. Leaving sends `chat.viewing false` + `chat.detach` and drops the subscription; the host keeps a running chat going. When the stream is live again after a drop the screen attaches once more (the lease may have lapsed).
 - **Transcript:** the desktop's `Transcript`, `Activity`, `ToolDetails`, `Markdown`, `Dialogs` and `QueueCard`, unchanged but for `src/renderer/src/lib/chat-ui.tsx`: they read expansion state, board cards, wallpaper/visuals and actions (lightbox, open link, answer dialog, edit queue) from a `ChatUi` context. The desktop provides it from its store in `renderer/src/main.tsx`; the phone from `src/mobile/chat-ui.ts` (no visual frames or wallpaper, links open in the phone's browser). "Show earlier turns" pages `chat.snapshot { before }` through `HostClient.loadEarlier`, keeping the scroll position; scrolling within 600 px of the top loads the next page by itself. Touch sizing uses the `touch:` Tailwind variant (`pointer: coarse`).
 - **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. `@` mentions and slash-command pickers are later nodes.
-- **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". After a browser-side EventSource retry (same URL, so without the chats on screen) the client re-subscribes and rereads the chats on `hello`, so a reconnect cannot leave a transcript stale.
+- **Connection:** the banner shows reconnecting / unreachable / outdated with "Retry now". A reconnect within the ring replays what was missed and reads nothing (a page shown again with a heavy chat open made 14 calls, two of them snapshots of the chat, and now none). After a browser-side EventSource retry (same URL, so without a chat put on screen later) the client re-subscribes and rereads only that chat on `hello`, so a reconnect cannot leave a transcript stale.
 - **App info:** `app.info` (`homeDir`, `launchCwd`, `version`, `buildId`) is in the table; the phone uses `homeDir` to shorten paths.
 
 ### Images by URL and a short first page (2026-10-05)

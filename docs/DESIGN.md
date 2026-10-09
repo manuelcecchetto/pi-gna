@@ -735,8 +735,10 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
 
 - **EventHub** (`src/main/event-hub.ts`): topics `global` and `chat:<handle>`; envelope `{ bootId, seq, topic, event }`
   with one host-wide `seq`; snapshots are `{ seq, value }` taken atomically with the counter, and a client applies only
-  events past its snapshot. One ring (2000 events or 8 MiB). A reconnect sends `Last-Event-ID`; a gap, a new `bootId` or
-  backpressure (1 MiB queued, closed at 4 MiB after 10 s) ends in a `resync` and the client refetches snapshots. The
+  events past its snapshot. One ring (2000 events or 8 MiB). A reconnect sends `Last-Event-ID`, or `since=<bootId>:<seq>` in the URL of
+  a stream the phone opens anew (a page shown again), and replays the gap without reading anything; a gap, a new
+  `bootId` or backpressure (1 MiB queued, closed at 4 MiB after 10 s) ends in a `resync` and the client refetches
+  snapshots. The
   reducer runs in main (`src/shared/session-state.ts`), so `chat.snapshot` (last 40 turns, older ones paged) is always
   authoritative. A page is also about 2 MB at most (`PAGE_BYTES`, sized from the strings of its items; at least one
   item): a few turns of screenshots or big tool output can be most of a 100 MB chat. Older turns come whole or not at

@@ -552,6 +552,27 @@ describe("RemoteServer", () => {
       s.close();
     });
 
+    it("replays after the URL's since when the stream carries no Last-Event-ID, which wins when it does", async () => {
+      hub.publish("global", { kind: "one" });
+      hub.publish("global", { kind: "two" });
+      hub.publish("global", { kind: "three" });
+      const s = sse("/api/events?stream=stream-aaaa&since=boot1:1", cookie);
+      await s.ready;
+      await s.until(() => s.frames.some((f) => f.includes('"three"')));
+      expect(s.frames.some((f) => f.startsWith("event: resync") || f.includes('"one"'))).toBe(false);
+      expect(s.frames.some((f) => f.includes('"two"'))).toBe(true);
+      s.close();
+      // The browser's own retry of that stream keeps the URL and adds the id it last saw.
+      const retry = sse("/api/events?stream=stream-aaaa&since=boot1:1", cookie, { "last-event-id": "boot1:2" });
+      await retry.ready;
+      await retry.until(() => retry.frames.some((f) => f.includes('"three"')));
+      expect(retry.frames.some((f) => f.includes('"two"'))).toBe(false);
+      retry.close();
+      const old = sse("/api/events?stream=stream-bbbb&since=other:3", cookie);
+      await old.until(() => old.frames.some((f) => f.includes("new_boot")));
+      old.close();
+    });
+
     it("sends login progress to the requesting stream only, as an unsequenced client event", async () => {
       const mine = sse("/api/events?stream=stream-aaaa", cookie);
       const other = sse("/api/events?stream=stream-bbbb", cookie);

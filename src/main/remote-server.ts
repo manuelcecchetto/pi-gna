@@ -499,8 +499,9 @@ export class RemoteServer {
       }, this.o.heartbeatMs ?? HEARTBEAT_MS),
       sub: undefined as unknown as Subscription,
     };
-    // Replay and subscribe in one tick, so no event falls between them.
-    const last = parseEventId(header(req, "last-event-id"));
+    // Replay and subscribe in one tick, so no event falls between them. The browser's own retry sends Last-Event-ID; a
+    // stream the client opens anew cannot set it and says where it stands with `since` instead.
+    const last = parseEventId(header(req, "last-event-id") || url.searchParams.get("since"));
     const since = this.o.hub.since(last?.bootId ?? null, last?.seq ?? null);
     stream.sub = this.o.hub.subscribe({
       topics: ["global", ...chats.map((c): Topic => `chat:${c}`)],

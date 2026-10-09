@@ -212,6 +212,12 @@ export class HostClient {
   private reconnectTimer: unknown;
   private failures = 0;
   private chatsOnScreen: string[] = [];
+  /** The chats in the open stream's URL: the topics it holds whenever it (re)connects, the replay's included. */
+  private sourceChats: string[] = [];
+  /** Chats on screen whose events the stream may have missed since their snapshot (a `subscribe` that failed). */
+  private readonly unheld = new Set<string>();
+  /** A global read failed on the last resync: the value is stale until the next one. */
+  private globalStale = false;
   private stopped = true;
   private unwake?: () => void;
   /** Events that arrived while their snapshot was being read, per topic (`global` or `chat:<handle>`). */
@@ -336,11 +342,13 @@ export class HostClient {
       return { ...s, chats };
     });
     for (const handle of this.chatsOnScreen) if (!handles.includes(handle)) this.pending.delete(`chat:${handle}`);
+    for (const handle of this.unheld) if (!handles.includes(handle)) this.unheld.delete(handle);
     if (this.store.get().connection === "live") {
       try {
         await this.send("subscribe", JSON.stringify({ stream: this.streamId, chats: handles }), undefined);
       } catch {
-        // The next reconnect carries the set in the URL.
+        // The next reconnect carries the set in the URL, and reads these chats again: the stream missed their events.
+        for (const handle of added) this.unheld.add(handle);
       }
       await Promise.all(added.map((h) => this.loadChat(h)));
     }
@@ -354,13 +362,22 @@ export class HostClient {
     this.env.clearTimeout(this.reconnectTimer);
     const query = new URLSearchParams({ stream: this.streamId });
     if (this.chatsOnScreen.length) query.set("chats", this.chatsOnScreen.join(","));
+    // A new EventSource sends no Last-Event-ID, so the URL says where the state stands: within the host's ring the
+    // stream replays what was missed (a page shown again, a watchdog reconnect) instead of a resync rereading everything.
+    const { bootId, lastSeq } = this.store.get();
+    if (bootId !== undefined) query.set("since", `${bootId}:${lastSeq}`);
+    this.sourceChats = [...this.chatsOnScreen];
     const source = new this.env.EventSource(`/api/events?${query}`);
     this.source = source;
     this.armWatchdog();
+    /** The host's latest `seq` when this stream (last) connected. */
+    let helloSeq = 0;
     source.addEventListener("hello", (e) => {
       if (this.source !== source) return;
       this.armWatchdog();
-      void this.onHello(JSON.parse(e.data));
+      const hello = JSON.parse(e.data);
+      helloSeq = hello.seq;
+      void this.onHello(hello);
     });
     source.addEventListener("host", (e) => {
       if (this.source !== source) return;
@@ -376,6 +393,9 @@ export class HostClient {
     source.addEventListener("resync", () => {
       if (this.source !== source) return;
       this.armWatchdog();
+      // No replay follows: the stream carries only events after its hello, and the snapshots read now reflect those
+      // before, so the state stands at the hello's seq (where the next reconnect asks to resume).
+      this.store.set((s) => (helloSeq > s.lastSeq ? { ...s, lastSeq: helloSeq } : s));
       void this.resync();
     });
     // Heartbeats are comments EventSource never surfaces; an open stream resets the watchdog through any frame, and
@@ -465,24 +485,37 @@ export class HostClient {
     // A new boot without a `resync` frame (cannot happen with a correct host) still invalidates every seq we hold.
     if (known !== undefined && known !== hello.bootId) await this.resync(hello.bootId);
     else if (known === undefined) this.store.set((s) => ({ ...s, bootId: hello.bootId }));
+    else if (this.globalStale) await this.resync();
     else await this.resubscribe();
   }
 
   /**
-   * The browser retries a dropped EventSource on its own, with the URL it first connected with: a stream opened before
-   * a chat was on screen comes back without it (and the replay only covers the topics a stream holds). Subscribe again
-   * and read the chats afresh, so a reconnect never leaves a transcript silently stale.
+   * A stream came back on the same boot. The chats its URL held need nothing: its `Last-Event-ID` (the browser's own
+   * retry) or `since` replays their gap, or the host sends `resync` when it cannot. The browser retries with the URL it
+   * first connected with, though, so a chat put on screen after that comes back without its topic: subscribe again and
+   * read it afresh, as any chat without a current snapshot, so a reconnect never leaves a transcript silently stale.
    */
   private async resubscribe(): Promise<void> {
-    if (!this.chatsOnScreen.length || this.resyncing) return;
+    if (this.resyncing) return;
     const handles = [...this.chatsOnScreen];
-    for (const handle of handles) this.pending.set(`chat:${handle}`, []);
+    const held = this.sourceChats;
+    const { chats } = this.store.get();
+    const stale = handles.filter((h) => !held.includes(h) || !chats[h]?.session || chats[h]?.error !== undefined || this.unheld.has(h));
+    if (!stale.length) return;
+    for (const handle of stale) this.pending.set(`chat:${handle}`, []);
+    let subscribed = true;
     try {
-      await this.send("subscribe", JSON.stringify({ stream: this.streamId, chats: handles }), undefined);
+      if (handles.some((h) => !held.includes(h))) await this.send("subscribe", JSON.stringify({ stream: this.streamId, chats: handles }), undefined);
     } catch {
       // The stream is down again: the next hello does this once more.
+      subscribed = false;
     }
-    await Promise.all(handles.map((handle) => this.loadChat(handle)));
+    // Read after the stream holds them, unless the subscribe failed for a chat outside its URL.
+    for (const handle of stale) {
+      if (subscribed || held.includes(handle)) this.unheld.delete(handle);
+      else this.unheld.add(handle);
+    }
+    await Promise.all(stale.map((handle) => this.loadChat(handle)));
   }
 
   // ── Events ─────────────────────────────────────────────────────────────────
@@ -558,6 +591,7 @@ export class HostClient {
     this.pending.set("global", this.pending.get("global") ?? []);
     const seqs: Partial<Record<GlobalKey, number>> = {};
     const values: Partial<GlobalState> = {};
+    let failed = false;
     await Promise.all(
       GLOBAL_READS.map(async ({ key, read }) => {
         try {
@@ -565,10 +599,12 @@ export class HostClient {
           (values as Record<string, unknown>)[key] = result.value;
           seqs[key] = result.seq ?? base;
         } catch {
-          // Keep the old value for this key; the next resync retries.
+          // Keep the old value for this key; the next resync (at the latest on the next hello) retries.
+          failed = true;
         }
       }),
     );
+    this.globalStale = failed;
     const buffered = this.pending.get("global") ?? [];
     this.pending.delete("global");
     this.store.set((s) => ({ ...s, global: { ...s.global, ...values } }));

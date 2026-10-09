@@ -305,6 +305,258 @@ describe("stream", () => {
     expect(t.calls.filter((c) => c.path === "subscribe").at(-1)!.body.chats).toEqual(["abc123"]);
   });
 
+  it("asks to resume where its state stands: nothing before the first hello, the hello's seq after a resync", async () => {
+    const t = setup(reads());
+    t.client.start();
+    expect(t.src().url).not.toContain("since=");
+    t.src().hello("b1", 40);
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    expect(t.client.store.get().lastSeq).toBe(40);
+    t.src().host(41, "global", { kind: "settings", settings: { rev: 2, theme: "a" } });
+    t.wake();
+    expect(t.src().url).toContain("since=b1%3A41");
+    // Replayed by a stream that resumes: the hello's seq is not where the state stands, the events are.
+    t.src().hello("b1", 45);
+    t.src().host(42, "global", { kind: "settings", settings: { rev: 3, theme: "b" } });
+    expect(t.client.store.get().global.settings).toEqual({ rev: 3, theme: "b" });
+  });
+
+  it("rereads no chat the stream's URL held when it comes back on the same boot", async () => {
+    const t = setup(reads());
+    t.client.start();
+    t.src().hello("b1", 4);
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    await t.client.setChats(["abc123"]);
+    const ready = (sessionName: string) => ({ kind: "ready", state: { isStreaming: false, sessionId: "s1", sessionName } });
+    t.src().host(11, "chat:abc123", ready("one"));
+    const count = (path: string) => t.calls.filter((c) => c.path === path).length;
+    const reads0 = t.calls.length;
+    // Shown again: a new stream, with the chat in its URL and where the state stands.
+    t.wake();
+    expect(t.src().url).toContain("chats=abc123");
+    expect(t.src().url).toContain("since=b1%3A11");
+    t.src().hello("b1", 12);
+    await flush();
+    t.src().host(12, "chat:abc123", ready("two"));
+    expect(t.client.store.get().chats.abc123!.seq).toBe(12);
+    expect(t.client.store.get().chats.abc123!.session!.name).toBe("two");
+    // The browser retries that stream itself (same URL, Last-Event-ID): nothing to read either.
+    t.src().hello("b1", 12);
+    await flush();
+    expect(t.calls).toHaveLength(reads0);
+    expect(count("chat.snapshot")).toBe(1);
+  });
+
+  it("rereads only a chat put on screen after the stream opened when the browser retries it", async () => {
+    const t = setup(reads());
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    await t.client.setChats(["abc123"]);
+    t.wake();
+    t.src().hello();
+    await flush();
+    await t.client.setChats(["abc123", "def456"]);
+    const before = t.calls.length;
+    t.src().hello();
+    await flush();
+    const after = t.calls.slice(before);
+    expect(after.filter((c) => c.path === "chat.snapshot").map((c) => c.body.handle)).toEqual(["def456"]);
+    expect(after.filter((c) => c.path === "subscribe").map((c) => c.body.chats)).toEqual([["abc123", "def456"]]);
+    // Subscribed and read afresh: current on the next stream.
+    const settled = t.calls.length;
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(t.calls).toHaveLength(settled);
+  });
+
+  it("rereads every chat on screen when the host restarted", async () => {
+    const t = setup(reads());
+    t.client.start();
+    t.src().hello("b1");
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    await t.client.setChats(["abc123", "def456"]);
+    t.wake();
+    t.src().hello("b1");
+    await flush();
+    const before = t.calls.length;
+    t.src().hello("b2", 3); // the stream reaches a new boot
+    t.src().emit("resync", { reason: "new_boot" });
+    await flush();
+    const after = t.calls.slice(before);
+    expect(after.filter((c) => c.path === "chat.snapshot").map((c) => c.body.handle).sort()).toEqual(["abc123", "abc123", "def456", "def456"]);
+    expect(after.some((c) => c.path === "settings.get")).toBe(true);
+    expect(t.client.store.get().bootId).toBe("b2");
+    expect(t.client.store.get().lastSeq).toBe(3);
+  });
+
+  it("rereads a chat whose snapshot failed, or whose subscribe did, on the next hello", async () => {
+    let snapshotFails = 1;
+    let subscribeFails = 0;
+    const read = reads();
+    const t = setup((call) => {
+      if (call.path === "chat.snapshot" && call.body.handle === "abc123" && snapshotFails-- > 0) return fail(404, "not_found");
+      if (call.path === "subscribe" && subscribeFails-- > 0) return fail(404, "not_found");
+      return read(call);
+    });
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    await t.client.setChats(["abc123"]);
+    expect(t.client.store.get().chats.abc123!.error).toBeDefined();
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(t.client.store.get().chats.abc123!.session).toBeDefined();
+    expect(t.client.store.get().chats.abc123!.error).toBeUndefined();
+    subscribeFails = 1;
+    await t.client.setChats(["abc123", "def456"]);
+    const snapshots = () => t.calls.filter((c) => c.path === "chat.snapshot").map((c) => c.body.handle);
+    const before = snapshots().length;
+    const subscribes = () => t.calls.filter((c) => c.path === "subscribe").length;
+    const subscribed = subscribes();
+    t.wake(); // both chats in the URL now, but the stream missed def456's events until then
+    t.src().hello();
+    await flush();
+    expect(snapshots().slice(before)).toEqual(["def456"]);
+    expect(subscribes()).toBe(subscribed); // the URL holds both
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(snapshots()).toHaveLength(before + 1);
+    // Off screen and back while the stream holds it: read afresh then, so nothing is missing on the next hello.
+    subscribeFails = 1;
+    await t.client.setChats(["abc123", "def456", "fed987"]);
+    await t.client.setChats(["abc123", "def456"]);
+    await t.client.setChats(["abc123", "def456", "fed987"]);
+    const settled = snapshots().length;
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(snapshots()).toHaveLength(settled);
+  });
+
+  it("rereads a chat put on screen while reconnecting, and one whose reread failed, on the next hello", async () => {
+    let snapshotFails = 0;
+    const read = reads();
+    const t = setup((call) => (call.path === "chat.snapshot" && snapshotFails-- > 0 ? fail(404, "not_found") : read(call)));
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    await t.client.setChats(["abc123"]);
+    t.timers.find((x) => x.ms === 35_000)!.fn(); // the watchdog: a new stream, reconnecting meanwhile
+    await t.client.setChats(["abc123", "def456"]);
+    const snapshots = () => t.calls.filter((c) => c.path === "chat.snapshot").map((c) => c.body.handle);
+    expect(snapshots()).toEqual(["abc123"]);
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(snapshots()).toEqual(["abc123", "def456"]);
+    // A browser retry of a stream opened before def456: its reread fails and keeps the old transcript, marked.
+    await t.client.setChats(["abc123", "def456", "fed987"]);
+    snapshotFails = 1;
+    t.src().hello();
+    await flush();
+    expect(snapshots().slice(3)).toEqual(["fed987"]);
+    expect(t.client.store.get().chats.fed987!.session).toBeDefined();
+    expect(t.client.store.get().chats.fed987!.error).toBeDefined();
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(snapshots().slice(4)).toEqual(["fed987"]);
+    expect(t.client.store.get().chats.fed987!.error).toBeUndefined();
+  });
+
+  it("marks a chat the stream lacks when subscribing on a browser retry fails, and only that one", async () => {
+    let snapshotFails = 0;
+    let subscribeFails = 0;
+    const read = reads();
+    const t = setup((call) => {
+      if (call.path === "chat.snapshot" && snapshotFails-- > 0) return fail(404, "not_found");
+      if (call.path === "subscribe" && subscribeFails-- > 0) return fail(404, "not_found");
+      return read(call);
+    });
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    snapshotFails = 1;
+    await t.client.setChats(["abc123"]);
+    t.wake(); // a stream with abc123 in its URL; abc123 holds no snapshot yet
+    await t.client.setChats(["abc123", "def456"]);
+    const snapshots = () => t.calls.filter((c) => c.path === "chat.snapshot").map((c) => c.body.handle);
+    const before = snapshots().length;
+    subscribeFails = 1;
+    t.src().hello();
+    await flush();
+    expect(snapshots().slice(before).sort()).toEqual(["abc123", "def456"]);
+    // abc123 is in the URL: current now. def456 is not, and the subscribe failed: the stream misses its events.
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(snapshots().slice(before + 2)).toEqual(["def456"]);
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(snapshots().slice(before + 3)).toEqual([]);
+  });
+
+  it("leaves the chats to a resync in progress when a stream comes back meanwhile", async () => {
+    const waiting: (() => void)[] = [];
+    const read = reads();
+    const t = setup((call) => (call.path === "chat.snapshot" ? new Promise((resolve) => waiting.push(() => resolve(read(call)))) : read(call)));
+    t.client.start();
+    t.src().hello();
+    await flush();
+    void t.client.setChats(["abc123"]);
+    t.src().emit("resync", { reason: "no_id" });
+    t.wake();
+    t.src().hello();
+    await flush();
+    while (waiting.length) {
+      waiting.shift()!();
+      await flush();
+    }
+    // The chat's own read and the resync's; the new stream's hello adds none.
+    expect(t.calls.filter((c) => c.path === "chat.snapshot")).toHaveLength(2);
+    expect(t.client.store.get().chats.abc123!.session).toBeDefined();
+  });
+
+  it("resyncs on the next hello when a global read failed", async () => {
+    let fails = 1;
+    const read = reads();
+    const t = setup((call) => (call.path === "settings.get" && fails-- > 0 ? fail(404, "not_found") : read(call)));
+    t.client.start();
+    t.src().hello();
+    await flush();
+    t.src().emit("resync", { reason: "no_id" });
+    await flush();
+    expect(t.client.store.get().global.settings).toBeUndefined();
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(t.client.store.get().global.settings).toEqual(settings);
+    const before = t.calls.length;
+    t.wake();
+    t.src().hello();
+    await flush();
+    expect(t.calls).toHaveLength(before);
+  });
+
   it("carries the chats on screen in the URL when it reconnects", async () => {
     const t = setup(reads());
     t.client.start();

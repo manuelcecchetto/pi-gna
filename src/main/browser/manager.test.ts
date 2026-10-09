@@ -167,14 +167,16 @@ describe("BrowserManager stills", () => {
     manager.staleStill(tab);
     await manager.still();
     expect(wc.capturePage).toHaveBeenCalledTimes(2);
+    // The clock stands still from this capture on, so a slow machine does not age the still between the steps.
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
     manager.setLayout(pane(700));
     await manager.still();
     expect(wc.capturePage).toHaveBeenCalledTimes(3);
-    const now = Date.now();
-    vi.spyOn(Date, "now").mockReturnValue(now + 2999);
+    clock.mockReturnValue(now + 2999);
     await manager.still();
     expect(wc.capturePage).toHaveBeenCalledTimes(3);
-    vi.spyOn(Date, "now").mockReturnValue(now + 3001);
+    clock.mockReturnValue(now + 3000);
     await manager.still();
     expect(wc.capturePage).toHaveBeenCalledTimes(4);
   });
