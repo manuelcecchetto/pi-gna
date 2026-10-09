@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- New chats get a title from their first message, written by a title model you choose in Settings > Models > Chat titles.
+- The phone's context meter stays current: it shows on a chat opened idle, on one that finished while the phone was away, and during a run (it updates after every turn and compaction), as on the desktop.
 - A chat that finished while you were away and that you then read on the phone no longer stays marked unread (blue) in the desktop sidebar.
 - Agents can look at your other chats: `threads_list` lists the project's chats (or every project's) newest first, marking the ones open or running now, and `thread_read` reads one's latest turns, prompts and replies in full with each tool call on one line, paging back with `before`. Ask a chat what another one found, or to pick up where it stopped. `thread_send` messages another chat of the same project: the message shows as "From thread" in that chat, its agent is told it came from another chat and not from you, an idle chat starts on it, a running one gets it after its current step or when its run ends (the sender picks), and a closed one is opened. The call returns at once; the sender reads the answer later with `thread_read`.
 
