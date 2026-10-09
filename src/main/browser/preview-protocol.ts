@@ -5,6 +5,8 @@ import { createReadStream } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { Readable } from "node:stream";
+import { promisify } from "node:util";
+import { brotliDecompress } from "node:zlib";
 import { session } from "electron";
 import { PREVIEW_SCHEME, extensionOf, kindFor, parsePreviewUrl, servedAs, type PreviewKind } from "../../shared/preview";
 import { PARTITION } from "./manager";
@@ -130,12 +132,17 @@ function baseHeaders(type: string): Headers {
   return new Headers({ "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" });
 }
 
+const inflate = promisify(brotliDecompress);
+
+/** The viewer's fonts are stored brotli-compressed as `<name>.ttf.br` (vite.preview.config.ts) and served as the font. */
+const readViewerFile = async (file: string): Promise<Buffer> => (file.endsWith(".ttf") ? inflate(await readFile(`${file}.br`)) : readFile(file));
+
 async function serveViewer(viewerDir: string, relative: string, head: boolean): Promise<Response> {
   const asset = relative.slice(VIEWER_PREFIX.length + 1) || "index.html";
   const file = confine(viewerDir, asset);
   if (!file) return notFound();
   try {
-    let body: string | Buffer = await readFile(file);
+    let body: string | Buffer = await readViewerFile(file);
     if (asset === "index.html") body = body.toString("utf8").replaceAll('="./', `="/${VIEWER_PREFIX}/`);
     const headers = baseHeaders(asset === "index.html" ? "text/html; charset=utf-8" : contentTypeFor(asset));
     headers.set("content-security-policy", VIEWER_CSP);

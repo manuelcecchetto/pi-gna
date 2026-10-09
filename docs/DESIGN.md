@@ -301,6 +301,10 @@ loads `pigna-file://<token>/<path>`. Full decisions, spike evidence and limits: 
   `src/preview` (separate Vite build, `vite.preview.config.ts` -> `out/preview`; Office files paint on canvas with the
   BetterOffice wasm engines, docs/FILE_PREVIEW.md "Office formats"),
   which fetches the bytes from the same origin with `?raw=1`. Rendered/Raw toggles per tab (`?view=raw`).
+- **Viewer weight**: the viewer's TrueType fonts are stored brotli-compressed (`<name>.ttf.br`) and the handler inflates
+  them to the original bytes. BetterOffice's DOCX page mirror (an invisible DOM copy of every glyph) is left empty, and its
+  canvas repaints when the display density changes; both are build-time rewrites in `vite.preview.config.ts` that fail
+  the build when the dependency's code changes (docs/FILE_PREVIEW.md, Implementation).
 - **Security**: file contents are untrusted. The viewer gets a strict CSP (`script-src 'self' 'wasm-unsafe-eval'`, no network), no preload
   and no Node; markdown goes through DOMPurify; SVG is shown through `<img>`. The handler realpath-confines every request
   to its root, denies dotfiles and directories, and `BrowserManager` cancels navigation and popups to the scheme from any

@@ -325,6 +325,16 @@ All three read the whole file (`PREVIEW_LIMITS.office`, 25 MB) after the same ch
   - BO gives the full open after the preview **10 s**, then replaces the view with "Failed to Load Document"; the limit
     is not a prop. b3 takes 7-9 s idle and 24.5 s on a loaded machine (load average 14), so it failed there.
     `vite.preview.config.ts` raises it to 2 minutes with a build-time rewrite that fails the build when the code changes.
+  - BO keeps an invisible DOM copy of each page near the viewport for screen readers, one positioned element per glyph
+    (the page mirror). b1 held 237k DOM nodes after opening and about 1M after a scroll through its 44 pages, which took
+    4.4 s of main thread (0.9 s without the copies). The text layer already gives screen readers and the agent the whole
+    text, so the same rewrites (`DOCX_REACT`) leave the copies empty: about 220 nodes, the same pixels.
+  - BO's canvas renderer reads `devicePixelRatio` when it paints but did not repaint when only the density changed (the
+    window moved between a Retina and a 1x display, or the page zoom changed): pages stayed blurry or over-sampled until
+    the zoom changed. A third rewrite adds `useDensity()` (`src/preview/density.ts`: a `(resolution: Ndppx)` query
+    re-armed after each change, plus resize) to its paint effect. Checked with CDP density overrides 2→1→3→2; CDP fires
+    the query only for the first change, so the later ones were followed by a resize. No second display was at hand,
+    so a physical move between displays is untested.
   - The comments and changes sidebar stays closed: it needs a column beside the page that a preview pane does not have
     (tried: with it open the page shifts left out of view). Tracked changes show inline on the pages.
   - **Agent text**: the DOM mirror is per glyph and only near the viewport, and `readParagraphs` (35 ms on b3) leaves out
@@ -348,6 +358,18 @@ All three read the whole file (`PREVIEW_LIMITS.office`, 25 MB) after the same ch
   scroll position and laid out again for 6.9 s. `needsReload` (`preview-tabs.ts`) now shows the tab as it is unless the
   view changes, a line is asked for or the page crashed: 43 ms, same page, scroll kept. This covers chat links, the agent's
   `browser_open` and Open file.
+- **Fonts on disk**: the 65 Office faces and pdf.js's 4 Liberation faces are stored brotli-compressed as `<name>.ttf.br`
+  (15.4 to 6.3 MB) and `serveViewer` inflates them to the original bytes (about 1.3 ms per face, off the main thread).
+  Not WOFF2: the engines' wasm (ttf-parser, rustybuzz) reads only TrueType, `@betteroffice/fonts` checks each face's
+  byte length, Chromium 152 has no brotli `DecompressionStream`, and a custom-protocol response is not content-decoded,
+  so the bytes must reach the page as the original font. WOFF2 of the Office faces would be 5.2 MB instead of 6.0. The build compresses each face once
+  and keeps it in `node_modules/.cache/pigna-preview-fonts` (about 9 s the first time). `out/preview` went from 65.0
+  to 55.7 MB, and a ULFO image of it from 26.6 to 25.0 MB.
+- **What a DOCX open loads**: the DOCX view chunk (`docx-*.js`, 1.41 MB; Rollup used to name it after `HyperlinkDialog`,
+  whose dialog shares it), the resident worker, `docx_layout` and `docx_edit`, which is the engine, not an editor
+  extra. `docx_edit` (20 MB) is read three times per open: the page, the resident worker and the text export worker.
+  The editor dialogs, `docx_parse` (TIFF images, saving) and `opc` are never fetched. Wasm already compiles while it
+  streams (`instantiateStreaming`, served as `application/wasm`).
 - **Caching, measured and dropped**: `codeCache: true` on the scheme plus `immutable` on `__viewer/assets/*` filled the
   JS code cache, but the HTTP cache stays empty for custom-protocol responses and the wasm code cache never filled. d3's
   first page stayed at 0.54-0.64 s (0.57-0.62 s before). Fetching the 20 MB edit wasm takes about 25 ms and

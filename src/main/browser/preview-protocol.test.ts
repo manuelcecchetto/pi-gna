@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliCompressSync } from "node:zlib";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ session: {}, app: { getPath: () => "/tmp" } }));
@@ -79,6 +80,9 @@ describe("handlePreview", () => {
   mkdirSync(viewer);
   writeFileSync(join(viewer, "index.html"), '<script src="./a.js"></script>');
   writeFileSync(join(viewer, "a.js"), "1");
+  mkdirSync(join(viewer, "assets"));
+  const font = Buffer.from(Array.from({ length: 3000 }, (_, i) => (i * 7) % 256));
+  writeFileSync(join(viewer, "assets", "Face-x1.ttf.br"), brotliCompressSync(font));
   mkdirSync(join(root, "project"));
   writeFileSync(join(root, "project", "a.pdf"), "0123456789");
   writeFileSync(join(root, "project", "a.md"), "# hi");
@@ -119,6 +123,14 @@ describe("handlePreview", () => {
     expect((await get(`${token}/a.md?raw=1`)).headers.get("content-security-policy")).toBeNull();
     expect(await (await get(`${token}/a.md?raw=1`)).text()).toBe("# hi");
     expect(await (await get(`${token}/__viewer/a.js`)).text()).toBe("1");
+  });
+  it("serves the viewer's fonts inflated from their brotli copies", async () => {
+    const response = await get(`${token}/__viewer/assets/Face-x1.ttf`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("font/ttf");
+    expect(Buffer.from(await response.arrayBuffer()).equals(font)).toBe(true);
+    expect((await get(`${token}/__viewer/assets/Face-x1.ttf.br`)).headers.get("content-type")).toBe("application/octet-stream");
+    expect((await get(`${token}/__viewer/assets/Missing.ttf`)).status).toBe(500);
   });
   it("opens a PDF in the viewer (pdf.js), not Chromium's PDF plugin", async () => {
     const page = await get(`${token}/a.pdf`);
