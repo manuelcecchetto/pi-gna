@@ -1,9 +1,9 @@
 // pi-gna's way into pi's logins, the ones pi's /login does. main (src/main/pi-auth.ts) runs this file with the `node`
 // that runs pi, which strips its types: pi's SDK needs a newer Node than Electron's and has native modules. argv[2] is
 // the folder of pi's package. One JSON record per line each way (AuthRequest in, AuthReply out); stdin closing ends it.
-// With pi-claude-bridge installed, its claude-bridge provider signs in with Claude Code's own login (`claude auth`).
+// claude-bridge signs in with Claude Code's own login (`claude auth`), installing pi-claude-bridge for pi first.
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -48,6 +48,10 @@ interface Login {
 const CANCELLED = /^(Login cancelled|This operation was aborted)$/;
 /** CLAUDE_BRIDGE in src/shared/auth.ts (only its types are imported here). */
 const CLAUDE_BRIDGE = "claude-bridge";
+/** What claude-bridge's sign-in installs when pi has no pi-claude-bridge. Unpinned, unlike the Plugins catalog's
+ * packages: the bridge has to keep up with Claude Code, and pi pins a versioned npm source, so `pi update --extensions`
+ * would never move it. */
+const BRIDGE_SOURCE = "npm:pi-claude-bridge";
 
 const send = (reply: AuthReply) => process.stdout.write(`${JSON.stringify(reply)}\n`);
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -140,6 +144,8 @@ async function logout(sdk: Sdk, provider: string): Promise<void> {
 // ── Claude Code, for pi-claude-bridge ────────────────────────────────────────
 // The bridge runs Claude models through Claude Code (the Agent SDK), so Claude Code's own login (its keychain item,
 // shared by every Claude Code on this Mac) is what it uses, never pi's auth.json. Sign in and out run `claude auth`.
+// It is how pi-gna offers Claude plans, so its card shows without the bridge too: signing in installs it first
+// (`pi install`, which brings the Agent SDK's Claude Code along) and, on a Max plan, tells it so.
 
 interface ClaudeStatus {
   loggedIn?: boolean;
@@ -183,10 +189,18 @@ function readJson(file: string): Record<string, unknown> | undefined {
   }
 }
 
-/** claude-bridge as an account to sign in to, with Claude Code's login. */
+/** claude-bridge as an account to sign in to, with Claude Code's login; one that installs the bridge while pi has none.
+ * None from a pi too old to list its packages, where an installed bridge would not show. */
 async function claudeProvider(sdk: Sdk): Promise<AuthProvider | undefined> {
+  if (!sdk.DefaultPackageManager) return undefined;
   const bridge = claudeBridge(sdk);
-  if (!bridge) return undefined;
+  if (!bridge) {
+    return {
+      id: CLAUDE_BRIDGE,
+      name: "Claude Code",
+      oauth: { name: "Claude Code (Claude subscription)", label: "Installs pi-claude-bridge for pi, then signs in with Claude Code's own login", subscription: true },
+    };
+  }
   const status = await claudeStatus(claudeExecutable(sdk, bridge));
   const signedIn: AuthStatus | undefined = status?.loggedIn
     ? status.authMethod === "claude.ai"
@@ -217,10 +231,60 @@ function claudeStatus(claude: string): Promise<ClaudeStatus | undefined> {
 
 /** `claude auth login`, as in a terminal: Claude Code opens its sign-in page itself (which calls back to a local port)
  * and prints a fallback link, whose page shows a code to paste instead. */
-function claudeLogin(sdk: Sdk, id: string, current: Login, prompt: (question: SdkPrompt) => Promise<string>): Promise<void> {
-  const bridge = claudeBridge(sdk);
-  if (!bridge) return Promise.reject(new Error("pi-claude-bridge is not installed"));
+async function claudeLogin(sdk: Sdk, id: string, current: Login, prompt: (question: SdkPrompt) => Promise<string>): Promise<void> {
+  let bridge = claudeBridge(sdk);
+  if (!bridge) {
+    send({ id, update: { kind: "event", event: { type: "progress", message: "Installing pi-claude-bridge for pi (a minute or so)…" } } });
+    await installBridge(current);
+    bridge = claudeBridge(sdk);
+    if (!bridge) throw new Error(`pi installed ${BRIDGE_SOURCE} but does not list it in its settings`);
+  }
   const claude = claudeExecutable(sdk, bridge);
+  await claudeAuthLogin(claude, id, current, prompt);
+  await notePlan(sdk, claude);
+}
+
+/** `pi install` of the bridge, into pi's user settings, with the pi whose SDK this is; cancelling the login stops it. */
+function installBridge(current: Login): Promise<void> {
+  const bin = (readJson(join(root, "package.json"))?.bin as { pi?: unknown } | undefined)?.pi;
+  const cli = join(root, typeof bin === "string" ? bin : join("dist", "bundle", "cli.js"));
+  return new Promise((resolve, reject) => {
+    // pi installs with npm, which sits beside the node that runs pi.
+    const env = { ...process.env, PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(":") };
+    const child = spawn(process.execPath, [cli, "install", BRIDGE_SOURCE], { stdio: ["ignore", "pipe", "pipe"], env });
+    children.add(child);
+    const kill = () => child.kill();
+    current.controller.signal.addEventListener("abort", kill, { once: true });
+    let output = "";
+    const collect = (chunk: Buffer) => (output = (output + chunk.toString()).slice(-2000));
+    child.stdout.on("data", collect);
+    child.stderr.on("data", collect);
+    const finish = (error?: Error) => {
+      children.delete(child);
+      current.controller.signal.removeEventListener("abort", kill);
+      if (error) reject(error);
+      else resolve();
+    };
+    child.on("error", (error) => finish(new Error(`pi-gna could not run pi to install pi-claude-bridge: ${error.message}`)));
+    child.on("close", (code) =>
+      finish(code === 0 ? undefined : new Error(`Installing pi-claude-bridge failed: ${lastLine(output.replace(/\x1b\[[\d;?]*[A-Za-z]/g, "")) || `exit code ${code ?? "?"}`}`)),
+    );
+  });
+}
+
+/** A Max plan in claude-bridge.json, which gives Opus its 1M context; a plan already set there stays. */
+async function notePlan(sdk: Sdk, claude: string): Promise<void> {
+  const status = await claudeStatus(claude);
+  if (status?.authMethod !== "claude.ai" || status.subscriptionType !== "max") return;
+  const file = join(sdk.getAgentDir(), "claude-bridge.json");
+  const config = readJson(file) ?? {};
+  const provider = config.provider && typeof config.provider === "object" ? (config.provider as Record<string, unknown>) : {};
+  if (provider.plan !== undefined) return;
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify({ ...config, provider: { ...provider, plan: "max" } }, null, 2)}\n`);
+}
+
+function claudeAuthLogin(claude: string, id: string, current: Login, prompt: (question: SdkPrompt) => Promise<string>): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(claude, ["auth", "login", "--claudeai"], { stdio: ["pipe", "pipe", "pipe"] });
     children.add(child);

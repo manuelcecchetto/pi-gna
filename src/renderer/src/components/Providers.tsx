@@ -1,13 +1,13 @@
 // The Settings page's Providers section: sign in to pi's model providers the way pi's /login does. main runs each
 // login with pi's own SDK (src/main/pi-auth.ts) and opens sign-in pages in the browser; what a login asks (a choice, a
 // pasted code, an API key) is answered in a panel under the card or row that started it. Leaving the section cancels.
-// With pi-claude-bridge, Claude plans sign in with Claude Code's own login instead of pi's.
+// Claude plans sign in with Claude Code's own login (claude-bridge, installed by that sign-in if missing), not pi's.
 import { Check, Copy, ExternalLink, LoaderCircle, Search, TriangleAlert, X } from "./icons";
 import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
 import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, searchProviders, splitProviders, type StatusTone } from "../../../shared/auth";
 import { tildify } from "../lib/format";
 import { accountLabel, answered, type LoginView, logoFor, startLogin, updateLogin } from "../lib/login";
-import { remoteError, toast } from "../state/app";
+import { modelsChanged, remoteError, toast } from "../state/app";
 import { CodeText } from "./CodeText";
 import { Button, ConfirmButton } from "./SettingsControls";
 
@@ -38,6 +38,7 @@ export function ProvidersSection({ simple = false }: { simple?: boolean }) {
     if (running.current !== token) return;
     running.current = 0;
     if (result.ok) {
+      modelsChanged();
       setLogin(null);
       toast(method === "oauth" ? `Signed in to ${provider.name}. New chats can use its models.` : `Saved the ${provider.apiKey?.name ?? "API key"}. New chats can use ${provider.name}'s models.`);
     } else if (result.cancelled) setLogin(null);
@@ -56,6 +57,7 @@ export function ProvidersSection({ simple = false }: { simple?: boolean }) {
   const signOut = async (provider: AuthProvider) => {
     try {
       await window.studio.auth.logout(provider.id);
+      modelsChanged();
       toast(provider.stored === "oauth" ? `Signed out of ${provider.name}` : `Removed the saved ${provider.apiKey?.name ?? "API key"}`);
     } catch (error) {
       toast(remoteError(error), "error");
@@ -126,8 +128,8 @@ export function ProvidersSection({ simple = false }: { simple?: boolean }) {
           <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-warn/40 bg-warn/5 px-3 py-2 text-[12.5px]">
             <TriangleAlert size={14} className="shrink-0 text-warn" />
             <p className="min-w-0 flex-1 text-muted">
-              pi also has its own Claude login saved, for its <span className="font-mono text-[12px]">anthropic</span> provider.{" "}
-              <span className="whitespace-nowrap font-mono text-[12px]">claude-bridge</span> uses Claude Code's login above, the safer way to use a Claude plan.
+              pi has its own Claude login saved, for its <span className="font-mono text-[12px]">anthropic</span> provider.{" "}
+              <span className="whitespace-nowrap font-mono text-[12px]">claude-bridge</span> uses Claude Code's login instead, the safer way to use a Claude plan.
             </p>
             <ConfirmButton label="Sign out" confirm="Sign out?" title="Remove pi's own Anthropic login from auth.json" onConfirm={() => void signOut(piClaude)} />
           </div>

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Claude plans sign in with one click: the Claude Code card under Providers (Settings and Setup) shows on every install, and when pi has no pi-claude-bridge it installs it first (unpinned, so `pi update --extensions` keeps it current), then signs in with Claude Code's own login (and, on a Max plan, sets the bridge's plan so Opus gets 1M context). pi's own Anthropic account login is no longer offered; the Anthropic API key stays. Model pickers list the new provider's models from the next chat on, without a restart.
+
 ## 0.9.2 - 2026-10-09
 
 - New wallpapers: Pigna painted into Monet's Impression, Sunrise, Van Gogh's The Starry Night and Hokusai's The Great Wave, at dusk for the dark theme and by day for the light one. They replace the painted 🤌 wallpapers. Sunrise is the new default, and a removed wallpaper picked in Settings or named in a project theme falls back to it.

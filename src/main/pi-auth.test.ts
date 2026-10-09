@@ -9,14 +9,16 @@ vi.mock("./log", () => ({ log: { info: vi.fn(), warn: vi.fn() } }));
 
 // A stand-in for pi's SDK: the ModelRuntime calls resources/pi-auth.mts makes, with credentials in <agent>/auth.json.
 // acme signs in with an account (browser, which wins against the pasted code, or a pasted code); beta takes a key.
+// pi-claude-bridge counts as installed while it is in <agent>/npm.
 const FAKE_SDK = `
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 export const getAgentDir = () => process.env.FAKE_AGENT_DIR;
 export const SettingsManager = { create: () => ({ getOrCreateDeviceId: () => "device-1" }) };
 export class DefaultPackageManager {
   listConfiguredPackages() {
-    return process.env.FAKE_BRIDGE ? [{ source: "npm:pi-claude-bridge", scope: "user", installedPath: process.env.FAKE_BRIDGE }] : [];
+    const bridge = join(getAgentDir(), "npm", "node_modules", "pi-claude-bridge");
+    return existsSync(join(bridge, "package.json")) ? [{ source: "npm:pi-claude-bridge", scope: "user", installedPath: bridge }] : [];
   }
 }
 const file = () => join(getAgentDir(), "auth.json");
@@ -66,6 +68,20 @@ export class ModelRuntime {
 }
 `;
 
+// A stand-in for pi's CLI: \`pi install\` copies the package staged in FAKE_BRIDGE_STAGE into <agent>/npm, logging its
+// arguments to FAKE_PI_LOG, or fails as npm does with FAKE_PI_FAIL.
+const FAKE_PI = `#!/usr/bin/env node
+import { appendFileSync, cpSync } from "node:fs";
+import { join } from "node:path";
+appendFileSync(process.env.FAKE_PI_LOG, process.argv.slice(2).join(" ") + "\\n");
+if (process.env.FAKE_PI_FAIL) {
+  process.stderr.write("npm error code E404\\nnpm error 404 Not Found - pi-claude-bridge\\n");
+  process.exit(1);
+}
+cpSync(process.env.FAKE_BRIDGE_STAGE, join(process.env.FAKE_AGENT_DIR, "npm", "node_modules", "pi-claude-bridge"), { recursive: true });
+process.stdout.write("Installed npm:pi-claude-bridge\\n");
+`;
+
 // A stand-in for Claude Code's `claude auth`, signed in while FAKE_CLAUDE_STATE exists. Its login prints the link as
 // Claude Code 2.1 does (an OSC 8 hyperlink), takes a pasted code#state (anything else is "invalid"), or finishes by
 // itself, like the browser callback, with FAKE_CLAUDE_CALLBACK.
@@ -110,7 +126,7 @@ beforeEach(() => {
   mkdirSync(join(dir, "pkg", "dist", "bundle"), { recursive: true });
   writeFileSync(join(dir, "pkg", "package.json"), JSON.stringify({ name: "@earendil-works/pi-coding-agent", type: "module" }));
   writeFileSync(join(dir, "pkg", "dist", "index.js"), FAKE_SDK);
-  writeFileSync(join(dir, "pkg", "dist", "bundle", "cli.js"), "#!/usr/bin/env node\n");
+  writeFileSync(join(dir, "pkg", "dist", "bundle", "cli.js"), FAKE_PI);
   chmodSync(join(dir, "pkg", "dist", "bundle", "cli.js"), 0o755);
   mkdirSync(join(dir, "agent"));
   writeFileSync(join(dir, "agent", "auth.json"), "{}");
@@ -124,15 +140,14 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** Installs pi-claude-bridge for pi, with a fake Claude Code in `binDir` of it; returns that Claude Code. */
-function installBridge(binDir = "bin"): string {
-  const bridge = join(dir, "agent", "npm", "node_modules", "pi-claude-bridge");
+/** Installs pi-claude-bridge for pi (or puts it in `bridge` for the fake pi to install), with a fake Claude Code in
+ * `binDir` of it; returns that Claude Code. */
+function installBridge(binDir = "bin", bridge = join(dir, "agent", "npm", "node_modules", "pi-claude-bridge")): string {
   mkdirSync(join(bridge, binDir), { recursive: true });
   writeFileSync(join(bridge, "package.json"), JSON.stringify({ name: "pi-claude-bridge" }));
   const claude = join(bridge, binDir, "claude");
   writeFileSync(claude, FAKE_CLAUDE);
   chmodSync(claude, 0o755);
-  vi.stubEnv("FAKE_BRIDGE", bridge);
   vi.stubEnv("FAKE_CLAUDE_STATE", join(dir, "claude-signed-in"));
   return claude;
 }
@@ -181,9 +196,9 @@ describe("PiAuth", () => {
     const state = await start().list();
     expect(state.error).toBeUndefined();
     expect(state.path).toBe(join(dir, "agent", "auth.json"));
-    expect(state.providers.map((provider) => provider.id)).toEqual(["acme", "beta", "envy"]);
+    expect(state.providers.map((provider) => provider.id)).toEqual(["acme", "beta", "claude-bridge", "envy"]);
     expect(state.providers[0]).toEqual({ id: "acme", name: "Acme", oauth: { name: "Acme (Pro)", label: "Sign in with Acme", subscription: true }, apiKey: { name: "Acme API key", login: true } });
-    expect(state.providers[2]).toEqual({ id: "envy", name: "Envy", apiKey: { name: "Envy key", login: false }, status: { method: "api_key", source: "environment", label: "ENVY_KEY" } });
+    expect(state.providers[3]).toEqual({ id: "envy", name: "Envy", apiKey: { name: "Envy key", login: false }, status: { method: "api_key", source: "environment", label: "ENVY_KEY" } });
   });
 
   it("reports when pi's SDK is missing or will not load", async () => {
@@ -283,6 +298,37 @@ describe("PiAuth", () => {
     expect((await target.list()).providers.find((provider) => provider.id === "claude-bridge")?.status).toMatchObject({ source: "claude_code" });
   });
 
+  it("installs pi-claude-bridge when pi has none, then signs in and notes the Max plan", async () => {
+    installBridge(join("node_modules", "@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`), join(dir, "stage"));
+    vi.stubEnv("FAKE_BRIDGE_STAGE", join(dir, "stage"));
+    vi.stubEnv("FAKE_PI_LOG", join(dir, "pi.log"));
+    vi.stubEnv("FAKE_CLAUDE_CALLBACK", "1");
+    writeFileSync(join(dir, "agent", "claude-bridge.json"), JSON.stringify({ startupNoticeShown: "2026-10-01", provider: { strictMcpConfig: false } }));
+    const target = start();
+    expect((await target.list()).providers.find((provider) => provider.id === "claude-bridge")).toEqual({
+      id: "claude-bridge",
+      name: "Claude Code",
+      oauth: { name: "Claude Code (Claude subscription)", label: "Installs pi-claude-bridge for pi, then signs in with Claude Code's own login", subscription: true },
+    });
+    const updates: LoginUpdate[] = [];
+    expect(await target.signIn("claude-bridge", "oauth", (update) => updates.push(update))).toEqual({ ok: true });
+    expect(updates[0]).toEqual({ kind: "event", event: { type: "progress", message: "Installing pi-claude-bridge for pi (a minute or so)…" } });
+    expect(readFileSync(join(dir, "pi.log"), "utf8")).toBe("install npm:pi-claude-bridge\n");
+    expect((await target.list()).providers.find((provider) => provider.id === "claude-bridge")).toMatchObject({ status: { source: "claude_code", label: "max" } });
+    expect(JSON.parse(readFileSync(join(dir, "agent", "claude-bridge.json"), "utf8"))).toEqual({ startupNoticeShown: "2026-10-01", provider: { strictMcpConfig: false, plan: "max" } });
+  });
+
+  it("reports a failed install of pi-claude-bridge", async () => {
+    vi.stubEnv("FAKE_PI_LOG", join(dir, "pi.log"));
+    vi.stubEnv("FAKE_PI_FAIL", "1");
+    const target = start();
+    expect(await target.signIn("claude-bridge", "oauth", () => undefined)).toEqual({
+      ok: false,
+      cancelled: false,
+      error: "Installing pi-claude-bridge failed: npm error 404 Not Found - pi-claude-bridge",
+    });
+  });
+
   it("cancels a Claude Code sign-in", async () => {
     installBridge(join("node_modules", "@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`));
     const target = start();
@@ -293,9 +339,9 @@ describe("PiAuth", () => {
 
   it("stops when idle and starts again on the next request", async () => {
     const target = start(join(dir, "pkg"), 20);
-    expect((await target.list()).providers).toHaveLength(3);
+    expect((await target.list()).providers).toHaveLength(4);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect((target as unknown as { helper?: unknown }).helper).toBeUndefined();
-    expect((await target.list()).providers).toHaveLength(3);
+    expect((await target.list()).providers).toHaveLength(4);
   });
 });

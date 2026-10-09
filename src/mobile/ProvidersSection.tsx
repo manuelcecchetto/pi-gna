@@ -131,7 +131,7 @@ export function ProvidersSection({ client }: { client: HostClient }) {
           );
         })}
         {piClaude && (
-          <ProviderRow id="anthropic" title="pi's own Claude login" about="Saved for the anthropic provider; claude-bridge uses Claude Code's login instead." status="Signed in">
+          <ProviderRow id="anthropic" title="pi's own Claude login" about="Saved for the anthropic provider; claude-bridge uses Claude Code's login instead, the safer way." status="Signed in">
             <button type="button" className={button} onClick={() => setSignOut(piClaude)}>
               Sign out
             </button>

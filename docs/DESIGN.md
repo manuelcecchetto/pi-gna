@@ -826,11 +826,18 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   searchable list. A login's prompts (select, text, secret, manual code) are answered inline under its row;
   `auth_url` opens in your browser as in pi, with Open again and Copy link; device codes get Copy and Open page;
   ✕ or Esc cancels.
-- **Claude plans go through Claude Code.** With pi-claude-bridge installed (found through pi's `DefaultPackageManager`,
-  user scope), its `claude-bridge` provider runs Claude via Claude Code, so it uses Claude Code's own login (the macOS
-  keychain item every Claude Code shares), never pi's `auth.json`. A Claude Code card then replaces pi's own Anthropic
-  account login (the Anthropic API key row stays); a notice offers to sign out of pi's Anthropic login while one is
-  saved. The helper runs the bridge's Claude Code (`pathToClaudeCodeExecutable` in `claude-bridge.json`, else the
+- **Claude plans go through Claude Code.** pi-claude-bridge's `claude-bridge` provider runs Claude via Claude Code, so
+  it uses Claude Code's own login (the macOS keychain item every Claude Code shares), never pi's `auth.json`. Its
+  Claude Code card shows on every install (any pi whose SDK has `DefaultPackageManager`, through which the bridge is
+  found, user scope). Without the bridge, Sign in first runs `pi install npm:pi-claude-bridge` with the pi
+  whose SDK the helper loaded (its `bin`, run by the helper's node, npm's folder put first on the PATH; a child
+  process because npm writes to stdout, the helper's JSON channel), which brings the Agent SDK's Claude Code along.
+  Unpinned, unlike the Plugins catalog: pi pins a versioned npm source, so `pi update --extensions` (and an agent
+  asked to update the bridge) would never move it, and the bridge has to keep up with Claude Code.
+  After the login, a Max plan (`claude auth status`) sets `provider.plan: "max"` in `claude-bridge.json` unless a plan
+  is set there, which gives Opus 1M context. pi's own Anthropic account login never gets a card (the Anthropic API
+  key row stays); a notice offers to sign out of it while one is saved. A sign-in or sign-out marks the renderer's
+  model list stale (`modelsChanged`), so the next chat to start lists models again. The helper runs the bridge's Claude Code (`pathToClaudeCodeExecutable` in `claude-bridge.json`, else the
   Agent SDK's platform binary beside the bridge, else `claude` on the PATH): `claude auth status --json` (exit 1 when
   signed out), `claude auth login --claudeai` and `claude auth logout`. The login opens its page itself (it calls back
   to a local port), so its `auth_url` is marked `opened` and main does not open it again; the printed link (an OSC 8

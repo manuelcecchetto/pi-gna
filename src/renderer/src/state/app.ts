@@ -418,11 +418,20 @@ export function handleBatch(batch: HostEventBatch): void {
   }
 }
 
+/** The model list predates a sign-in or sign-out: the next chat to start lists it again (chats already running keep
+ * the providers they started with, so they cannot). */
+let modelsStale = false;
+export function modelsChanged(): void {
+  modelsStale = true;
+}
+
 async function onReady(handle: string, state: RpcSessionState): Promise<void> {
+  const fetchModels = modelsStale || !store.get().models.length;
+  modelsStale = false;
   const [commands, levels, models] = await Promise.all([
     command<{ commands: SlashCommand[] }>(handle, { type: "get_commands" }, true),
     command<{ levels: ThinkingLevel[] }>(handle, { type: "get_available_thinking_levels" }, true),
-    store.get().models.length ? undefined : command<{ models: Model[] }>(handle, { type: "get_available_models" }, true),
+    !fetchModels ? undefined : command<{ models: Model[] }>(handle, { type: "get_available_models" }, true),
   ]);
   store.set((s) => ({
     ...s,

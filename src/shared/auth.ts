@@ -98,15 +98,14 @@ export function authStatus(provider: AuthProvider, method: AuthMethod): { text: 
   return { text: status.method === "oauth" ? "Signed in with an account" : status.source === "stored" ? "Uses an API key" : text, tone: "other" };
 }
 
-/** Account sign-ins first (subscriptions before the rest), then every provider that takes an API key. With
- * claude-bridge, a Claude plan signs in through Claude Code, the safer way, so pi's own Anthropic account login gets no
- * card; `piClaude` is that login while pi still has one saved, to sign out of. */
+/** Account sign-ins first (subscriptions before the rest), then every provider that takes an API key. pi's own
+ * Anthropic account login never gets a card, bridge or not: a Claude plan signs in through Claude Code (claude-bridge),
+ * the safer way. `piClaude` is that login while pi still has one saved, to sign out of. */
 export function splitProviders(providers: AuthProvider[]): { accounts: AuthProvider[]; keys: AuthProvider[]; piClaude?: AuthProvider } {
-  const bridge = providers.some((provider) => provider.id === CLAUDE_BRIDGE);
   const anthropic = providers.find((provider) => provider.id === "anthropic");
-  const accounts = providers.filter((provider) => provider.oauth && !(bridge && provider === anthropic));
+  const accounts = providers.filter((provider) => provider.oauth && provider !== anthropic);
   accounts.sort((a, b) => Number(b.oauth?.subscription) - Number(a.oauth?.subscription));
-  const piClaude = bridge && anthropic?.stored === "oauth" ? anthropic : undefined;
+  const piClaude = anthropic?.stored === "oauth" ? anthropic : undefined;
   return { accounts, keys: providers.filter((provider) => provider.apiKey), ...(piClaude && { piClaude }) };
 }
 

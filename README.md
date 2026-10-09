@@ -99,8 +99,8 @@ updates the `--pigna` flag.
 - **Settings in one place.** Cmd+, opens Settings: the theme, the models of the chats pi-gna starts itself, pi's
   own settings (default model, compaction, retries and more, for new chats), switches to turn Kanban, Laments,
   GitHub, ATP and Computer Use off, and **Providers**, to sign in to pi's model providers as pi's `/login` does,
-  with an account or an API key. With [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge)
-  installed, your Claude plan signs in through Claude Code's own login instead of pi's.
+  with an account or an API key. A Claude plan signs in through Claude Code's own login: the Claude Code card
+  installs [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) for pi if it is missing.
 - **Plugins.** Settings > Plugins connects apps over MCP (Attio, Notion, Granola, Intercom, Brevo) and installs pi
   packages from a short catalog, turns installed packages and each of their extensions, skills and prompts on or off,
   for you or for the current project, and switches pi's built-in extensions. Everything is written to pi's own
