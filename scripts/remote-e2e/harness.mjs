@@ -452,6 +452,9 @@ function startProxy(remotePort, cookie, login) {
  * what Tailscale serve adds. The instance runs in the background (PIGNA_BACKGROUND=1), where windows and browser tabs draw no
  * frames and cannot be captured (docs/DESIGN.md "Verifying the UI"); offscreen rendering paints regardless, and the iPhone
  * emulation goes through the same debugger protocol as the browser's. Resolves once the Projects screen shows.
+ * A finger dragged to scroll must be held still before `touchEnd`: lifting a moving one starts a fling, and a fling in an
+ * offscreen window crashes Electron 44's main process (EXC_BAD_ACCESS in CrBrowserMain), in about half the mobile-chat runs
+ * once the app's animations moved to the compositor (P16). The app has no offscreen windows; only this phone does.
  */
 export async function openPhone({ ports, A }) {
   log("mobile app (iPhone 15 preset in the instance's own offscreen window)");

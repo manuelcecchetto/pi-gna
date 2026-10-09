@@ -149,6 +149,7 @@ async function followChecks({ phone, present }) {
     await touch("touchMove", [[box.x, box.y + step * 40]]);
     await sleep(30);
   }
+  await sleep(300); // held still, so lifting starts no fling (openPhone)
   await touch("touchEnd", []);
   await sleep(1500);
   const left = await end();
