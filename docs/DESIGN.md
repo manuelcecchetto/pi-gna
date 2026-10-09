@@ -1262,9 +1262,15 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
 - The prose around the fence must answer the question alone; the visual only supplements it (the prompt says so).
 - Cap **64 KB** (`VISUAL_MAX_BYTES`, `lib/markdown.ts`): larger blocks stay a code block with a "too large" note.
 - `markdown.ts` pulls a complete fence out before DOMPurify and leaves `<div class="visual" data-visual>` holding the source in
-  a hidden `.visual-src`; `Markdown.tsx` hydrates it into `VisualFrame` once the message is complete, and the frame stays
-  mounted while its block does. Setting off, or a fence still open while streaming:
+  a hidden `.visual-src`; `Markdown.tsx` hydrates it into `VisualFrame` once the message is complete, and the visual's box
+  stays while its block does. Setting off, or a fence still open while streaming:
   a plain code block (streaming shows a skeleton, with "Drawing visual…" for screen readers, instead of partial source).
+- **Only nearby visuals run.** Each frame is a process of its own (about 25 MB, 30 visuals took a chat from 0.3 to 1 GB), so
+  a box runs its frame only within one scroller height of the visible area (`watchNear`, `lib/near.ts`); further away a blank
+  of the frame's last height holds its place and the frame, with its process, is gone (Chromium ends it within ~10 s).
+  Coming back runs the visual again: its interactive state (a tab, a slider) starts over. An expanded or failed frame stays.
+  One message listener, one 1 s watchdog and one theme listener (`linkFrame`, `lib/visual-frames.ts`) serve every running
+  frame and exist only while one runs. A fling past ~10,000 px/s shows a visual blank for a few frames (P23).
 - The prompt (`resources/pigna-visual-prompt.md`) lists the kit classes, tokens and helpers, when exactly one visual is
   warranted and when not, and SVG rules. It reaches the agent as a context file, not `--append-system-prompt`:
   `visual-extension.ts` pushes it onto `systemPromptOptions.contextFiles` in `before_agent_start`, so it renders as a

@@ -1,30 +1,10 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from "react";
 import { useChatActions } from "../lib/chat-ui";
-import { THEME_EVENT } from "../lib/theme";
+import { watchNear } from "../lib/near";
+import { linkFrame, readTokens } from "../lib/visual-frames";
 import { CodeView } from "./Markdown";
 
 const MIN_H = 40;
-const WATCHDOG_MS = 8000;
-
-const TOKEN_NAMES = ["--theme-mode", "--app-font-size", "--canvas", "--panel", "--sunken", "--raised", "--fg", "--muted", "--faint", "--accent", "--accent-soft", "--secondary", "--highlight", "--ok", "--bad", "--warn", "--line"];
-/** The first categorical colors, which a custom theme sets to its primary, secondary and accent: always sent, empty when
- * the theme leaves them, so the frame falls back to the kit's own. */
-const PALETTE_NAMES = ["--c1", "--c2", "--c3"];
-
-function readTokens(): Record<string, string> {
-  const style = getComputedStyle(document.documentElement);
-  const tokens: Record<string, string> = {};
-  for (const name of TOKEN_NAMES) {
-    const value = style.getPropertyValue(name).trim();
-    if (value) tokens[name] = value;
-  }
-  for (const name of ["--font-sans", "--font-mono"]) {
-    const value = style.getPropertyValue(name).trim();
-    if (value) tokens[name] = value;
-  }
-  for (const name of PALETTE_NAMES) tokens[name] = style.getPropertyValue(name).trim();
-  return tokens;
-}
 
 function newFrameId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(8));
@@ -44,11 +24,14 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
   return <LiveFrame source={source} />;
 });
 
+/**
+ * A visual's box. Its frame runs only while the box is near the viewport (or expanded, or failed); elsewhere a blank of the
+ * frame's last height holds its place and the frame, with its process, is gone. Coming back runs the visual again.
+ */
 function LiveFrame({ source }: { source: string }) {
-  const { visualFrames, openExternal } = useChatActions();
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const [frameId] = useState(newFrameId);
-  const src = visualFrames ? visualFrames.src(frameId) : `pigna-visual://${frameId}/doc`;
+  const { visualFrames } = useChatActions();
+  const placeRef = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
   const [height, setHeight] = useState(MIN_H);
   // Full window: the same iframe restyled (moving it in the DOM would reload it and lose its state).
   const [full, setFull] = useState(false);
@@ -56,68 +39,8 @@ function LiveFrame({ source }: { source: string }) {
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
 
-  // A frame that stopped responding keeps spinning even after its iframe is removed: its process has to be killed.
-  // A remote client has no process to kill: removing the iframe is all it can do.
-  useEffect(() => {
-    if (error && !visualFrames) window.studio.killVisual(frameId);
-  }, [error, frameId, visualFrames]);
-  useEffect(() => () => (visualFrames ? undefined : window.studio.killVisual(frameId)), [frameId, visualFrames]);
-
-  useEffect(() => {
-    const frame = frameRef.current;
-    if (!frame) return;
-    let lastBeat = Date.now();
-    let rendered = false;
-    const post = (message: unknown) => frame.contentWindow?.postMessage(message, "*");
-    const sendRender = () => post({ type: "render", html: source, tokens: readTokens() });
-    const onMessage = (event: MessageEvent) => {
-      if (event.source !== frame.contentWindow) return;
-      const data = event.data as { type?: string; px?: unknown; href?: unknown; message?: unknown } | null;
-      if (!data || typeof data !== "object") return;
-      lastBeat = Date.now();
-      switch (data.type) {
-        case "ready":
-          sendRender();
-          break;
-        case "rendered":
-          rendered = true;
-          break;
-        case "heartbeat":
-          // The frame can load before this effect listens, losing its `ready` and our load handler: re-send until it confirms.
-          if (!rendered) sendRender();
-          break;
-        case "height":
-          if (typeof data.px === "number" && Number.isFinite(data.px)) setHeight(Math.max(MIN_H, Math.ceil(data.px)));
-          break;
-        case "open-link":
-          if (typeof data.href === "string" && /^https?:\/\//i.test(data.href)) openExternal(data.href);
-          break;
-        case "error":
-          setError(typeof data.message === "string" ? data.message : "Visual failed to run");
-          break;
-      }
-    };
-    const onLoad = () => {
-      lastBeat = Date.now();
-      sendRender();
-    };
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onTheme = () => post({ type: "tokens", tokens: readTokens() });
-    const watchdog = setInterval(() => {
-      if (Date.now() - lastBeat > WATCHDOG_MS) setError("Visual stopped responding");
-    }, 1000);
-    window.addEventListener("message", onMessage);
-    frame.addEventListener("load", onLoad);
-    media.addEventListener("change", onTheme);
-    window.addEventListener(THEME_EVENT, onTheme);
-    return () => {
-      window.removeEventListener(THEME_EVENT, onTheme);
-      clearInterval(watchdog);
-      window.removeEventListener("message", onMessage);
-      frame.removeEventListener("load", onLoad);
-      media.removeEventListener("change", onTheme);
-    };
-  }, [source, openExternal]);
+  // Watched through its place in the transcript, which stays put while the box is expanded over the window.
+  useEffect(() => (placeRef.current ? watchNear(placeRef.current, setNear) : undefined), []);
 
   useEffect(() => {
     if (!full) return;
@@ -136,24 +59,26 @@ function LiveFrame({ source }: { source: string }) {
     setTimeout(() => setCopied(false), 1200);
   }, [source]);
 
+  // A failed frame stays, hidden, on the desktop, where its process is killed; a remote client cannot kill it, so it takes
+  // the frame out of the page altogether.
+  const running = error ? !visualFrames : near || full;
   // No box around the frame and no clamp: the visual reads as part of the reply at its full height, and its actions sit
   // under it, shown on hover.
   return (
-    <>
+    <div ref={placeRef}>
       {full && <div className="visual-backdrop" onClick={() => setFull(false)} />}
       <div className={full ? "visual-box full" : "visual-box"}>
         {error && <div className="visual-error">Visual error: {error}</div>}
-        {/* A remote client cannot kill the frame's process, so a failed frame is taken out of the page altogether. */}
-        {!(error && visualFrames) && (
-          <iframe
-            ref={frameRef}
-            className="visual-frame"
-            title="Visual"
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            src={src}
+        {running ? (
+          <Frame
+            source={source}
+            failed={Boolean(error)}
+            onHeight={setHeight}
+            onError={setError}
             style={{ height: full ? undefined : height, display: error ? "none" : undefined }}
           />
+        ) : (
+          !error && <div className="visual-frame" data-idle="" style={{ height }} />
         )}
         <footer className="visual-actions">
           {!error && (
@@ -170,6 +95,80 @@ function LiveFrame({ source }: { source: string }) {
         </footer>
         {(showSource || error) && !full && <CodeView code={source} lang="html" />}
       </div>
-    </>
+    </div>
   );
+}
+
+/** One run of a visual: an iframe of its own (on the desktop, a process of its own), linked to the shared listeners. */
+function Frame({
+  source,
+  failed,
+  style,
+  onHeight,
+  onError,
+}: {
+  source: string;
+  failed: boolean;
+  style: CSSProperties;
+  onHeight(px: number): void;
+  onError(message: string): void;
+}) {
+  const { visualFrames, openExternal } = useChatActions();
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [frameId] = useState(newFrameId);
+  const src = visualFrames ? visualFrames.src(frameId) : `pigna-visual://${frameId}/doc`;
+
+  // A frame that stopped responding keeps spinning even after its iframe is removed: its process has to be killed.
+  // A remote client has no process to kill: removing the iframe is all it can do.
+  useEffect(() => {
+    if (failed && !visualFrames) window.studio.killVisual(frameId);
+  }, [failed, frameId, visualFrames]);
+  useEffect(() => () => (visualFrames ? undefined : window.studio.killVisual(frameId)), [frameId, visualFrames]);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    const view = frame?.contentWindow;
+    if (!frame || !view || failed) return;
+    let rendered = false;
+    const post = (message: unknown) => view.postMessage(message, "*");
+    const sendRender = () => post({ type: "render", html: source, tokens: readTokens() });
+    const link = linkFrame(view, {
+      post,
+      onHung: () => onError("Visual stopped responding"),
+      onMessage: (data) => {
+        switch (data.type) {
+          case "ready":
+            sendRender();
+            break;
+          case "rendered":
+            rendered = true;
+            break;
+          case "heartbeat":
+            // The frame can load before this effect listens, losing its `ready` and our load handler: re-send until it confirms.
+            if (!rendered) sendRender();
+            break;
+          case "height":
+            if (typeof data.px === "number" && Number.isFinite(data.px)) onHeight(Math.max(MIN_H, Math.ceil(data.px)));
+            break;
+          case "open-link":
+            if (typeof data.href === "string" && /^https?:\/\//i.test(data.href)) openExternal(data.href);
+            break;
+          case "error":
+            onError(typeof data.message === "string" ? data.message : "Visual failed to run");
+            break;
+        }
+      },
+    });
+    const onLoad = () => {
+      link.beat();
+      sendRender();
+    };
+    frame.addEventListener("load", onLoad);
+    return () => {
+      link.unlink();
+      frame.removeEventListener("load", onLoad);
+    };
+  }, [source, failed, openExternal, onHeight, onError]);
+
+  return <iframe ref={frameRef} className="visual-frame" title="Visual" sandbox="allow-scripts" referrerPolicy="no-referrer" src={src} style={style} />;
 }

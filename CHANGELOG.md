@@ -30,6 +30,7 @@ moves those lines under the new version, and they become its GitHub release note
 - A running command's output, opened under its tool row, shows its newest lines and follows them like a terminal (it showed the first 400 lines until the command ended), and keeping it up to date costs about half as much: colored output past pi's 50 KB limit took about 165 ms of work a second, now 85.
 - Code in a chat highlights as it scrolls into view, in small pieces while the window is idle, instead of all at once when a chat opens or an answer ends (opening a chat with 160 code blocks froze the window for about 3 seconds, now its longest pause is about 60 ms). Code blocks over 30 KB stay plain.
 - A chat whose last run went on for hours opens on a phone in under a second instead of about a minute: the phone gets the run's last steps first and the earlier ones as you scroll up, answers to the phone are compressed, and pi's thinking signatures (about a third of a long chat) no longer travel to the phone or the window.
+- A chat with many inline visuals runs only the ones near what you are reading: each visual is a process of its own, so a chat with 30 of them used about 1 GB and now uses about 0.37 GB, and it shows its first visual in about 0.2 s instead of 0.9 s. A visual you scroll back to draws again, starting from its first state.
 
 ## 0.9.1 - 2026-10-08
 

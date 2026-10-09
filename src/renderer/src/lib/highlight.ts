@@ -1,5 +1,6 @@
 // Lazy syntax highlighting: shiki core + JS regex engine, languages loaded on first use.
 import type { GrammarState, hastToHtml, HighlighterCore, LanguageInput } from "shiki/core";
+import { scrollRoot } from "./near";
 
 type Loader = () => Promise<{ default: LanguageInput }>;
 
@@ -275,15 +276,6 @@ function pump(): void {
       pump();
     }
   });
-}
-
-/** The nearest ancestor that scrolls, so the observer's margin reaches past its clip; null means the viewport. */
-function scrollRoot(from: Element | null): Element | null {
-  for (let el = from; el && el !== document.body; el = el.parentElement) {
-    const { overflowY } = getComputedStyle(el);
-    if (overflowY === "auto" || overflowY === "scroll") return el;
-  }
-  return null;
 }
 
 // One observer per scroller; a closed chat's scroller is dropped with it.
