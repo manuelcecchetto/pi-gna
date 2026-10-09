@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { followsAfterScroll } from "./turn-scroll";
+import { followsAfterScroll, settleView, type ViewFollow } from "./turn-scroll";
 
 // A 1000 px transcript in a 400 px view: the end is at top 600.
 const at = (top: number, height = 1000, view = 400) => ({ top, height, view });
@@ -32,5 +32,87 @@ describe("followsAfterScroll", () => {
 
   it("does not start following when you scroll down short of the end", () => {
     expect(followsAfterScroll(false, at(300), at(400))).toBe(false);
+  });
+});
+
+/** A scroller that clamps like the browser's: the content and view heights are set by the test. */
+function scroller(height: number, view: number, top: number) {
+  const box = { height, view, top, writes: 0 };
+  return {
+    box,
+    get scrollHeight() {
+      return box.height;
+    },
+    get clientHeight() {
+      return box.view;
+    },
+    get scrollTop() {
+      return box.top;
+    },
+    set scrollTop(value: number) {
+      box.writes++;
+      box.top = Math.max(0, Math.min(value, box.height - box.view));
+    },
+  };
+}
+
+describe("settleView", () => {
+  // Positioned at the end of a 1000 px transcript in a 400 px view.
+  const settled = (pinned = true): ViewFollow => ({ pinned, height: 1000, view: 400 });
+
+  it("follows streaming growth at the end", () => {
+    const element = scroller(1300, 400, 600);
+    const state = settled();
+    settleView(element, state, true);
+    expect(element.box.top).toBe(900);
+    expect(state).toEqual({ pinned: true, height: 1300, view: 400 });
+  });
+
+  it("leaves the view where it is when you are not at the end", () => {
+    const element = scroller(1300, 400, 200);
+    const state = settled(false);
+    settleView(element, state, true);
+    expect(element.box.writes).toBe(0);
+    expect(state).toEqual({ pinned: false, height: 1300, view: 400 });
+  });
+
+  it("does not move the view when nothing changed size, so it never fights the send glide", () => {
+    const element = scroller(1000, 400, 300);
+    const state = settled();
+    settleView(element, state, true);
+    expect(element.box.writes).toBe(0);
+    expect(state.pinned).toBe(true);
+  });
+
+  it("keeps the end in sight when the view gets shorter, even when nothing streams", () => {
+    const element = scroller(1000, 250, 600);
+    const state = settled();
+    settleView(element, state, false);
+    expect(element.box.top).toBe(750);
+    expect(state).toEqual({ pinned: true, height: 1000, view: 250 });
+  });
+
+  it("does not move for a taller view, which already clamps to the end", () => {
+    const element = scroller(1000, 500, 500);
+    const state = settled();
+    settleView(element, state, false);
+    expect(element.box.writes).toBe(0);
+    expect(state).toEqual({ pinned: true, height: 1000, view: 500 });
+  });
+
+  it("stops following when other growth leaves the view off the end", () => {
+    const element = scroller(1300, 400, 600); // you expanded a step at the end
+    const state = settled();
+    settleView(element, state, false);
+    expect(element.box.writes).toBe(0);
+    expect(state).toEqual({ pinned: false, height: 1300, view: 400 });
+  });
+
+  it("keeps following when other growth still leaves the view at the end", () => {
+    const element = scroller(1002, 400, 600);
+    const state = settled();
+    settleView(element, state, false);
+    expect(element.box.writes).toBe(0);
+    expect(state.pinned).toBe(true);
   });
 });

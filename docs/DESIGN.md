@@ -1069,7 +1069,13 @@ Verified live (pi 1.0.0, Oct 2026):
   bouncing back to the end keeps following (`followsAfterScroll` in `lib/turn-scroll.ts`). The ↓ button shows
   exactly while the view is off the end and not pinned, so without it output keeps you at the end. Following
   moves the view only when the content height changes, so it never fights the send glide, and it does not
-  depend on scroll events (hidden windows get none). `followChecks` in `pnpm e2e:remote` checks it on the phone.
+  depend on scroll events (hidden windows get none). Streaming output is followed from the transcript's
+  ResizeObserver, which runs after the frame's layout, so a streaming render reads no layout (reading
+  `scrollHeight` in its layout effect forced one per frame); only the render that ends a run settles at once, as
+  its footer appears after following stops (`settleView` in `lib/turn-scroll.ts`). Hidden windows run no
+  ResizeObserver, so a window hidden mid-stream catches up when it shows again. `viewport` and the ↓ button's
+  state are set only when they change (each set renders the transcript). `followChecks` in `pnpm e2e:remote`
+  checks it on the phone.
 - Turn rail (`TurnRail`, Codex's "user message navigation rail", read from the Codex app bundle's
   `thread-user-message-navigation-rail-app` chunk and its CSS): a 2px line per message you sent, vertically
   centered left of the transcript, shown from 4 messages on and only while the column leaves a 48px gutter.
@@ -1320,7 +1326,7 @@ The same starvation hits CDP tests of background windows: mouse moves are dispat
 and IntersectionObserver lag until one is drawn), and a `drag` blocks waiting for frames. Force frames by taking
 screenshots (`shot`) after a `move`, and in a parallel loop while a `drag` runs.
 Background test windows are `document.visibilityState === "hidden"`: smooth scrolls never move, ResizeObserver callbacks
-never run (even after a `shot`), scroll events do not fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
+never run (even after a `shot`; so the transcript follows a streaming answer only when its run ends), scroll events do not fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
 `PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it; prompt directives such as `[tools=N]` and `[think=N]`, listed in its

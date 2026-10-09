@@ -23,6 +23,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Long agent loops stay light while tools run: an update redraws only the step that changed instead of every tool row (in a 150-call loop, about 46,000 row redraws became 750, and the window's script time fell by about a third).
 - A model's thinking streams as plain text and becomes formatted once it ends, instead of being formatted again on every frame (36 KB of streamed thinking cost the window about 470 ms of script, now about 375 ms; the finished thinking looks exactly as before).
 - The turn rail no longer redraws its lines or rebuilds the hover card's preview on every frame while an answer streams: the preview is built when you hover (in a chat with 150 messages, the window's script time while an answer streams fell by about a third).
+- Following a streaming answer no longer measures the transcript in the middle of each frame: the view now catches up with new output after the frame's own layout, and the chat redraws half as often while it streams (a 300-line answer redrew the transcript about 390 times and forced about 200 layouts, now about 195 redraws and one layout). A window you hide while it streams catches up when it shows again.
 
 ## 0.9.1 - 2026-10-08
 

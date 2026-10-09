@@ -21,7 +21,7 @@ import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/atta
 import { formatStamp, formatTokens, tildify } from "../lib/format";
 import { previewClick } from "../lib/preview";
 import { outlineItems, type RailItem, railItems } from "../lib/rail";
-import { distanceToEnd, END_SLACK, followsAfterScroll } from "../lib/turn-scroll";
+import { distanceToEnd, END_SLACK, followsAfterScroll, settleView, type ViewFollow } from "../lib/turn-scroll";
 import type { SessionState } from "../../../shared/session-state";
 import type { TurnOutline } from "../../../shared/turn-outline";
 import { type Block, createRunDeriver, layoutRun, needsTimeDivider, type Run } from "../lib/view";
@@ -225,40 +225,37 @@ function useTurnScroll(
 ) {
   const [viewport, setViewport] = useState(0);
   const [below, setBelow] = useState(false);
+  /** What the two states were last set to: a layout read that finds them unchanged sets neither (each set renders). */
+  const shown = useRef({ viewport: 0, below: false });
   const seen = useRef<string | undefined>(undefined);
   const jumped = useRef<string | undefined>(undefined);
   const restoreFromBottom = useRef<number | null>(null);
   /** Where the view was when the host was asked for earlier turns; applied once the first turn is another one. */
   const pageAnchor = useRef<{ fromBottom: number; first?: string } | null>(null);
-  /** You are at the end, so new output keeps you there. */
-  const pinned = useRef(true);
+  /** `pinned`: you are at the end, so new output keeps you there. The content and view heights the view was last
+   * positioned for: only a change in them moves it (a phone keyboard or a resized window changes the view's). */
+  const view = useRef<ViewFollow>({ pinned: true, height: 0, view: 0 });
   /** The newest run is live, so its growth is streaming output. */
   const following = useRef(false);
-  /** Content height the view was last positioned for; only a change in it moves the view. */
-  const measured = useRef(0);
-  /** View height last positioned for: a phone keyboard or a resized window changes it. */
-  const viewed = useRef(0);
   const lastScroll = useRef({ top: 0, height: 0, view: 0 });
   /** Where the finger was at the last touch event. */
   const touchY = useRef<number | null>(null);
   const mounted = runs.length > 0;
 
-  const showBelow = useCallback((element: HTMLElement) => setBelow(!pinned.current && distanceToEnd(geometry(element)) > END_SLACK), []);
+  const showBelow = useCallback((element: HTMLElement) => {
+    const next = !view.current.pinned && distanceToEnd(geometry(element)) > END_SLACK;
+    if (next !== shown.current.below) setBelow((shown.current.below = next));
+  }, []);
+
+  const measureViewport = useCallback((element: HTMLElement) => {
+    if (element.clientHeight !== shown.current.viewport) setViewport((shown.current.viewport = element.clientHeight));
+  }, []);
 
   const settle = useCallback(
     (follow: boolean) => {
       const element = scroller.current;
       if (!element) return;
-      const changed = element.scrollHeight !== measured.current;
-      // Only a shorter view hides the end; a taller one already clamps to it.
-      const resized = element.clientHeight < viewed.current;
-      measured.current = element.scrollHeight;
-      viewed.current = element.clientHeight;
-      if (pinned.current && (changed || resized)) {
-        // A shorter view (the keyboard opening) keeps the end in sight, as at the end you meant to stay there.
-        if (follow || resized) element.scrollTop = element.scrollHeight;
-        else pinned.current = distanceToEnd(geometry(element)) <= END_SLACK; // e.g. you expanded a step at the end
-      }
+      settleView(element, view.current, follow);
       showBelow(element);
     },
     [scroller, showBelow],
@@ -268,7 +265,7 @@ function useTurnScroll(
     const element = scroller.current;
     if (!element) return;
     const now = geometry(element);
-    pinned.current = followsAfterScroll(pinned.current, lastScroll.current, now);
+    view.current.pinned = followsAfterScroll(view.current.pinned, lastScroll.current, now);
     lastScroll.current = now;
     showBelow(element);
   }, [scroller, showBelow]);
@@ -277,7 +274,7 @@ function useTurnScroll(
   // Only a view that can move up stops following: a short transcript has nothing to read above.
   const onWheel = useCallback(
     (event: React.WheelEvent) => {
-      if (event.deltaY < 0 && (scroller.current?.scrollTop ?? 0) > 0) pinned.current = false;
+      if (event.deltaY < 0 && (scroller.current?.scrollTop ?? 0) > 0) view.current.pinned = false;
     },
     [scroller],
   );
@@ -290,7 +287,7 @@ function useTurnScroll(
   const onTouchMove = useCallback(
     (event: React.TouchEvent) => {
       const y = event.touches.length === 1 ? (event.touches[0]?.clientY ?? null) : null;
-      if (y !== null && touchY.current !== null && y > touchY.current && (scroller.current?.scrollTop ?? 0) > 0) pinned.current = false;
+      if (y !== null && touchY.current !== null && y > touchY.current && (scroller.current?.scrollTop ?? 0) > 0) view.current.pinned = false;
       touchY.current = y;
     },
     [scroller],
@@ -299,22 +296,24 @@ function useTurnScroll(
   const jumpToLatest = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
-    pinned.current = true;
+    view.current.pinned = true;
     element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
   }, [scroller]);
 
   useLayoutEffect(() => {
     const element = scroller.current;
     if (!element) return;
+    // It runs after the frame's layout, so its reads force none: it follows streaming output, async growth (images,
+    // code) and a resized view. Hidden windows run no observer; the view catches up once the window shows again.
     const observer = new ResizeObserver(() => {
-      setViewport(element.clientHeight);
-      settle(following.current); // async growth (images, code) and a resized view
+      measureViewport(element);
+      settle(following.current);
     });
     observer.observe(element);
     if (content.current) observer.observe(content.current);
-    setViewport(element.clientHeight);
+    measureViewport(element);
     return () => observer.disconnect();
-  }, [scroller, content, mounted, settle]);
+  }, [scroller, content, mounted, settle, measureViewport]);
 
   const last = runs.at(-1);
   useLayoutEffect(() => {
@@ -334,19 +333,21 @@ function useTurnScroll(
       seen.current = last.key;
       if (last.live) jumped.current = last.key;
       const section = element.querySelector<HTMLElement>(`[data-run="${CSS.escape(last.key)}"]`);
-      pinned.current = true; // opening a session or sending a message puts you at the end
+      view.current.pinned = true; // opening a session or sending a message puts you at the end
       if (last.live && section && !first) {
         // Your message glides to the top. The live turn is at least a view tall, so that is also the
         // end and the view follows once the answer outgrows it. Recording the new height keeps the
         // added turn itself from cutting the glide short.
-        measured.current = element.scrollHeight;
+        view.current.height = element.scrollHeight;
         element.scrollTo({ top: section.offsetTop - TOP_GAP, behavior: "smooth" });
       } else {
         element.scrollTop = element.scrollHeight;
       }
     }
+    // A streaming render reads no layout here (that would force one per frame): the observer follows its output.
+    // The render that ends the run settles at once, as the observer no longer follows (its footer appears).
     const live = Boolean(last?.live);
-    settle(live || following.current); // also follow the render that ends the run (its footer appears)
+    if (following.current && !live) settle(true);
     following.current = live;
   });
 
