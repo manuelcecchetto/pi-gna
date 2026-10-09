@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- New wallpapers: Pigna painted into Monet's Impression, Sunrise, Van Gogh's The Starry Night and Hokusai's The Great Wave, at dusk for the dark theme and by day for the light one. They replace the painted 🤌 wallpapers. Sunrise is the new default, and a removed wallpaper picked in Settings or named in a project theme falls back to it.
+
 ## 0.9.1 - 2026-10-08
 
 - Inline visuals can animate: agents can draw a flow that plays through its stages (work handed off, sent back, built in parallel) with Pause, Restart, speed and clickable stage chips. It plays once and stops on its last frame; with reduced motion it opens on the last frame. The visual prompt no longer sets a size budget beyond the 64 KB cap.

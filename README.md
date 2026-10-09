@@ -4,7 +4,7 @@
 
 <p align="center">A desktop app for the <a href="https://pi.dev">pi coding agent</a>. Your pi, with a window.</p>
 
-![pi-gna: the sidebar of projects and chats, and a new chat over a painted 🤌 in a dusk sky](docs/screenshot.webp)
+![pi-gna: the sidebar of projects and chats, and a new chat over Pigna, the mascot, in a rowing boat in Monet’s Impression, Sunrise](docs/screenshot.webp)
 
 **pi-gna** (Italian *pigna*, as in the 🤌 "mano a pigna" gesture) is a frontend, not a fork. Every chat is a
 `pi --mode rpc` process running the pi you already have: your models and logins, settings, extensions, skills,

@@ -13,9 +13,9 @@ export const FEATURE_LABELS: Readonly<Record<Feature, string>> = { kanban: "Kanb
 export const THEMES = ["system", "light", "dark"] as const;
 export type Theme = (typeof THEMES)[number];
 
-/** The empty state's backdrop, each a 🤌 in another form, painted at dusk (dark) and by day (light); none leaves the
- * canvas plain. The renderer maps each to its images (lib/wallpapers.ts). */
-export const WALLPAPERS = ["sky", "stars", "peak", "pines", "shadow", "ink", "fresco", "monet", "vangogh", "hokusai", "none"] as const;
+/** The empty state's backdrop, each Pigna painted into a famous painting, at dusk (dark) and by day (light); none
+ * leaves the canvas plain. The renderer maps each to its images (lib/wallpapers.ts). */
+export const WALLPAPERS = ["monet", "vangogh", "hokusai", "none"] as const;
 export type Wallpaper = (typeof WALLPAPERS)[number];
 
 /** Who set pi up (Setup's first step): the nerd 🤌 wants commands and logs, the cool 🤌 plain words. Only Setup reads
@@ -109,7 +109,7 @@ export const emptySettings = (): Settings => ({
   version: 1,
   features: Object.fromEntries(FEATURES.map((feature) => [feature, true])) as Record<Feature, boolean>,
   theme: "system",
-  wallpaper: "sky",
+  wallpaper: "monet",
   wallpaperLoop: false,
   visuals: false,
   yolo: false,

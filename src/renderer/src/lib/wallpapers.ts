@@ -1,17 +1,10 @@
-// The empty state's wallpapers (settings.wallpaper): each a 🤌 in another form, or Pigna, the mascot, painted into a
-// famous painting; at dusk for dark mode and by day for light mode, with small thumbnails for the picker in Settings. Files: assets/wallpapers/<id>-<dusk|day>.webp
-// (2560 × 1440; the sky is 2048 × 1152) and thumbs/<id>-<dusk|day>.webp (480 × 270).
+// The empty state's wallpapers (settings.wallpaper): Pigna, the mascot, painted into a famous painting, at dusk for
+// dark mode and by day for light mode, with small thumbnails for the picker in Settings. Files: assets/wallpapers/<id>-<dusk|day>.webp
+// (2560 × 1440) and thumbs/<id>-<dusk|day>.webp (480 × 270).
 import type { CSSProperties } from "react";
 import { type Wallpaper, WALLPAPERS } from "../../../shared/settings";
 
 export const WALLPAPER_LABELS: Readonly<Record<Wallpaper, string>> = {
-  sky: "Sky",
-  stars: "Constellation",
-  peak: "Dolomites",
-  pines: "Pine forest",
-  shadow: "Shadow",
-  ink: "Ink wash",
-  fresco: "Fresco",
   monet: "Sunrise",
   vangogh: "Starry night",
   hokusai: "Great wave",
@@ -53,11 +46,11 @@ function readLoop(storage: Pick<Storage, "getItem">): { picked: unknown; shown: 
 
 /** The wallpaper a new empty state shows: the one picked, or while they loop (settings.wallpaperLoop), the one after
  * the last shown. Where the loop is stays in localStorage, so it goes on after a restart; picking another wallpaper
- * starts it again from that one (from the sky for none). */
+ * starts it again from that one (from the first for none). */
 export function loopWallpaper(picked: Wallpaper, loop: boolean, storage: Pick<Storage, "getItem" | "setItem"> = localStorage): Wallpaper {
   if (!loop) return picked;
   const last = readLoop(storage);
-  const shown = last?.picked === picked ? nextWallpaper(last.shown) : picked === "none" ? "sky" : picked;
+  const shown = last?.picked === picked ? nextWallpaper(last.shown) : picked === "none" ? nextWallpaper("none") : picked;
   storage.setItem(LOOP, JSON.stringify({ picked, shown }));
   return shown;
 }
