@@ -38,6 +38,7 @@ import { listFiles } from "./files";
 import { Github, GithubStore } from "./github";
 import { kanbanRoute } from "./kanban";
 import { ComputerAgent, computerRoute } from "./computer/agent";
+import { ComputerPreviews, shrinkWith } from "./computer/preview";
 import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
@@ -246,6 +247,7 @@ const computerAgent = new ComputerAgent(
   { ownNames: [app.getName(), app.getName().replace(/\.dev$/i, "")] },
 );
 bridge.route("/computer", computerRoute(() => computerAgent));
+const computerPreviews = new ComputerPreviews((handle) => computerAgent.preview(handle), shrinkWith(nativeImage));
 host.onRunEnd((handle) => void computerAgent.release(handle));
 host.onExit((handle) => browser?.closeTabsOf(handle));
 bridge.route("/lament", settings.gate("laments", lamentRoute(laments, (handle) => host.identify(handle))));
@@ -456,7 +458,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     uiState,
     computerPolicy,
     computerHelper,
-    computerAgent,
+    computerPreviews,
     laments,
     themes,
     activeProject: (project) => {

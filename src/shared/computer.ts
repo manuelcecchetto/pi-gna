@@ -122,6 +122,17 @@ export class ComputerError extends Error {
   }
 }
 
+/**
+ * A phone's view of the app a chat holds (`computer.preview`). `mimeType` and `data` are left out while it is still the
+ * frame the phone named in `since`.
+ */
+export interface ComputerPreviewFrame {
+  id: string;
+  app: string;
+  mimeType?: string;
+  data?: string;
+}
+
 // ---- Policy: enable flag, always-allowed apps, hard denylist --------------------------------------------------------
 // Main owns this (src/main/computer/store.ts) and applies every change through applyComputerOp, from the window and
 // anywhere else, so every field is checked. Computer Use is off until the user turns it on.

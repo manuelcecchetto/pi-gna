@@ -37,7 +37,7 @@ import type { BoardStore } from "./board";
 import type { BrowserManager } from "./browser/manager";
 import type { RemoteBrowser } from "./browser/remote-view";
 import type { CardImages } from "./card-images";
-import type { ComputerAgent } from "./computer/agent";
+import type { ComputerPreviews } from "./computer/preview";
 import type { ComputerService } from "./computer/service";
 import type { ComputerStore } from "./computer/store";
 import type { Github } from "./github";
@@ -87,7 +87,7 @@ export interface HostDeps {
   uiState: UiStateStore;
   computerPolicy: ComputerStore;
   computerHelper: ComputerService;
-  computerAgent: ComputerAgent;
+  computerPreviews: ComputerPreviews;
   laments: LamentStore;
   themes: ThemeStore;
   /** The project on the window's screen changed (themes.active). */
@@ -205,7 +205,7 @@ const explained = <T>(work: Promise<T>): Promise<T> =>
 const answerImages = new WeakMap<AssistantMessage, string[]>();
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerAgent, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
+  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerPreviews, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
   // Spawning pi, rg, git, gh or node needs the login-shell environment (PATH, API keys); reading pi's files needs only
   // its folders (PI_CODING_AGENT_DIR), which are known sooner.
   const env = () => deps.shellEnv;
@@ -602,13 +602,13 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       return permissions;
     }),
     // A viewer may ask for a frame at most once per PREVIEW_INTERVAL_MS; the chat must hold the app (ComputerAgent.preview).
-    "computer.preview": any<{ handle: string }>("remote", (ctx, { handle }) => {
+    "computer.preview": any<{ handle: string; since?: string }>("remote", (ctx, { handle, since }) => {
       if (typeof handle !== "string") throw new HostError("bad_request", "handle is required");
       const now = Date.now();
       if (now - (previews.get(ctx.clientId) ?? 0) < PREVIEW_INTERVAL_MS) throw new HostError("rate_limited", "computer previews are limited to one per second");
       previews.set(ctx.clientId, now);
       if (previews.size > 200) for (const [id, at] of previews) if (now - at > PREVIEW_INTERVAL_MS) previews.delete(id);
-      return computerAgent.preview(handle);
+      return computerPreviews.frame(handle, since);
     }),
     "computer.openSettings": method<{ pane: "accessibility" | "screen_recording" }>(
       "desktop",

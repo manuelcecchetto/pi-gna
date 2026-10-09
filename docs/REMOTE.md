@@ -98,7 +98,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `computer.get`, `computer.apply` | remote | apply yes | `computerGet`, `computerApply`. |
 | `computer.permissions`, `computer.requestPermissions` | remote | request yes | `computerPermissions`, `computerRequest` (status only; prompts show on the Mac). |
 | `computer.openSettings` | desktop | no | `computerOpenSettings`. |
-| `computer.preview` | remote | no | new. Latest-only read-only frame of the app a chat holds (T37). |
+| `computer.preview` | remote | no | new. Latest-only read-only frame of the app a chat holds (T37); `since` skips an unchanged frame (P37). |
 | `ui.get`, `ui.apply` | remote | apply yes | `uiGet`, `uiApply`. Pins, hidden projects and bookmarks live in `<userData>/ui-state.json` (`UiState`, ops `pin`/`unpin`/`reorder`/`hide`/`unhide`/`bookmark`/`unbookmark` in `src/shared/ui-state.ts`; a bookmark is a session file + message timestamp); changes ride `global` as `ui`. Layout (sidebar width, ATP panel sizes, wallpaper loop) and unread "seen" marks stay per client. |
 | `ui.importLegacy` | desktop | no | `uiImportLegacy`. Merges the window's old localStorage pins and bookmarks once, then the renderer forgets them. |
 
@@ -307,8 +307,14 @@ is the prompt path for the UI.
   hides the overlays) work as above. `computer.preview { handle }` returns one JPEG frame (`{ mimeType, data, app }`) of
   the latest app that chat currently holds, or `null` (nothing held, feature off, denied app). It takes the target only
   from the chat's held apps, never an arbitrary app or the screen, is limited to one call per second per client
-  (`rate_limited`), and never enters the event ring. The mobile chat polls it every 2 s while the chat runs and shows it
-  view-only. Permissions: status is readable (`computer.permissions`); granting happens on the Mac (macOS UI).
+  (`rate_limited`), and never enters the event ring. The host sends the frame as JPEG 75 at most 800 px wide
+  (`ComputerPreviews`, shrunk once per changed capture; up to 1600 px and 5x the bytes before) with an `id`; a call with
+  `since: <id>` of the frame still current gets `{ id, app }` alone. A capture whose shrunk pixels all stay within 16
+  levels of the last frame's counts as the same frame: macOS glass resamples what is behind a window, so an idle
+  Calculator never captured to the same bytes twice (1 to 6 levels on under 80 pixels). The mobile chat (P37, `src/mobile/computer-preview.ts`)
+  asks only while the chat runs, its current run called a computer_* tool other than `computer_list_apps` (or its page
+  starts inside the run) and the page is visible: 2 s after each answer, never two at once, one at once when the page
+  shows again; it shows the frame view-only. Permissions: status is readable (`computer.permissions`); granting happens on the Mac (macOS UI).
   **Non-goal:** the user operating Mac apps from the phone (no taps, keys or pointer are forwarded to any Mac app).
 - The desktop drops its card on `dialog_resolved` (it previously removed it only when it answered itself).
 

@@ -13,7 +13,10 @@
 // output (default 4) one per `[delay=N]`; `[toolfail]` fails the last call (tool rows, live output, timings).
 // `[parallel]` makes them one assistant message whose calls run at once, as pi runs parallel calls. `[toolchunk=N]` prints
 // N lines per update (pi sends at most one a 100 ms); `[toolansi]` colors them like a test runner. Like pi, a call's output
-// is its last 2000 lines or 50 KB.
+// is its last 2000 lines or 50 KB. `[toolname=X]` names the calls X instead of bash (computer_click: the phone's preview).
+// `[computer=App]` first reads App through pi-gna's Computer Use bridge, as computer_get_app_state does, so the chat
+// holds App until the run ends (needs Computer Use on, App allowed and the helper's permissions); `[computerkey=K]` then
+// presses K in App before each call, so the app changes while the phone watches.
 // `[think=N]` streams N paragraphs of thinking (with some Markdown) before the answer, one per `[delay=N]`.
 // Composer chrome: get_commands, thinking levels (large models offer them), set_model / set_thinking_level, compact and
 // session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
@@ -129,41 +132,54 @@ function piTail(text) {
 
 /** `[tools=N]`: bash calls as pi runs them, each after the message that made it ends. */
 async function runTools(text) {
+  const app = process.env.PIGNA_BRIDGE && text.match(/\[computer=([^\]]+)\]/)?.[1];
+  const key = text.match(/\[computerkey=([^\]]+)\]/)?.[1];
+  const computer = async (body) => {
+    const response = await fetch(`${process.env.PIGNA_BRIDGE}/computer`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${process.env.PIGNA_TOKEN}` },
+      body: JSON.stringify({ ...body, app }),
+    }).catch((error) => ({ status: String(error) }));
+    process.stderr.write(`fake-pi: computer ${body.action} ${app} ${response.status}\n`);
+  };
+  if (app) await computer({ action: "get_app_state" });
   const calls = directive(text, "tools", 0);
   const lines = directive(text, "toolout", 4);
   const delay = directive(text, "delay", DELAY);
   const chunk = directive(text, "toolchunk", 1);
   const ansi = text.includes("[toolansi]");
+  const tool = text.match(/\[toolname=(\w+)\]/)?.[1] ?? "bash";
   const line = (t, n) => (ansi ? `\x1b[32m✓\x1b[39m call ${t} \x1b[1mline ${n}\x1b[22m \x1b[2m(${n % 97} ms)\x1b[0m\n` : `call ${t} line ${n}\n`);
   const steps = Array.from({ length: calls }, (_, i) => i + 1);
   const batches = text.includes("[parallel]") ? [steps] : steps.map((t) => [t]);
   for (const batch of batches) {
     if (aborted) break;
+    if (app && key) await computer({ action: "press_key", key });
     const made = batch.map((t, index) => {
       const id = `fake-${process.pid}-${Date.now()}-${t}`;
-      return { t, index, id, call: { type: "toolCall", id, name: "bash", arguments: { command: `fake-build --step ${t}` } }, output: "" };
+      return { t, index, id, call: { type: "toolCall", id, name: tool, arguments: { command: `fake-build --step ${t}` } }, output: "" };
     });
     const message = { role: "assistant", content: [], api: "fake", provider: "fake", model: "fake", usage, stopReason: "toolUse", timestamp: Date.now() };
     out({ type: "message_start", message });
     for (const { index, id, call } of made) {
-      out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_start", contentIndex: index, id, toolName: "bash" } });
+      out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_start", contentIndex: index, id, toolName: tool } });
       out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_delta", contentIndex: index, delta: JSON.stringify(call.arguments) } });
       out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_end", contentIndex: index, toolCall: call } });
     }
     out({ type: "message_end", message: { ...message, content: made.map((m) => m.call) } });
-    for (const { id, call } of made) out({ type: "tool_execution_start", toolCallId: id, toolName: "bash", args: call.arguments });
+    for (const { id, call } of made) out({ type: "tool_execution_start", toolCallId: id, toolName: tool, args: call.arguments });
     for (let i = 1; i <= lines && !aborted; i++) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       for (const m of made) {
         for (let n = (i - 1) * chunk + 1; n <= i * chunk; n++) m.output += line(m.t, n);
-        out({ type: "tool_execution_update", toolCallId: m.id, toolName: "bash", args: m.call.arguments, partialResult: { content: [{ type: "text", text: piTail(m.output) }] } });
+        out({ type: "tool_execution_update", toolCallId: m.id, toolName: tool, args: m.call.arguments, partialResult: { content: [{ type: "text", text: piTail(m.output) }] } });
       }
     }
     for (const { t, id, output } of made) {
       const isError = t === calls && text.includes("[toolfail]");
       const content = [{ type: "text", text: piTail(isError ? `${output}exit code 1` : output) }];
-      out({ type: "tool_execution_end", toolCallId: id, toolName: "bash", result: { content }, isError });
-      const result = { role: "toolResult", toolCallId: id, toolName: "bash", content, isError, timestamp: Date.now() };
+      out({ type: "tool_execution_end", toolCallId: id, toolName: tool, result: { content }, isError });
+      const result = { role: "toolResult", toolCallId: id, toolName: tool, content, isError, timestamp: Date.now() };
       out({ type: "message_start", message: result });
       out({ type: "message_end", message: result });
     }

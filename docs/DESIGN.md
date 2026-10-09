@@ -369,7 +369,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   main's choices (`requestChoice`) and pi's `confirm`/`select` dialogs get their first Allow/Approve/Yes option
   (`yoloOption`, so Allow once, never Always allow) or a yes, with no card; selects without one and inputs still
   ask. The denylist and a chat's earlier Deny still apply. Phones answer the same cards (first answer wins) and get a
-  read-only `computer.preview` (one JPEG of an app the chat holds, 1/s per client; `ComputerAgent.preview`); operating
+  read-only `computer.preview` (one JPEG of an app the chat holds, 1/s per client; `ComputerAgent.preview`, shrunk to
+  800 px and sent only when it changed by `ComputerPreviews`; the phone asks only while the run uses Computer Use and
+  the page is visible, one call at a time); operating
   Mac apps from the phone is a non-goal (docs/REMOTE.md section 8).
 - **Overlay and Esc**: per driven app the helper shows a yellow-glowing pigna hand cursor, coral/yellow/blue
   click ripples, an outward-glowing window frame and a glowing pill ("pi is using App · Esc to cancel"). Three

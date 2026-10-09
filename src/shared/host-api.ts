@@ -7,7 +7,7 @@ import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
 import type { CatalogState, McpLoginResult, McpStatusState, PackageToggle, PluginsState, PluginToggle } from "./plugins";
 import type { Annotation, BrowserCommand, BrowserState, HistoryEntry } from "./browser";
 import type { CompactionSettings } from "./compaction";
-import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
+import type { ComputerOp, ComputerPreviewFrame, ComputerSettings, Permissions } from "./computer";
 import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, GithubProject, GithubRepo } from "./github";
 import type { LamentOp, Laments } from "./laments";
 import type { ThemeOp, Themes } from "./themes";
@@ -512,7 +512,7 @@ export interface HostMethods {
   "computer.permissions": { args: Record<string, never>; result: Permissions };
   "computer.requestPermissions": { args: { pane?: "accessibility" | "screen_recording" }; result: Permissions };
   "computer.openSettings": { args: { pane: "accessibility" | "screen_recording" }; result: null };
-  "computer.preview": { args: { handle: string }; result: { mimeType: string; data: string; app: string } | null };
+  "computer.preview": { args: { handle: string; since?: string }; result: ComputerPreviewFrame | null };
   "ui.get": { args: Record<string, never>; result: Snapshot<Revved<UiState>> };
   "ui.apply": { args: { op: UiOp; baseRev?: number }; result: Revved<UiState> };
   "ui.importLegacy": { args: { ui: unknown }; result: null };

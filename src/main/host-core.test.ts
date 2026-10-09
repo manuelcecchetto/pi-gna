@@ -20,7 +20,9 @@ const deps = {
   uiState: {},
   computerPolicy: {},
   computerHelper: { call: () => Promise.reject(new Error("Computer Use helper is missing from this build (/x.app)")) },
-  computerAgent: { preview: async (handle: string) => (handle === "held" ? { mimeType: "image/jpeg", data: "AAAA", app: "Calc" } : null) },
+  computerPreviews: {
+    frame: async (handle: string, since?: string) => (handle !== "held" ? null : since === "f1" ? { id: "f1", app: "Calc" } : { id: "f1", app: "Calc", mimeType: "image/jpeg", data: "AAAA" }),
+  },
   laments: {},
   github: { project: record("github.project"), list: record("github.list") },
   atp: { watch: record("atp.watch") },
@@ -100,14 +102,14 @@ describe("host methods table", () => {
     await expect(dispatch(core, phone(), "computer.permissions", {})).rejects.toMatchObject({ code: "unavailable", message: "Computer Use helper is missing from this build (/x.app)" });
   });
 
-  it("limits computer.preview to one per second per client and passes the handle through", async () => {
+  it("limits computer.preview to one per second per client and passes the handle and since through", async () => {
     vi.useFakeTimers();
     try {
       await expect(dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held" })).resolves.toMatchObject({ app: "Calc" });
       expect(() => dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held" })).toThrow(expect.objectContaining({ code: "rate_limited" }));
       await expect(dispatch(core, phone({ clientId: "p2" }), "computer.preview", { handle: "other" })).resolves.toBeNull();
       vi.advanceTimersByTime(1000);
-      await expect(dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held" })).resolves.toMatchObject({ app: "Calc" });
+      await expect(dispatch(core, phone({ clientId: "p1" }), "computer.preview", { handle: "held", since: "f1" })).resolves.toEqual({ id: "f1", app: "Calc" });
       expect(() => dispatch(core, phone(), "computer.preview", {})).toThrow(expect.objectContaining({ code: "bad_request" }));
     } finally {
       vi.useRealTimers();

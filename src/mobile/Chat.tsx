@@ -6,10 +6,12 @@ import { Dialogs } from "../renderer/src/components/Dialogs";
 import { Transcript } from "../renderer/src/components/Transcript";
 import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
+import type { ComputerPreviewFrame } from "../shared/computer";
 import { attention } from "../shared/session-state";
 import { useWakeAt } from "../renderer/src/components/primitives";
 import { agentActive, agentLapse } from "./browser-data";
 import { showChat, toggleExpandAll } from "./chat-ui";
+import { keepFrame, pollPreview, runUsesComputer } from "./computer-preview";
 import type { HostClient } from "./client/host-client";
 import { projectOf } from "../shared/board";
 import { FolderPicker } from "./ProjectSheets";
@@ -91,25 +93,21 @@ function useJoinedChat(client: HostClient, route: ChatRoute, attempt: number) {
   return { handle, error };
 }
 
-/** Read-only view of the Mac app this chat is driving (Computer Use); gone when the chat holds none. Never controls it. */
-function ComputerPreview({ client, handle, running }: { client: HostClient; handle: string; running: boolean }) {
-  const [frame, setFrame] = useState<{ mimeType: string; data: string; app: string } | null>(null);
+/**
+ * Read-only view of the Mac app this chat is driving (Computer Use); gone when the chat holds none. Never controls it.
+ * Polls only while the run used Computer Use and the page shows; an unchanged frame comes back as its id alone.
+ */
+function ComputerPreview({ client, handle, active }: { client: HostClient; handle: string; active: boolean }) {
+  const [frame, setFrame] = useState<ComputerPreviewFrame | null>(null);
   useEffect(() => {
-    if (!running) return setFrame(null);
-    let live = true;
-    const tick = () =>
-      client
-        .call("computer.preview", { handle })
-        .then((next) => live && setFrame(next))
-        .catch(() => undefined);
-    void tick();
-    const timer = setInterval(tick, 2000);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-  }, [client, handle, running]);
-  if (!frame) return null;
+    if (!active) return setFrame(null);
+    let shown: ComputerPreviewFrame | null = null;
+    return pollPreview(
+      () => client.call("computer.preview", shown ? { handle, since: shown.id } : { handle }),
+      (next) => setFrame((shown = keepFrame(shown, next))),
+    );
+  }, [client, handle, active]);
+  if (!frame?.data) return null;
   return (
     <div className="shrink-0 border-t border-line px-3 py-2" data-testid="computer-preview">
       <div className="mb-1 text-[11.5px] text-muted">pi is using {frame.app} on the Mac (view only)</div>
@@ -204,7 +202,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
               <Dialogs handle={session.handle} dialogs={session.dialogs} />
             </div>
           )}
-          <ComputerPreview client={client} handle={session.handle} running={session.running} />
+          <ComputerPreview client={client} handle={session.handle} active={session.running && runUsesComputer(session.items)} />
           <MobileComposer client={client} session={session} initialText={route.prefill} cardId={route.cardId} />
         </>
       )}
