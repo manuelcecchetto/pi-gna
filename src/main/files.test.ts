@@ -33,10 +33,14 @@ const project = async (...files: string[]) => {
 const watcherOf = (cwd: string) => hooks.watchers.filter((watcher) => watcher.cwd === cwd).at(-1);
 
 const platform = Object.getOwnPropertyDescriptor(process, "platform") as PropertyDescriptor;
+// files.ts reads the platform on import: the fake-watcher tests run as on macOS wherever CI runs (Linux on GitHub).
+const asPlatform = (value: string) => Object.defineProperty(process, "platform", { ...platform, value });
+const nativeWatch = process.platform === "darwin" || process.platform === "win32";
 
 beforeEach(() => {
   // A module of its own per test: its lists and watchers start empty.
   vi.resetModules();
+  asPlatform("darwin");
   hooks.spawns = 0;
   hooks.fake = true;
   hooks.watchers = [];
@@ -52,7 +56,9 @@ afterEach(async () => {
 });
 
 describe("listFiles", () => {
-  it("lists the project once while nothing changes, and again after a file appears", async () => {
+  // A real recursive watcher, so only where the app watches natively.
+  it.runIf(nativeWatch)("lists the project once while nothing changes, and again after a file appears", async () => {
+    Object.defineProperty(process, "platform", platform);
     hooks.fake = false;
     const { listFiles } = await import("./files");
     const root = await project();
@@ -106,10 +112,10 @@ describe("listFiles", () => {
   it("lists again after 15 s where it cannot watch, and when rg failed", async () => {
     const { listFiles } = await import("./files");
     const root = await project();
-    Object.defineProperty(process, "platform", { ...platform, value: "linux" });
+    asPlatform("linux");
     vi.resetModules();
     const linux = await import("./files");
-    Object.defineProperty(process, "platform", platform);
+    asPlatform("darwin");
     await linux.listFiles(root);
     expect(hooks.watchers).toHaveLength(0);
     vi.setSystemTime(Date.now() + 14_000);
