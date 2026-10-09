@@ -1382,8 +1382,9 @@ Frame to parent: `ready`, `rendered`, `height { px }` (ResizeObserver, per anima
 ## Verifying the UI
 
 `scripts/cdp.mjs` drives a running app over CDP (screenshots, eval, typing, keys; it finds the `app://pigna` page); start it with
-`node bin/pi-gna.mjs --remote-debugging-port=9333`. Give test instances `PIGNA_USER_DATA=/tmp/<dir>`, `PIGNA_BACKGROUND=1` (opens without taking focus; a
-focused test window once swallowed the user's typing) and their own port, so they never share a profile, focus or
+`node bin/pi-gna.mjs --remote-debugging-port=9333`. Give test instances `PIGNA_USER_DATA=/tmp/<dir>`, `PIGNA_BACKGROUND=1` (no Dock icon, and a window that never takes focus,
+is transparent and lets clicks through: a focused test window once swallowed the user's typing, and benchmark loops of
+visible windows kept the user from working) and their own port, so they never share a profile, focus or
 debugging port with the pi-gna you work in, and stop them by their PID, never with
 `pkill -f bin/pi-gna.mjs`: the agent doing the testing may itself be running inside a pi-gna session, and a
 pattern kill takes down the user's app and the agent with it. The main process is the one listening on the debugging

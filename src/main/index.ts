@@ -77,6 +77,10 @@ if (process.env.PIGNA_USER_DATA) {
 // The browser pane's cookies would otherwise be encrypted with a key in the login keychain ("pi-gna Safe Storage"),
 // and with an ad-hoc signature macOS asks for it again after every update. A fixed key is enough for this profile.
 if (process.platform === "darwin") app.commandLine.appendSwitch("use-mock-keychain");
+// Test instances (PIGNA_BACKGROUND=1) stay out of the way of whoever works on this Mac: no Dock icon or menu bar, and
+// a window that never takes focus, is fully transparent and lets clicks through. CDP still drives and captures it.
+const background = process.env.PIGNA_BACKGROUND === "1";
+if (background && process.platform === "darwin") app.dock?.hide();
 const logFile = join(app.getPath("logs"), "main.log");
 mkdirSync(app.getPath("logs"), { recursive: true });
 logToFile(logFile);
@@ -177,7 +181,7 @@ const devices = new DeviceStore(
     // The pairing code and the approval prompt are for this window only: they never go through the hub.
     send(IPC.pairingChanged, status);
     log.info("remote", `pairing ${status.state}`);
-    if (status.state === "pending_approval" && window && !window.isDestroyed()) process.env.PIGNA_BACKGROUND === "1" ? window.showInactive() : window.show();
+    if (status.state === "pending_approval" && window && !window.isDestroyed()) background ? window.showInactive() : window.show();
   },
 );
 const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"), (next) => {
@@ -301,13 +305,17 @@ function createWindow(): void {
       additionalArguments: [`--studio-home=${homedir()}`, `--studio-launch-cwd=${launchCwd}`, `--pigna-build=${__PIGNA_BUILD__}`, `--pigna-version=${app.getVersion()}`],
     },
   });
+  if (background) {
+    window.setOpacity(0);
+    window.setIgnoreMouseEvents(true);
+  }
   // PIGNA_BACKGROUND=1 (test instances): show without taking focus, so keystrokes meant for the
   // pi-gna you are working in never land in a test window.
   window.once("ready-to-show", () => {
     log.info("pigna", `window ready ${Math.round(process.uptime() * 1000)} ms after launch`);
     // maximize() also shows the window, but without focus, so it comes before the show below.
     if (initial.maximized) window?.maximize();
-    if (process.env.PIGNA_BACKGROUND === "1") window?.showInactive();
+    if (background) window?.showInactive();
     else window?.show();
   });
   // The terminal is the log: surface renderer warnings, errors and crashes there too.

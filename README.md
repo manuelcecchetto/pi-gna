@@ -204,7 +204,7 @@ environment if an extension wants to know where it runs.
 | `PIGNA_EXCLUDE_TOOLS` | Tools hidden from pi-gna sessions (default `run,snapshot,screenshot`, Stagehand's) |
 | `PI_CODING_AGENT_SESSION_DIR`, `PI_CODING_AGENT_DIR` | Where sessions are listed from (same as pi) |
 | `PIGNA_USER_DATA` | Separate app profile and logs, for test instances |
-| `PIGNA_BACKGROUND=1` | Open the window without taking focus, for test instances |
+| `PIGNA_BACKGROUND=1` | Test instances: no Dock icon, and a window that never takes focus, is transparent and lets clicks through |
 | `PIGNA_DEV=1` | Make `pi --pigna` run a source checkout instead of the installed app |
 
 Logs: Help > Show Logs (`~/Library/Logs/pi-gna/main.log`), or the terminal when started with `pi --pigna`.
