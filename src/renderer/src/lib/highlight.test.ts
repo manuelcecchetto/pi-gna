@@ -3,6 +3,23 @@ import { createHighlighterCore, type HighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { BLOCK_LIMIT, hash, highlight } from "./highlight";
 
+// shiki gives up on a line after 500 ms of wall time and leaves the rest of it plain, so on a loaded machine the two
+// sides of an equality check could stop at different places. Here neither does: every highlighter tokenizes in full.
+vi.mock("shiki/core", async (original) => {
+  const shiki = await original<typeof import("shiki/core")>();
+  return {
+    ...shiki,
+    createHighlighterCore: async (...args: Parameters<typeof shiki.createHighlighterCore>) => {
+      const core = await shiki.createHighlighterCore(...args);
+      const { codeToHast, codeToHtml } = core;
+      return Object.assign(core, {
+        codeToHast: (code: string, options: Parameters<typeof codeToHast>[1]) => codeToHast(code, { ...options, tokenizeTimeLimit: 0 }),
+        codeToHtml: (code: string, options: Parameters<typeof codeToHtml>[1]) => codeToHtml(code, { ...options, tokenizeTimeLimit: 0 }),
+      });
+    },
+  };
+});
+
 // What shiki makes of the whole block at once: sliced highlighting must give exactly this.
 let reference: HighlighterCore;
 beforeAll(async () => {
@@ -34,7 +51,8 @@ describe("highlight", () => {
       const lang = code.startsWith("{") ? "json" : "typescript";
       expect(await highlight(code, lang)).toBe(whole(code, lang));
     }
-  });
+    // The first block of a language compiles its grammar's expressions: seconds on a loaded machine.
+  }, 30_000);
 
   it("leaves blocks over the limit and unknown languages plain, unless a caller allows more", async () => {
     expect(BLOCK_LIMIT).toBe(30_000);
