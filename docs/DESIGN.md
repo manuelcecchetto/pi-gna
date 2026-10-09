@@ -86,7 +86,10 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   change adds its line under Unreleased in the same commit. release.yml checks the tag against `package.json`
   and puts `release.mjs notes <tag>` (that version's section) above GitHub's generated notes; a test keeps a
   section for the current version. The version is `app.getVersion()`: the log's first line, the About panel and
-  the sidebar header (`--pigna-version`, `StudioApi.version`).
+  the sidebar header (`--pigna-version`, `StudioApi.version`). Before cutting a release, compare `git tag -l` with
+  `git ls-remote --tags origin`: a cut whose push failed (v0.9.1 sat unpublished for a day; the active GitHub account
+  could not push) stays local. Push pending tags one at a time and let each release.yml run finish, since the
+  release that finishes last becomes GitHub's Latest, which the updater and the website's download links follow.
 - **Name.** `productName` in `package.json` is the app's name everywhere (menus, About, Dock, bundle, profile
   folder `~/Library/Application Support/<productName>`, logs). Renaming the app moves the profile, so carry
   the old folder over when you rename.
