@@ -35,12 +35,12 @@ import {
   Settings,
   type IconComponent,
 } from "./icons";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
 import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { entriesBelow, folderEntries, parentDir, type TreeEntry } from "../lib/file-tree";
-import { fuzzyFilter } from "../lib/fuzzy";
+import { type FuzzySearch, fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
 import { iconForKind, openFileDialog, openPreviewPath } from "../lib/preview";
 import { openSettings, setPane, showBrowser, showPage, store, toast, useApp } from "../state/app";
 import { type MenuItem, useContextMenu } from "./ContextMenu";
@@ -586,14 +586,22 @@ function FileFinder({ tab, onBack }: { tab?: BrowserTab; onBack: () => void }) {
     setDir("");
     if (cwd) void window.studio.listFiles(cwd).then(setAll, () => setAll([]));
   }, [cwd]);
-  const searching = query.trim() !== "";
+  // Up to 50k paths below the folder: one searcher for them, built on the first search, and a keystroke paints before
+  // its results do (clearing the search shows the folder at once).
+  const deferred = useDeferredValue(query.trim());
+  const typed = query.trim() && deferred;
+  const searching = typed !== "";
   const prefix = dir ? `${dir}/` : "";
+  const search = useMemo(() => {
+    let searcher: FuzzySearch<TreeEntry> | undefined;
+    return (q: string) => (searcher ??= fuzzySearch(entriesBelow(all ?? [], dir), (entry) => entry.path.slice(dir ? dir.length + 1 : 0)))(q, 50);
+  }, [all, dir]);
   const entries = useMemo(() => {
     if (!all) return [];
-    if (!searching) return folderEntries(all, dir).slice(0, FOLDER_LIMIT);
-    return fuzzyFilter(entriesBelow(all, dir), query.trim(), (entry) => entry.path.slice(prefix.length), 50);
-  }, [all, dir, prefix, query, searching]);
-  useEffect(() => setSelected(0), [query, dir]);
+    if (!typed) return folderEntries(all, dir).slice(0, FOLDER_LIMIT);
+    return search(typed);
+  }, [all, dir, search, typed]);
+  useEffect(() => setSelected(0), [typed, dir]);
   useEffect(() => {
     list.current?.querySelector(`[data-index="${selected}"]`)?.scrollIntoView({ block: "nearest" });
   }, [selected]);

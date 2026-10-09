@@ -18,6 +18,7 @@ moves those lines under the new version, and they become its GitHub release note
 - New chats are ready to prompt at once: pi-gna keeps one pi started for the next New chat in the folder you last opened a chat in (New chat to ready took about 0.7 s, now about 10 ms). It is skipped while your Mac is busy, replaced when pi's settings, your features or your context files change, and stopped after 10 minutes unused.
 - The message box no longer redraws on every frame while an answer streams, and no longer measures its own height each time: the window lays out about a third as often while streaming (194 layouts in 2 seconds of a stream, now 68).
 - The Kanban board, the ATP page and the browser pane no longer redraw on every frame while a chat streams: they update only when what they show of it changes (a card's mark, the orchestrator's tab, a tab's running icon). With 200 cards on the board, a chat streaming behind it cost about 480 ms of script every 2 seconds, now about 10 ms.
+- Typing after @ in a big project keeps up: the file menu narrows the files the last letters matched instead of searching every file again (each key over 50,000 files cost about 30 ms of script, now about 3 ms), and deleting a letter shows the earlier list at once. The ⌘P file finder searches the same way, and in it and in ⌘K what you type shows before the list catches up.
 
 ## 0.9.1 - 2026-10-08
 

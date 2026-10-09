@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { COLUMN_LABELS, projectOf } from "../../../shared/board";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { matchRanges, type PaletteItem, rankPalette } from "../lib/palette";
@@ -65,7 +65,9 @@ function PaletteDialog() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const entries = useEntries();
-  const sections = useMemo(() => rankPalette(entries, query), [entries, query]);
+  // Ranking every chat and card can take longer than a keystroke: the field paints first, the list follows.
+  const search = useDeferredValue(query);
+  const sections = useMemo(() => rankPalette(entries, search), [entries, search]);
   const flat = useMemo(() => sections.flatMap((section) => section.items), [sections]);
 
   useEffect(() => {
@@ -73,7 +75,7 @@ function PaletteDialog() {
     setOverlay(true); // the native browser view would draw over the dialog
     return () => setOverlay(false);
   }, []);
-  useEffect(() => setSelected(0), [query]);
+  useEffect(() => setSelected(0), [search]);
   useEffect(() => {
     list.current?.querySelector(`[data-index="${selected}"]`)?.scrollIntoView({ block: "nearest" });
   }, [selected]);
@@ -126,7 +128,7 @@ function PaletteDialog() {
           <Kbd>esc</Kbd>
         </div>
         <div ref={list} role="listbox" className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {flat.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-faint">Nothing matches “{query.trim()}”.</div>}
+          {flat.length === 0 && <div className="px-3 py-6 text-center text-[13px] text-faint">Nothing matches “{search.trim()}”.</div>}
           {sections.map((section) => (
             <div key={section.group} className="pb-1">
               <div className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-faint">{section.group}</div>
@@ -146,7 +148,7 @@ function PaletteDialog() {
                   >
                     <Icon size={15} className="shrink-0 text-muted" />
                     <span className="min-w-0 truncate text-[13px] text-fg">
-                      <Highlight text={entry.title} query={query} />
+                      <Highlight text={entry.title} query={search} />
                     </span>
                     {/* The detail keeps its room (up to a third) however long the title is. */}
                     <span className="max-w-[33%] shrink-0 truncate text-[12px] text-faint">{entry.detail}</span>

@@ -1,11 +1,11 @@
 import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, MessageSquare, Plus, Square, SquareKanban, X } from "./icons";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
 import type { Annotation } from "../../../shared/browser";
 import type { Attachment } from "../lib/attachments";
 import { lastCacheHit } from "../lib/context";
-import { fuzzyFilter } from "../lib/fuzzy";
+import { fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
 import { desktopLinks, previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
 import type { SessionState } from "../../../shared/session-state";
@@ -41,6 +41,7 @@ const drafts = new Map<string, string>();
 const injections = new Map<string, number>();
 const NO_ATTACHMENTS: Attachment[] = [];
 const NO_ANNOTATIONS: Annotation[] = [];
+const NO_COMMANDS: SlashCommand[] = [];
 const fileLists = new Map<string, Promise<string[]>>();
 
 interface MenuItem {
@@ -159,18 +160,23 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
     };
   }, [menu?.kind, session.cwd]);
 
+  // Up to 50k paths: each list is searched by one searcher, and a keystroke paints before its results do.
+  const searchCommands = useMemo(() => fuzzySearch(commands ?? NO_COMMANDS, (c: SlashCommand) => c.name), [commands]);
+  const searchFiles = useMemo(() => fuzzySearch(files, (f) => f), [files]);
+  const kind = menu?.kind;
+  const query = useDeferredValue(menu?.query ?? "");
   const items: MenuItem[] = useMemo(() => {
-    if (!menu) return [];
-    if (menu.kind === "command") {
-      return fuzzyFilter(commands ?? [], menu.query, (c: SlashCommand) => c.name, 60).map((c) => ({
+    if (!kind) return [];
+    if (kind === "command") {
+      return searchCommands(query, 60).map((c) => ({
         key: c.name,
         label: `/${c.name}`,
         detail: c.description,
         insert: `/${c.name} `,
       }));
     }
-    return fuzzyFilter(files, menu.query, (f) => f, 40).map((f) => ({ key: f, label: f, insert: `@${f} ` }));
-  }, [menu, commands, files]);
+    return searchFiles(query, 40).map((f) => ({ key: f, label: f, insert: `@${f} ` }));
+  }, [kind, query, searchCommands, searchFiles]);
 
   const accept = (item: MenuItem) => {
     if (!menu) return;

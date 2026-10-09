@@ -5,13 +5,13 @@
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
 import { useStore } from "../renderer/src/lib/store";
 import { ArrowUp, Brain, ChevronDown, ListEnd, Plus, RotateCw, Square } from "../renderer/src/components/icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";
 import { TokenRate } from "../renderer/src/components/TokenRate";
 import { Widget } from "../renderer/src/components/Widget";
 import { lastCacheHit } from "../renderer/src/lib/context";
-import { fuzzyFilter } from "../renderer/src/lib/fuzzy";
+import { fuzzySearch } from "../renderer/src/lib/fuzzy";
 import { applyMenuChoice, detectMenu, type MenuState } from "../shared/composer-menu";
 import type { SlashCommand } from "../shared/protocol";
 import type { SessionState } from "../shared/session-state";
@@ -97,13 +97,18 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
     };
   }, [client, menu?.kind, session.cwd]);
 
+  // Up to 50k paths: each list is searched by one searcher, and a keystroke paints before its results do.
+  const searchCommands = useMemo(() => fuzzySearch(data.commands, (c: SlashCommand) => c.name), [data.commands]);
+  const searchFiles = useMemo(() => fuzzySearch(files, (f) => f), [files]);
+  const kind = menu?.kind;
+  const query = useDeferredValue(menu?.query ?? "");
   const items: MenuItem[] = useMemo(() => {
-    if (!menu) return [];
-    if (menu.kind === "command") {
-      return fuzzyFilter(data.commands, menu.query, (c: SlashCommand) => c.name, 40).map((c) => ({ key: c.name, label: `/${c.name}`, detail: c.description, insert: `/${c.name} ` }));
+    if (!kind) return [];
+    if (kind === "command") {
+      return searchCommands(query, 40).map((c) => ({ key: c.name, label: `/${c.name}`, detail: c.description, insert: `/${c.name} ` }));
     }
-    return fuzzyFilter(files, menu.query, (f) => f, 30).map((f) => ({ key: f, label: f, insert: `@${f} ` }));
-  }, [menu, data.commands, files]);
+    return searchFiles(query, 30).map((f) => ({ key: f, label: f, insert: `@${f} ` }));
+  }, [kind, query, searchCommands, searchFiles]);
 
   const accept = (item: MenuItem) => {
     if (!menu) return;

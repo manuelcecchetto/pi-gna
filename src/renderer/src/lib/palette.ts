@@ -1,6 +1,6 @@
 // ⌘K search: ranks chats, cards, pages, settings, projects and commands for one query, grouped into sections.
 
-import { fuzzyScore } from "./fuzzy";
+import { fuzzyScore, topK } from "./fuzzy";
 
 export type PaletteGroup = "Chats" | "Cards" | "Pages" | "Settings" | "Projects" | "Commands";
 
@@ -130,9 +130,10 @@ export function rankPalette<T extends PaletteItem>(items: T[], query: string, no
     const limit = q ? SEARCH_LIMITS[group] : (IDLE_LIMITS[group] ?? 0);
     if (!list || limit === 0) continue;
     // Before you type: chats newest first (time unknown means just started), the rest as given.
-    if (q) list.sort((a, b) => b.score - a.score);
+    let top = list;
+    if (q) top = topK(list, limit);
     else if (group === "Chats") list.sort((a, b) => (b.item.time ?? Number.POSITIVE_INFINITY) - (a.item.time ?? Number.POSITIVE_INFINITY));
-    sections.push({ group, items: list.slice(0, limit).map((entry) => entry.item), best: list[0]?.score ?? 0 });
+    sections.push({ group, items: top.slice(0, limit).map((entry) => entry.item), best: top[0]?.score ?? 0 });
   }
   if (q) sections.sort((a, b) => b.best - a.best);
   return sections.map(({ group, items }) => ({ group, items }));

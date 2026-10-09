@@ -68,6 +68,19 @@ describe("rankPalette", () => {
   });
 });
 
+describe("rankPalette limits", () => {
+  it("shows each group's best matches, equal ones in their order", () => {
+    const chats = Array.from({ length: 12 }, (_, i) => item("Chats", `Deploy step ${i}`, { detail: "web-app" }));
+    const cards = Array.from({ length: 9 }, (_, i) => item("Cards", `Deploy card ${i}`));
+    const best = item("Chats", "Deploy", { detail: "web-app" });
+    const sections = rankPalette([...chats, best, ...cards], "deploy", NOW);
+    expect(sections.map((section) => [section.group, section.items.map((i) => i.title)])).toEqual([
+      ["Chats", ["Deploy", ...chats.slice(0, 7).map((chat) => chat.title)]],
+      ["Cards", cards.slice(0, 6).map((card) => card.title)],
+    ]);
+  });
+});
+
 describe("scoreItem", () => {
   it("ranks a title match above a detail match and newer above older", () => {
     const title = scoreItem("gna", item("Chats", "pi-gna release"), NOW);
