@@ -352,6 +352,10 @@ describe("session registry", () => {
     // The turn right before the cursor comes even when it alone is too big.
     expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 3 })!.turns).toEqual({ total: 5, from: 2 });
     expect(host.snapshot(handle, { turns: 10, bytes: 20_000, beforeTurn: 1 })!.turns).toEqual({ total: 5, from: 0 });
+    // A page's items carry the runs of their own calls, and no others.
+    const page = host.snapshot(handle, { turns: 2, beforeTurn: 3 })!.state as unknown as SessionState;
+    expect(page.items.flatMap((item) => (item.kind === "assistant" ? Object.entries(item.runs ?? {}).map(([id, run]) => [id, run.status]) : []))).toEqual([["t2", "done"], ["t3", "done"]]);
+    expect("tools" in page).toBe(false);
   });
 
   it("outlines the turns before a page, one line each, and a paged join gets the live state", async () => {

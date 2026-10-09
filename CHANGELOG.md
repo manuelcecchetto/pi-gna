@@ -19,6 +19,7 @@ moves those lines under the new version, and they become its GitHub release note
 - The message box no longer redraws on every frame while an answer streams, and no longer measures its own height each time: the window lays out about a third as often while streaming (194 layouts in 2 seconds of a stream, now 68).
 - The Kanban board, the ATP page and the browser pane no longer redraw on every frame while a chat streams: they update only when what they show of it changes (a card's mark, the orchestrator's tab, a tab's running icon). With 200 cards on the board, a chat streaming behind it cost about 480 ms of script every 2 seconds, now about 10 ms.
 - Typing after @ in a big project keeps up: the file menu narrows the files the last letters matched instead of searching every file again (each key over 50,000 files cost about 30 ms of script, now about 3 ms), and deleting a letter shows the earlier list at once. The ⌘P file finder searches the same way, and in it and in ⌘K what you type shows before the list catches up.
+- A command's live output no longer costs more the longer the chat is: each tool's run is now kept with the message that called it, so an update touches that message alone (in a chat with 6,000 tool calls, each update of a running command cost pi-gna about 1.2 ms, now about 1 µs).
 
 ## 0.9.1 - 2026-10-08
 

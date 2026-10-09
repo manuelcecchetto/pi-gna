@@ -148,13 +148,10 @@ export interface ChatPage {
   outline?: boolean;
 }
 
-/** About the JSON size of a turn: its items and the runs of its tool calls (results, screenshots). */
-function turnBytes(items: Item[], tools: SessionState["tools"]): number {
+/** About the JSON size of a turn: its items, with the runs of their tool calls (results, screenshots). */
+function turnBytes(items: Item[]): number {
   let size = 0;
-  for (const item of items) {
-    size += jsonBytes(item);
-    if (item.kind === "assistant") for (const block of item.message.content) if (block.type === "toolCall") size += jsonBytes(tools[block.id]);
-  }
+  for (const item of items) size += jsonBytes(item);
   return size;
 }
 
@@ -537,7 +534,7 @@ export class SessionHost {
     if (page.bytes !== undefined) {
       let size = 0;
       for (let turn = end - 1; turn >= from; turn--) {
-        size += turnBytes(items.slice(...bounds(turn)), chat.state.tools);
+        size += turnBytes(items.slice(...bounds(turn)));
         if (size > page.bytes && turn < end - 1) {
           from = turn + 1;
           break;
@@ -545,10 +542,8 @@ export class SessionHost {
       }
     }
     const slice = items.slice(from === 0 ? 0 : starts[from], end >= total ? items.length : starts[end]);
-    const called = new Set(slice.flatMap((item) => (item.kind === "assistant" ? item.message.content.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])) : [])));
-    const tools = Object.fromEntries(Object.entries(chat.state.tools).filter(([id]) => called.has(id)));
     const outline = page.outline ? starts.slice(0, from).map((index) => turnOutline(items[index] as Extract<Item, { kind: "user" }>)) : undefined;
-    return { seq: chat.seq, state: { ...chat.state, items: slice, tools }, turns: { total, from }, ...(outline && { outline }) };
+    return { seq: chat.seq, state: { ...chat.state, items: slice }, turns: { total, from }, ...(outline && { outline }) };
   }
 
   /** The authoritative state, whole (tests, host-side decisions). */

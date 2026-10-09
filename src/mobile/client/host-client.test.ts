@@ -221,7 +221,7 @@ describe("stream", () => {
 
   it("prepends the page before the snapshot's first turn and ignores a stale page", async () => {
     const item = (text: string) => ({ kind: "user", message: { role: "user", content: text, timestamp: 1 } });
-    const page = (items: unknown[], from: number) => ({ seq: 10, value: { state: { ...createSession("abc123", "/p"), items, tools: {} }, turns: { total: 4, from } } });
+    const page = (items: unknown[], from: number) => ({ seq: 10, value: { state: { ...createSession("abc123", "/p"), items }, turns: { total: 4, from } } });
     let served = 0;
     const t = setup((call) => {
       if (call.path !== "chat.snapshot") return reads()(call);

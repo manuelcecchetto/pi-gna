@@ -49,7 +49,7 @@ export function outlineItems(outline: TurnOutline[], preview?: (index: number) =
 }
 
 /** The preview of the turn a one-turn page holds (`pageSession(handle, index + 1, 1)`). */
-export function pagePreview(page: Pick<SessionState, "items" | "tools">): string {
+export function pagePreview(page: Pick<SessionState, "items">): string {
   const run = deriveRuns({ ...page, running: false }).findLast((candidate) => candidate.user);
   return run ? railPreview(run) : "";
 }

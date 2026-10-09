@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent, ToolCall } from "./protocol";
 import type { HostEvent } from "./host-api";
-import { attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, reduceSessionEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
+import { type AssistantItem, attention, createSession, hydrate, isDisposable, isDraft, isListed, reduceHostEvent, reduceSessionEvent, runOutcome, type SessionState, strongestAttention } from "./session-state";
 
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -124,7 +124,7 @@ describe("hydrate", () => {
     // After a tool-using turn: a steer.
     entry({ type: "message", message: { role: "user", content: "also this", timestamp: 1 } }),
     result("c2", true),
-    // A result before its call.
+    // A result before its call: no item made it, so it has no run (live or hydrated).
     result("c3"),
     entry({ type: "message", message: assistant([call("c3")], "toolUse") }),
     entry({ type: "compaction", summary: "Earlier", tokensBefore: 1000, firstKeptEntryId: "e4" }),
@@ -162,25 +162,80 @@ describe("hydrate", () => {
       }
     }, start);
   }
-  const shape = (state: SessionState) => ({ items: state.items, tools: state.tools, seq: state.seq, name: state.name, thinkingLevel: state.thinkingLevel });
+  const shape = (state: SessionState) => ({ items: state.items, seq: state.seq, name: state.name, thinkingLevel: state.thinkingLevel });
+  const runs = (state: SessionState) => state.items.flatMap((item) => (item.kind === "assistant" ? Object.entries(item.runs ?? {}).map(([id, run]) => [item.key, id, run.status]) : []));
 
   it("builds what folding the entries through the live reducer builds", () => {
     const hydrated = hydrate(createSession("h", "/repo"), entries);
     expect(shape(hydrated)).toEqual(shape(fold(createSession("h", "/repo"), entries)));
     expect(hydrated.modelRef).toEqual({ provider: "p", modelId: "m" });
     expect(hydrated.items.filter((item) => item.kind === "user").map((item) => item.kind === "user" && !!item.steer)).toEqual([false, true, false]);
-    expect(Object.keys(hydrated.tools)).toEqual(["c1", "c2", "c3"]);
+    expect(runs(hydrated)).toEqual([["i2", "c1", "done"], ["i2", "c2", "error"]]);
   });
 
   it("leaves the state it starts from untouched", () => {
     const start = hydrate(createSession("h", "/repo"), entries.slice(0, 6));
-    const items = start.items.slice();
-    const tools = { ...start.tools };
+    const items = structuredClone(start.items);
     const again = hydrate(start, entries);
     expect(start.items).toEqual(items);
-    expect(start.tools).toEqual(tools);
     expect(again.items).not.toBe(start.items);
     expect(shape(again)).toEqual(shape(hydrate(createSession("h", "/repo"), entries)));
+  });
+});
+
+describe("tool runs", () => {
+  const bashCall: ToolCall = { type: "toolCall", id: "c2", name: "bash", arguments: { command: "ls" } };
+  const update = (id: string, text: string): SessionEvent => ({ type: "tool_execution_update", toolCallId: id, toolName: "bash", args: {}, partialResult: { content: [{ type: "text", text }] } });
+  const runOf = (state: SessionState, index: number, id: string) => {
+    const item = state.items[index];
+    return item?.kind === "assistant" ? item.runs?.[id] : undefined;
+  };
+  // Two tool-using messages, the first's read failed, the second's bash still running, and a steer delivered after it.
+  const running = () =>
+    play([
+      { type: "agent_start" },
+      ...userTurn("read it"),
+      { type: "message_end", message: assistant([readCall], "toolUse") },
+      { type: "tool_execution_start", toolCallId: "c1", toolName: "read", args: readCall.arguments },
+      { type: "tool_execution_end", toolCallId: "c1", toolName: "read", result: { content: [] }, isError: true },
+      { type: "message_end", message: assistant([bashCall], "toolUse") },
+      { type: "tool_execution_start", toolCallId: "c2", toolName: "bash", args: bashCall.arguments },
+      ...userTurn("steer in"),
+    ]);
+
+  it("keeps a run on the item that made the call, so an update copies that item alone", () => {
+    const before = running();
+    expect(before.items.map((item) => item.kind)).toEqual(["user", "assistant", "assistant", "user"]);
+    const after = play([update("c2", "a")], before);
+    expect(after.items.map((item, index) => item === before.items[index])).toEqual([true, true, false, true]);
+    expect(runOf(after, 2, "c2")).toMatchObject({ status: "running", partial: { content: [{ text: "a" }] } });
+    expect(runOf(after, 2, "c2")?.startedAt).toBe(runOf(before, 2, "c2")?.startedAt);
+    expect(runOf(after, 1, "c1")).toBe(runOf(before, 1, "c1"));
+    expect(Object.keys((after.items[2] as AssistantItem).runs ?? {})).toEqual(["c2"]);
+  });
+
+  it("keeps the end time of the execution when the result message follows", () => {
+    const ended = play([{ type: "tool_execution_end", toolCallId: "c2", toolName: "bash", result: { content: [] }, isError: true }], running());
+    const result = play([{ type: "message_end", message: { role: "toolResult", toolCallId: "c2", toolName: "bash", content: [{ type: "text", text: "boom" }], isError: true, timestamp: 1 } }], ended);
+    expect(runOf(result, 2, "c2")).toMatchObject({ status: "error", endedAt: runOf(ended, 2, "c2")?.endedAt, result: { content: [{ text: "boom" }] } });
+  });
+
+  it("ignores an event for a call no message of the turn made", () => {
+    const before = running();
+    expect(play([update("zz", "a")], before)).toBe(before);
+    // A call from an earlier turn is not searched for: pi runs the calls of the message that just ended.
+    const next = play([...userTurn("next"), { type: "message_end", message: assistant([{ type: "text", text: "ok" }]) }], play([{ type: "agent_settled" }], before));
+    expect(play([update("c1", "late")], next)).toBe(next);
+  });
+
+  it("settling fails the runs still running and copies only the items holding them", () => {
+    const before = play([update("c2", "a")], running());
+    const settled = play([{ type: "agent_settled" }], before);
+    // The read that failed before is left as it was.
+    expect(settled.items.map((item, index) => item === before.items[index])).toEqual([true, true, false, true]);
+    expect(runOf(settled, 1, "c1")?.status).toBe("error");
+    expect(runOf(settled, 2, "c2")).toMatchObject({ status: "error", partial: { content: [{ text: "a" }] } });
+    expect(runOf(settled, 2, "c2")?.endedAt).toBeUndefined();
   });
 });
 

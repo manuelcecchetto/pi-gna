@@ -9,6 +9,8 @@
 // FAKE_ATP=1: a prompt that assigns an ATP node (the runner's claim packet) is answered by completing that node with the
 // plan's librarian CLI, so a throwaway plan runs end to end; FAKE_ATP=idle leaves the node claimed (a worker that gave up).
 // `abort` ends the answer early, as Stop and Esc do with pi.
+// `[tools=N]` runs N bash calls before the answer, one assistant message each, every call streaming `[toolout=N]` lines of
+// output (default 4) one per `[delay=N]`; `[toolfail]` fails the last call (tool rows, live output, timings).
 // Composer chrome: get_commands, thinking levels (large models offer them), set_model / set_thinking_level, compact and
 // session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
 // a widget above the editor, set_editor_text, setTitle); "retry-demo" shows an auto-retry for a moment.
@@ -107,6 +109,36 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   }
 });
 
+/** `[tools=N]`: bash calls as pi runs them, each after the message that made it ends. */
+async function runTools(text) {
+  const calls = directive(text, "tools", 0);
+  const lines = directive(text, "toolout", 4);
+  const delay = directive(text, "delay", DELAY);
+  for (let t = 1; t <= calls && !aborted; t++) {
+    const id = `fake-${process.pid}-${Date.now()}-${t}`;
+    const call = { type: "toolCall", id, name: "bash", arguments: { command: `fake-build --step ${t}` } };
+    const message = { role: "assistant", content: [], api: "fake", provider: "fake", model: "fake", usage, stopReason: "toolUse", timestamp: Date.now() };
+    out({ type: "message_start", message });
+    out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_start", contentIndex: 0, id, toolName: "bash" } });
+    out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: JSON.stringify(call.arguments) } });
+    out({ type: "message_update", message, assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall: call } });
+    out({ type: "message_end", message: { ...message, content: [call] } });
+    out({ type: "tool_execution_start", toolCallId: id, toolName: "bash", args: call.arguments });
+    let output = "";
+    for (let i = 1; i <= lines && !aborted; i++) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      output += `call ${t} line ${i}\n`;
+      out({ type: "tool_execution_update", toolCallId: id, toolName: "bash", args: call.arguments, partialResult: { content: [{ type: "text", text: output }] } });
+    }
+    const isError = t === calls && text.includes("[toolfail]");
+    const content = [{ type: "text", text: isError ? `${output}exit code 1` : output }];
+    out({ type: "tool_execution_end", toolCallId: id, toolName: "bash", result: { content }, isError });
+    const result = { role: "toolResult", toolCallId: id, toolName: "bash", content, isError, timestamp: Date.now() };
+    out({ type: "message_start", message: result });
+    out({ type: "message_end", message: result });
+  }
+}
+
 /** The worker's part of an ATP node: complete it through the librarian, like a pi following the claim packet. */
 function completeNode(text) {
   const node = text.match(/TASK ASSIGNED: (\S+)/)?.[1];
@@ -134,6 +166,7 @@ async function run(text) {
   if (text.includes("ask-confirm")) out({ type: "extension_ui_request", id: `confirm-${process.pid}-${Date.now()}`, method: "confirm", title: "Run the fake tool?", message: "Approve to continue." });
   out({ type: "message_start", message: { role: "user", content: text, timestamp: Date.now() } });
   out({ type: "message_end", message: { role: "user", content: text, timestamp: Date.now() } });
+  await runTools(text);
   const base = { role: "assistant", content: [], api: "fake", provider: "fake", model: "fake", usage, stopReason: "stop", timestamp: Date.now() };
   out({ type: "message_start", message: base });
   out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_start", contentIndex: 0 } });

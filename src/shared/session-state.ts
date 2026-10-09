@@ -67,6 +67,8 @@ export type Item =
       times?: Record<number, BlockTime>;
       /** Time spent streaming, for the tok/s readout. */
       clock?: StreamClock;
+      /** The runs of this message's tool calls, by call id: a tool update copies this item alone. */
+      runs?: Record<string, ToolRun>;
     }
   | { kind: "bash"; key: string; message: BashExecutionMessage }
   | { kind: "custom"; key: string; message: CustomMessage }
@@ -129,7 +131,6 @@ export interface SessionState {
   /** A run finished while you were not looking (another chat open, or the window unfocused), and how. */
   unread?: RunOutcome;
   items: Item[];
-  tools: Record<string, ToolRun>;
   seq: number;
 }
 
@@ -149,18 +150,17 @@ export function createSession(handle: string, cwd: string, sessionPath?: string,
     fromDisk: sessionPath !== undefined,
     prompted: false,
     items: [],
-    tools: {},
     seq: 0,
   };
 }
 
 // ── Hydration ────────────────────────────────────────────────────────────────
 
-// Builds one new state, mutating only its own fresh items and tools: copying them per entry, as the live
+// Builds one new state, mutating only its own fresh items and their runs: copying them per entry, as the live
 // reducer does, is quadratic (seconds for a 10k-entry session). Same keys and output as folding the entries
 // through the reducer.
 export function hydrate(state: SessionState, entries: SessionEntry[]): SessionState {
-  const next: SessionState = { ...state, items: [], tools: {}, compacting: undefined, seq: 0 };
+  const next: SessionState = { ...state, items: [], compacting: undefined, seq: 0 };
   const add = (message: AgentMessage, at: number) => applyChange(next, messageChange(next, message, at));
   for (const entry of entries) {
     switch (entry.type) {
@@ -208,8 +208,9 @@ function appendItem(state: SessionState, item: NewItem): void {
 /** Hydration only: apply a message's change to the state hydrate is building. */
 function applyChange(state: SessionState, change: MessageChange): void {
   if (!change) return;
-  if ("item" in change) appendItem(state, change.item);
-  else state.tools[change.tool] = { ...state.tools[change.tool], ...change.patch } as ToolRun;
+  if ("item" in change) return appendItem(state, change.item);
+  const item = state.items[toolOwner(state.items, change.tool)];
+  if (item?.kind === "assistant") (item.runs ??= {})[change.tool] = { ...item.runs[change.tool], ...change.patch } as ToolRun;
 }
 
 // ── Host events ──────────────────────────────────────────────────────────────
@@ -374,16 +375,16 @@ function updateCompaction(state: SessionState, update: (item: NonNullable<Sessio
 function settle(state: SessionState, now: number): SessionState {
   // A run that ends mid-stream (abort, crash) must not leave spinners behind.
   const items: Item[] = state.items.map((item) => {
-    if (item.kind === "assistant" && item.streaming) return { ...item, streaming: false, partialArgs: undefined };
+    if (item.kind === "assistant") {
+      const runs = failRunning(item.runs);
+      if (item.streaming || runs !== item.runs) return { ...item, streaming: false, partialArgs: undefined, runs };
+    }
     if (item.kind === "compaction" && item.status === "running") return { kind: "compaction", key: item.key, reason: item.reason, startedAt: item.startedAt, endedAt: now, status: "aborted" };
     return item;
   });
-  const tools = { ...state.tools };
-  for (const [id, run] of Object.entries(tools)) if (run.status === "running") tools[id] = { ...run, status: "error", endedAt: run.endedAt };
   return {
     ...state,
     items,
-    tools,
     running: false,
     runStartedAt: undefined,
     compacting: undefined,
@@ -391,6 +392,13 @@ function settle(state: SessionState, now: number): SessionState {
     awaitingPrompt: false,
     queueSeen: { steering: [], followUp: [] },
   };
+}
+
+/** The runs with the ones still running marked failed (their end never came): the same object when none was. */
+function failRunning(runs: Record<string, ToolRun> | undefined): Record<string, ToolRun> | undefined {
+  let failed: Record<string, ToolRun> | undefined;
+  for (const id in runs) if (runs[id]!.status === "running") (failed ??= { ...runs })[id] = { ...runs[id]!, status: "error" };
+  return failed ?? runs;
 }
 
 export function userText(message: UserMessage): string {
@@ -430,7 +438,7 @@ type NewItem = DistributiveOmit<Item, "key">;
 /** What a message adds: a transcript item, or a patch to its tool call's run. Applied immutably live, in place by hydrate. */
 type MessageChange = { item: NewItem } | { tool: string; patch: Partial<ToolRun> } | undefined;
 
-function messageChange(state: Pick<SessionState, "items" | "tools">, message: AgentMessage, at: number, steer = message.role === "user" && followsToolUse(state)): MessageChange {
+function messageChange(state: Pick<SessionState, "items">, message: AgentMessage, at: number, steer = message.role === "user" && followsToolUse(state)): MessageChange {
   switch (message.role) {
     case "user":
       return { item: steer ? { kind: "user", message, steer: true } : { kind: "user", message } };
@@ -442,7 +450,7 @@ function messageChange(state: Pick<SessionState, "items" | "tools">, message: Ag
         patch: {
           status: message.isError ? "error" : "done",
           result: { content: message.content, details: message.details },
-          endedAt: state.tools[message.toolCallId]?.endedAt ?? at,
+          endedAt: toolRun(state.items, message.toolCallId)?.endedAt ?? at,
         },
       };
     case "bashExecution":
@@ -463,9 +471,31 @@ function pushItem(state: SessionState, item: NewItem): SessionState {
   return { ...state, seq, items: [...state.items, { ...item, key: `i${seq}` } as Item] };
 }
 
+/**
+ * The index of the assistant item whose message made tool call `id`, or -1. pi runs a message's tool calls right after
+ * it ends, so this is the latest assistant item, past any steer delivered meanwhile. The search stops at the turn's
+ * prompt: a call it does not know costs the turn, not the session.
+ */
+function toolOwner(items: Item[], id: string): number {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (item.kind === "assistant" && item.message.content.some((block) => block.type === "toolCall" && block.id === id)) return i;
+    if (item.kind === "user" && !item.steer) break;
+  }
+  return -1;
+}
+
+function toolRun(items: Item[], id: string): ToolRun | undefined {
+  const item = items[toolOwner(items, id)];
+  return item?.kind === "assistant" ? item.runs?.[id] : undefined;
+}
+
+/** Patches the run on the item that made the call: that item alone is copied, so the rest keep their identity. */
 function setTool(state: SessionState, id: string, patch: Partial<ToolRun>): SessionState {
-  const previous = state.tools[id];
-  return { ...state, tools: { ...state.tools, [id]: { ...previous, ...patch } as ToolRun } };
+  const index = toolOwner(state.items, id);
+  if (index < 0) return state;
+  const item = state.items[index] as AssistantItem;
+  return replaceItem(state, index, { ...item, runs: { ...item.runs, [id]: { ...item.runs?.[id], ...patch } as ToolRun } });
 }
 
 function startAssistant(state: SessionState, message: AssistantMessage): SessionState {

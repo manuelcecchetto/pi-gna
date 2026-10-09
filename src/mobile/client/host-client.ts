@@ -584,7 +584,7 @@ export class HostClient {
       const current = s.chats[handle];
       // A resync or another page landed meanwhile: this one no longer joins the transcript's start.
       if (!current?.session || current.turns?.from !== entry.turns!.from) return s;
-      const session = { ...current.session, items: [...older.items, ...current.session.items], tools: { ...older.tools, ...current.session.tools } };
+      const session = { ...current.session, items: [...older.items, ...current.session.items] };
       return { ...s, chats: { ...s.chats, [handle]: { ...current, session, turns: { total: current.turns.total, from: page.value.turns.from } } } };
     });
   }

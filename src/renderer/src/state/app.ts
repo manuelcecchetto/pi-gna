@@ -369,8 +369,7 @@ async function pageIn(handle: string, to: number | undefined): Promise<void> {
   patchSession(handle, (s) => {
     if (s.earlier !== outline) return s; // the chat was replaced meanwhile
     const items = [...pages.flatMap((page) => page.items), ...s.items];
-    const tools = Object.assign({}, ...pages.map((page) => page.tools), s.tools) as SessionState["tools"];
-    return { ...s, items, tools, earlier: before > 0 ? outline.slice(0, before) : undefined };
+    return { ...s, items, earlier: before > 0 ? outline.slice(0, before) : undefined };
   });
 }
 

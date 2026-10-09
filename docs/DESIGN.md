@@ -717,6 +717,14 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   Waiting deltas are not in the state or `seq` yet, so a snapshot taken meanwhile is followed by them. The hub
   serializes each event once (`EventHub.json`), for the ring's size and every phone stream; only an event holding an
   image block goes through the image replacer again.
+- **Tool runs live on the assistant item that made the call** (`runs`, by call id), not in one record for the session.
+  A tool update (bash output comes several times a second) copies that item alone, so it costs the same in a chat of
+  6,000 calls as in a new one (1.2 ms before, about 1 µs, in main and again in each client), the other items keep
+  their identity for memoized rendering, and a snapshot page carries its own runs. pi runs a message's calls right
+  after the message ends, so the owner is the latest assistant item, found walking back through the current turn
+  (past steers); an event for a call no message of the turn made is dropped, as it has nothing to show on. The
+  desktop and the phone read this shape from `chat.snapshot` in the same build; a phone on an older build reloads on
+  `hello`'s build id before reading one.
 - **Leases.** `chat.open` and `chat.attach` take a lease `(handle, clientId)`; the desktop is `desktop`, a phone is its
   stream id. A lease whose stream closed lives 60 s. pi stops with no leases and a disposable chat (not prompted,
   running, compacting, holding a dialog or unread), when the chat is idle (below), or on an explicit `chat.close`:

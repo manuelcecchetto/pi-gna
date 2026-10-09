@@ -29,16 +29,16 @@ export interface Run {
 
 interface CacheEntry {
   items: Item[];
-  tools: (ToolRun | undefined)[];
   live: boolean;
   run: Run;
 }
 
 /**
- * Derive runs, reusing the previous Run object when none of its inputs changed so memoized
- * components skip finished history while the live run streams.
+ * Derive runs, reusing the previous Run object when none of its items changed so memoized
+ * components skip finished history while the live run streams. Tool runs are on the items that
+ * made the calls, so a tool update changes its own item and run only.
  */
-export function createRunDeriver(): (state: Pick<SessionState, "items" | "tools" | "running">) => Run[] {
+export function createRunDeriver(): (state: Pick<SessionState, "items" | "running">) => Run[] {
   let cache = new Map<string, CacheEntry>();
   return (state) => {
     const slices = sliceRuns(state.items);
@@ -46,13 +46,9 @@ export function createRunDeriver(): (state: Pick<SessionState, "items" | "tools"
     const runs = slices.map((items, index) => {
       const live = state.running && index === slices.length - 1;
       const key = items[0]?.key ?? "empty";
-      const tools = toolIds(items).map((id) => state.tools[id]);
       const previous = cache.get(key);
-      const run =
-        previous && previous.live === live && sameRefs(previous.items, items) && sameRefs(previous.tools, tools)
-          ? previous.run
-          : buildRun(key, items, state.tools, live);
-      nextCache.set(key, { items, tools, live, run });
+      const run = previous && previous.live === live && sameRefs(previous.items, items) ? previous.run : buildRun(key, items, live);
+      nextCache.set(key, { items, live, run });
       return run;
     });
     cache = nextCache;
@@ -60,7 +56,7 @@ export function createRunDeriver(): (state: Pick<SessionState, "items" | "tools"
   };
 }
 
-export function deriveRuns(state: Pick<SessionState, "items" | "tools" | "running">): Run[] {
+export function deriveRuns(state: Pick<SessionState, "items" | "running">): Run[] {
   return createRunDeriver()(state);
 }
 
@@ -74,20 +70,11 @@ function sliceRuns(items: Item[]): Item[][] {
   return slices;
 }
 
-function toolIds(items: Item[]): string[] {
-  const ids: string[] = [];
-  for (const item of items) {
-    if (item.kind !== "assistant") continue;
-    for (const block of item.message.content) if (block.type === "toolCall") ids.push(block.id);
-  }
-  return ids;
-}
-
 function sameRefs<T>(a: T[], b: T[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, live: boolean): Run {
+function buildRun(key: string, items: Item[], live: boolean): Run {
   const blocks: Block[] = [];
   let user: Run["user"];
   let group: Extract<Block, { kind: "activity" }> | undefined;
@@ -143,7 +130,7 @@ function buildRun(key: string, items: Item[], tools: Record<string, ToolRun>, li
             );
           } else if (block.type === "toolCall") {
             addStep(
-              { kind: "tool", key: blockKey, call: block, run: tools[block.id], argsStreaming: Boolean(item.partialArgs && index in item.partialArgs) },
+              { kind: "tool", key: blockKey, call: block, run: item.runs?.[block.id], argsStreaming: Boolean(item.partialArgs && index in item.partialArgs) },
               message.timestamp,
             );
           }

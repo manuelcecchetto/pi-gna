@@ -5,6 +5,12 @@ import { attention, createSession, hydrate, isDisposable, isDraft, reduceHostEve
 import { liveComputerApp, presentTool, summarizeTools, toolTimeoutMs } from "./tools";
 import { createRunDeriver, deriveRuns, layoutRun, needsTimeDivider, type Run } from "./view";
 
+/** A tool's run, from the assistant item that made the call. */
+function toolRun(state: SessionState, id: string) {
+  for (const item of state.items) if (item.kind === "assistant" && item.runs?.[id]) return item.runs[id];
+  return undefined;
+}
+
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const assistant = (content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "stop"): AssistantMessage => ({
   role: "assistant",
@@ -75,7 +81,7 @@ describe("session reducer", () => {
       ],
       state,
     );
-    expect(done.tools.c1).toMatchObject({ status: "running", partial: { content: [{ text: "par" }] } });
+    expect(toolRun(done, "c1")).toMatchObject({ status: "running", partial: { content: [{ text: "par" }] } });
 
     const finished = play(
       [
@@ -84,8 +90,8 @@ describe("session reducer", () => {
       ],
       done,
     );
-    expect(finished.tools.c1).toMatchObject({ status: "done", result: { content: [{ text: "body" }] } });
-    expect(finished.tools.c1?.endedAt).toBeGreaterThan(finished.tools.c1?.startedAt ?? Infinity);
+    expect(toolRun(finished, "c1")).toMatchObject({ status: "done", result: { content: [{ text: "body" }] } });
+    expect(toolRun(finished, "c1")?.endedAt).toBeGreaterThan(toolRun(finished, "c1")?.startedAt ?? Infinity);
     expect(finished.items).toHaveLength(2); // tool results attach to calls, not to the transcript
   });
 
@@ -94,12 +100,13 @@ describe("session reducer", () => {
       { type: "agent_start" },
       { type: "message_start", message: assistant([], "pending") },
       { type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
+      { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1, id: "c9", toolName: "bash" } },
       { type: "tool_execution_start", toolCallId: "c9", toolName: "bash", args: {} },
       { type: "agent_settled" },
     ]);
     const item = state.items[0];
     expect(item?.kind === "assistant" && item.streaming).toBe(false);
-    expect(state.tools.c9?.status).toBe("error");
+    expect(toolRun(state, "c9")?.status).toBe("error");
     expect(state.running).toBe(false);
   });
 
@@ -146,7 +153,7 @@ describe("hydrate + view", () => {
   it("hydrates entries into runs with merged activity groups", () => {
     const state = hydrate(createSession("h", "/repo"), entries);
     expect(state.name).toBe("Auth fix");
-    expect(state.tools.c2?.status).toBe("error");
+    expect(toolRun(state, "c2")?.status).toBe("error");
     const runs = deriveRuns(state);
     expect(runs).toHaveLength(2);
     expect(runs[0]?.blocks.map((block) => block.kind)).toEqual(["activity", "text", "activity", "aborted", "compaction"]);
@@ -168,6 +175,22 @@ describe("hydrate + view", () => {
     const second = derive(next);
     expect(second[0]).toBe(first[0]);
     expect(second[1]).not.toBe(first[1]);
+  });
+
+  it("re-derives only the run whose tool updated", () => {
+    const derive = createRunDeriver();
+    const call: ToolCall = { type: "toolCall", id: "c7", name: "bash", arguments: { command: "make" } };
+    const state = play(
+      [{ type: "agent_start" }, ...userTurn("build"), { type: "message_end", message: assistant([call], "toolUse") }, { type: "tool_execution_start", toolCallId: "c7", toolName: "bash", args: call.arguments }],
+      hydrate(createSession("h", "/repo"), entries),
+    );
+    const first = derive(state);
+    const next = play([{ type: "tool_execution_update", toolCallId: "c7", toolName: "bash", args: call.arguments, partialResult: { content: [{ type: "text", text: "cc" }] } }], state);
+    const second = derive(next);
+    expect(second.slice(0, -1).every((run, index) => run === first[index])).toBe(true);
+    expect(second.at(-1)).not.toBe(first.at(-1));
+    const step = second.at(-1)?.blocks[0];
+    expect(step?.kind === "activity" && step.steps[0]).toMatchObject({ kind: "tool", run: { status: "running", partial: { content: [{ text: "cc" }] } } });
   });
 
   it("summarizes tools by category with unique files and failures", () => {

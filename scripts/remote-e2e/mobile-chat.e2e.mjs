@@ -72,9 +72,37 @@ await scenario("mobile chat", async (ctx) => {
   await sleep(800);
   await shot("7-stopped");
   check(!(await exists('[data-testid="stop"]')), "the phone no longer offers Stop");
+  await liveToolChecks({ phone, shot, exists, present });
   await composerChecks({ phone, A, handle, shot, text, tap, exists, present });
   await reopenChecks({ phone, A, handle, sessionFile: ctx.sessionFile, tap, exists, present });
 });
+
+/** Tool calls while they run: a row with the output so far in its sheet, then their time, and a failed one marked failed. */
+async function liveToolChecks({ phone, shot, exists, present }) {
+  log("live tool rows");
+  const sheet = () => phone.eval(`document.querySelector('[data-testid="tool-sheet"]')?.innerText ?? ''`);
+  const row = (verb, step) => `[...document.querySelectorAll("button")].find((b) => b.innerText.startsWith(${JSON.stringify(verb)}) && b.innerText.includes("--step ${step}"))`;
+  await phone.eval("document.querySelector('textarea').focus()");
+  await phone.send("Input.insertText", { text: "phone tools [tools=2][toolout=8][delay=250][lines=1] [toolfail]" });
+  await until("Send to enable", () => phone.eval(`!document.querySelector('[data-testid="send"]').disabled`));
+  await phone.eval(`document.querySelector('[data-testid="send"]').click()`);
+  await until("the first call running", () => phone.eval(`!!${row("Running", 1)}`));
+  await phone.eval(`${row("Running", 1)}.click()`);
+  await until("its sheet with the output so far", async () => (await sheet()).includes("call 1 line 2"));
+  await until("the open sheet to follow the output", async () => (await sheet()).includes("call 1 line 6"), 10_000, 100);
+  check(true, "a running call's sheet shows its output as it arrives");
+  await shot("5b-live-tool");
+  await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
+  await until("the answer after the calls", present("Line 1 of the streamed"));
+  await until("the work to fold away", async () => !(await exists('[data-testid="stop"]')));
+  await phone.eval(`[...document.querySelectorAll("button")].findLast((b) => b.innerText.startsWith("Worked"))?.click()`);
+  await until("the finished rows", () => phone.eval(`!!${row("Ran", 2)}`));
+  check(await phone.eval(`!${row("Ran", 1)}.innerText.includes("failed") && ${row("Ran", 2)}.innerText.includes("failed")`), "the calls end as ran, the last one failed");
+  await phone.eval(`${row("Ran", 2)}.click()`);
+  await until("the failed call's sheet", async () => (await sheet()).includes("exit code 1"));
+  check((await sheet()).includes("call 2 line 8"), "a finished call's sheet keeps all its output", await sheet());
+  await phone.eval(`document.querySelector('[aria-label="Close"]').click()`);
+}
 
 /** The chat's pi stops under the phone (closed elsewhere, or stopped on the Mac while idle): Reopen opens it again from its file. */
 async function reopenChecks({ phone, A, handle, sessionFile, tap, exists, present }) {
