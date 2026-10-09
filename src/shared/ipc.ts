@@ -340,7 +340,7 @@ export interface CardWorktree {
   branch: string;
   /** Made now, not left from an earlier Resolve of the card. */
   created: boolean;
-  /** The checkout has uncommitted changes, which the worktree does not have. */
+  /** Made from a checkout with uncommitted changes, which the worktree does not have (a reused one is not checked). */
   dirty: boolean;
 }
 

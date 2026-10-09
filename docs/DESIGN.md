@@ -25,7 +25,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     PiProcess      one `pi --mode rpc` child per open session (LF-only JSONL, id-correlated commands)
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
-    files          `rg --files` for @ mentions
+    files          `rg --files` for @ mentions, kept until a file comes or goes (a recursive watcher; 15 s on Linux)
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
     computer/      ComputerService (installs, launches and talks to the native helper), ComputerAgent (policy, approvals, per-app locks), ComputerStore (userData/computer-use.json)
@@ -470,7 +470,8 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   share: SessionHost passes `--approve`/`--no-approve` from your decision for the project (`projectTrust`, pi's
   `trust.json`). A second Resolve of the card reuses its worktree (main makes one at a time per card); after
   `git worktree remove`, the next one brings back the card's branch. The prompt says what the worktree lacks
-  (ignored files such as dependencies and `.env`; the checkout's uncommitted changes, also a warning toast) and asks
+  (ignored files such as dependencies and `.env`; the checkout's uncommitted changes, also a warning toast when the
+  worktree is made: a reused one skips `git status`, the slow call in a big repository) and asks
   for a commit on the branch, no push or merge. A project outside git resolves in its folder; a git error starts no
   chat. Worktrees are never removed for you (the chat reopens there, and the branch may hold unmerged work): remove
   one with `git worktree remove <path>`.
@@ -607,7 +608,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   `node_modules`, `.git` and build folders), then a non-recursive `fs.watch` on each folder holding a plan and on
   `NEW_PLAN_DIR` (`docs/plans/draft`, where the orchestrator prompt tells the architect to write new plans, never the
   root) and each existing folder above it, which rescan when the next one appears (debounced 150 ms); a plan created
-  anywhere else shows after Refresh. `Atp.activate` runs
+  anywhere else shows after Refresh. A rescan lists only those watched folders again, with no rg and no git, and reads
+  only the plans whose file changed (inode, size and times); rg and `git worktree list` run on watch, Refresh and when
+  a new plan's worktree is made (P33: an event in a 8k-file repository went from three processes and ~560 ms to ~3 ms). `Atp.activate` runs
   `atp-activate-project` and adds `*.atp.json.lock` to the repository's `.git/info/exclude`, so `git add -A` never
   commits the lock.
 - **The runner** (`AtpRuns`, `src/main/atp-runner.ts`) lives in main, so a plan keeps running with no window (a hidden

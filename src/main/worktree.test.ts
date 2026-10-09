@@ -91,6 +91,21 @@ describe("cardWorktree", () => {
     expect(existsSync(join(worktree?.cwd ?? "", "web", "draft.ts"))).toBe(false);
   });
 
+  it("does not look at the checkout's changes when it reuses a worktree (git status is slow in a big repository)", async () => {
+    await cardWorktree(repo, card, home);
+    await writeFile(join(repo, "web", "draft.ts"), "wip\n");
+    expect(await cardWorktree(repo, card, home)).toMatchObject({ created: false, dirty: false, branch: "pigna/abc123-fix-the-flash" });
+  });
+
+  it("does not take a folder inside another repository for the worktree", async () => {
+    // A home kept in git: the worktree's folder exists, empty, inside that repository, but is no worktree of its own.
+    git(root, "init", "-q");
+    git(root, "add", "gitconfig");
+    git(root, "commit", "-qm", "home");
+    await mkdir(worktreeCwd(home, card.id, repo), { recursive: true });
+    expect(await cardWorktree(repo, card, home)).toMatchObject({ created: true, branch: "pigna/abc123-fix-the-flash" });
+  });
+
   it("brings back the card's branch, with its commits, after the worktree was removed", async () => {
     const first = await cardWorktree(repo, card, home);
     const cwd = first?.cwd ?? "";

@@ -1,8 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { execFile, execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AtpPlanFile } from "../shared/atp";
 import { Atp } from "./atp";
 import { ATP_BRANCHES } from "./worktree";
 
@@ -75,6 +76,50 @@ describe("Atp", () => {
     await vi.waitFor(() => expect(plans.length).toBeGreaterThan(0), { timeout: 3000 });
     await writeFile(draft, JSON.stringify(plan));
     await vi.waitFor(() => expect(plans.at(-1)).toContain(draft), { timeout: 3000 });
+  });
+
+  it("re-reads the watched folders on a change, without running rg or git again, and keeps the plans that did not change", async () => {
+    const calls: string[] = [];
+    const exec = (file: string, args: string[], options: { cwd?: string } = {}) => {
+      calls.push(file === "git" ? `git ${args.slice(2).join(" ")}` : file);
+      return new Promise<string>((resolve, reject) =>
+        execFile(file, args, { cwd: options.cwd }, (error, stdout) => (error ? reject(Object.assign(error, { message: "" })) : resolve(stdout))),
+      );
+    };
+    const pushes: AtpPlanFile[][] = [];
+    atp = new Atp(
+      (found) => pushes.push(found.plans),
+      () => undefined,
+      exec,
+    );
+    await mkdir(join(repo, "docs"));
+    // Listed after the folders on the way to docs/plans/draft, sorted before them.
+    const early = join(repo, "ab", "early.atp.json");
+    await mkdir(dirname(early));
+    await writeFile(early, JSON.stringify(plan));
+    const first = await atp.watch(repo);
+    expect(calls).toEqual(["rg", "git worktree list --porcelain"]);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    calls.length = 0;
+    const named = () => (pushes.at(-1) ?? []).map((file) => `${file.path} ${file.plan?.name ?? "-"}`);
+    // Replaced, as the librarian does.
+    await writeFile(`${path}.tmp`, JSON.stringify({ ...plan, meta: { ...plan.meta, project_name: "Renamed" } }));
+    await rename(`${path}.tmp`, path);
+    await vi.waitFor(() => expect(named()).toContain(`${path} Renamed`), { timeout: 3000 });
+    // The plan that did not change is the one read before.
+    expect(pushes.at(-1)?.find((file) => file.path.endsWith("broken.atp.json"))).toBe(first?.plans[1]);
+    const other = join(repo, "plans", "other.atp.json");
+    await writeFile(other, JSON.stringify(plan));
+    await vi.waitFor(() => expect(named()).toContain(`${other} Tiny`), { timeout: 3000 });
+    // In docs/plans, a folder on the way to docs/plans/draft; a folder named like a plan is none.
+    await mkdir(join(repo, "docs", "plans", "folder.atp.json"), { recursive: true });
+    const top = join(repo, "docs", "plans", "top.atp.json");
+    await writeFile(top, JSON.stringify(plan));
+    await vi.waitFor(() => expect(named()).toContain(`${top} Tiny`), { timeout: 3000 });
+    await rm(other);
+    await vi.waitFor(() => expect(named()).not.toContain(`${other} Tiny`), { timeout: 3000 });
+    expect(calls).toEqual([]);
+    expect(named()).toEqual([`${early} Tiny`, `${join(repo, "broken.atp.json")} -`, `${top} Tiny`, `${path} Renamed`]);
   });
 
   it("writes a new plan in a worktree of the project, shows its plan but not its copies of the project's, and reuses an empty one", async () => {

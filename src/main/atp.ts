@@ -4,7 +4,7 @@
 // A new plan is written in a git worktree of its own (newPlanCwd), so the project's plans include those worktrees'.
 import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, watch } from "node:fs";
-import { appendFile, readFile, stat } from "node:fs/promises";
+import { appendFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
@@ -56,7 +56,12 @@ const PAUSE_WAIT = 4 * 60_000;
 /** The folder new plans go to and the folders above it, down from the project root, which may not exist yet. */
 const newPlanDirs = (cwd: string): string[] => [cwd, ...NEW_PLAN_DIR.split("/").map((_, i, parts) => join(cwd, ...parts.slice(0, i + 1)))];
 
-type Watched = { cwd: string; watchers: Map<string, FSWatcher>; timer?: ReturnType<typeof setTimeout> };
+/**
+ * What a watched project's rescans reuse, so a plan's change costs a folder listing per watched folder, not rg and git:
+ * its new plans' worktrees, the folders each root's plans were found in, and each plan as last read, by its stat.
+ */
+type Cache = { roots?: string[]; dirs: Map<string, Set<string>>; files: Map<string, { key: string; file: AtpPlanFile }> };
+type Watched = { cwd: string; watchers: Map<string, FSWatcher>; timer?: ReturnType<typeof setTimeout>; cache: Cache; rescan?: boolean };
 /** The project's plans, and the folders they are looked for in: the project and its new plans' worktrees. */
 type Found = { plans: AtpProjectPlans; roots: string[] };
 
@@ -78,9 +83,9 @@ export class Atp {
   async watch(cwd: string | null): Promise<AtpProjectPlans | null> {
     this.unwatch();
     if (!cwd) return null;
-    const project: Watched = { cwd, watchers: new Map() };
+    const project: Watched = { cwd, watchers: new Map(), cache: { dirs: new Map(), files: new Map() } };
     this.project = project;
-    const found = await this.collect(cwd);
+    const found = await this.collect(cwd, project.cache);
     if (this.project === project) this.watchDirs(project, found);
     return found.plans;
   }
@@ -122,10 +127,14 @@ export class Atp {
     this.project = undefined;
   }
 
-  private changed(project: Watched): void {
+  /** A change in a watched folder re-reads those folders; a new plan's worktree (made) looks for plans and worktrees again. */
+  private changed(project: Watched, rescan = false): void {
     clearTimeout(project.timer);
+    project.rescan ||= rescan;
     project.timer = setTimeout(() => {
-      void this.collect(project.cwd).then((found) => {
+      const rescan = project.rescan === true;
+      project.rescan = false;
+      void this.collect(project.cwd, project.cache, rescan).then((found) => {
         if (this.project !== project) return;
         this.watchDirs(project, found);
         this.pushPlans(found.plans);
@@ -142,12 +151,32 @@ export class Atp {
    * The project's plans, then its new plans' worktrees' that the project has no copy of at the same place: a worktree
    * starts with the project's committed plans, which are the project's, and a plan merged back is the project's too.
    */
-  private async collect(cwd: string): Promise<Found> {
-    const [own, roots] = await Promise.all([this.find(cwd), this.planWorktrees(cwd)]);
+  private async collect(cwd: string, cache?: Cache, rescan = false): Promise<Found> {
+    const [own, roots] = await Promise.all([this.plansIn(cwd, cache, rescan), rescan || !cache?.roots ? this.planWorktrees(cwd) : cache.roots]);
+    if (cache) cache.roots = roots;
     const known = new Set(own.map((path) => path.slice(cwd.length)));
-    const theirs = await Promise.all(roots.map(async (root) => (await this.find(root)).filter((path) => !known.has(path.slice(root.length)))));
+    const theirs = await Promise.all(roots.map(async (root) => (await this.plansIn(root, cache, rescan)).filter((path) => !known.has(path.slice(root.length)))));
     const paths = [...own, ...theirs.flat()];
-    return { plans: { cwd, plans: await Promise.all(paths.map((path) => this.readFile(path))) }, roots: [cwd, ...roots] };
+    return { plans: { cwd, plans: await Promise.all(paths.map((path) => this.readFile(path, cache?.files))) }, roots: [cwd, ...roots] };
+  }
+
+  /**
+   * The plans under a root: rg's the first time and on a rescan; else the plans in the folders a watcher can report
+   * (those plans were found in, and the way to NEW_PLAN_DIR), listed again.
+   */
+  private async plansIn(root: string, cache: Cache | undefined, rescan: boolean): Promise<string[]> {
+    const dirs = cache?.dirs.get(root);
+    if (rescan || !dirs) {
+      const found = await this.find(root);
+      cache?.dirs.set(root, new Set(found.map(dirname)));
+      return found;
+    }
+    const listed = await Promise.all(
+      [...new Set([...newPlanDirs(root), ...dirs])].map(async (dir) =>
+        (await readdir(dir, { withFileTypes: true }).catch(() => [])).filter((entry) => entry.isFile()).map((entry) => join(dir, entry.name)),
+      ),
+    );
+    return listed.flat().filter(isPlanPath).sort();
   }
 
   /** Every `*.atp.json` under the folder (rg: hidden and git-ignored files too, not dependencies or build output). */
@@ -196,17 +225,25 @@ export class Atp {
 
   /** A new plan's worktree is ready: the watched project looks in it too. */
   private made(cwd: string, folder: string): string {
-    if (this.project?.cwd === cwd) this.changed(this.project);
+    if (this.project?.cwd === cwd) this.changed(this.project, true);
     return folder;
   }
 
-  private async readFile(path: string): Promise<AtpPlanFile> {
+  /** A plan, or the one read before (a plan that cannot be read included) while its file is the same: same inode, size and times. */
+  private async readFile(path: string, cache?: Cache["files"]): Promise<AtpPlanFile> {
+    const info = await stat(path).catch((error: Error) => error);
+    if (info instanceof Error) return { path, modifiedAt: 0, error: info.message };
+    const key = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+    const hit = cache?.get(path);
+    if (hit?.key === key) return hit.file;
+    let file: AtpPlanFile;
     try {
-      const [info, raw] = await Promise.all([stat(path), readFile(path, "utf8")]);
-      return { path, modifiedAt: info.mtimeMs, plan: parsePlan(path, JSON.parse(raw)) };
+      file = { path, modifiedAt: info.mtimeMs, plan: parsePlan(path, JSON.parse(await readFile(path, "utf8"))) };
     } catch (error) {
-      return { path, modifiedAt: 0, error: (error as Error).message };
+      file = { path, modifiedAt: 0, error: (error as Error).message };
     }
+    cache?.set(path, { key, file });
+    return file;
   }
 
   async read(path: string): Promise<AtpPlan> {

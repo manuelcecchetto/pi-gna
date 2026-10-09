@@ -58,16 +58,22 @@ async function prepare(project: string, id: string, patterns: string[], fresh: s
   const top = sub ? project.slice(0, -sub.length - 1) : project;
   const dir = worktreeCwd(home, id, top);
   const cwd = worktreeCwd(home, id, project);
-  const dirty = (await git(project, ["status", "--porcelain"])) !== "";
 
-  if (await isWorktree(dir)) return { cwd, branch: await git(dir, ["rev-parse", "--abbrev-ref", "HEAD"]), created: false, dirty };
+  const reused = await worktreeBranch(dir);
+  if (reused !== null) return { cwd, branch: reused, created: false, dirty: false };
+  // Whether the checkout has changes the new worktree lacks, asked while git makes it: status is the slow call in a
+  // big repository.
+  const dirty = git(project, ["status", "--porcelain"]).then((out) => out !== "");
+  dirty.catch(() => undefined);
   // Forget worktrees whose folders were deleted: one of them may hold this path or the branch.
-  await git(project, ["worktree", "prune"]);
-  const branches = await git(project, ["for-each-ref", "--format=%(refname)", ...patterns.map((pattern) => `refs/heads/${pattern}`)]);
+  const [, branches] = await Promise.all([
+    git(project, ["worktree", "prune"]),
+    git(project, ["for-each-ref", "--format=%(refname)", ...patterns.map((pattern) => `refs/heads/${pattern}`)]),
+  ]);
   const existing = branches.split("\n").find(Boolean)?.replace(/^refs\/heads\//, "");
   const branch = existing ?? fresh;
   await git(project, existing ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, "HEAD"]);
-  return { cwd, branch, created: true, dirty };
+  return { cwd, branch, created: true, dirty: await dirty };
 }
 
 /** pigna/<card id>-<the title's first words>. */
@@ -83,11 +89,12 @@ export function branchName(card: { id: string; title: string }): string {
   return short ? `${BRANCHES}${card.id}-${short}` : `${BRANCHES}${card.id}`;
 }
 
-/** A worktree's top folder, not just a folder inside some repository (say, a home folder kept in git). */
-async function isWorktree(dir: string): Promise<boolean> {
-  if (!(await stat(dir).catch(() => undefined))?.isDirectory()) return false;
-  const top = await git(dir, ["rev-parse", "--show-toplevel"]).catch(() => "");
-  return top !== "" && top === (await realpath(dir));
+/** The branch of the worktree whose top folder is `dir`; null when there is none, or `dir` is just a folder inside some repository (say, a home folder kept in git). */
+async function worktreeBranch(dir: string): Promise<string | null> {
+  if (!(await stat(dir).catch(() => undefined))?.isDirectory()) return null;
+  const [out, real] = await Promise.all([git(dir, ["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"]).catch(() => ""), realpath(dir)]);
+  const [top, branch] = out.split("\n");
+  return top && branch && top === real ? branch : null;
 }
 
 function git(cwd: string, args: string[], env: Record<string, string> = {}): Promise<string> {
