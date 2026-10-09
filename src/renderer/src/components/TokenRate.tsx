@@ -6,15 +6,15 @@ import { latestRate, rateMoving } from "../../../shared/token-rate";
 import { useNow } from "./primitives";
 
 export const TokenRate = memo(function TokenRate({ items, running }: { items: Item[]; running: boolean }) {
-  // Ticks while the rate moves on its own: it follows the stream, and holds once a pause outlasts STALL_MS.
-  useNow(500, running && rateMoving(items, Date.now()));
+  // Ticks while a response streams: its time runs on between stream events.
+  useNow(500, running && rateMoving(items));
   const rate = latestRate(items, Date.now());
   if (!rate) return null;
   const about = rate.estimated ? "~" : "";
   const detail = `${about}${formatTokens(Math.round(rate.tokens))} tokens in ${formatDuration(rate.seconds * 1000)}`;
   const title = [
     `${rate.live ? "Output speed of the response streaming now" : "Output speed of the last response"}: ${detail}`,
-    rate.estimated ? "Estimated from the streamed text until the provider reports the token count." : "",
+    rate.estimated ? "Estimated from the streamed output until the provider reports the token count." : "",
   ].filter(Boolean).join("\n");
   return (
     <span title={title} className={`whitespace-nowrap font-mono text-[11.5px] tabular-nums ${rate.live ? "text-muted" : "text-faint"}`}>

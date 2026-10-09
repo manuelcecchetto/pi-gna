@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The tok/s readout is accurate now: it divides the tokens the provider reports for a response by the time the whole response took, from request to last token. It used to estimate from text and thinking only and drop every pause over a second, which read too high on providers that stream in bursts and left out tool calls; tool-call arguments and reasoning now count too.
+
 ## 0.10.0 - 2026-10-10
 
 - Big text, code and CSV files open without freezing the file preview: lines and rows are laid out in blocks that cost nothing while off screen, highlighting runs in short steps, and the CSV reader copies whole fields (a 1.9 MB log of 289,000 lines took 2.9 s to show with a 0.7 s freeze, now 0.3 s; a 37,000-line file froze 0.5 s on open and 1.1 s on Wrap, now under 30 ms; the first 5,000 rows of a 100,000-row CSV froze up to 0.65 s, now 15 ms; highlighting an 8,500-line file no longer blocks the page in one go).

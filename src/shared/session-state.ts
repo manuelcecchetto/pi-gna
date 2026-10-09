@@ -23,7 +23,6 @@ import type {
 } from "./protocol";
 import { appendPartialJson, completePartialJson, EMPTY_PARTIAL_JSON, type PartialJson } from "./partial-json";
 import { isTriage } from "./task-prompts";
-import { type StreamClock, tickStream } from "./token-rate";
 
 export interface ToolRun {
   status: "running" | "done" | "error";
@@ -71,8 +70,8 @@ export type Item =
       /** Argument JSON scanned so far per content index while a tool call streams. */
       partialArgs?: Record<number, StreamingArgs>;
       times?: Record<number, BlockTime>;
-      /** Time spent streaming, for the tok/s readout. */
-      clock?: StreamClock;
+      /** When the response started (`message_start`) and ended (`message_end`), for the tok/s readout. */
+      span?: { start: number; end?: number };
       /** The runs of this message's tool calls, by call id: a tool update copies this item alone. */
       runs?: Record<string, ToolRun>;
     }
@@ -300,7 +299,7 @@ export function reduceSessionEvent(state: SessionState, event: SessionEvent, now
     case "agent_settled":
       return settle(state, now);
     case "message_start":
-      return event.message.role === "assistant" ? startAssistant(state, event.message) : state;
+      return event.message.role === "assistant" ? startAssistant(state, event.message, now) : state;
     case "message_update":
       return updateAssistant(state, event.assistantMessageEvent, event.usage, now);
     case "message_end":
@@ -552,8 +551,8 @@ function setTool(state: SessionState, id: string, patch: Partial<ToolRun>): Sess
   return replaceItem(state, index, { ...item, runs: { ...item.runs, [id]: { ...item.runs?.[id], ...patch } as ToolRun } });
 }
 
-function startAssistant(state: SessionState, message: AssistantMessage): SessionState {
-  return pushItem(state, { kind: "assistant", message: { ...message, content: [...message.content] }, streaming: true, times: {} });
+function startAssistant(state: SessionState, message: AssistantMessage, now: number): SessionState {
+  return pushItem(state, { kind: "assistant", message: { ...message, content: [...message.content] }, streaming: true, times: {}, span: { start: now } });
 }
 
 function streamingIndex(items: Item[]): number {
@@ -579,7 +578,8 @@ function endAssistant(state: SessionState, message: AssistantMessage, now: numbe
     const time = times[Number(key)];
     if (time && time.end === undefined) times[Number(key)] = { ...time, end: now };
   }
-  return replaceItem(state, index, { ...item, message, streaming: false, partialArgs: undefined, times });
+  const span = item.span && { ...item.span, end: now };
+  return replaceItem(state, index, { ...item, message, streaming: false, partialArgs: undefined, times, span });
 }
 
 function updateAssistant(state: SessionState, event: AssistantMessageEvent, usage: AssistantMessage["usage"] | undefined, now: number): SessionState {
@@ -640,9 +640,7 @@ function updateAssistant(state: SessionState, event: AssistantMessageEvent, usag
     }
   }
   const message = { ...item.message, content, usage: usage ?? item.message.usage };
-  // Tool-call events do not tick the output-speed clock: their arguments do not count (see token-rate.ts).
-  const clock = event.type.startsWith("toolcall") ? item.clock : tickStream(item.clock, now);
-  return replaceItem(state, index, { ...item, message, partialArgs, times, clock });
+  return replaceItem(state, index, { ...item, message, partialArgs, times });
 }
 
 function basename(path: string): string {

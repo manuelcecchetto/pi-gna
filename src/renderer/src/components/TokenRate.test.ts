@@ -25,16 +25,16 @@ const lastAssistant = (state: SessionState) => state.items.findLast((item): item
 const text = (at: number, chars: number): [number, SessionEvent] =>
   [at, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "x".repeat(chars) } }];
 
-// 400 characters (about 100 tokens) in one second, a delta every quarter second.
+// 400 characters (about 100 tokens) in the response's first second, a delta every quarter second.
 const streamed: [number, SessionEvent][] = [
   [0, { type: "agent_start" }],
-  [100, { type: "message_start", message: assistant([]) }],
+  [1000, { type: "message_start", message: assistant([]) }],
   [1000, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
   text(1250, 100), text(1500, 100), text(1750, 100), text(2000, 100),
 ];
-const ended = (at: number, output: number, reasoning?: number, more: AssistantMessage["content"] = []): [number, SessionEvent][] => [
+const ended = (at: number, output: number): [number, SessionEvent][] => [
   [at, { type: "message_update", assistantMessageEvent: { type: "text_end", contentIndex: 0, content: "x".repeat(400) } }],
-  [at, { type: "message_end", message: { ...assistant([{ type: "text", text: "x".repeat(400) }, ...more], output), usage: { ...usage(output), reasoning } } }],
+  [at, { type: "message_end", message: assistant([{ type: "text", text: "x".repeat(400) }], output) }],
 ];
 
 describe("TokenRate", () => {
@@ -59,11 +59,11 @@ describe("TokenRate", () => {
     expect(render(play(streamed.slice(0, 2)), 3000)).toBe("");
   });
 
-  it("ticks only while the rate moves on its own: under a second after a stream event", () => {
+  it("ticks only while a response streams", () => {
     const useNow = vi.mocked(primitives.useNow);
     useNow.mockClear();
     render(play(streamed), 2999);
-    render(play(streamed), 3000);
+    render(play([...streamed, ...ended(2000, 15)]), 3000);
     render({ ...play(streamed), running: false }, 2500);
     expect(useNow.mock.calls).toEqual([[500, true], [500, false], [500, false]]);
   });

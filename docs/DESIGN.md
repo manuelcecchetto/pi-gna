@@ -1237,21 +1237,18 @@ Verified live (pi 1.0.0, Oct 2026):
   compaction is when context gets summarized. Stats refresh after every `turn_end` and `compaction_end`
   (`get_session_stats` takes a few ms even on a 40 MB session). Right after compaction pi does not know the
   size until the next response, shown as a dashed ring.
-- Output speed (`TokenRate`, `lib/token-rate.ts`): tok/s beside the context meter, per response, over the time it
-  spent streaming text and thinking only. Tool calls do not count, neither their arguments nor their time: providers
-  often buffer the arguments and deliver them in one burst, which read as ~300 tok/s. A `StreamClock` on the
-  assistant item starts at the first streamed text or thinking block (time to first token does not count) and
-  advances with each text or thinking event by the gap since the last one, capped at `STALL_MS` (1s): longer
-  pauses inside a response (a tool call in between, reasoning the provider does not stream, a stall) are waits, so
-  the live readout holds instead of dropping; it also holds while a tool call streams, and tool runs fall between
-  responses. The readout ticks (500 ms) only while that can change it, under `STALL_MS` after a stream event
-  (`rateMoving`); stream events re-render it anyway. A response that only calls tools has no rate. Providers report output tokens only when a response ends
-  (pi's `message_update` usage is not live), so while it streams the count is estimated from the streamed text and
-  thinking (4 characters a token, shown as `~`), and `message_end`'s `usage.output` replaces it, unless the response
-  has tool calls: that count includes their arguments, which cannot be split off reliably, so the estimate stays.
-  When the provider reports `usage.reasoning`, the reasoning tokens are swapped for the estimate of the reasoning
-  that streamed (summaries), since the rest was produced during waits that do not count. The last response's rate stays, dimmed, after the run; responses read from a session file
-  have no timings, so they show none.
+- Output speed (`TokenRate`, `shared/token-rate.ts`): tok/s beside the context meter, per response: its output
+  tokens over its whole request, `message_start` to `message_end` (the assistant item's `span`, host clock). Time to
+  first token and pauses inside the response count, tool runs fall between responses, and everything the model
+  produced counts: text, thinking, reasoning the provider did not stream and tool-call arguments. Timing single
+  stream events instead (an earlier design) misreads bursty providers: tool arguments a provider buffered read as
+  ~300 tok/s, and capping the gaps between events inflated the rate of anything that streams in chunks. Providers
+  report output tokens only when a response ends (pi's `message_update` usage is not live), so while it streams the
+  count is estimated from the streamed text, thinking and tool-call argument text (4 characters a token, shown as
+  `~`), and `message_end`'s `usage.output` replaces it. Under half a second there is no rate (a response delivered
+  in one chunk would read as thousands of tok/s). The readout ticks (500 ms) only while a response streams
+  (`rateMoving`). The last response's rate stays, dimmed, after the run; responses read from a session file have no
+  timings, so they show none.
 - Compaction visibility: `compaction_start` adds a running transcript record; `compaction_end` updates that
   same keyed record to completed, failed or interrupted. Show one live indicator with elapsed time in the
   chat, including manual compaction outside an agent run; do not repeat it above the composer or beside the
