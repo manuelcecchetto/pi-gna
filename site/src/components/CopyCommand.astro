@@ -1,0 +1,162 @@
+---
+/** A command or prompt with a Copy button (the click handler lives in Base.astro). */
+interface Props {
+  text: string;
+  /** `shell` shows a $ prompt and keeps one line; `prompt` wraps like a message. */
+  kind?: 'shell' | 'prompt';
+  label?: string;
+}
+const { text, kind = 'shell', label = kind === 'shell' ? 'Copy command' : 'Copy prompt' } = Astro.props;
+
+// Let long paths and URLs break after an inner slash (not a leading one or `//`) when the box wraps.
+const escaped = text.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+const shown = escaped.replace(/(?<=[^\s/])\/(?!\/)/g, '/<wbr>');
+---
+
+<div class:list={['copy', kind]}>
+  {kind === 'shell' && <span class="sigil" aria-hidden="true">$</span>}
+  <code set:html={shown} />
+  <button type="button" data-copy={text} aria-label={label}>
+    <svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true"
+      ><rect x="8" y="8" width="12" height="12" rx="3"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"
+      ></path></svg
+    >
+    <svg class="i-done" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+    <span class="label">Copy</span>
+  </button>
+</div>
+
+<style>
+  .copy {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 10px 10px 18px;
+    border: var(--line);
+    border-radius: 16px;
+    background: var(--ink);
+    color: var(--paper);
+    box-shadow: 4px 4px 0 var(--c, var(--sun));
+    min-width: 0;
+  }
+
+  .sigil {
+    font-family: var(--font-mono);
+    color: var(--sun);
+    font-weight: 700;
+    user-select: none;
+  }
+
+  code {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    padding: 0;
+    background: none;
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    /* A command too long for its box scrolls; fade the cut edge so it reads as more. */
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+
+  .prompt {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px 14px 12px 18px;
+  }
+
+  .prompt code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 0.88rem;
+    mask-image: none;
+  }
+
+  .prompt button {
+    align-self: flex-end;
+  }
+
+  /* On a phone a one-line command shows a dozen characters: wrap it, with Copy on its own row. */
+  @media (max-width: 600px) {
+    .shell {
+      flex-wrap: wrap;
+      align-items: flex-start;
+      row-gap: 8px;
+      padding: 12px 12px 12px 16px;
+    }
+
+    .shell code {
+      flex-basis: calc(100% - 24px);
+      white-space: normal;
+      overflow-wrap: anywhere;
+      mask-image: none;
+    }
+
+    .shell button {
+      margin-left: auto;
+    }
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    height: 38px;
+    padding: 0 12px;
+    border: 2px solid var(--paper);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--paper);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      background-color 0.2s,
+      color 0.2s,
+      transform 0.3s var(--spring);
+  }
+
+  button:hover {
+    background: var(--paper);
+    color: var(--ink);
+    transform: rotate(-3deg);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .i-done,
+  button[data-copied] .i-copy {
+    display: none;
+  }
+
+  button[data-copied] .i-done {
+    display: block;
+  }
+
+  button[data-copied] {
+    background: var(--mint);
+    border-color: var(--mint);
+    color: var(--ink);
+  }
+
+  button[data-copied] .label {
+    font-size: 0;
+  }
+
+  button[data-copied] .label::after {
+    content: 'Copied!';
+    font-size: 0.85rem;
+  }
+</style>

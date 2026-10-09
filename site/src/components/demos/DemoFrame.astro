@@ -1,0 +1,317 @@
+---
+/**
+ * A looping, step-driven mock of a pi-gna screen. Children opt in with:
+ *   data-at="n" [data-off="m"]  → gets .on from step n (until step m)
+ *   data-seq="n:state,m:state"  → data-s holds the latest state reached
+ *   data-type="text"            → typed out when it (or its [data-at] parent) turns on
+ *   .item (+ data-at)           → grows in from zero height, for chat-like logs (content in one .in child)
+ * data-times lists how long each step lasts, in ms. The screen is drawn at width × height and scaled to fit.
+ */
+import '../../styles/demo.css';
+
+interface Props {
+  title: string;
+  times: number[];
+  width?: number;
+  height?: number;
+  device?: 'mac' | 'phone';
+  label: string;
+}
+const { title, times, width = 720, height = 430, device = 'mac', label } = Astro.props;
+---
+
+<figure
+  class:list={['demo', device]}
+  data-demo
+  data-times={times.join(' ')}
+  style={`--w:${width};--h:${height}`}
+  aria-label={label}
+>
+  <div class="device">
+    {
+      device === 'mac' && (
+        <div class="titlebar" aria-hidden="true">
+          <span class="lights">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span class="wtitle">{title}</span>
+        </div>
+      )
+    }
+    <div class="stage">
+      <div class="screen" aria-hidden="true" style={`width:${width}px;height:${height}px`}>
+        <slot />
+      </div>
+    </div>
+  </div>
+  <figcaption>
+    <button type="button" class="pp" data-demo-toggle aria-pressed="false">
+      <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"></path></svg>
+      <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"></path></svg>
+      <span class="label">Pause</span>
+    </button>
+    <span>{label}</span>
+  </figcaption>
+</figure>
+
+<script>
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+  for (const demo of document.querySelectorAll<HTMLElement>('[data-demo]')) {
+    const times = (demo.dataset.times ?? '').split(' ').map(Number);
+    const screen = demo.querySelector<HTMLElement>('.screen')!;
+    const stage = demo.querySelector<HTMLElement>('.stage')!;
+    const toggle = demo.querySelector<HTMLButtonElement>('[data-demo-toggle]')!;
+    const steps = [...screen.querySelectorAll<HTMLElement>('[data-at], [data-seq]')];
+    const typers = new Map<HTMLElement, number>();
+    let step = -1;
+    let timer = 0;
+    let inView = false;
+    let paused = false;
+
+    const type = (el: HTMLElement, instant: boolean) => {
+      const text = el.dataset.type ?? '';
+      clearInterval(typers.get(el));
+      if (instant) {
+        el.textContent = text;
+        return;
+      }
+      const chars = [...text];
+      let i = 0;
+      el.textContent = '';
+      el.classList.add('typing');
+      typers.set(
+        el,
+        window.setInterval(() => {
+          i += 1;
+          el.textContent = chars.slice(0, i).join('');
+          if (i >= chars.length) {
+            clearInterval(typers.get(el));
+            el.classList.remove('typing');
+          }
+        }, Number(el.dataset.speed ?? 34)),
+      );
+    };
+
+    const apply = (n: number, instant = false) => {
+      demo.dataset.step = String(n);
+      demo.classList.toggle('reset', n === 0);
+      for (const el of steps) {
+        if (el.dataset.at !== undefined) {
+          const on = n >= Number(el.dataset.at) && n < Number(el.dataset.off ?? Infinity);
+          const was = el.classList.contains('on');
+          el.classList.toggle('on', on);
+          const typed = el.dataset.type !== undefined ? [el] : el.querySelectorAll<HTMLElement>('[data-type]');
+          for (const t of typed) {
+            if (on && !was) type(t, instant);
+            if (!on) {
+              clearInterval(typers.get(t));
+              t.classList.remove('typing');
+              t.textContent = '';
+            }
+          }
+        }
+        if (el.dataset.seq) {
+          let state = '';
+          for (const pair of el.dataset.seq.split(',')) {
+            const [at, value] = pair.split(':');
+            if (n >= Number(at)) state = value;
+          }
+          el.dataset.s = state;
+        }
+      }
+    };
+
+    const tick = () => {
+      step = (step + 1) % times.length;
+      apply(step);
+      timer = window.setTimeout(tick, times[step]);
+    };
+
+    const run = () => {
+      clearTimeout(timer);
+      if (reduced.matches) {
+        apply(times.length - 1, true);
+        return;
+      }
+      if (inView && !paused) timer = window.setTimeout(tick, step < 0 ? 300 : times[step]);
+    };
+
+    const fit = () => {
+      const w = Number(getComputedStyle(demo).getPropertyValue('--w'));
+      stage.style.setProperty('--k', String(stage.clientWidth / w));
+    };
+    new ResizeObserver(fit).observe(stage);
+    fit();
+
+    toggle.addEventListener('click', () => {
+      paused = !paused;
+      toggle.setAttribute('aria-pressed', String(paused));
+      toggle.querySelector('.label')!.textContent = paused ? 'Play' : 'Pause';
+      demo.classList.toggle('paused', paused);
+      run();
+    });
+
+    new IntersectionObserver(
+      ([entry]) => {
+        inView = entry.isIntersecting;
+        run();
+      },
+      { threshold: 0.35 },
+    ).observe(demo);
+
+    // For reviewing a frame by hand: document.querySelector('[data-demo]').showStep(4)
+    Object.assign(demo, {
+      showStep: (n: number) => {
+        paused = true;
+        clearTimeout(timer);
+        apply(n, true);
+      },
+    });
+
+    if (reduced.matches) toggle.hidden = true;
+    apply(reduced.matches ? times.length - 1 : 0, true);
+    if (!reduced.matches) step = 0;
+  }
+</script>
+
+<style>
+  .demo {
+    margin: 0;
+    display: grid;
+    gap: 14px;
+  }
+
+  .device {
+    border: var(--line);
+    border-width: 3px;
+    border-radius: 18px;
+    background: #1b1b1d;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+
+  .titlebar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding-inline: 14px;
+    background: #161618;
+    border-bottom: 1px solid #2c2c31;
+  }
+
+  .lights {
+    display: flex;
+    gap: 7px;
+  }
+
+  .lights i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ff5f57;
+  }
+
+  .lights i:nth-child(2) {
+    background: #febc2e;
+  }
+
+  .lights i:nth-child(3) {
+    background: #28c840;
+  }
+
+  .wtitle {
+    position: absolute;
+    left: 50%;
+    translate: -50%;
+    color: #a1a1aa;
+    font: 600 12.5px/1 system-ui, -apple-system, sans-serif;
+  }
+
+  .stage {
+    --k: 1;
+    position: relative;
+    aspect-ratio: var(--w) / var(--h);
+    overflow: hidden;
+  }
+
+  .screen {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    transform: scale(var(--k));
+  }
+
+  .phone {
+    justify-items: center;
+  }
+
+  .phone .device {
+    width: min(100%, 330px);
+    padding: 10px;
+    border-radius: 46px;
+    background: #0e0e12;
+  }
+
+  .phone .stage {
+    border-radius: 36px;
+  }
+
+  figcaption {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.9rem;
+    color: var(--ink-2);
+  }
+
+  .phone figcaption {
+    justify-self: stretch;
+    justify-content: center;
+  }
+
+  .pp {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 12px 0 10px;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    background: var(--card);
+    box-shadow: 2px 2px 0 var(--ink);
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.25s var(--spring);
+  }
+
+  .pp:hover {
+    transform: translate(-1px, -1px) rotate(-2deg);
+  }
+
+  .pp svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .pp .i-play,
+  .paused .pp .i-pause {
+    display: none;
+  }
+
+  .paused .pp .i-play {
+    display: block;
+    fill: currentColor;
+    stroke-width: 1.5;
+  }
+</style>

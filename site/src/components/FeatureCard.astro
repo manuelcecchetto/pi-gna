@@ -1,0 +1,194 @@
+---
+import { Image } from 'astro:assets';
+import type { Feature } from '../data/features';
+
+interface Props {
+  feature: Feature;
+  size?: 'lg' | 'sm';
+  index?: number;
+  /** Name the mascot for a cross-page view transition (only one card per slug per page). */
+  morph?: boolean;
+}
+const { feature, size = 'sm', index = 0, morph = true } = Astro.props;
+const tilt = [-1.2, 0.8, -0.6, 1.1, -0.9, 0.7][index % 6];
+---
+
+<div class:list={['cell', size]} data-reveal style={`--i:${index % 4};--tilt:${tilt}deg`}>
+<a href={`/features/${feature.slug}/`} class="fcard" data-color={feature.color}>
+  <span class="art">
+    <span class="blob" aria-hidden="true"></span>
+    <Image
+      src={feature.pose}
+      alt={feature.poseAlt}
+      widths={size === 'lg' ? [280, 420, 560] : [200, 300, 400]}
+      sizes={size === 'lg' ? '(min-width: 900px) 260px, 40vw' : '(min-width: 900px) 180px, 40vw'}
+      loading="lazy"
+      style={morph ? `view-transition-name: pose-${feature.slug}` : undefined}
+    />
+  </span>
+  <span class="text">
+    <span class="name">{feature.name}</span>
+    <span class="summary">{feature.summary}</span>
+    <span class="go" aria-hidden="true">
+      See how
+      <svg viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+    </span>
+  </span>
+</a>
+</div>
+
+<style>
+  .cell {
+    display: flex;
+  }
+
+  .fcard {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 22px;
+    border: var(--line);
+    border-radius: var(--r);
+    background: var(--c-soft);
+    box-shadow: var(--shadow);
+    text-decoration: none;
+    color: var(--ink);
+    transition:
+      transform 0.35s var(--spring),
+      box-shadow 0.35s var(--spring);
+  }
+
+  .fcard:hover {
+    transform: translate(-3px, -4px) rotate(-0.6deg);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .fcard:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 var(--ink);
+    transition-duration: 0.08s;
+  }
+
+  .art {
+    position: relative;
+    display: grid;
+    place-items: center;
+    height: 190px;
+  }
+
+  .blob {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    top: 50%;
+    left: 50%;
+    translate: -50% -46%;
+    border: var(--line);
+    border-radius: 46% 54% 52% 48% / 52% 44% 56% 48%;
+    background: var(--c);
+    transition: transform 0.5s var(--spring), border-radius 0.6s var(--out);
+  }
+
+  .art :global(img) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transform-origin: 50% 100%;
+  }
+
+  .fcard:hover .blob {
+    transform: scale(1.1) rotate(12deg);
+    border-radius: 54% 46% 44% 56% / 46% 56% 44% 54%;
+  }
+
+  .fcard:hover .art :global(img) {
+    animation: hop 0.7s var(--out);
+  }
+
+  .text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+
+  .name {
+    font-size: 1.45rem;
+    font-weight: 780;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+
+  .summary {
+    font-size: 1rem;
+    line-height: 1.45;
+    color: var(--ink-2);
+  }
+
+  .go {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: auto;
+    padding-top: 12px;
+    font-size: 0.92rem;
+    font-weight: 700;
+  }
+
+  .go svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.35s var(--spring);
+  }
+
+  .fcard:hover .go svg {
+    transform: translateX(6px);
+  }
+
+  .lg .fcard {
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 12px;
+    padding: 28px 28px 28px 32px;
+  }
+
+  .lg .art {
+    flex: 0 0 46%;
+    height: 250px;
+  }
+
+  .lg .blob {
+    width: 200px;
+    height: 200px;
+  }
+
+  .lg .name {
+    font-size: clamp(1.8rem, 2.6vw, 2.2rem);
+  }
+
+  .lg .summary {
+    font-size: 1.1rem;
+  }
+
+  @media (max-width: 640px) {
+    .lg .fcard {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 22px;
+    }
+
+    .lg .art {
+      flex: none;
+      height: 210px;
+    }
+  }
+</style>

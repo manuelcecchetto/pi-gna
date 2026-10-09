@@ -1,0 +1,324 @@
+---
+import DemoFrame from './DemoFrame.astro';
+const times = [400, 900, 1400, 900, 1400, 1300, 2800];
+---
+
+<DemoFrame
+  title="pi-gna"
+  device="phone"
+  width={300}
+  height={620}
+  times={times}
+  label="On the iPhone: a message, an approval tapped from the phone, the run on the Mac, and a push when it finishes."
+>
+  <div class="status"><b>9:41</b><span>▂▄▆ ◔</span></div>
+  <header class="bar">
+    <span class="back">‹</span>
+    <span class="ttl"><b>fix the hero on mobile</b><span>pi-gna-site · on your Mac</span></span>
+  </header>
+  <div class="log">
+    <div class="item" data-at="1"><div class="in"><div class="user">fix the hero on mobile</div></div></div>
+    <div class="item" data-at="2"><div class="in"><div class="ai">On it. I’ll check it in the browser first.</div></div></div>
+    <div class="item" data-at="2">
+      <div class="in">
+        <div class="approve" data-seq="0:ask,3:tap,4:done">
+          <b>Open localhost:4321 in the browser?</b>
+          <div class="btns">
+            <span class="btnx">Deny</span>
+            <span class="btnx primary allow">
+              <span class="a-ask">Allow</span><span class="a-done">Allowed ✓</span>
+              <span class="tap" data-at="3" data-off="4"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="item" data-at="4">
+      <div class="in">
+        <div class="tool mono"><span class="ok">✓</span> browser_open localhost:4321</div>
+        <div class="tool mono gap"><span class="ok">✓</span> browser_screenshot</div>
+        <div class="shot"><i></i><i></i><b></b></div>
+      </div>
+    </div>
+    <div class="item" data-at="5"><div class="in"><div class="ai">Fixed: the button no longer wraps on small screens.</div></div></div>
+  </div>
+  <div class="composer-p"><span>Message pi…</span><b>↑</b></div>
+  <div class="home"></div>
+
+  <div class="push" data-at="6">
+    <span class="app">🤌</span>
+    <span class="pt">
+      <b>pi-gna</b>
+      <span>Run finished · pi-gna-site</span>
+    </span>
+    <span class="now">now</span>
+  </div>
+</DemoFrame>
+
+<style>
+  .status {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 26px 4px;
+    font-size: 12.5px;
+  }
+
+  .status span {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px 10px;
+    border-bottom: 1px solid var(--hair);
+  }
+
+  .back {
+    color: var(--accent);
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .ttl {
+    display: grid;
+    font-size: 13px;
+  }
+
+  .ttl span {
+    color: var(--faint);
+    font-size: 11px;
+  }
+
+  .log {
+    position: absolute;
+    top: 92px;
+    bottom: 90px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 14px 10px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .user {
+    width: fit-content;
+    margin-left: auto;
+  }
+
+  .approve {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--hair);
+    border-radius: 14px;
+    background: var(--panel);
+    font-size: 12.5px;
+  }
+
+  .btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .btns .btnx {
+    height: 34px;
+  }
+
+  .allow {
+    position: relative;
+    display: grid;
+    overflow: visible;
+  }
+
+  .allow > span:not(.tap) {
+    grid-area: 1 / 1;
+    transition: opacity 0.2s;
+  }
+
+  .a-done {
+    opacity: 0;
+  }
+
+  .approve[data-s='tap'] .allow {
+    transform: scale(0.94);
+  }
+
+  .approve[data-s='done'] .allow {
+    background: rgb(95 211 141 / 0.2);
+    color: #9ee5bb;
+  }
+
+  .approve[data-s='done'] .a-ask {
+    opacity: 0;
+  }
+
+  .approve[data-s='done'] .a-done {
+    opacity: 1;
+  }
+
+  .tap {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 44px;
+    height: 44px;
+    margin: -22px;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.35);
+  }
+
+  .tap.on {
+    animation: tap 0.7s ease-out both;
+  }
+
+  @keyframes tap {
+    from {
+      transform: scale(0.3);
+      opacity: 1;
+    }
+    to {
+      transform: scale(1.5);
+      opacity: 0;
+    }
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+
+  .gap {
+    margin-top: 4px;
+  }
+
+  .shot {
+    position: relative;
+    width: 96px;
+    height: 150px;
+    margin-top: 8px;
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    background: #fffaf3;
+    overflow: hidden;
+  }
+
+  .shot i {
+    position: absolute;
+    left: 10px;
+    height: 7px;
+    border-radius: 4px;
+    background: #2a2420;
+  }
+
+  .shot i:first-child {
+    top: 22px;
+    width: 64px;
+  }
+
+  .shot i:nth-child(2) {
+    top: 34px;
+    width: 48px;
+  }
+
+  .shot b {
+    position: absolute;
+    left: 10px;
+    top: 52px;
+    width: 46px;
+    height: 14px;
+    border-radius: 7px;
+    background: #f4978a;
+  }
+
+  .composer-p {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 42px;
+    padding: 0 6px 0 16px;
+    border: 1px solid var(--hair);
+    border-radius: 21px;
+    background: var(--panel);
+    color: var(--faint);
+  }
+
+  .composer-p b {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--raised);
+    color: var(--muted);
+  }
+
+  .home {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    width: 110px;
+    height: 4px;
+    translate: -50%;
+    border-radius: 2px;
+    background: #ececef;
+    opacity: 0.8;
+  }
+
+  .push {
+    position: absolute;
+    z-index: 30;
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    border-radius: 18px;
+    background: rgb(58 58 64 / 0.92);
+    box-shadow: 0 12px 30px rgb(0 0 0 / 0.5);
+    backdrop-filter: blur(10px);
+    transform: translateY(-130%);
+    transition: transform 0.6s var(--spring);
+  }
+
+  .push.on {
+    transform: none;
+  }
+
+  .app {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: #0e0e12;
+    font-size: 18px;
+  }
+
+  .pt {
+    display: grid;
+    flex: 1;
+    font-size: 12px;
+  }
+
+  .now {
+    align-self: start;
+    color: var(--muted);
+    font-size: 11px;
+  }
+</style>

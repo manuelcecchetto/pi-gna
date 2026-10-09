@@ -1,0 +1,257 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import builder from '../assets/mascot/changelog.webp';
+import { SITE } from '../data/site';
+import { releases, formatDate } from '../lib/changelog';
+import { inline } from '../lib/text';
+
+const all = releases();
+const id = (version: string) => `v${version.replaceAll('.', '-')}`;
+---
+
+<Base
+  title="Changelog"
+  description={`What changed in each pi-gna release, newest first. Latest: ${all[0]?.version}.`}
+  og="changelog"
+>
+  <section class="wrap hero">
+    <div class="copy">
+      <p class="eyebrow"><span class="dot" style="--c:var(--gold)"></span>Lavori in corso</p>
+      <h1 class="display">Change<span class="serif">log</span></h1>
+      <p class="lead">
+        What changed in each release, newest first. pi-gna updates itself; these are the same notes it shows you.
+      </p>
+      <a class="btn btn-sm btn-paper" href={SITE.releases}>Releases on GitHub</a>
+    </div>
+    <div class="art">
+      <Image src={builder} alt="Pigna in a hard hat with a hammer" widths={[280, 420, 560]} sizes="(min-width: 900px) 300px, 56vw" loading="eager" fetchpriority="high" />
+    </div>
+  </section>
+
+  <div class="wrap layout">
+    <nav class="index" aria-label="Releases">
+      <ol>
+        {all.map((r) => (
+          <li>
+            <a href={`#${id(r.version)}`}>{r.version}</a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+
+    <ol class="timeline">
+      {
+        all.map((r, i) => (
+          <li class="release" id={id(r.version)}>
+            <div class="head">
+              <h2 class="ver">
+                <a href={`#${id(r.version)}`}>{r.version}</a>
+              </h2>
+              <time datetime={r.date}>{formatDate(r.date)}</time>
+              {i === 0 && <span class="tag" style="--c:var(--mint)">Latest</span>}
+            </div>
+            <ul class="items prose">
+              {r.items.map((item) => (
+                <li set:html={inline(item)} />
+              ))}
+            </ul>
+          </li>
+        ))
+      }
+    </ol>
+  </div>
+</Base>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr);
+    align-items: center;
+    gap: 32px;
+    padding-block: clamp(32px, 5vw, 64px) clamp(40px, 6vw, 72px);
+  }
+
+  .copy {
+    display: grid;
+    gap: 22px;
+    justify-items: start;
+  }
+
+  .display {
+    font-size: clamp(3rem, 7.4vw, 6.4rem);
+  }
+
+  .display .serif {
+    color: var(--red);
+  }
+
+  .art :global(img) {
+    width: min(100%, 300px);
+    margin-inline: auto;
+    transform-origin: 40% 100%;
+    animation: hammer 1.6s ease-in-out infinite;
+  }
+
+  @keyframes hammer {
+    0%,
+    60%,
+    100% {
+      transform: rotate(0);
+    }
+    70% {
+      transform: rotate(-4deg) translateY(-2%);
+    }
+    80% {
+      transform: rotate(2deg) scale(1.02, 0.98);
+    }
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 48px;
+  }
+
+  .index {
+    position: sticky;
+    top: 100px;
+    align-self: start;
+    max-height: calc(100vh - 130px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+
+  .index ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 2px;
+  }
+
+  .index a {
+    display: block;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    text-decoration: none;
+    color: var(--ink-2);
+  }
+
+  .index a:hover {
+    background: var(--sun-soft);
+    color: var(--ink);
+  }
+
+  .timeline {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 820px;
+  }
+
+  .release {
+    position: relative;
+    padding: 0 0 56px 40px;
+    border-left: 3px dashed color-mix(in srgb, var(--ink) 25%, transparent);
+    scroll-margin-top: 100px;
+  }
+
+  .release:last-child {
+    border-left-color: transparent;
+  }
+
+  .release::before {
+    content: '';
+    position: absolute;
+    left: -13px;
+    top: 4px;
+    width: 18px;
+    height: 18px;
+    border: var(--line);
+    border-radius: 50%;
+    background: var(--sun);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .release:first-child::before {
+    background: var(--mint);
+    width: 22px;
+    height: 22px;
+    left: -15px;
+    top: 2px;
+  }
+
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 16px;
+    margin-bottom: 14px;
+  }
+
+  .ver {
+    font-family: var(--font-mono);
+    font-size: 1.7rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+
+  .ver a {
+    text-decoration: none;
+  }
+
+  .ver a:hover {
+    text-decoration: underline wavy var(--coral);
+  }
+
+  time {
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+
+  .items {
+    display: grid;
+    gap: 12px;
+    margin: 0;
+    padding: 0 0 0 20px;
+    color: var(--ink-2);
+    font-size: 1.02rem;
+  }
+
+  .items li::marker {
+    color: var(--coral);
+  }
+
+  .items :global(code) {
+    white-space: normal;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+
+    .art {
+      order: -1;
+      width: min(52vw, 220px);
+      justify-self: center;
+    }
+
+    .layout {
+      grid-template-columns: 1fr;
+    }
+
+    .index {
+      display: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .art :global(img) {
+      animation: none;
+    }
+  }
+</style>

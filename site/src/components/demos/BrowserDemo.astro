@@ -1,0 +1,526 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Cursor from './Cursor.astro';
+// The shared browser has no agent cursor (pi drives it directly), so its clicks show as a press on the button.
+const times = [400, 1100, 1000, 1000, 900, 1100, 1800, 1100, 1300, 2200, 1700];
+---
+
+<DemoFrame
+  title="pi-gna"
+  times={times}
+  label="pi opens a dev server in the shared browser, clicks a button, takes a screenshot, picks up your comment on an element and checks the phone layout."
+>
+  <section class="chat">
+    <header class="chat-head">check the hero on mobile</header>
+    <div class="log">
+      <div class="item" data-at="1"><div class="in"><div class="user">check the hero on my dev server</div></div></div>
+      <div class="item" data-at="1">
+        <div class="in"><div class="tool mono"><span class="st" data-seq="0:run,2:ok"></span> browser_open localhost:4321</div></div>
+      </div>
+      <div class="item" data-at="4">
+        <div class="in"><div class="tool mono"><span class="st ok-st"></span> browser_click “Order now”</div></div>
+      </div>
+      <div class="item" data-at="5">
+        <div class="in">
+          <div class="tool mono"><span class="st ok-st"></span> browser_screenshot</div>
+          <div class="thumb"><i></i><i></i><b></b></div>
+        </div>
+      </div>
+      <div class="item" data-at="7">
+        <div class="in">
+          <div class="user cmt">
+            <span class="crop">Coffee, but…</span>
+            <span>make this bigger 🤌</span>
+          </div>
+        </div>
+      </div>
+      <div class="item" data-at="8"><div class="in"><div class="ai">Bigger it is. Checking the phone layout…</div></div></div>
+      <div class="item" data-at="9">
+        <div class="in"><div class="tool mono"><span class="st ok-st"></span> browser_set_viewport iPhone 15</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane">
+    <div class="tabs">
+      <span class="tab">☕ Acme Coffee</span>
+      <span class="plus">+</span>
+    </div>
+    <div class="url">
+      <span class="nav">‹ ›</span>
+      <span class="addr"><span class="lock">●</span> localhost:4321</span>
+    </div>
+    <div class="dims" data-seq="0:off,9:on">
+      <span class="dim-label">Dimensions</span>
+      <span class="preset p-auto">Responsive</span>
+      <span class="preset p-phone">iPhone 15 · 393×852</span>
+      <span class="preset">Laptop</span>
+    </div>
+    <div class="viewport">
+      <div class="progress" data-at="1" data-off="3"></div>
+      <div class="page" data-seq="0:blank,2:full,9:phone">
+        <div class="pnav"><b>☕</b><i></i><i></i><i></i></div>
+        <h4 class="hd" data-seq="0:plain,6:comment,8:big">Coffee, but faster.</h4>
+        <p class="bars"><i></i><i class="short"></i></p>
+        <span class="order" data-seq="0:idle,4:pressed,5:idle">Order now</span>
+        <div class="pic"></div>
+      </div>
+      <span class="el-tag" data-at="6" data-off="8">h1</span>
+      <div class="cmt-card" data-at="6" data-off="8">
+        <div class="ta">make this bigger 🤌</div>
+        <div class="cmt-row"><span class="cb">Cancel</span><span class="cb primary">Comment <kbd>⌘↩</kbd></span></div>
+      </div>
+      <div class="flash" data-at="5" data-off="6"></div>
+      <span class="ripple r-btn" data-at="4" data-off="5"></span>
+      <Cursor who="you" class="me" data-seq="0:hidden,6:hd,8:hidden" label="you" />
+    </div>
+  </section>
+</DemoFrame>
+
+<style>
+  .chat {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 250px;
+    border-right: 1px solid var(--hair);
+  }
+
+  .chat-head {
+    height: 40px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--hair);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .log {
+    position: absolute;
+    inset: 40px 0 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 16px 18px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .user {
+    width: fit-content;
+    margin-left: auto;
+    max-width: 92%;
+  }
+
+  .tool {
+    font-size: 11.5px;
+  }
+
+  .st {
+    width: 9px;
+    height: 9px;
+    flex: none;
+    border-radius: 50%;
+  }
+
+  .st[data-s='run'] {
+    border: 2px solid var(--accent);
+    border-right-color: transparent;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .st[data-s='ok'],
+  .ok-st {
+    background: var(--ok);
+  }
+
+  .thumb {
+    position: relative;
+    width: 120px;
+    height: 70px;
+    margin-top: 8px;
+    border-radius: 8px;
+    background: #fffaf3;
+    border: 1px solid var(--hair);
+    overflow: hidden;
+  }
+
+  .thumb i {
+    position: absolute;
+    left: 10px;
+    height: 6px;
+    border-radius: 3px;
+    background: #2a2420;
+  }
+
+  .thumb i:first-child {
+    top: 14px;
+    width: 64px;
+  }
+
+  .thumb i:nth-child(2) {
+    top: 26px;
+    width: 44px;
+    background: #cfc5b8;
+  }
+
+  .thumb b {
+    position: absolute;
+    left: 10px;
+    top: 40px;
+    width: 34px;
+    height: 12px;
+    border-radius: 4px;
+    background: #f4978a;
+  }
+
+  .cmt {
+    display: grid;
+    gap: 6px;
+  }
+
+  .crop {
+    padding: 6px 8px;
+    border: 1.5px dashed var(--accent);
+    border-radius: 6px;
+    background: #fffaf3;
+    color: #2a2420;
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .pane {
+    position: absolute;
+    inset: 0 0 0 250px;
+    background: var(--sunken);
+  }
+
+  .tabs {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    height: 34px;
+    padding: 0 10px;
+  }
+
+  .tab {
+    padding: 6px 14px;
+    border-radius: 8px 8px 0 0;
+    background: var(--panel);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .plus {
+    padding-bottom: 6px;
+    color: var(--muted);
+  }
+
+  .url {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    padding: 0 10px;
+    background: var(--panel);
+  }
+
+  .nav {
+    color: var(--faint);
+    letter-spacing: 4px;
+  }
+
+  .addr {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 7px;
+    background: var(--sunken);
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .lock {
+    color: var(--ok);
+    font-size: 8px;
+  }
+
+  .dims {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--hair);
+    font-size: 11px;
+    color: var(--faint);
+  }
+
+  .dim-label {
+    margin-right: 4px;
+  }
+
+  .preset {
+    padding: 2px 8px;
+    border-radius: 6px;
+    color: var(--muted);
+    transition:
+      background-color 0.3s,
+      color 0.3s;
+  }
+
+  .dims[data-s='off'] .p-auto,
+  .dims[data-s='on'] .p-phone {
+    background: rgb(91 141 239 / 0.2);
+    color: #c9d8fa;
+  }
+
+  .viewport {
+    position: absolute;
+    inset: 100px 0 0;
+    background: #2a2a2f;
+    overflow: hidden;
+  }
+
+  .progress {
+    position: absolute;
+    z-index: 3;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 100%;
+    background: var(--accent);
+    transform-origin: 0 50%;
+  }
+
+  .progress.on {
+    animation: load 1.6s ease-out both;
+  }
+
+  @keyframes load {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+
+  .page {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 470px;
+    translate: -50%;
+    padding: 0 22px;
+    background: #fffaf3;
+    color: #2a2420;
+    transition:
+      width 0.8s cubic-bezier(0.6, 0, 0.2, 1),
+      opacity 0.4s;
+  }
+
+  .page[data-s='blank'] {
+    opacity: 0;
+  }
+
+  .page[data-s='phone'] {
+    width: 196px;
+    box-shadow: 0 0 0 6px #111114;
+  }
+
+  .pnav {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+  }
+
+  .pnav i {
+    width: 28px;
+    height: 5px;
+    border-radius: 3px;
+    background: #d9cfc2;
+  }
+
+  .pnav i:first-of-type {
+    margin-left: auto;
+  }
+
+  .hd {
+    position: relative;
+    width: fit-content;
+    margin: 18px 0 10px;
+    font: 800 22px/1.05 var(--font-display), system-ui;
+    letter-spacing: -0.03em;
+    transition: font-size 0.6s var(--spring);
+  }
+
+  .hd[data-s='big'] {
+    font-size: 31px;
+  }
+
+  .hd::after {
+    content: '';
+    position: absolute;
+    inset: -4px -6px;
+    border: 2px solid #5b8def;
+    border-radius: 4px;
+    background: rgb(91 141 239 / 0.12);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .hd[data-s='comment']::after {
+    opacity: 1;
+  }
+
+  .bars {
+    display: grid;
+    gap: 7px;
+    margin: 0 0 14px;
+  }
+
+  .bars i {
+    height: 7px;
+    width: 88%;
+    border-radius: 4px;
+    background: #d9cfc2;
+  }
+
+  .bars .short {
+    width: 60%;
+  }
+
+  .order {
+    display: inline-block;
+    padding: 7px 16px;
+    border-radius: 999px;
+    background: #f4978a;
+    border: 2px solid #2a2420;
+    font-weight: 700;
+    font-size: 12px;
+    transition: transform 0.15s;
+  }
+
+  .order[data-s='pressed'] {
+    transform: scale(0.92);
+  }
+
+  .pic {
+    height: 120px;
+    margin-top: 18px;
+    border-radius: 12px;
+    background:
+      radial-gradient(circle at 70% 40%, #ffd84d 0 22%, transparent 23%),
+      linear-gradient(135deg, #f6c8a8, #e9a37c);
+  }
+
+  .el-tag {
+    position: absolute;
+    left: 16px;
+    top: 30px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #5b8def;
+    color: #fff;
+    font: 11px var(--font-mono), ui-monospace, monospace;
+  }
+
+  .cmt-card {
+    position: absolute;
+    left: 200px;
+    top: 82px;
+    width: 230px;
+    padding: 10px;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    border-radius: 12px;
+    background: #222225;
+    color: #ececef;
+    box-shadow: 0 12px 40px -12px rgb(0 0 0 / 0.6);
+    font-size: 12.5px;
+  }
+
+  .ta {
+    min-height: 46px;
+    padding: 6px 8px;
+    border: 1px solid rgb(255 255 255 / 0.1);
+    border-radius: 8px;
+    background: #161618;
+  }
+
+  .cmt-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .cb {
+    padding: 3px 9px;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    border-radius: 7px;
+    color: #a1a1aa;
+    font-size: 11.5px;
+  }
+
+  .cb.primary {
+    border-color: #5b8def;
+    background: #5b8def;
+    color: #fff;
+  }
+
+  .cb kbd {
+    font: 10px ui-monospace, monospace;
+    opacity: 0.7;
+  }
+
+  .flash {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: #fff;
+    pointer-events: none;
+  }
+
+  .flash.on {
+    animation: flash 0.5s ease-out both;
+  }
+
+  @keyframes flash {
+    from {
+      opacity: 0.85;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  .r-btn {
+    left: 68px;
+    top: 136px;
+  }
+
+  .me {
+    left: 260px;
+    top: 120px;
+    transition:
+      left 0.8s ease,
+      top 0.8s ease,
+      opacity 0.3s;
+  }
+
+  .me[data-s='hidden'] {
+    opacity: 0;
+  }
+
+  .me[data-s='hd'] {
+    left: 120px;
+    top: 74px;
+  }
+</style>

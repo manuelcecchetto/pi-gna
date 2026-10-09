@@ -86,7 +86,10 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   change adds its line under Unreleased in the same commit. release.yml checks the tag against `package.json`
   and puts `release.mjs notes <tag>` (that version's section) above GitHub's generated notes; a test keeps a
   section for the current version. The version is `app.getVersion()`: the log's first line, the About panel and
-  the sidebar header (`--pigna-version`, `StudioApi.version`).
+  the sidebar header (`--pigna-version`, `StudioApi.version`). Before cutting a release, compare `git tag -l` with
+  `git ls-remote --tags origin`: a cut whose push failed (v0.9.1 sat unpublished for a day; the active GitHub account
+  could not push) stays local. Push pending tags one at a time and let each release.yml run finish, since the
+  release that finishes last becomes GitHub's Latest, which the updater and the website's download links follow.
 - **Name.** `productName` in `package.json` is the app's name everywhere (menus, About, Dock, bundle, profile
   folder `~/Library/Application Support/<productName>`, logs). Renaming the app moves the profile, so carry
   the old folder over when you rename.
@@ -941,11 +944,18 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   searchable list. A login's prompts (select, text, secret, manual code) are answered inline under its row;
   `auth_url` opens in your browser as in pi, with Open again and Copy link; device codes get Copy and Open page;
   ✕ or Esc cancels.
-- **Claude plans go through Claude Code.** With pi-claude-bridge installed (found through pi's `DefaultPackageManager`,
-  user scope), its `claude-bridge` provider runs Claude via Claude Code, so it uses Claude Code's own login (the macOS
-  keychain item every Claude Code shares), never pi's `auth.json`. A Claude Code card then replaces pi's own Anthropic
-  account login (the Anthropic API key row stays); a notice offers to sign out of pi's Anthropic login while one is
-  saved. The helper runs the bridge's Claude Code (`pathToClaudeCodeExecutable` in `claude-bridge.json`, else the
+- **Claude plans go through Claude Code.** pi-claude-bridge's `claude-bridge` provider runs Claude via Claude Code, so
+  it uses Claude Code's own login (the macOS keychain item every Claude Code shares), never pi's `auth.json`. Its
+  Claude Code card shows on every install (any pi whose SDK has `DefaultPackageManager`, through which the bridge is
+  found, user scope). Without the bridge, Sign in first runs `pi install npm:pi-claude-bridge` with the pi
+  whose SDK the helper loaded (its `bin`, run by the helper's node, npm's folder put first on the PATH; a child
+  process because npm writes to stdout, the helper's JSON channel), which brings the Agent SDK's Claude Code along.
+  Unpinned, unlike the Plugins catalog: pi pins a versioned npm source, so `pi update --extensions` (and an agent
+  asked to update the bridge) would never move it, and the bridge has to keep up with Claude Code.
+  After the login, a Max plan (`claude auth status`) sets `provider.plan: "max"` in `claude-bridge.json` unless a plan
+  is set there, which gives Opus 1M context. pi's own Anthropic account login never gets a card (the Anthropic API
+  key row stays); a notice offers to sign out of it while one is saved. A sign-in or sign-out marks the renderer's
+  model list stale (`modelsChanged`), so the next chat to start lists models again. The helper runs the bridge's Claude Code (`pathToClaudeCodeExecutable` in `claude-bridge.json`, else the
   Agent SDK's platform binary beside the bridge, else `claude` on the PATH): `claude auth status --json` (exit 1 when
   signed out), `claude auth login --claudeai` and `claude auth logout`. The login opens its page itself (it calls back
   to a local port), so its `auth_url` is marked `opened` and main does not open it again; the printed link (an OSC 8
@@ -1299,14 +1309,20 @@ Verified live (pi 1.0.0, Oct 2026):
 Inspired by beautifului.dev (no code copied; it has no public source or license): dark neutral surfaces
 (~#1b1b1d), hairline borders, dashed dividers, system sans, mono only for code, paths and numbers, no eyebrow labels (small uppercase captions), muted grays, one blue accent,
 light and dark themes, the pi-logo spinner with shimmer text, compact chips that expand.
-Empty states sit on a wallpaper picked in Settings > Appearance (`settings.wallpaper`, default `sky`; `none` leaves
-the canvas plain), masked into the canvas above the text and composer. Each is the 🤌 in another form: a painted hand
-raised into the sky (Shinkai-style with a halftone texture, outpainted to 16:9), a constellation, a Dolomite spire, a
-pine forest (a *pigna* is a pine cone), a shadow on a plaster wall, an ink wash and a fresco. Each has a dusk image
-(dark theme) and a day image (light), the day one generated from the dusk one as a reference so the scene stays the
-same; GPT Image 2.5 at 2560 × 1440, high, then `cwebp -q 72 -m 6 -sharp_yuv` (thumbnails: `-q 75 -resize 480 270`).
-Files are `assets/wallpapers/<id>-<dusk|day>.webp` and `thumbs/`, found by `import.meta.glob` in
-`lib/wallpapers.ts`, whose test fails when one is missing; keep the hand in the upper middle and the bottom third calm
+Empty states sit on a wallpaper picked in Settings > Appearance (`settings.wallpaper`, default `monet`; `none` leaves
+the canvas plain), masked into the canvas above the text and composer. Each puts Pigna, the mascot, into a
+public-domain painting in its own brushwork: Monet's *Impression, Sunrise* (Pigna in the rowing boat), Van Gogh's
+*The Starry Night* (on the hill) and Hokusai's *Great Wave* (on the crest). Pigna is itself a hand, so it makes no hand
+gestures there (no waving or pointing; arms down), and it is painted in the medium, never a cartoon sticker. Image
+moderation refuses paintings with nudes (*The Birth of Venus*, *The Creation of Adam*) unless every figure is clothed.
+Each has a dusk image (dark theme) and a day image (light), the one generated from the other as a reference so the
+scene stays the same (each painting starts from its own light: Hokusai by day, the others at dusk); GPT Image 2.5 at
+2560 × 1440, high, then `cwebp -q 72 -m 6 -sharp_yuv` (thumbnails: `-q 75 -resize 480 270`). Try compositions first
+at 1536 × 864, medium, in a mock of the empty state (canvas, `.hero` mask, layout). They replaced, in 0.9.2, a set of
+seven where the 🤌 itself took another form (sky, constellation, Dolomites, pine forest, shadow, ink wash, fresco): a
+removed id in settings falls back to the default, and in a saved theme it unsets the wallpaper (`parseThemes`) instead
+of dropping the theme. Files are `assets/wallpapers/<id>-<dusk|day>.webp` and `thumbs/`, found by `import.meta.glob`
+in `lib/wallpapers.ts`, whose test fails when one is missing; keep Pigna in the upper middle and the bottom third calm
 and dark (dusk) or pale (day), since the mask fades it out under the text. With Loop on (`settings.wallpaperLoop`),
 each new empty state (and so each launch) shows the next wallpaper; where the loop is stays in localStorage
 (`pigna:wallpaper-loop`). The spinner and the sidebar's state marks stay pi's pixel

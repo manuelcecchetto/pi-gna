@@ -18,22 +18,24 @@ describe("wallpapers", () => {
 
   it("loops through every painted wallpaper, from the one picked", () => {
     const seen: string[] = [];
-    let id = nextWallpaper("ink");
+    let id = nextWallpaper("hokusai");
     for (let i = 0; i < WALLPAPERS.length - 1; i++, id = nextWallpaper(id)) seen.push(id);
-    expect(seen).toEqual(["fresco", "sky", "stars", "peak", "pines", "shadow", "ink"]);
-    expect(nextWallpaper("none")).toBe("sky");
+    expect(seen).toEqual(["monet", "vangogh", "hokusai"]);
+    expect(nextWallpaper("none")).toBe("monet");
   });
 
   it("shows the next one at each new empty state while they loop, and starts again from a new pick", () => {
     const saved = new Map<string, string>();
     const storage = { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => void saved.set(key, value) };
-    expect(loopWallpaper("ink", false, storage)).toBe("ink");
+    expect(loopWallpaper("vangogh", false, storage)).toBe("vangogh");
     expect(saved.size).toBe(0);
-    expect([1, 2, 3].map(() => loopWallpaper("ink", true, storage))).toEqual(["ink", "fresco", "sky"]);
-    expect(loopWallpaper("peak", true, storage)).toBe("peak");
-    expect(loopWallpaper("peak", true, storage)).toBe("pines");
-    expect(loopWallpaper("none", true, storage)).toBe("sky");
+    expect([1, 2, 3].map(() => loopWallpaper("vangogh", true, storage))).toEqual(["vangogh", "hokusai", "monet"]);
+    expect(loopWallpaper("hokusai", true, storage)).toBe("hokusai");
+    expect(loopWallpaper("hokusai", true, storage)).toBe("monet");
+    expect(loopWallpaper("none", true, storage)).toBe("monet");
+    saved.set("pigna:wallpaper-loop", JSON.stringify({ picked: "vangogh", shown: "ink" }));
+    expect(loopWallpaper("vangogh", true, storage)).toBe("vangogh");
     saved.set("pigna:wallpaper-loop", "{not json");
-    expect(loopWallpaper("stars", true, storage)).toBe("stars");
+    expect(loopWallpaper("vangogh", true, storage)).toBe("vangogh");
   });
 });

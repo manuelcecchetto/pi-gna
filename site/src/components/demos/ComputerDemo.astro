@@ -1,0 +1,441 @@
+---
+import DemoFrame from './DemoFrame.astro';
+import Cursor from './Cursor.astro';
+const times = [400, 900, 1400, 700, 700, 1400, 800, 2400, 2200];
+---
+
+<DemoFrame
+  title="Desktop"
+  times={times}
+  label="pi asks to use Notes, you allow it, and pi's own cursor glides over and writes a note while your cursor stays where it was."
+>
+  <div class="desk">
+    <div class="menubar"><b></b><b>Notes</b> File Edit Format View <span class="clock">Thu 9:41</span></div>
+
+    <div class="mini">
+      <div class="mini-bar"><i></i><i></i><i></i><span>pi-gna</span></div>
+      <div class="log">
+        <div class="item" data-at="1"><div class="in"><div class="user">add espresso beans to my shopping note</div></div></div>
+        <div class="item" data-at="2"><div class="in"><div class="ai">I’ll use Notes for that.</div></div></div>
+        <div class="item" data-at="2">
+          <div class="in">
+            <div class="approve" data-seq="0:ask,3:press,4:done">
+              <div class="ask">
+                <b>Allow pi to use Notes?</b>
+                <span class="muted">It can click and type in this app.</span>
+                <div class="btns">
+                  <span class="btnx">Deny</span>
+                  <span class="btnx">Once</span>
+                  <span class="btnx primary always">Always</span>
+                </div>
+              </div>
+              <div class="done-row"><span class="ok">✓</span> Notes · always allowed</div>
+            </div>
+          </div>
+        </div>
+        <div class="item" data-at="8"><div class="in"><div class="ai">Added to your Shopping note.</div></div></div>
+      </div>
+    </div>
+
+    <div class="drive" data-at="4" aria-hidden="true"></div>
+    <div class="notes">
+      <div class="n-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        <span class="new" data-seq="0:idle,6:pressed,7:idle">✎</span>
+      </div>
+      <div class="pill" data-at="4">pi is using Notes · Esc to cancel</div>
+      <div class="n-list">
+        <div class="n-item fresh" data-at="6"><b>Shopping</b><span>Today</span></div>
+        <div class="n-item"><b>Trip ideas</b><span>Yesterday</span></div>
+        <div class="n-item"><b>Recipes</b><span>Monday</span></div>
+      </div>
+      <div class="n-body">
+        <div class="n-date">Today, 9:41</div>
+        <div class="n-h" data-at="6"><span data-type="Shopping" data-speed="60"></span></div>
+        <div class="n-p" data-at="7"><span data-type="☕ espresso beans" data-speed="55"></span></div>
+      </div>
+    </div>
+
+    <Cursor who="agent" class="arc" data-seq="0:hidden,4:start,5:go" />
+    <span class="rings r-new" data-at="6" data-off="7"><i></i><i></i><i></i></span>
+    <Cursor who="you" class="me" label="your cursor, untouched" />
+  </div>
+</DemoFrame>
+
+<style>
+  .desk {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 80% 110%, #f2a36b 0%, transparent 55%),
+      linear-gradient(165deg, #1d2148 0%, #4a3471 50%, #b8587a 100%);
+  }
+
+  .menubar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 22px;
+    padding: 0 12px;
+    background: rgb(0 0 0 / 0.28);
+    color: #f3f0ff;
+    font-size: 11.5px;
+  }
+
+  .menubar b:first-child {
+    width: 10px;
+    height: 12px;
+    border-radius: 3px 3px 5px 5px;
+    background: #f3f0ff;
+  }
+
+  .clock {
+    margin-left: auto;
+  }
+
+  .mini {
+    position: absolute;
+    left: 18px;
+    top: 40px;
+    width: 262px;
+    height: 372px;
+    border: 1px solid #3a3a42;
+    border-radius: 12px;
+    background: var(--canvas);
+    box-shadow: 0 18px 40px rgb(0 0 0 / 0.45);
+    overflow: hidden;
+  }
+
+  .mini-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    background: var(--sunken);
+    border-bottom: 1px solid var(--hair);
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  .mini-bar i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #4a4a52;
+  }
+
+  .mini-bar span {
+    margin-left: 62px;
+  }
+
+  .log {
+    position: absolute;
+    inset: 28px 0 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 14px 16px;
+    overflow: hidden;
+  }
+
+  .log > * {
+    flex-shrink: 0;
+  }
+
+  .user {
+    width: fit-content;
+    margin-left: auto;
+    max-width: 90%;
+  }
+
+  .approve {
+    display: grid;
+    border: 1px solid var(--hair);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .approve > * {
+    grid-area: 1 / 1;
+    transition:
+      opacity 0.3s,
+      transform 0.4s var(--spring);
+  }
+
+  .ask {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    font-size: 12.5px;
+  }
+
+  .ask .muted {
+    font-size: 11.5px;
+  }
+
+  .btns {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .btns .btnx {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 11.5px;
+  }
+
+  .approve[data-s='press'] .always {
+    transform: scale(0.9);
+    background: #3f6fd6;
+  }
+
+  .done-row {
+    align-self: center;
+    padding: 10px 12px;
+    font-size: 12px;
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  .approve[data-s='done'] .ask {
+    opacity: 0;
+    transform: scale(0.96);
+    pointer-events: none;
+  }
+
+  .approve[data-s='done'] .done-row {
+    opacity: 1;
+    transform: none;
+  }
+
+  .approve[data-s='done'] {
+    grid-template-rows: 40px;
+    transition: grid-template-rows 0.4s;
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+
+  .notes {
+    position: absolute;
+    left: 304px;
+    top: 52px;
+    width: 396px;
+    height: 330px;
+    border-radius: 12px;
+    background: #fbfaf7;
+    color: #1e1e22;
+    box-shadow: 0 18px 40px rgb(0 0 0 / 0.4);
+    overflow: hidden;
+  }
+
+  .n-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    padding: 0 12px;
+    background: #efece6;
+    border-bottom: 1px solid #e0dcd3;
+  }
+
+  .lights {
+    display: flex;
+    gap: 6px;
+  }
+
+  .lights i {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff5f57;
+  }
+
+  .lights i:nth-child(2) {
+    background: #febc2e;
+  }
+
+  .lights i:nth-child(3) {
+    background: #28c840;
+  }
+
+  .n-title {
+    font-weight: 700;
+    font-size: 12.5px;
+  }
+
+  .new {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 24px;
+    margin-left: auto;
+    border-radius: 6px;
+    color: #b08900;
+    font-size: 15px;
+    transition:
+      transform 0.15s,
+      background-color 0.2s;
+  }
+
+  .new[data-s='pressed'] {
+    transform: scale(0.85);
+    background: #e3ddd0;
+  }
+
+  .n-list {
+    position: absolute;
+    top: 36px;
+    bottom: 0;
+    width: 132px;
+    padding: 8px;
+    border-right: 1px solid #e6e2da;
+    background: #f5f2ec;
+  }
+
+  .n-item {
+    display: grid;
+    padding: 7px 9px;
+    border-radius: 7px;
+    font-size: 11.5px;
+  }
+
+  .n-item span {
+    color: #8a857c;
+    font-size: 10.5px;
+  }
+
+  .n-item.fresh {
+    background: #ffd84d;
+  }
+
+  .n-body {
+    position: absolute;
+    top: 36px;
+    left: 132px;
+    right: 0;
+    bottom: 0;
+    padding: 16px 20px;
+  }
+
+  .n-date {
+    color: #8a857c;
+    font-size: 10.5px;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .n-h {
+    min-height: 26px;
+    font-weight: 800;
+    font-size: 19px;
+  }
+
+  .n-p {
+    margin-top: 6px;
+    font-size: 13.5px;
+  }
+
+  .n-h span::after,
+  .n-p span::after {
+    background: #b08900;
+  }
+
+  .arc {
+    left: 0;
+    top: 0;
+    offset-path: path('M 150 330 C 250 120, 470 10, 675 70');
+    offset-rotate: 0deg;
+    offset-anchor: 0 0;
+    offset-distance: 0%;
+    transition:
+      offset-distance 1.15s cubic-bezier(0.55, 0, 0.25, 1),
+      opacity 0.3s;
+  }
+
+  .arc[data-s='hidden'] {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .arc[data-s='go'] {
+    offset-distance: 100%;
+  }
+
+  .r-new {
+    left: 675px;
+    top: 70px;
+  }
+
+  /* The glowing frame Computer Use draws around the window it drives, in pi's coral, yellow and blue. */
+  @property --spin {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+
+  .drive {
+    position: absolute;
+    left: 301px;
+    top: 49px;
+    width: 402px;
+    height: 336px;
+    border-radius: 14px;
+    background: conic-gradient(from var(--spin), #f09082, #f1be58, #4d9abf, #f09082);
+    box-shadow: 0 0 18px rgb(241 190 88 / 0.55);
+    animation: spin-glow 6s linear infinite;
+  }
+
+  .drive::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    z-index: -1;
+    border-radius: 20px;
+    background: inherit;
+    filter: blur(12px);
+    opacity: 0.7;
+  }
+
+  @keyframes spin-glow {
+    to {
+      --spin: 360deg;
+    }
+  }
+
+  .pill {
+    position: absolute;
+    z-index: 3;
+    left: 50%;
+    top: 6px;
+    translate: -50% 0;
+    padding: 4px 12px;
+    border-radius: 14px;
+    background: rgb(36 36 40 / 0.92);
+    color: #f3f0ff;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow:
+      0 0 0 2px #f1be58,
+      0 0 12px rgb(240 144 130 / 0.7);
+  }
+
+  .me {
+    left: 318px;
+    top: 392px;
+    animation: idle 3s ease-in-out infinite;
+  }
+
+  @keyframes idle {
+    50% {
+      transform: translate(2px, 1px);
+    }
+  }
+
+</style>

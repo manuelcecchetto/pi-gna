@@ -4,7 +4,7 @@
 
 <p align="center">A desktop app for the <a href="https://pi.dev">pi coding agent</a>. Your pi, with a window.</p>
 
-![pi-gna: the sidebar of projects and chats, and a new chat over a painted 🤌 in a dusk sky](docs/screenshot.webp)
+![pi-gna: the sidebar of projects and chats, and a new chat over Pigna, the mascot, in a rowing boat in Monet’s Impression, Sunrise](docs/screenshot.webp)
 
 **pi-gna** (Italian *pigna*, as in the 🤌 "mano a pigna" gesture) is a frontend, not a fork. Every chat is a
 `pi --mode rpc` process running the pi you already have: your models and logins, settings, extensions, skills,
@@ -99,8 +99,8 @@ updates the `--pigna` flag.
 - **Settings in one place.** Cmd+, opens Settings: the theme, the models of the chats pi-gna starts itself, pi's
   own settings (default model, compaction, retries and more, for new chats), switches to turn Kanban, Laments,
   GitHub, ATP and Computer Use off, and **Providers**, to sign in to pi's model providers as pi's `/login` does,
-  with an account or an API key. With [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge)
-  installed, your Claude plan signs in through Claude Code's own login instead of pi's.
+  with an account or an API key. A Claude plan signs in through Claude Code's own login: the Claude Code card
+  installs [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) for pi if it is missing.
 - **Plugins.** Settings > Plugins connects apps over MCP (Attio, Notion, Granola, Intercom, Brevo) and installs pi
   packages from a short catalog, turns installed packages and each of their extensions, skills and prompts on or off,
   for you or for the current project, and switches pi's built-in extensions. Everything is written to pi's own

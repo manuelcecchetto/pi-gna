@@ -39,10 +39,11 @@ describe("splitProviders", () => {
     expect(keys.map((one) => one.id)).toEqual(["acme", "beta", "dune"]);
   });
 
-  it("signs Claude plans in through Claude Code when claude-bridge is there, keeping Anthropic's key", () => {
+  it("never offers pi's own Anthropic account login, keeping Anthropic's key; Claude plans go through claude-bridge", () => {
     const anthropic = provider("anthropic", { oauth: { name: "Anthropic (Claude Pro/Max)", subscription: true }, apiKey: { name: "Anthropic API key", login: true } });
     const bridge = provider("claude-bridge", { oauth: { name: "Claude Code (Claude subscription)", subscription: true } });
-    expect(splitProviders([anthropic]).accounts.map((one) => one.id)).toEqual(["anthropic"]);
+    expect(splitProviders([anthropic]).accounts).toEqual([]);
+    expect(splitProviders([anthropic]).keys.map((one) => one.id)).toEqual(["anthropic"]);
     const split = splitProviders([anthropic, bridge]);
     expect(split.accounts.map((one) => one.id)).toEqual(["claude-bridge"]);
     expect(split.keys.map((one) => one.id)).toEqual(["anthropic"]);
@@ -50,6 +51,7 @@ describe("splitProviders", () => {
     // pi still has its own Claude login saved: offered to sign out of.
     const saved = { ...anthropic, stored: "oauth" as const, status: { method: "oauth" as const, source: "stored" } };
     expect(splitProviders([saved, bridge]).piClaude).toBe(saved);
+    expect(splitProviders([saved]).piClaude).toBe(saved);
     expect(splitProviders([{ ...anthropic, stored: "api_key" }, bridge]).piClaude).toBeUndefined();
   });
 });

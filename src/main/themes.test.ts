@@ -46,7 +46,7 @@ describe("POST /theme", () => {
       project,
       base: "dark",
       font: {},
-      wallpaper: { builtin: "sky" },
+      wallpaper: { builtin: "monet" },
       colors: { light: {}, dark: { primary: "#4f46e5", fg: "#e5e7eb" } },
       logo: { path: "assets/logo.svg" },
     });
@@ -74,19 +74,19 @@ describe("POST /theme", () => {
 
   it("puts the global mode and wallpaper in the settings and the rest in the global theme", async () => {
     const { store, settings, route } = await setup();
-    const result = await route("h", { scope: "global", base: "light", wallpaper: { builtin: "ink" }, font: { ui: "Inter" } });
-    expect(await settings.get()).toMatchObject({ theme: "light", wallpaper: "ink" });
+    const result = await route("h", { scope: "global", base: "light", wallpaper: { builtin: "vangogh" }, font: { ui: "Inter" } });
+    expect(await settings.get()).toMatchObject({ theme: "light", wallpaper: "vangogh" });
     expect((await store.get()).global).toEqual({ font: { ui: "Inter" } });
-    expect(text(result)).toContain('"wallpaper": {\n    "builtin": "ink"');
+    expect(text(result)).toContain('"wallpaper": {\n    "builtin": "vangogh"');
     await expect(route("h", { scope: "global", logo: { path: "assets/logo.svg" } })).rejects.toMatchObject({ message: expect.stringMatching(/belongs to a project/) });
     await expect(route("h", { scope: "global", base: "sepia", font: { ui: "Menlo" } })).rejects.toMatchObject({ message: expect.stringMatching(/unknown theme sepia/) });
     await expect(route("h", { scope: "global", surprise: true })).rejects.toMatchObject({ message: expect.stringMatching(/unknown field surprise/) });
-    await expect(route("h", { scope: "global", wallpaper: { builtin: "ink", path: "ignored.png" } })).rejects.toMatchObject({ message: expect.stringMatching(/unknown field/) });
+    await expect(route("h", { scope: "global", wallpaper: { builtin: "vangogh", path: "ignored.png" } })).rejects.toMatchObject({ message: expect.stringMatching(/unknown field/) });
     expect((await store.get()).global).toEqual({ font: { ui: "Inter" } });
     await route("h", { scope: "global", wallpaper: {} });
-    expect((await settings.get()).wallpaper).toBe("ink");
+    expect((await settings.get()).wallpaper).toBe("vangogh");
     await route("h", { scope: "global", wallpaper: { builtin: null } });
-    expect((await settings.get()).wallpaper).toBe("sky");
+    expect((await settings.get()).wallpaper).toBe("monet");
   });
 });
 

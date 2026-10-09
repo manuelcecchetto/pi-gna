@@ -19,7 +19,7 @@ describe("mergeTheme", () => {
 
   it("takes wallpapers and logos as project images or built-in ids", () => {
     expect(mergeTheme({}, { wallpaper: "none" }, "project")).toEqual({ wallpaper: { builtin: "none" } });
-    expect(mergeTheme({}, { wallpaper: { builtin: "stars" }, logo: { path: "assets/logo.svg" } }, "project")).toEqual({ wallpaper: { builtin: "stars" }, logo: { path: "assets/logo.svg" } });
+    expect(mergeTheme({}, { wallpaper: { builtin: "vangogh" }, logo: { path: "assets/logo.svg" } }, "project")).toEqual({ wallpaper: { builtin: "vangogh" }, logo: { path: "assets/logo.svg" } });
     expect(mergeTheme({}, { wallpaper: { path: "art/sky.webp" } }, "project")).toEqual({ wallpaper: { path: "art/sky.webp" } });
   });
 
@@ -27,7 +27,7 @@ describe("mergeTheme", () => {
     const current = { wallpaper: { path: "art/sky.webp" }, logo: { path: "logo.svg" } };
     expect(mergeTheme(current, { wallpaper: {}, logo: {} }, "project")).toEqual(current);
     expect(mergeTheme(current, { wallpaper: { path: null }, logo: { path: null } }, "project")).toEqual({});
-    expect(mergeTheme({ wallpaper: { builtin: "stars" } }, { wallpaper: { builtin: null } }, "project")).toEqual({});
+    expect(mergeTheme({ wallpaper: { builtin: "vangogh" } }, { wallpaper: { builtin: null } }, "project")).toEqual({});
   });
 
   it.each([
@@ -83,12 +83,12 @@ describe("effectiveTheme", () => {
   it("layers the project over the global theme over the settings, and worktrees share their project's", () => {
     let themes = applyThemeOp(emptyThemes(), { type: "set", scope: "global", patch: { font: { ui: "Inter" }, colors: { dark: { primary: "#111111", fg: "#eeeeee" } } } });
     themes = applyThemeOp(themes, { type: "set", scope: { project: "/repo" }, patch: { base: "dark", colors: { dark: { primary: "#222222" } }, logo: { path: "logo.png" } } });
-    const settings = { ...emptySettings(), wallpaper: "ink" as const };
+    const settings = { ...emptySettings(), wallpaper: "hokusai" as const };
     expect(effectiveTheme(themes, settings, "/repo")).toEqual({
       base: "dark",
       font: { ui: "Inter" },
       colors: { light: {}, dark: { primary: "#222222", fg: "#eeeeee" } },
-      wallpaper: { builtin: "ink" },
+      wallpaper: { builtin: "hokusai" },
       logo: { path: "logo.png" },
       project: "/repo",
     });
@@ -104,6 +104,13 @@ describe("parseThemes", () => {
     expect(themes).toEqual({ version: 1, global: { font: { ui: "Inter" } }, projects: { "/a": { base: "dark" } } });
     expect(dropped).toBe(2);
     expect(() => parseThemes([])).toThrow();
+  });
+
+  it("keeps a theme whose built-in wallpaper was retired, without that wallpaper", () => {
+    const { themes, dropped } = parseThemes({ projects: { "/a": { base: "dark", wallpaper: { builtin: "ink" } }, "/b": { wallpaper: { builtin: "hokusai" } } } });
+    expect(themes.projects).toEqual({ "/a": { base: "dark" }, "/b": { wallpaper: { builtin: "hokusai" } } });
+    expect(dropped).toBe(0);
+    expect(() => mergeTheme({}, { wallpaper: { builtin: "ink" } }, "project")).toThrow(/unknown wallpaper "ink"/);
   });
 });
 

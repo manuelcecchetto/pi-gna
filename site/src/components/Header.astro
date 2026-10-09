@@ -1,0 +1,256 @@
+---
+import Logo from './Logo.astro';
+import { NAV, SITE } from '../data/site';
+
+const path = Astro.url.pathname;
+const current = (href: string) => path === href || (href !== '/' && path.startsWith(href));
+---
+
+<header class="header">
+  <div class="wrap bar">
+    <Logo size={30} />
+    <nav aria-label="Main">
+      <ul class="links">
+        {
+          NAV.map((item) => (
+            <li>
+              <a href={item.href} aria-current={current(item.href) ? 'page' : undefined}>
+                {item.label}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </nav>
+    <div class="actions">
+      <a class="gh" href={SITE.repo} aria-label="pi-gna on GitHub">
+        <svg viewBox="0 0 16 16" aria-hidden="true"
+          ><path
+            fill="currentColor"
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+          ></path></svg
+        >
+      </a>
+      <a class="btn btn-sm get" href="/download/">Download</a>
+      <details class="menu">
+        <summary aria-label="Menu">
+          <span></span><span></span><span></span>
+        </summary>
+        <div class="sheet card">
+          <ul>
+            {
+              NAV.map((item) => (
+                <li>
+                  <a href={item.href} aria-current={current(item.href) ? 'page' : undefined}>
+                    {item.label}
+                  </a>
+                </li>
+              ))
+            }
+            <li><a href={SITE.repo}>GitHub</a></li>
+          </ul>
+        </div>
+      </details>
+    </div>
+  </div>
+</header>
+
+<style>
+  /* Solid, with no backdrop-filter: Safari 26 paints a sticky top bar's color into its own toolbar only when it can
+     sample it (a backdrop-filter stops that, WebKit bug 319479). On phones the header is not sticky at all: under
+     iOS 26's shrinking address bar a sticky bar floated below it with the page scrolling past above. */
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    view-transition-name: header;
+    background: var(--paper);
+    border-bottom: 2.5px solid transparent;
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .header {
+      animation: edge linear both;
+      animation-timeline: scroll();
+      animation-range: 0 80px;
+    }
+  }
+
+  @keyframes edge {
+    to {
+      border-bottom-color: var(--ink);
+    }
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    height: 76px;
+  }
+
+  nav {
+    margin-left: auto;
+  }
+
+  .links {
+    display: flex;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .links a {
+    display: block;
+    padding: 8px 14px;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    font-size: 1rem;
+    font-weight: 620;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    transition:
+      background-color 0.2s,
+      border-color 0.2s,
+      transform 0.3s var(--spring);
+  }
+
+  .links a:hover {
+    background: var(--sun-soft);
+    transform: rotate(-2deg);
+  }
+
+  .links a[aria-current='page'] {
+    border-color: var(--ink);
+    background: var(--card);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .gh {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    transition: transform 0.35s var(--spring);
+  }
+
+  .gh svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .gh:hover {
+    transform: rotate(-12deg) scale(1.1);
+  }
+
+  .menu {
+    display: none;
+    position: relative;
+  }
+
+  .menu summary {
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    width: 46px;
+    height: 46px;
+    padding: 0 11px;
+    border: var(--line);
+    border-radius: 14px;
+    background: var(--card);
+    box-shadow: 3px 3px 0 var(--ink);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .menu summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .menu summary span {
+    height: 2.5px;
+    border-radius: 2px;
+    background: var(--ink);
+    transition: transform 0.3s var(--spring), opacity 0.2s;
+  }
+
+  .menu[open] summary span:nth-child(1) {
+    transform: translateY(7.5px) rotate(45deg);
+  }
+
+  .menu[open] summary span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .menu[open] summary span:nth-child(3) {
+    transform: translateY(-7.5px) rotate(-45deg);
+  }
+
+  .sheet {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 12px);
+    width: min(78vw, 280px);
+    padding: 10px;
+    transform-origin: top right;
+    animation: pop 0.35s var(--spring);
+  }
+
+  @keyframes pop {
+    from {
+      transform: scale(0.8) rotate(4deg);
+      opacity: 0;
+    }
+  }
+
+  .sheet ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .sheet a {
+    display: block;
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .sheet a:hover,
+  .sheet a[aria-current='page'] {
+    background: var(--sun-soft);
+  }
+
+  @media (max-width: 860px) {
+    .header {
+      position: relative;
+    }
+
+    nav,
+    .gh {
+      display: none;
+    }
+
+    .actions {
+      margin-left: auto;
+    }
+
+    .menu {
+      display: block;
+    }
+
+    .bar {
+      height: 68px;
+    }
+  }
+</style>

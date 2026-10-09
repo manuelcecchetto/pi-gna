@@ -1,0 +1,294 @@
+---
+import { Image } from 'astro:assets';
+import bow from '../assets/mascot/bow.webp';
+import Logo from './Logo.astro';
+import { SITE } from '../data/site';
+
+const year = new Date().getFullYear();
+const columns = [
+  {
+    title: 'Product',
+    links: [
+      { href: '/features/', label: 'Features' },
+      { href: '/download/', label: 'Download' },
+      { href: '/changelog/', label: 'Changelog' },
+    ],
+  },
+  {
+    title: 'Help',
+    links: [
+      { href: '/faq/', label: 'FAQ' },
+      { href: '/about/', label: 'About' },
+      { href: `${SITE.repo}/issues`, label: 'Report a bug' },
+    ],
+  },
+  {
+    title: 'Elsewhere',
+    links: [
+      { href: SITE.repo, label: 'GitHub' },
+      { href: SITE.releases, label: 'Releases' },
+      { href: SITE.pi, label: 'pi.dev' },
+    ],
+  },
+];
+---
+
+<footer class="footer">
+  <div class="stage wrap">
+    <button class="bow" type="button" aria-label="Pigna takes a bow" data-bow data-observe>
+      <Image src={bow} alt="" widths={[220, 440]} sizes="220px" loading="lazy" />
+      <span class="thanks" aria-hidden="true">Grazie!</span>
+    </button>
+  </div>
+  <div class="body">
+    <div class="wrap grid">
+      <div class="brand">
+        <Logo size={34} class="footer-logo" />
+        <p>
+          The desktop app for the <a href={SITE.pi}>pi coding agent</a>. Free and open source, made with <span
+            aria-label="pinched fingers">🤌</span
+          >.
+        </p>
+      </div>
+      {
+        columns.map((col) => (
+          <div class="col">
+            <h2>{col.title}</h2>
+            <ul>
+              {col.links.map((l) => (
+                <li>
+                  <a href={l.href}>{l.label}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+    <div class="wrap legal">
+      <p>
+        © {year} <a href={SITE.author.url}>{SITE.author.name}</a> · <a href={`${SITE.repo}/blob/main/LICENSE`}>MIT license</a>
+      </p>
+      <p>
+        pi-gna is an independent project, not affiliated with pi. The hand in the logo is <a
+          href="https://github.com/jdecked/twemoji">Twemoji</a
+        >’s 🤌, <a href="https://creativecommons.org/licenses/by/4.0/">CC-BY 4.0</a>.
+      </p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-bow]')) {
+    button.addEventListener('click', () => {
+      button.classList.remove('again');
+      void button.offsetWidth;
+      button.classList.add('again');
+    });
+  }
+</script>
+
+<style>
+  .footer {
+    margin-top: clamp(190px, 22vw, 290px);
+    color: var(--paper);
+  }
+
+  .stage {
+    position: relative;
+    height: 0;
+  }
+
+  .bow {
+    position: absolute;
+    right: clamp(0px, 6vw, 80px);
+    bottom: -14px;
+    width: clamp(150px, 18vw, 220px);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    transform-origin: 50% 100%;
+    z-index: 2;
+  }
+
+  .bow img {
+    width: 100%;
+  }
+
+  :global(.js) .bow:not(.is-in) img {
+    transform: translateY(30%) scale(0.9);
+    opacity: 0;
+  }
+
+  .bow img {
+    transform-origin: 50% 100%;
+    transition:
+      transform 0.7s var(--spring),
+      opacity 0.3s;
+  }
+
+  .bow.is-in img,
+  .bow.again img {
+    animation: bow 1.2s var(--out) 0.3s both;
+  }
+
+  .bow.again img {
+    animation-delay: 0s;
+  }
+
+  @keyframes bow {
+    0%,
+    100% {
+      transform: rotate(0) translateY(0);
+    }
+    35% {
+      transform: rotate(9deg) translateY(3%) scale(1.02, 0.97);
+    }
+    55% {
+      transform: rotate(9deg) translateY(3%) scale(1.02, 0.97);
+    }
+    80% {
+      transform: rotate(-2deg) translateY(-2%);
+    }
+  }
+
+  .thanks {
+    position: absolute;
+    left: -28%;
+    top: 4%;
+    padding: 6px 14px 8px;
+    border: var(--line);
+    border-radius: 18px 18px 4px 18px;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 3px 3px 0 var(--ink);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1.5rem;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    transform: scale(0.4) rotate(-12deg);
+    transform-origin: 100% 100%;
+    transition:
+      transform 0.5s var(--spring),
+      opacity 0.2s;
+  }
+
+  .bow.is-in .thanks,
+  .bow:hover .thanks {
+    opacity: 1;
+    transform: scale(1) rotate(-6deg);
+    transition-delay: 0.7s;
+  }
+
+  .bow:hover .thanks {
+    transition-delay: 0s;
+  }
+
+  .body {
+    position: relative;
+    background: var(--ink);
+    padding: clamp(56px, 7vw, 88px) 0 32px;
+  }
+
+  .body::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: 18px;
+    background: radial-gradient(circle at 50% 100%, var(--ink) 17px, transparent 17.5px) 0 0 / 34px 18px repeat-x;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.6fr repeat(3, 1fr);
+    gap: 40px 32px;
+  }
+
+  .brand :global(.footer-logo) {
+    color: var(--paper);
+  }
+
+  .brand p {
+    margin-top: 18px;
+    max-width: 26em;
+    color: color-mix(in srgb, var(--paper) 72%, transparent);
+    font-size: 1rem;
+  }
+
+  .brand a,
+  .legal a {
+    text-decoration-color: var(--coral);
+    text-underline-offset: 3px;
+  }
+
+  h2 {
+    margin-bottom: 14px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--sun);
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+
+  .col a {
+    display: inline-block;
+    text-decoration: none;
+    font-weight: 560;
+    transition: transform 0.3s var(--spring), color 0.2s;
+  }
+
+  .col a:hover {
+    color: var(--sun);
+    transform: translateX(4px) rotate(-2deg);
+  }
+
+  .legal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px 32px;
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1.5px dashed color-mix(in srgb, var(--paper) 25%, transparent);
+    font-size: 0.85rem;
+    color: color-mix(in srgb, var(--paper) 60%, transparent);
+  }
+
+  @media (max-width: 860px) {
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .brand {
+      grid-column: 1 / -1;
+      padding-right: 140px;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .grid {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .brand {
+      padding-right: 0;
+    }
+
+    .bow {
+      width: 128px;
+    }
+  }
+</style>

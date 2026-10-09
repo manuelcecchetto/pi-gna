@@ -48,6 +48,14 @@ moves those lines under the new version, and they become its GitHub release note
 - pi-gna lists your chats sooner after a relaunch: it keeps the chat list's summaries on disk and reads only the session files that changed since, instead of every chat's first lines (941 chats took about 600 ms each launch, now about 17 ms). A chat whose first message carried a large image no longer goes missing from the list.
 - A finished run updates the chat lists without rereading every chat: the Mac re-reads only that chat's session file and sends its row to the window and the phones (each run used to list the whole sessions folder twice, about 1,900 files read for their size and date; now one).
 
+## 0.9.3 - 2026-10-09
+
+- Claude plans sign in with one click: the Claude Code card under Providers (Settings and Setup) shows on every install, and when pi has no pi-claude-bridge it installs it first (unpinned, so `pi update --extensions` keeps it current), then signs in with Claude Code's own login (and, on a Max plan, sets the bridge's plan so Opus gets 1M context). pi's own Anthropic account login is no longer offered; the Anthropic API key stays. Model pickers list the new provider's models from the next chat on, without a restart.
+
+## 0.9.2 - 2026-10-09
+
+- New wallpapers: Pigna painted into Monet's Impression, Sunrise, Van Gogh's The Starry Night and Hokusai's The Great Wave, at dusk for the dark theme and by day for the light one. They replace the painted 🤌 wallpapers. Sunrise is the new default, and a removed wallpaper picked in Settings or named in a project theme falls back to it.
+
 ## 0.9.1 - 2026-10-08
 
 - Inline visuals can animate: agents can draw a flow that plays through its stages (work handed off, sent back, built in parallel) with Pause, Restart, speed and clickable stage chips. It plays once and stops on its last frame; with reduced motion it opens on the last frame. The visual prompt no longer sets a size budget beyond the 64 KB cap.

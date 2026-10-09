@@ -1,0 +1,327 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import CtaBand from '../components/CtaBand.astro';
+import barista from '../assets/mascot/about.webp';
+import { SITE } from '../data/site';
+import { releases, formatDate } from '../lib/changelog';
+
+const all = releases();
+const first = all.at(-1);
+const latest = all[0];
+const days = first && latest ? Math.round((Date.parse(latest.date) - Date.parse(first.date)) / 86_400_000) + 1 : 0;
+const changes = all.reduce((n, r) => n + r.items.length, 0);
+
+const stack = [
+  { box: 'pi-gna', sub: 'the window: chats, browser, board, phone', color: 'sun' },
+  { box: 'pi --mode rpc', sub: 'one process per chat, your pi', color: 'coral' },
+  { box: 'your setup', sub: 'models, logins, extensions, skills, MCP, sessions', color: 'sky' },
+];
+---
+
+<Base
+  title="About"
+  description="pi-gna is an independent, open-source desktop frontend for the pi coding agent, named after the Italian 🤌 “mano a pigna” gesture. Built in the open by Manuel Cecchetto."
+  og="about"
+>
+  <section class="wrap hero">
+    <div class="copy">
+      <p class="eyebrow"><span class="dot" style="--c:var(--gold)"></span>Ciao!</p>
+      <h1 class="display">About <span class="serif">pi-gna</span></h1>
+      <p class="lead">
+        A desktop app for the <a href={SITE.pi}>pi coding agent</a>, made because a good agent deserves a good room to
+        work in. Grab an espresso, here’s the story.
+      </p>
+    </div>
+    <div class="art">
+      <Image src={barista} alt="Pigna as a barista, winking with an espresso" widths={[320, 480, 640]} sizes="(min-width: 900px) 360px, 66vw" loading="eager" fetchpriority="high" />
+    </div>
+  </section>
+
+  <section class="section wrap story">
+    <article class="chapter" data-reveal>
+      <span class="emoji" aria-hidden="true">🤌</span>
+      <div>
+        <h2 class="h2">The name</h2>
+        <p>
+          <i>Pigna</i> is Italian for pine cone, and <i>mano a pigna</i> is the 🤌 gesture: fingertips pinched together,
+          hand bobbing, asking <i>“ma che vuoi?”</i>, roughly “what do you want?”. It’s also how most of us feel
+          watching an agent scroll by in a terminal.
+        </p>
+        <p>
+          So the hand became the P in the logo (Twemoji’s 🤌, mirrored and turned), and the P grew legs and became
+          Pigna, the mascot all over this site.
+        </p>
+      </div>
+    </article>
+
+    <article class="chapter" data-reveal>
+      <span class="emoji" aria-hidden="true">🪟</span>
+      <div>
+        <h2 class="h2">A frontend, <span class="serif">not a fork</span></h2>
+        <p>
+          pi-gna doesn’t reimplement pi. Every chat is a <code>pi --mode rpc</code> process running the pi you already
+          installed, with your models, logins, settings, extensions, skills, prompt templates and MCP servers. Sessions
+          are pi’s own files, so a chat started in the terminal continues in pi-gna, and back.
+        </p>
+        <ol class="stack" aria-label="How pi-gna runs pi">
+          {
+            stack.map((s, i) => (
+              <li data-color={s.color} style={`--i:${i}`}>
+                <b>{s.box}</b>
+                <span>{s.sub}</span>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+    </article>
+
+    <article class="chapter" data-reveal>
+      <span class="emoji" aria-hidden="true">🏗️</span>
+      <div>
+        <h2 class="h2">Built <span class="serif">in the open</span></h2>
+        <p>
+          pi-gna is MIT licensed and developed on <a href={SITE.repo}>GitHub</a>. Fittingly, it is built with pi,
+          inside pi-gna.
+        </p>
+        <dl class="stats">
+          <div><dt>{all.length}</dt><dd>releases</dd></div>
+          <div><dt>{days}</dt><dd>{days === 1 ? 'day' : 'days'} since 0.1.0</dd></div>
+          <div><dt>{changes}</dt><dd>changelog entries</dd></div>
+        </dl>
+        {first && <p class="hint">First release {formatDate(first.date)}. Every change is in the <a href="/changelog/">changelog</a>.</p>}
+      </div>
+    </article>
+
+    <article class="chapter" data-reveal>
+      <span class="emoji" aria-hidden="true">👋</span>
+      <div>
+        <h2 class="h2">Who</h2>
+        <p>
+          pi-gna is made by <a href={SITE.author.url}>{SITE.author.name}</a>. It is an independent project, not affiliated
+          with pi. Found a bug or want something? <a href={`${SITE.repo}/issues`}>Open an issue</a>.
+        </p>
+        <p class="hint">
+          The hand in the logo is <a href="https://github.com/jdecked/twemoji">Twemoji</a>’s 🤌 (© Twitter, Inc. and other
+          contributors, <a href="https://creativecommons.org/licenses/by/4.0/">CC-BY 4.0</a>). This site is set in
+          Bricolage Grotesque, Instrument Serif and JetBrains Mono, and built with Astro.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <CtaBand title="Un caffè, e poi" accent="andiamo." />
+</Base>
+
+<style>
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+    align-items: center;
+    gap: 32px;
+    padding-top: clamp(32px, 5vw, 64px);
+  }
+
+  .copy {
+    display: grid;
+    gap: 24px;
+    justify-items: start;
+  }
+
+  .display {
+    font-size: clamp(3rem, 7.4vw, 6.4rem);
+  }
+
+  .display .serif {
+    color: var(--red);
+  }
+
+  a {
+    text-decoration-color: var(--coral);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
+
+  .art :global(img) {
+    width: min(100%, 380px);
+    margin-inline: auto;
+    transform-origin: 50% 100%;
+    animation: sway 5s ease-in-out infinite;
+  }
+
+  @keyframes sway {
+    0%,
+    100% {
+      transform: rotate(-2deg);
+    }
+    50% {
+      transform: rotate(2deg) translateY(-6px);
+    }
+  }
+
+  .story {
+    display: grid;
+    gap: clamp(56px, 8vw, 96px);
+    max-width: 900px;
+  }
+
+  .chapter {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 28px;
+  }
+
+  .chapter > div {
+    display: grid;
+    gap: 18px;
+  }
+
+  .chapter p {
+    font-size: 1.15rem;
+    color: var(--ink-2);
+  }
+
+  .emoji {
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    border: var(--line);
+    border-radius: 22px;
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+    font-size: 2.2rem;
+    rotate: -6deg;
+  }
+
+  .chapter:nth-child(even) .emoji {
+    rotate: 5deg;
+  }
+
+  .stack {
+    display: grid;
+    gap: 0;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .stack li {
+    position: relative;
+    display: grid;
+    gap: 2px;
+    padding: 18px 22px;
+    border: var(--line);
+    border-radius: 18px;
+    background: var(--c-soft);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stack li + li {
+    margin-top: 34px;
+  }
+
+  /* The pipe between the boxes: dashes flowing down. */
+  .stack li + li::before {
+    content: '';
+    position: absolute;
+    left: 40px;
+    top: -36px;
+    width: 3px;
+    height: 34px;
+    background: repeating-linear-gradient(to bottom, var(--ink) 0 6px, transparent 6px 11px) 0 0 / 3px 11px;
+    animation: march 0.6s linear infinite;
+  }
+
+  .stack li + li::after {
+    content: '';
+    position: absolute;
+    left: 66px;
+    top: -36px;
+    width: 3px;
+    height: 34px;
+    background: repeating-linear-gradient(to bottom, var(--ink) 0 6px, transparent 6px 11px) 0 0 / 3px 11px;
+    animation: march 0.6s linear infinite reverse;
+  }
+
+  @keyframes march {
+    to {
+      background-position: 0 11px;
+    }
+  }
+
+  .stack b {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+  }
+
+  .stack span {
+    color: var(--ink-2);
+    font-size: 1rem;
+  }
+
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin: 6px 0 0;
+  }
+
+  .stats div {
+    min-width: 150px;
+    padding: 16px 20px;
+    border: var(--line);
+    border-radius: 18px;
+    background: var(--sun-soft);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .stats dt {
+    font-size: 2.6rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+
+  .stats dd {
+    margin: 4px 0 0;
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+
+  .hint {
+    font-size: 1rem !important;
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+
+    .art {
+      order: -1;
+      width: min(60vw, 280px);
+      justify-self: center;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .chapter {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .emoji {
+      width: 60px;
+      height: 60px;
+      font-size: 1.8rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .art :global(img) {
+      animation: none;
+    }
+  }
+</style>

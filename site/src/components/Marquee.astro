@@ -1,0 +1,106 @@
+---
+/** A tilted ticker of what pi-gna does. Decorative: every item is a link elsewhere on the page. */
+const items = [
+  'readable chats',
+  'a shared browser',
+  'Computer Use',
+  'Kanban boards',
+  'GitHub reviews',
+  'laments',
+  'ATP plans',
+  'your iPhone',
+  'inline visuals',
+  'MCP plugins',
+];
+---
+
+<div class="marquee" aria-hidden="true">
+  <div class="track">
+    {
+      [0, 1].map(() => (
+        <span class="run">
+          {items.map((item, i) => (
+            <>
+              <span class:list={['item', { serif: i % 3 === 1 }]}>{item}</span>
+              <svg class="star" viewBox="0 0 40 40">
+                <path d="M20 2l4.6 12.4L38 20l-13.4 5.6L20 38l-4.6-12.4L2 20l13.4-5.6z" />
+              </svg>
+            </>
+          ))}
+        </span>
+      ))
+    }
+  </div>
+</div>
+
+<style>
+  .marquee {
+    position: relative;
+    z-index: 2;
+    margin-block: -8px;
+    padding: 18px 0;
+    border-block: var(--line);
+    background: var(--ink);
+    color: var(--paper);
+    transform: rotate(-1.6deg);
+    overflow: hidden;
+    width: 104vw;
+    margin-left: -2vw;
+  }
+
+  .track {
+    display: flex;
+    width: max-content;
+    animation: slide 46s linear infinite;
+  }
+
+  .marquee:hover .track {
+    animation-play-state: paused;
+  }
+
+  .run {
+    display: flex;
+    align-items: center;
+  }
+
+  .item {
+    padding-inline: 28px;
+    font-size: clamp(1.5rem, 3vw, 2.3rem);
+    font-weight: 760;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+
+  .item.serif {
+    font-weight: 400;
+    font-size: clamp(1.7rem, 3.3vw, 2.55rem);
+    color: var(--sun);
+  }
+
+  .star {
+    width: 28px;
+    height: 28px;
+    flex: none;
+    fill: var(--coral);
+    animation: spin 6s linear infinite;
+  }
+
+  @keyframes slide {
+    to {
+      transform: translateX(-50%);
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(1turn);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .track,
+    .star {
+      animation: none;
+    }
+  }
+</style>
