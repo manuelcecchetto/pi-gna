@@ -31,6 +31,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Code in a chat highlights as it scrolls into view, in small pieces while the window is idle, instead of all at once when a chat opens or an answer ends (opening a chat with 160 code blocks froze the window for about 3 seconds, now its longest pause is about 60 ms). Code blocks over 30 KB stay plain.
 - A chat whose last run went on for hours opens on a phone in under a second instead of about a minute: the phone gets the run's last steps first and the earlier ones as you scroll up, answers to the phone are compressed, and pi's thinking signatures (about a third of a long chat) no longer travel to the phone or the window.
 - A chat with many inline visuals runs only the ones near what you are reading: each visual is a process of its own, so a chat with 30 of them used about 1 GB and now uses about 0.37 GB, and it shows its first visual in about 0.2 s instead of 0.9 s. A visual you scroll back to draws again, starting from its first state.
+- Chats full of screenshots use less memory: your attached images and tool screenshots now show as small thumbnails made once, instead of full-size images kept twice (a chat with 98 Computer Use screenshots settled at about 520 MB instead of 610 once scrolled through; the lightbox still opens the full image). In the window, an image not yet scrolled to holds its exact place instead of growing when it loads.
 
 ## 0.9.1 - 2026-10-08
 

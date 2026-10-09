@@ -19,14 +19,15 @@ import { memo, type ReactNode, useState } from "react";
 import { splitFileMentions, stripStudioBlocks } from "../lib/attachments";
 import { formatClock, formatDuration } from "../lib/format";
 import { imageSrc } from "../lib/image-src";
-import type { ToolCall } from "../../../shared/protocol";
+import type { ThumbBox } from "../lib/thumbnail";
+import type { ImageContent, ToolCall } from "../../../shared/protocol";
 import { type ToolRun, userText } from "../../../shared/session-state";
 import { type ToolCategory, liveComputerApp, presentCall, summarizeTools, toolTimeoutMs } from "../lib/tools";
 import type { Block, Run, RunLayout, Step } from "../lib/view";
 import { useChatActions, useChatUi } from "../lib/chat-ui";
 import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
-import { Shimmer, useNow } from "./primitives";
+import { ImageThumb, Shimmer, useNow } from "./primitives";
 import { resultImages, resultText, ToolDetails } from "./ToolDetails";
 
 const ICONS: Record<ToolCategory, IconComponent> = {
@@ -186,13 +187,16 @@ function ThinkingStep({ step }: { step: Extract<Step, { kind: "thinking" }> }) {
   );
 }
 
+/** h-12 max-w-28 object-cover (3rem by up to 7rem). */
+const STEER_THUMB: ThumbBox = { width: 140, height: 60, cover: true };
+
 /** A message you steered into the running turn: part of the work, not a new turn. */
 function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
   const { setExpanded, openLightbox } = useChatActions();
   const open = useExpanded(step.key, false);
   const [withoutFiles, mentions] = splitFileMentions(userText(step.message));
   const shown = stripStudioBlocks(withoutFiles);
-  const images = typeof step.message.content === "string" ? [] : step.message.content.flatMap((block) => (block.type === "image" ? [imageSrc(block)] : []));
+  const images = typeof step.message.content === "string" ? [] : step.message.content.filter((block): block is ImageContent => block.type === "image");
   const long = shown.length > 280 || shown.split("\n").length > 4;
   return (
     <div title="You steered" className="my-1.5 flex gap-2.5 rounded-xl border border-line bg-raised/50 px-3 py-2">
@@ -206,9 +210,9 @@ function SteerStep({ step }: { step: Extract<Step, { kind: "steer" }> }) {
         )}
         {(images.length > 0 || mentions.length > 0) && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            {images.map((src, index) => (
-              <button key={index} type="button" onClick={() => openLightbox(src, images)} className="cursor-zoom-in">
-                <img alt="" loading="lazy" decoding="async" src={src} className="h-12 max-w-28 rounded-md border border-line object-cover" />
+            {images.map((image, index) => (
+              <button key={index} type="button" onClick={() => openLightbox(imageSrc(image), images.map(imageSrc))} className="cursor-zoom-in">
+                <ImageThumb image={image} box={STEER_THUMB} className="h-12 max-w-28 rounded-md border border-line object-cover" />
               </button>
             ))}
             {mentions.map((mention) => (
@@ -358,15 +362,18 @@ function TimeoutPie({ fraction }: { fraction: number }) {
   );
 }
 
+/** max-h-56 (14rem), at most 460 px wide, object-contain. */
+const RESULT_THUMB: ThumbBox = { width: 460, height: 280 };
+
 /** Tool-result images render inline, like pi's terminal does; click for full size. */
 function InlineImages({ images }: { images: ReturnType<typeof resultImages> }) {
   const { openLightbox } = useChatActions();
   if (!images.length) return null;
   return (
     <div className="mt-1 mb-1.5 flex flex-wrap gap-2 pl-7">
-      {images.map(imageSrc).map((src, index, all) => (
-        <button key={index} type="button" onClick={() => openLightbox(src, all)} className="cursor-zoom-in">
-          <img alt="" loading="lazy" decoding="async" src={src} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
+      {images.map((image, index) => (
+        <button key={index} type="button" onClick={() => openLightbox(imageSrc(image), images.map(imageSrc))} className="cursor-zoom-in">
+          <ImageThumb image={image} box={RESULT_THUMB} className="max-h-56 max-w-[min(100%,460px)] rounded-lg border border-line object-contain" />
         </button>
       ))}
     </div>

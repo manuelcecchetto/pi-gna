@@ -1,7 +1,10 @@
 import { type CSSProperties, type ReactNode, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { type AnsiStyle, parseAnsi } from "../lib/ansi";
 import { formatClock, formatDuration } from "../lib/format";
+import { imageSrc } from "../lib/image-src";
 import { clampPanel, type PanelBounds } from "../lib/layout";
+import { watchNear } from "../lib/near";
+import { imageSize, showsAsIs, type ThumbBox, type ThumbImage, useThumbnail } from "../lib/thumbnail";
 
 /** `start`: the style in effect before `text`, when it is a slice of longer output (`styleAfter`). */
 export function Ansi({ text, start }: { text: string; start?: AnsiStyle }) {
@@ -313,4 +316,26 @@ export function ResizeHandle({
       className={`absolute z-10 transition-colors hover:bg-accent/40 ${HANDLE_EDGE[edge]} ${dragging ? "bg-accent/50" : ""}`}
     />
   );
+}
+
+/** Nominal size of an image whose header was not read (one known by URL): a 16:10 screen. */
+const UNKNOWN_SIZE = { width: 1600, height: 1000 };
+
+/**
+ * A message or tool-result image as a thumbnail (lib/thumbnail.ts), made once it is near the visible area. Until then its
+ * place is an empty canvas of the image's pixel size: a replaced element like the image, so `className` sizes it the same.
+ */
+export function ImageThumb({ image, box, className }: { image: ThumbImage; box: ThumbBox; className: string }) {
+  const place = useRef<HTMLCanvasElement>(null);
+  const [near, setNear] = useState(false);
+  const asIs = showsAsIs(image);
+  const src = useThumbnail(image, box, near, () => {
+    const rect = place.current?.getBoundingClientRect();
+    return rect ? Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2) : Infinity;
+  });
+  useEffect(() => (src || !place.current ? undefined : watchNear(place.current, setNear)), [src]);
+  const size = useMemo(() => (src ? UNKNOWN_SIZE : (imageSize(image) ?? UNKNOWN_SIZE)), [image, src]);
+  if (asIs) return <img alt="" loading="lazy" decoding="async" src={imageSrc(image)} className={className} />;
+  if (src) return <img alt="" decoding="async" src={src} className={className} />;
+  return <canvas ref={place} aria-hidden width={size.width} height={size.height} className={`bg-raised ${className}`} />;
 }

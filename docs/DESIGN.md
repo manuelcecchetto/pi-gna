@@ -1105,6 +1105,19 @@ Verified live (pi 1.0.0, Oct 2026):
   turns), later ones about 2 ms. Containment makes a turn the containing block of `position: fixed` content, so a
   turn with an expanded visual (`.visual-box.full`) renders as usual. The scrollbar reflects the estimates until the
   turns have rendered, and a turn's text can sit up to a device pixel apart (paint containment snaps it).
+- Message and tool-result images (attachments, steers, tool screenshots) show as thumbnails (`ImageThumb`,
+  `lib/thumbnail.ts`). Once one is within a scroller height of view (`watchNear`), `createImageBitmap` decodes it
+  straight to its box at the screen's pixel ratio (boxes sized for the largest text size, 20 px), a software canvas
+  encodes it as JPEG (WebP when it has transparency: ~3 ms against ~40 ms), and it shows from a blob URL cached by the
+  image's URL (the phone's `/api/image/<sha256>`) or a SHA-256 of its bytes, 300 at most. Two are made at a time, the
+  one nearest the middle of the screen first. Until then its place is an empty `<canvas>` of the image's pixel size
+  (from its PNG, JPEG with Exif orientation, GIF or WebP header), a replaced element that the image's classes size
+  exactly as they size the image. The lightbox opens the original; images under 64K base64 characters show as they
+  are. With 98 Computer Use screenshots scrolled through, the app settled at about 520 MB instead of 610 (the window
+  124 instead of 227, its JS heap 55 instead of 100 MB: each data URL had been a second copy of the base64), and a
+  second pass decodes about a third as much. Neither version janked (decodes run off the main thread either way); a
+  screenshot that appears in view, or is paged in again, shows about 30 ms later, as its thumbnail is made or found
+  first.
 - Turn rail (`TurnRail`, Codex's "user message navigation rail", read from the Codex app bundle's
   `thread-user-message-navigation-rail-app` chunk and its CSS): a 2px line per message you sent, vertically
   centered left of the transcript, shown from 4 messages on and only while the column leaves a 48px gutter.

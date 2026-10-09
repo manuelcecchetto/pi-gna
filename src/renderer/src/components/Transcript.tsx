@@ -33,7 +33,8 @@ import { CompactionProgress } from "./CompactionProgress";
 import { WorkAccordion } from "./Activity";
 import { Markdown } from "./Markdown";
 import { imageSrc } from "../lib/image-src";
-import { Ansi } from "./primitives";
+import type { ThumbBox } from "../lib/thumbnail";
+import { Ansi, ImageThumb } from "./primitives";
 import { findRun, flash, rendered, TurnRail } from "./TurnRail";
 
 const PAGE = 30;
@@ -440,6 +441,9 @@ const RunView = memo(function RunView({
   );
 });
 
+/** h-24 max-w-56 object-cover (6rem by up to 14rem). */
+const USER_THUMB: ThumbBox = { width: 280, height: 120, cover: true };
+
 function userParts(message: UserMessage): { text: string; images: ImageContent[] } {
   if (typeof message.content === "string") return { text: message.content, images: [] };
   return {
@@ -482,9 +486,9 @@ function UserMessageView({ message, divider }: { message: UserMessage; divider: 
       {images.length > 0 && (
         <div className="flex w-full flex-wrap items-center justify-end gap-2">
           {!text && stamp}
-          {images.map(imageSrc).map((src, index, all) => (
-            <button key={index} type="button" onClick={() => openLightbox(src, all)} className="cursor-zoom-in">
-              <img alt="" loading="lazy" decoding="async" className="h-24 max-w-56 rounded-xl border border-line object-cover" src={src} />
+          {images.map((image, index) => (
+            <button key={index} type="button" onClick={() => openLightbox(imageSrc(image), images.map(imageSrc))} className="cursor-zoom-in">
+              <ImageThumb image={image} box={USER_THUMB} className="h-24 max-w-56 rounded-xl border border-line object-cover" />
             </button>
           ))}
         </div>
