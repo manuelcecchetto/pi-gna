@@ -1047,7 +1047,9 @@ Verified live (pi 1.0.0, Oct 2026):
   are memoized, and a call is presented once per call object (`presentCall`), so a long agent loop redraws only the
   row that changed (a 150-call loop: about 46,000 row renders became 750).
 - Thinking is shown in full inside the work, italic and muted like pi's terminal (no label, toggle or tail window);
-  commentary between tool calls is normal (white) text, so the two stay distinct.
+  commentary between tool calls is normal (white) text, so the two stay distinct. While a thinking block streams it is
+  plain text (a paragraph per blank-line run, in the same `.prose` box) and becomes Markdown once it ends, so its
+  Markdown is parsed once instead of every frame; the finished block renders exactly as a reopened chat shows it.
 - Steering: queued messages sit in a card attached to the top of the composer (Codex-style). Steers say
   "Steering"; follow-ups (⌥⏎) have **Steer** to inject them now; each row has trash and "…" (edit in composer,
   send after the run instead). RPC can only clear both queues and append, so edits clear, transform
@@ -1317,7 +1319,8 @@ Background test windows are `document.visibilityState === "hidden"`: smooth scro
 never run (even after a `shot`), scroll events do not fire, and CDP mouse/wheel input waits for a frame (one wheel notch took 38 s). Test
 scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollTop`, dispatch `scroll`) and stub
 `Element.prototype.scrollTo` to `behavior: "auto"` where a glide matters. `scripts/fake-pi.mjs` (via
-`PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it), for streaming UI checks without a model; it names a session file
+`PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it; prompt directives such as `[tools=N]` and `[think=N]`, listed in its
+header, add tool calls and thinking), for streaming UI checks without a model; it names a session file
 (never written, so relaunching on the same `PIGNA_USER_DATA` fails to reopen remembered ATP orchestrator chats with
 ENOENT and the page shows no composer: start each run with a fresh profile), so a card's or lament's chats link as with pi.
 Under fake-pi the ATP orchestrator and worker defaults do not exist ("… is not available"): point them at it first,

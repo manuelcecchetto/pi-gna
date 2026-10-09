@@ -11,6 +11,7 @@
 // `abort` ends the answer early, as Stop and Esc do with pi.
 // `[tools=N]` runs N bash calls before the answer, one assistant message each, every call streaming `[toolout=N]` lines of
 // output (default 4) one per `[delay=N]`; `[toolfail]` fails the last call (tool rows, live output, timings).
+// `[think=N]` streams N paragraphs of thinking (with some Markdown) before the answer, one per `[delay=N]`.
 // Composer chrome: get_commands, thinking levels (large models offer them), set_model / set_thinking_level, compact and
 // session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
 // a widget above the editor, set_editor_text, setTitle); "retry-demo" shows an auto-retry for a moment.
@@ -169,7 +170,20 @@ async function run(text) {
   await runTools(text);
   const base = { role: "assistant", content: [], api: "fake", provider: "fake", model: "fake", usage, stopReason: "stop", timestamp: Date.now() };
   out({ type: "message_start", message: base });
-  out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_start", contentIndex: 0 } });
+  const thoughts = directive(text, "think", 0);
+  const textIndex = thoughts ? 1 : 0;
+  let thinking = "";
+  if (thoughts) {
+    out({ type: "message_update", message: base, assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } });
+    for (let i = 1; i <= thoughts && !aborted; i++) {
+      await new Promise((resolve) => setTimeout(resolve, directive(text, "delay", DELAY)));
+      const delta = `Thought ${i}: weighing **option ${i}** against \`option ${i + 1}\`, which reads the file again.\n\n`;
+      thinking += delta;
+      out({ type: "message_update", message: base, assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta } });
+    }
+    out({ type: "message_update", message: base, assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: thinking } });
+  }
+  out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_start", contentIndex: textIndex } });
   let body = "";
   const said = text.match(/\bsay:\s*([\s\S]*)$/)?.[1];
   const fixture = said ?? (process.env.FAKE_TEXT_FILE ? readFileSync(process.env.FAKE_TEXT_FILE, "utf8") : process.env.FAKE_FIXTURE ? fixtureText(process.env.FAKE_FIXTURE) : undefined);
@@ -180,13 +194,13 @@ async function run(text) {
     await new Promise((resolve) => setTimeout(resolve, delay));
     const delta = fixture ? fixture.slice((i - 1) * chunk, i * chunk) : `Line ${i} of the streamed answer, long enough to read.\n\n`;
     body += delta;
-    out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta } });
+    out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_delta", contentIndex: textIndex, delta } });
   }
-  out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_end", contentIndex: 0, content: body } });
+  out({ type: "message_update", message: base, assistantMessageEvent: { type: "text_end", contentIndex: textIndex, content: body } });
   // Like providers, report the output token count only at the end.
   const output = Math.round(body.length / 4);
   const stopReason = aborted ? "aborted" : "stop";
-  out({ type: "message_end", message: { ...base, stopReason, content: [{ type: "text", text: body }], usage: { ...usage, output, totalTokens: output } } });
+  out({ type: "message_end", message: { ...base, stopReason, content: [...(thoughts ? [{ type: "thinking", thinking }] : []), { type: "text", text: body }], usage: { ...usage, output, totalTokens: output } } });
   streaming = false;
   out({ type: "agent_end", messages: [] });
   out({ type: "agent_settled" });

@@ -164,14 +164,26 @@ const StepView = memo(function StepView({ step, cwd, home, live }: { step: Step;
   return <ToolRow step={step} cwd={cwd} home={home} live={live} />;
 });
 
-/** Thinking reads like pi's terminal: the whole text inline, italic and muted, no label or toggle. */
+/**
+ * Thinking reads like pi's terminal: the whole text inline, italic and muted, no label or toggle. While it streams it is
+ * plain text, a paragraph per blank-line run in the same `.prose` box so the spacing matches, and it becomes Markdown
+ * once the block ends: parsing it on every frame cost as much as the answer does.
+ */
 function ThinkingStep({ step }: { step: Extract<Step, { kind: "thinking" }> }) {
   if (!step.text.trim()) {
     return step.redacted ? <div className="px-1.5 py-1 text-[12.5px] text-faint italic">Thinking (redacted)</div> : null;
   }
   return (
     <div className="thinking px-1.5 py-1.5">
-      <Markdown text={step.text} streaming={step.streaming} />
+      {step.streaming ? (
+        <div className="prose selectable">
+          {step.text.trim().split(/\n\s*\n/).map((paragraph, index) => (
+            <p key={index} className="whitespace-pre-wrap">{paragraph}</p>
+          ))}
+        </div>
+      ) : (
+        <Markdown text={step.text} />
+      )}
     </div>
   );
 }

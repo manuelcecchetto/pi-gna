@@ -10,7 +10,7 @@ vi.mock("../lib/chat-ui", () => ({
   useChatUi: (selector: (state: unknown) => unknown) => selector({ expanded: {}, expandAll: false }),
   useChatActions: () => ({ homeDir: "/home", setExpanded: () => undefined, openLightbox: () => undefined }),
 }));
-vi.mock("./Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", {}, text) }));
+vi.mock("./Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", { "data-markdown": "" }, text) }));
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const assistant = (content: AssistantMessage["content"]): AssistantMessage => ({ role: "assistant", content, api: "x", provider: "p", model: "m", usage, stopReason: "toolUse", timestamp: 1 });
@@ -22,6 +22,28 @@ const done = (id: string, name: string, isError = false, details?: unknown): Ses
 ];
 
 describe("WorkAccordion", () => {
+  it("shows streaming thinking as plain paragraphs and finished thinking as Markdown", () => {
+    const render = (state: SessionState) => {
+      const run = createRunDeriver()(state).at(-1)!;
+      return renderToStaticMarkup(createElement(WorkAccordion, { run, layout: layoutRun(run), cwd: "/repo", home: "/home", renderBlock: () => null }));
+    };
+    const thought = "  **Weigh** `a`\nagainst b\n\n \n\nThen c.  ";
+    const streaming = play([
+      { type: "agent_start" },
+      { type: "message_end", message: { role: "user", content: "go", timestamp: 1 } },
+      { type: "message_start", message: assistant([]) },
+      { type: "message_update", assistantMessageEvent: { type: "thinking_start", contentIndex: 0 } },
+      { type: "message_update", assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta: thought } },
+    ] as SessionEvent[]);
+    const plain = render(streaming);
+    expect(plain).toContain('<div class="prose selectable"><p class="whitespace-pre-wrap">**Weigh** `a`\nagainst b</p><p class="whitespace-pre-wrap">Then c.</p></div>');
+    expect(plain).not.toContain("data-markdown");
+    const ended = play([{ type: "message_update", assistantMessageEvent: { type: "thinking_end", contentIndex: 0, content: thought } }] as SessionEvent[], streaming);
+    const markdown = render(ended);
+    expect(markdown).toContain(`<div data-markdown="">${thought}</div>`);
+    expect(markdown).not.toContain("whitespace-pre-wrap");
+  });
+
   it("reads the same summary and rows after a live rebuild that kept unchanged steps", () => {
     const derive = createRunDeriver();
     const render = (state: SessionState) => {
