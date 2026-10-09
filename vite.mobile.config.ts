@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import { serviceWorkerSource, shellFiles } from "./src/mobile/service-worker";
+import { vendorChunk } from "./vite.chunks";
 
 // Same id as main (scripts/build.mjs sets PIGNA_BUILD for both builds).
 const BUILD = process.env.PIGNA_BUILD ?? Date.now().toString(36);
@@ -26,5 +27,6 @@ export default defineConfig({
   publicDir: resolve(root, "src/mobile/public"),
   define: { __PIGNA_BUILD__: JSON.stringify(BUILD) },
   plugins: [react(), tailwindcss(), serviceWorker()],
-  build: { outDir: resolve(root, "out/mobile"), emptyOutDir: true, minify: true },
+  // ES2022: iOS 16.4 and later (docs/REMOTE_IOS.md names no older iOS the app supports).
+  build: { outDir: resolve(root, "out/mobile"), emptyOutDir: true, minify: true, target: "es2022", rollupOptions: { output: { manualChunks: vendorChunk } } },
 });

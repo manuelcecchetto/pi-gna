@@ -187,6 +187,9 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   so the paint, by tens of ms. What eager code needs from them lives apart (`SettingsNav.tsx`, `lib/file-finder.ts`
   for ⌘P); `startup-bundle.test.ts` walks the static imports and fails when one pulls a deferred module back in.
   Entry 852 → 558 KB; navigation to first paint 180 → 158 ms (median of 5 startup traces each).
+  The packages the entry imports statically (react, react-dom, marked, dompurify) are a `vendor` chunk beside it
+  (`vite.chunks.ts`, P42), so a phone update keeps them; the window is built for Electron 44's Chromium (`chrome152`).
+  Startup is unchanged (first paint 335 vs 339 ms, median of 7), also on the first launch after an update.
 
 ## Browser (M2)
 

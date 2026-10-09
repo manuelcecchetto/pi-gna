@@ -1,6 +1,7 @@
 // The only network surface for remote clients: plain node:http on 127.0.0.1 (Tailscale serve fronts it), started
 // only while remote access is on. Every request is checked in the same order (REMOTE.md s.11): Host, body size,
 // device cookie, CSRF headers, Tailscale login. AgentBridge tokens are never looked at here.
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { RemoteImages } from "./remote-images";
 import type { Stats } from "node:fs";
@@ -57,6 +58,12 @@ export function replyEncoding(accept: string | undefined): "br" | "gzip" | undef
     if (name && !(q && Number(q.slice(2)) === 0)) allowed.add(name);
   }
   return allowed.has("br") ? "br" : allowed.has("gzip") ? "gzip" : undefined;
+}
+
+/** Whether an `If-None-Match` names `tag` (or `*`); tags compare weakly, as a GET's revalidation does. */
+export function notModified(ifNoneMatch: string | undefined, tag: string): boolean {
+  const opaque = (value: string) => value.trim().replace(/^W\//, "");
+  return (ifNoneMatch ?? "").split(",").some((value) => value.trim() === "*" || opaque(value) === opaque(tag));
 }
 
 const PAIR_WINDOW_MS = 60_000;
@@ -143,7 +150,7 @@ const MIME: Record<string, string> = {
 
 /** Built files sent compressed when the client takes it; images and fonts are compressed already and go out as they are. */
 const COMPRESSIBLE = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".map"]);
-/** Built files whose compressed bodies are kept (the mobile build has about 40; a rebuild's old ones fall out first). */
+/** Built files whose compressed bodies and tags are kept (the mobile build has about 40; a rebuild's old ones fall out first). */
 const PACKED_FILES = 64;
 
 const PLACEHOLDER = "<!doctype html><meta charset=utf-8><title>pi-gna</title><body style=\"font:16px system-ui;padding:2rem\"><h1>pi-gna remote</h1><p>The mobile app is not built yet.</p>";
@@ -664,8 +671,27 @@ export class RemoteServer {
     res.end(req.method === "HEAD" ? undefined : data);
   }
 
-  /** Compressed built files by path, for the version (size and mtime) they were made from; most recently used last. */
-  private readonly packed = new Map<string, { version: string; bodies: Partial<Record<"br" | "gzip", Promise<Buffer>>> }>();
+  /** Compressed bodies and content tags of built files by path, for the version (size and mtime) they were made from; most recently used last. */
+  private readonly packed = new Map<string, { version: string; bodies: Partial<Record<"br" | "gzip", Promise<Buffer>>>; tag?: Promise<string> }>();
+
+  private packedEntry(file: string, version: string) {
+    const known = this.packed.get(file);
+    const entry = known?.version === version ? known : { version, bodies: {} };
+    this.packed.delete(file);
+    this.packed.set(file, entry);
+    if (this.packed.size > PACKED_FILES) this.packed.delete(this.packed.keys().next().value!);
+    return entry;
+  }
+
+  /** A built file's ETag, from its bytes: a rebuild copies the icons and manifest again with a new mtime but the same content. */
+  private fileTag(file: string, version: string): Promise<string> {
+    const entry = this.packedEntry(file, version);
+    if (entry.tag) return entry.tag;
+    const tag = readFile(file).then((data) => `W/"${createHash("sha256").update(data).digest("base64url").slice(0, 22)}"`);
+    entry.tag = tag;
+    tag.catch(() => entry.tag === tag && delete entry.tag);
+    return tag;
+  }
 
   /**
    * A built file's body in `encoding`, compressed once per version, in the thread pool, and shared by concurrent
@@ -673,11 +699,7 @@ export class RemoteServer {
    * the first phone to load a new build would wait for.
    */
   private packedBody(file: string, version: string, encoding: "br" | "gzip"): Promise<Buffer> {
-    const known = this.packed.get(file);
-    const entry = known?.version === version ? known : { version, bodies: {} };
-    this.packed.delete(file);
-    this.packed.set(file, entry);
-    if (this.packed.size > PACKED_FILES) this.packed.delete(this.packed.keys().next().value!);
+    const entry = this.packedEntry(file, version);
     const made = entry.bodies[encoding];
     if (made) return made;
     const body = readFile(file).then((data) =>
@@ -728,10 +750,17 @@ export class RemoteServer {
     };
     // Only the built app's own files, the same for every caller: nothing secret shares a body with them.
     const compressible = COMPRESSIBLE.has(extname(target)) && found!.size >= COMPRESS_MIN_BYTES;
-    const encoding = compressible ? replyEncoding(header(req, "accept-encoding")) : undefined;
     if (compressible) headers.Vary = "Accept-Encoding";
+    const version = `${found!.size}:${found!.mtimeMs}`;
+    // Files under their own name are checked again on each use (the shell, sw.js, the manifest, icons): an unchanged one
+    // answers 304, so a phone's update downloads only what changed (P42).
+    if (!hashed) {
+      headers.ETag = await this.fileTag(target, version);
+      if (notModified(header(req, "if-none-match"), headers.ETag)) return void res.writeHead(304, headers).end();
+    }
+    const encoding = compressible ? replyEncoding(header(req, "accept-encoding")) : undefined;
     if (encoding) headers["Content-Encoding"] = encoding;
-    const data = encoding ? await this.packedBody(target, `${found!.size}:${found!.mtimeMs}`, encoding) : await readFile(target);
+    const data = encoding ? await this.packedBody(target, version, encoding) : await readFile(target);
     res.writeHead(200, { ...headers, "Content-Length": String(data.length) });
     res.end(req.method === "HEAD" ? undefined : data);
   }

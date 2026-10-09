@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
+import { vendorChunk } from "./vite.chunks";
 
 // One id per build, stamped into main and the preload. A running pi-gna loads main once, but a reload reads the
 // preload and renderer from out/ again: after a `pnpm build` the window can be newer than main (StudioApi.stale).
@@ -17,6 +18,7 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react(), tailwindcss()],
-    build: { minify: true },
+    // Electron 44's Chromium (electron-vite's own table stops at Electron 39); vite.chunks.test.ts keeps it in step.
+    build: { minify: true, target: "chrome152", rollupOptions: { output: { manualChunks: vendorChunk } } },
   },
 });

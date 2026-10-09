@@ -409,6 +409,16 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
   answers are not kept. An install went from 65 files and 5.9 MB (every grammar and all 28 wallpaper images, full size
   and thumbnails) to 7 files and 875 KB; on emulated 3G the worker is ready after 2.8 s instead of 18.5 s. The
   full-size wallpapers stay in the build because the phone's empty chat shows one; `.webp` is served as `image/webp`.
+- **Updates download what changed** (P42): the packages the entry imports statically (react, react-dom, marked,
+  dompurify) are a `vendor` chunk (`vite.chunks.ts`), whose name changes only with a dependency update. The worker's
+  install copies a hashed shell file that an older build's cache holds, and asks for a file under its own name (`/`, the
+  manifest, the icons) with the held copy's `ETag`. The server tags those files by content (a rebuild copies them with a
+  new mtime), keeps the tag with the compressed bodies, and answers an unchanged one 304; hashed files carry no tag. With
+  one app file changed, an update went from 342 KB (326 KB while the HTTP cache still held the old files) to 111 KB:
+  the new entry plus the small files' 304s. On emulated 3G the new worker is active after 2.1 s instead of 3.1 s. A
+  cold load is unchanged (207 KB, one file more). The phone builds for ES2022 (iOS 16.4 and later), which only kept a
+  few `\p{…}` regexes as literals. The cpp grammar (797 KB, 54 KB compressed) stays a lazy chunk, loaded by the
+  first C++ block; the shell does not include it.
 - **CSP** (`REMOTE_CSP` in `host-api.ts`): `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;
   connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`.
   Visual frames are served from a dedicated path with their own frame CSP and rendered with `sandbox="allow-scripts"`

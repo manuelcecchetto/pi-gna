@@ -12,7 +12,7 @@ import { HostError, methodScope, type HostMethod } from "../shared/host-api";
 import { IdempotencyCache } from "./command-layer";
 import { DeviceStore } from "./devices";
 import { EventHub } from "./event-hub";
-import { RemoteServer, type RemoteServerOptions, replyEncoding } from "./remote-server";
+import { notModified, RemoteServer, type RemoteServerOptions, replyEncoding } from "./remote-server";
 
 const HOST = "mac.tail.ts.net";
 const LOGIN = "me@example.com";
@@ -302,6 +302,52 @@ describe("RemoteServer", () => {
     expect((await send("GET", "/assets/missing.js")).status).toBe(404);
     expect((await send("GET", "/chat/abc")).text).toContain("<title>app</title>");
     expect((await send("GET", "/..%2f..%2fdevices.json")).status).not.toBe(200);
+  });
+
+  it("tags the files under their own name by content and answers an unchanged one 304", async () => {
+    const file = join(dir, "mobile", "manifest.webmanifest");
+    writeFileSync(file, '{"name":"pi-gna"}');
+    const at = (seconds: number) => new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000 + seconds * 1000);
+    utimesSync(file, at(0), at(0));
+    const get = (path: string, tag?: string) => send("GET", path, tag === undefined ? {} : { headers: { "if-none-match": tag } });
+
+    const first = await get("/manifest.webmanifest");
+    const tag = first.headers.etag!;
+    expect(tag).toBe(`W/"${createHash("sha256").update('{"name":"pi-gna"}').digest("base64url").slice(0, 22)}"`);
+    const same = await get("/manifest.webmanifest", tag);
+    expect(same.status).toBe(304);
+    expect(same.raw.length).toBe(0);
+    expect(same.headers.etag).toBe(tag);
+    expect(same.headers["cache-control"]).toBe("no-cache");
+    // A rebuild copies it again: a new mtime, the same bytes, the same tag.
+    utimesSync(file, at(5), at(5));
+    expect((await get("/manifest.webmanifest", `"x", ${tag}`)).status).toBe(304);
+    // New bytes: a new tag and the whole file.
+    writeFileSync(file, '{"name":"pi-gna 2"}');
+    utimesSync(file, at(9), at(9));
+    const changed = await get("/manifest.webmanifest", tag);
+    expect(changed.status).toBe(200);
+    expect(changed.text).toBe('{"name":"pi-gna 2"}');
+    expect(changed.headers.etag).not.toBe(tag);
+
+    // The shell answers "/" and app routes with index.html's tag; HEAD is answered the same way.
+    const shell = await get("/");
+    expect((await get("/chats/abc", shell.headers.etag)).status).toBe(304);
+    expect((await send("HEAD", "/", { headers: { "if-none-match": shell.headers.etag! } })).status).toBe(304);
+    // Hashed files never change under their name: no tag, always the file.
+    const asset = await get("/assets/a.js", "*");
+    expect(asset.status).toBe(200);
+    expect(asset.headers.etag).toBeUndefined();
+    expect(asset.text).toBe("1");
+  });
+
+  it("matches If-None-Match weakly, in a list or as *", () => {
+    expect(notModified(undefined, 'W/"a"')).toBe(false);
+    expect(notModified("", 'W/"a"')).toBe(false);
+    expect(notModified('"a"', 'W/"a"')).toBe(true);
+    expect(notModified('W/"b" , W/"a"', 'W/"a"')).toBe(true);
+    expect(notModified(" * ", 'W/"a"')).toBe(true);
+    expect(notModified('W/"ab"', 'W/"a"')).toBe(false);
   });
 
   it("compresses the app's text files once per version, as the client allows, and never images or tiny files", async () => {

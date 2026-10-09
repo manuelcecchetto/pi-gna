@@ -4,18 +4,29 @@ import { type BundleFile, serviceWorkerSource, shellFiles } from "./service-work
 const ORIGIN = "https://phone.test";
 const SHELL = ["/", "/manifest.webmanifest", "/assets/index-a.js", "/assets/index-a.css"];
 
+/** The host's tag for a file under its own name (hashed files have none), as remote-server.ts sends it. */
+const tagOf = (body: string) => `W/"${body}"`;
+
 /** Runs sw.js against an in-memory CacheStorage and a network that answers `routes` (404 otherwise, a throw offline). */
 function worker(routes: Record<string, string>) {
   const listeners: Record<string, (event: unknown) => void> = {};
   const stores = new Map<string, Map<string, Response>>();
   const network: string[] = [];
+  /** The requests that carried an If-None-Match, with it. */
+  const revalidated: string[] = [];
   let offline = false;
-  const fetchFake = async (input: Request | string) => {
+  /** Whether the worker asked to take over at once, and how many shell caches existed then. */
+  let skipped: number | undefined;
+  const fetchFake = async (input: Request | string, init?: { headers?: Record<string, string> }) => {
     const url = new URL(typeof input === "string" ? input : input.url, ORIGIN);
     network.push(url.pathname);
     if (offline) throw new TypeError("Failed to fetch");
     const body = routes[url.pathname];
-    return body === undefined ? new Response("missing", { status: 404 }) : new Response(body);
+    if (body === undefined) return new Response("missing", { status: 404 });
+    if (url.pathname.startsWith("/assets/")) return new Response(body);
+    const asked = init?.headers?.["If-None-Match"];
+    if (asked) revalidated.push(`${url.pathname} ${asked}`);
+    return asked === tagOf(body) ? new Response(null, { status: 304 }) : new Response(body, { headers: { ETag: tagOf(body) } });
   };
   const keyOf = (input: Request | string) => new URL(typeof input === "string" ? input : input.url, ORIGIN).href;
   // Opening a cache is I/O: it ends after the page has had its answer.
@@ -48,7 +59,7 @@ function worker(routes: Record<string, string>) {
   const self = {
     location: { origin: ORIGIN },
     addEventListener: (type: string, listener: (event: unknown) => void) => void (listeners[type] = listener),
-    skipWaiting: async () => undefined,
+    skipWaiting: async () => void (skipped = stores.size),
     clients: { claim: async () => undefined },
   };
   new Function("self", "caches", "fetch", serviceWorkerSource("b1", SHELL))(self, caches, fetchFake);
@@ -60,6 +71,8 @@ function worker(routes: Record<string, string>) {
   return {
     stores,
     network,
+    revalidated,
+    skipped: () => skipped,
     goOffline: () => void (offline = true),
     install: async () => {
       const event = extendable();
@@ -107,10 +120,43 @@ describe("sw.js", () => {
     const sw = worker(routes);
     sw.stores.set("pigna-shell-old", new Map());
     await sw.install();
+    // It takes over once its cache is filled, without waiting for the old pages to close.
+    expect(sw.skipped()).toBe(2);
     expect(sw.network.sort()).toEqual([...SHELL].sort());
     expect([...sw.stores.get("pigna-shell-b1")!.keys()].map((url) => new URL(url).pathname).sort()).toEqual([...SHELL].sort());
     await sw.activate();
     expect([...sw.stores.keys()]).toEqual(["pigna-shell-b1"]);
+  });
+
+  it("updates by copying the hashed files an older build holds and asking for the others with their tags", async () => {
+    const sw = worker(routes);
+    const held = (body: string, tag?: string) => new Response(body, tag ? { headers: { ETag: tag } } : undefined);
+    // The previous build's cache: its own "/" (changed since), the same manifest and stylesheet, its own entry.
+    sw.stores.set("pigna-shell-b0", new Map([
+      [`${ORIGIN}/`, held("<old html>", tagOf("<old html>"))],
+      [`${ORIGIN}/manifest.webmanifest`, held("{}", tagOf("{}"))],
+      [`${ORIGIN}/assets/index-a.css`, held("css")],
+      [`${ORIGIN}/assets/index-0.js`, held("old entry")],
+    ]));
+    await sw.install();
+    expect(sw.network.sort()).toEqual(["/", "/assets/index-a.js", "/manifest.webmanifest"]);
+    expect(sw.revalidated.sort()).toEqual([`/ ${tagOf("<old html>")}`, `/manifest.webmanifest ${tagOf("{}")}`]);
+    const fresh = sw.stores.get("pigna-shell-b1")!;
+    const text = async (path: string) => fresh.get(`${ORIGIN}${path}`)?.text();
+    expect(await text("/")).toBe("<html>");
+    expect(await text("/manifest.webmanifest")).toBe("{}");
+    expect(await text("/assets/index-a.css")).toBe("css");
+    expect(await text("/assets/index-a.js")).toBe("entry");
+    expect([...fresh.keys()].length).toBe(SHELL.length);
+    await sw.activate();
+    expect([...sw.stores.keys()]).toEqual(["pigna-shell-b1"]);
+  });
+
+  it("keeps nothing from an install that failed", async () => {
+    const sw = worker({ ...routes, "/assets/index-a.js": undefined as unknown as string });
+    await expect(sw.install()).rejects.toThrow("/assets/index-a.js answered 404");
+    expect(sw.stores.has("pigna-shell-b1")).toBe(false);
+    expect(sw.skipped()).toBeUndefined();
   });
 
   it("keeps other hashed files the first time they load and serves them from the cache after", async () => {

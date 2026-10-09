@@ -28,8 +28,24 @@ export function serviceWorkerSource(build: string, shell: readonly string[]): st
 const CACHE = "pigna-shell-" + BUILD;
 const SHELL = ${JSON.stringify(shell)};
 
+// An update downloads only what changed (P42): a hashed file an older build's cache holds is copied, and a file under
+// its own name ("/", the manifest, icons) is asked for with the held copy's tag, so an unchanged one answers 304. Every
+// answer is in hand before any is kept, so a failed install leaves no half-filled cache.
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const answers = await Promise.all(SHELL.map(async (path) => {
+      const held = await caches.match(path);
+      if (held && path.startsWith("/assets/")) return held;
+      const tag = held && held.headers.get("ETag");
+      const response = await fetch(path, tag ? { headers: { "If-None-Match": tag } } : undefined);
+      if (response.status === 304) return held;
+      if (!response.ok) throw new TypeError("install: " + path + " answered " + response.status);
+      return response;
+    }));
+    const cache = await caches.open(CACHE);
+    await Promise.all(SHELL.map((path, index) => cache.put(path, answers[index])));
+    await self.skipWaiting();
+  })());
 });
 
 // Drop the shell caches of older builds.
