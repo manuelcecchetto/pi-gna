@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.10.0 - 2026-10-10
+
 - Big text, code and CSV files open without freezing the file preview: lines and rows are laid out in blocks that cost nothing while off screen, highlighting runs in short steps, and the CSV reader copies whole fields (a 1.9 MB log of 289,000 lines took 2.9 s to show with a 0.7 s freeze, now 0.3 s; a 37,000-line file froze 0.5 s on open and 1.1 s on Wrap, now under 30 ms; the first 5,000 rows of a 100,000-row CSV froze up to 0.65 s, now 15 ms; highlighting an 8,500-line file no longer blocks the page in one go).
 - Word documents are lighter in the file preview: pi-gna no longer builds BetterOffice's invisible copy of every glyph on the page (a 44-page contract held 237,000 page elements, now 220, and scrolling through it took 3.9 s of work, now 0.9 s), pages stay sharp when the window moves to a display with another density, and the preview's fonts ship compressed, so the app is 9 MB smaller on disk.
 - The phone app downloads much less when pi-gna updates: it now fetches only the files that changed (with one app file changed, 342 KB, or 326 KB while the phone still had the old files, now 111 KB; on a 3G-like link the update is ready in 2.1 s instead of 3.1 s). React and the other libraries sit in their own file, which keeps its name from one build to the next, the phone reuses the files it already holds, and pi-gna answers "unchanged" for the icons and the other small files the phone checks again.
