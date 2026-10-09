@@ -218,6 +218,16 @@ export function applyThemeOp(themes: Themes, op: ThemeOp): Themes {
   return { ...themes, projects: Object.keys(next).length ? { ...projects, [project]: next } : projects };
 }
 
+/** A saved theme whose built-in wallpaper pi-gna no longer ships (the painted 🤌 set went in 0.9.2) keeps everything
+ * else and falls back to the default wallpaper; set_theme still refuses the old names. */
+function withoutRetiredWallpaper(value: unknown): unknown {
+  if (!isObject(value) || !isObject(value.wallpaper) || typeof value.wallpaper.builtin !== "string") return value;
+  if (WALLPAPERS.includes(value.wallpaper.builtin as Wallpaper)) return value;
+  const rest = { ...value };
+  delete rest.wallpaper;
+  return rest;
+}
+
 /** Lenient: a malformed theme is dropped whole (counted in `dropped`); throws when it is no themes file at all. */
 export function parseThemes(raw: unknown): { themes: Themes; dropped: number } {
   if (!isObject(raw)) throw new ThemeError("not an object");
@@ -225,7 +235,7 @@ export function parseThemes(raw: unknown): { themes: Themes; dropped: number } {
   let dropped = 0;
   const read = (value: unknown, scope: "global" | "project"): ThemeSpec | undefined => {
     try {
-      return mergeTheme({}, value, scope);
+      return mergeTheme({}, withoutRetiredWallpaper(value), scope);
     } catch {
       dropped++;
       return undefined;

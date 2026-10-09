@@ -7,7 +7,7 @@ import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { extname, join, sep } from "node:path";
 import { projectOf } from "../shared/board";
-import { applySettingsOp, type Settings, type SettingsOp } from "../shared/settings";
+import { applySettingsOp, emptySettings, type Settings, type SettingsOp } from "../shared/settings";
 import {
   applyThemeOp,
   emptyThemes,
@@ -123,7 +123,7 @@ function globalSettingsOps(patch: Record<string, unknown>, settings: Settings): 
     if (next && !("builtin" in next)) throw new ThemeError('the global wallpaper must be built in: "none" or { "builtin": "<id>" } (an image path needs scope "project")');
     // An empty object omits every field; null at either level resets the wallpaper.
     if (next || wallpaper === null || (typeof wallpaper === "object" && Object.values(wallpaper).includes(null))) {
-      ops.push({ type: "wallpaper", wallpaper: next && "builtin" in next ? next.builtin : "sky" });
+      ops.push({ type: "wallpaper", wallpaper: next && "builtin" in next ? next.builtin : emptySettings().wallpaper });
     }
   }
   // Check every settings op before applying any, so a bad call changes nothing.

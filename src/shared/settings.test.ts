@@ -7,7 +7,7 @@ describe("applySettingsOp", () => {
   it("has every feature on and follows the system's appearance by default", () => {
     expect(start.features).toEqual({ kanban: true, laments: true, github: true, atp: true });
     expect(start.theme).toBe("system");
-    expect(start.wallpaper).toBe("sky");
+    expect(start.wallpaper).toBe("monet");
     expect(start.wallpaperLoop).toBe(false);
     expect(start.visuals).toBe(false);
     expect(taskModel(start, "triage")).toBe(TASK_DEFAULTS.triage);
@@ -21,8 +21,9 @@ describe("applySettingsOp", () => {
     expect(applySettingsOp(off, { type: "feature", feature: "atp", enabled: true }).features.atp).toBe(true);
     expect(applySettingsOp(start, { type: "theme", theme: "system" })).toBe(start);
     expect(applySettingsOp(start, { type: "theme", theme: "dark" }).theme).toBe("dark");
-    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "sky" })).toBe(start);
-    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "fresco" }).wallpaper).toBe("fresco");
+    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "monet" })).toBe(start);
+    expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "hokusai" }).wallpaper).toBe("hokusai");
+    expect(() => applySettingsOp(start, { type: "wallpaper", wallpaper: "ink" as never })).toThrow(SettingsError);
     expect(applySettingsOp(start, { type: "wallpaper", wallpaper: "none" }).wallpaper).toBe("none");
     expect(applySettingsOp(start, { type: "wallpaperLoop", loop: false })).toBe(start);
     expect(applySettingsOp(start, { type: "wallpaperLoop", loop: true }).wallpaperLoop).toBe(true);
@@ -85,8 +86,10 @@ describe("parseSettings", () => {
     });
     expect(settings.features).toEqual({ kanban: false, laments: true, github: true, atp: true });
     expect(settings.theme).toBe("system");
-    expect(settings.wallpaper).toBe("sky");
-    expect(parseSettings({ wallpaper: "ink" }).settings.wallpaper).toBe("ink");
+    expect(settings.wallpaper).toBe("monet");
+    expect(parseSettings({ wallpaper: "vangogh" }).settings.wallpaper).toBe("vangogh");
+    // A wallpaper pi-gna no longer ships (the painted 🤌 set, before 0.9.2) falls back to the default.
+    expect(parseSettings({ wallpaper: "ink" }).settings.wallpaper).toBe("monet");
     expect(parseSettings({ wallpaperLoop: true }).settings.wallpaperLoop).toBe(true);
     expect(parseSettings({ visuals: true }).settings.visuals).toBe(true);
     expect(parseSettings({ yolo: true }).settings.yolo).toBe(true);
@@ -106,7 +109,7 @@ describe("settingsConflict", () => {
   const dark = { ...emptySettings(), theme: "dark" as const };
   it("flags a theme, wallpaper or task model changed since the base, not switches", () => {
     expect(settingsConflict(emptySettings(), dark, { type: "theme", theme: "light" })).toBe(true);
-    expect(settingsConflict(emptySettings(), dark, { type: "wallpaper", wallpaper: "ink" })).toBe(false);
+    expect(settingsConflict(emptySettings(), dark, { type: "wallpaper", wallpaper: "vangogh" })).toBe(false);
     expect(settingsConflict(emptySettings(), dark, { type: "model", task: "triage", model: null })).toBe(false);
     expect(settingsConflict(emptySettings(), { ...dark, models: { triage: { id: "m", thinking: "low" } } }, { type: "model", task: "triage", model: null })).toBe(true);
     expect(settingsConflict(emptySettings(), dark, { type: "visuals", on: true })).toBe(false);
