@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage, SessionEvent } from "../../../shared/protocol";
 import { type AssistantItem, createSession, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
 import { TokenRate } from "../components/TokenRate";
+import * as primitives from "./primitives";
+
+vi.mock("./primitives", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./primitives")>();
+  return { ...actual, useNow: vi.fn(actual.useNow) };
+});
 
 const usage = (output: number) => ({ input: 0, output, cacheRead: 0, cacheWrite: 0, totalTokens: output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
 const assistant = (content: AssistantMessage["content"], output = 0): AssistantMessage => ({
@@ -51,5 +57,14 @@ describe("TokenRate", () => {
 
   it("renders nothing before a response has a rate", () => {
     expect(render(play(streamed.slice(0, 2)), 3000)).toBe("");
+  });
+
+  it("ticks only while the rate moves on its own: under a second after a stream event", () => {
+    const useNow = vi.mocked(primitives.useNow);
+    useNow.mockClear();
+    render(play(streamed), 2999);
+    render(play(streamed), 3000);
+    render({ ...play(streamed), running: false }, 2500);
+    expect(useNow.mock.calls).toEqual([[500, true], [500, false], [500, false]]);
   });
 });

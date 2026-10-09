@@ -5,6 +5,7 @@ import type { AssistantMessage, SessionEvent, ToolCall } from "../../../shared/p
 import { createSession, reduceSessionEvent, type SessionState } from "../../../shared/session-state";
 import { createRunDeriver, layoutRun } from "../lib/view";
 import { WorkAccordion } from "./Activity";
+import { clockFor } from "./primitives";
 
 vi.mock("../lib/chat-ui", () => ({
   useChatUi: (selector: (state: unknown) => unknown) => selector({ expanded: {}, expandAll: false }),
@@ -86,5 +87,23 @@ describe("WorkAccordion", () => {
     const settled = render(play([...done("c1", "bash").slice(1), { type: "agent_end", messages: [] }, { type: "agent_settled" }] as SessionEvent[], running));
     expect(settled).not.toContain("shimmer");
     expect(settled).toMatch(/<span class="text-muted group-hover:text-fg">Worked for [^<]+<\/span>/);
+  });
+
+  it("starts a running call's timeout pie empty, though the shared clock trails the call's start", () => {
+    vi.useFakeTimers({ now: 1000 });
+    clockFor(1000).read();
+    // The call starts at 1300; the second's clock still reads 1000.
+    vi.setSystemTime(1350);
+    const running = play([
+      { type: "agent_start" },
+      { type: "message_end", message: { role: "user", content: "go", timestamp: 1 } },
+      { type: "message_end", message: assistant([call("c1", "bash", { command: "make", timeout: 60 })]) },
+      { type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: {} },
+    ] as SessionEvent[]);
+    const run = createRunDeriver()(running).at(-1)!;
+    const live = renderToStaticMarkup(createElement(WorkAccordion, { run, layout: layoutRun(run), cwd: "/repo", home: "/home", renderBlock: () => null }));
+    vi.useRealTimers();
+    expect(live).toContain('title="0s of a 1m 00s timeout"');
+    expect(live).toContain(`stroke-dasharray="0 ${2 * Math.PI * 2}"`);
   });
 });

@@ -19,7 +19,7 @@ export const Dialogs = memo(function Dialogs({ handle, dialogs }: { handle: stri
 function Countdown({ timeout }: { timeout: number }) {
   const [start] = useState(() => Date.now());
   const now = useNow(250);
-  const left = Math.max(0, Math.ceil((timeout - (now - start)) / 1000));
+  const left = Math.max(0, Math.ceil((timeout - Math.max(0, now - start)) / 1000));
   return <span className="font-mono text-[11px] text-faint tabular-nums">{left}s</span>;
 }
 

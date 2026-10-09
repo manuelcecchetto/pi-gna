@@ -73,6 +73,16 @@ export function latestRate(items: Item[], now: number): ResponseRate | undefined
   return undefined;
 }
 
+/**
+ * Whether `latestRate` still changes with time alone: the newest response streams text or thinking and its last stream
+ * event is under `STALL_MS` old. Past that the rate holds until the next event changes the items.
+ */
+export function rateMoving(items: Item[], now: number): boolean {
+  const item = items.findLast((candidate): candidate is AssistantItem => candidate.kind === "assistant");
+  if (!item?.streaming || !item.clock || item.message.content.at(-1)?.type === "toolCall") return false;
+  return now - item.clock.at < STALL_MS;
+}
+
 function countTokens(item: AssistantItem): { tokens: number; estimated: boolean } {
   const chars = streamedChars(item);
   const usage = item.streaming ? undefined : item.message.usage;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent } from "./protocol";
 import { type AssistantItem, createSession, hydrate, reduceSessionEvent, type SessionState } from "./session-state";
-import { latestRate, responseRate } from "./token-rate";
+import { latestRate, rateMoving, responseRate } from "./token-rate";
 
 const usage = (output: number) => ({ input: 0, output, cacheRead: 0, cacheWrite: 0, totalTokens: output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
 const assistant = (content: AssistantMessage["content"], output = 0): AssistantMessage => ({
@@ -30,6 +30,21 @@ const ended = (at: number, output: number, reasoning?: number, more: AssistantMe
 ];
 
 describe("token rate", () => {
+  it("moves with time alone only while the newest response streams text and its last event is under a second old", () => {
+    const state = play(streamed);
+    expect(rateMoving(state.items, 2999)).toBe(true);
+    expect(rateMoving(state.items, 3000)).toBe(false);
+    // Ended, or streaming a tool call: the rate holds until an event changes the items.
+    expect(rateMoving(play(ended(2000, 15), state).items, 2100)).toBe(false);
+    const calling = play([[2100, { type: "message_update", assistantMessageEvent: { type: "toolcall_start", contentIndex: 1, id: "c1", toolName: "write" } }]], state);
+    expect(rateMoving(calling.items, 2200)).toBe(false);
+    // A response yet to stream text has no clock; an ended one before the newest does not count.
+    const next = play([[2100, { type: "message_start", message: assistant([]) }]], play(ended(2000, 15), state));
+    expect(rateMoving(next.items, 2200)).toBe(false);
+    expect(rateMoving(play([text(2300, 40)], next).items, 2400)).toBe(true);
+    expect(rateMoving(createSession("h", "/repo").items, 0)).toBe(false);
+  });
+
   it("estimates from the streamed text, timed from the first block, while the response streams", () => {
     const rate = responseRate(lastAssistant(play(streamed)), 2000);
     expect(rate).toEqual({ perSecond: 100, tokens: 100, seconds: 1, estimated: true, live: true });

@@ -323,7 +323,7 @@ function WorkingFor({ since }: { since?: number }) {
 
 /** A running call's live run time, kept faint; with a timeout, a pie fills toward it (amber past 80%). */
 function LiveRunTime({ since, timeout }: { since: number; timeout?: number }) {
-  const elapsed = useNow(1000) - since;
+  const elapsed = Math.max(0, useNow(1000) - since);
   if (elapsed < 1000 && !timeout) return null;
   const fraction = timeout ? Math.min(1, elapsed / timeout) : undefined;
   const near = fraction !== undefined && fraction >= 0.8;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { BrowserTab } from "../shared/browser";
-import { agentActive, classify, isWindowTab, pageSize, RESPONSIVE_SIZE, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
+import { AGENT_ACTIVE_MS, type BrowserTab } from "../shared/browser";
+import { agentActive, agentLapse, classify, isWindowTab, pageSize, RESPONSIVE_SIZE, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
 
 const tab = (patch: Partial<BrowserTab> = {}): BrowserTab => ({ id: "t1", url: "http://localhost:5173/app", title: "", loading: false, canGoBack: false, canGoForward: false, ...patch });
 const viewport = { width: 393, height: 852, dpr: 3, mobile: true, touch: true, userAgent: "iphone" as const, label: "iPhone 15", source: "user" as const };
@@ -39,6 +39,13 @@ describe("tabs", () => {
     expect(agentActive(tab({ agentAt: 1000 }), 5000)).toBe(true);
     expect(agentActive(tab({ agentAt: 1000 }), 20000)).toBe(false);
     expect(agentActive(tab(), 5000)).toBe(false);
+  });
+  it("knows when the next agent badge lapses, the one moment the screen needs to re-render", () => {
+    const tabs = [tab({ agentAt: 3000 }), tab({ agentAt: 1000 }), tab()];
+    expect(agentLapse(tabs, 5000)).toBe(1000 + AGENT_ACTIVE_MS);
+    expect(agentLapse(tabs, 1000 + AGENT_ACTIVE_MS)).toBe(3000 + AGENT_ACTIVE_MS);
+    expect(agentLapse(tabs, 3000 + AGENT_ACTIVE_MS)).toBeUndefined();
+    expect(agentLapse([], 0)).toBeUndefined();
   });
 });
 

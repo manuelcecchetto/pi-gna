@@ -1041,7 +1041,10 @@ Verified live (pi 1.0.0, Oct 2026):
   (bash output, edit diff, written file, read file, generic JSON); tool-result images render inline under their
   tool row (the collapsed "Worked for" header hides them; the answer shows the images it embeds, docs/FILE_PREVIEW.md, Chat links). Ctrl+O expands everything (same key as the pi TUI). A running
   tool row ticks a faint 10px run time ("14s"); with a timeout, a tiny pie next to it fills toward it (amber past
-  80%, exact numbers in its tooltip). A finished row shows its duration and timeout on hover. The timeout comes only from the call's arguments (`toolTimeoutMs`: bash `timeout` in seconds,
+  80%, exact numbers in its tooltip). Live timers (run times, "Working for", tok/s, dialog countdowns, relative
+  times) read shared clocks (`useNow` in `primitives.tsx`): one timer fires on multiples of each interval, so the
+  timers due at a moment re-render in one commit (4 parallel calls: 7 timer wakeups and 3 commits a second became 1
+  and 1). A clock trails a time taken since by up to its interval, so differences are clamped at 0. A finished row shows its duration and timeout on hover. The timeout comes only from the call's arguments (`toolTimeoutMs`: bash `timeout` in seconds,
   `timeoutSeconds`, `timeoutMs`): pi exposes no per-tool defaults, and bash runs unbounded without one. While a run
   streams, each rebuild keeps the steps and blocks that came out the same as their old objects (`buildRun`), step rows
   are memoized, and a call is presented once per call object (`presentCall`), so a long agent loop redraws only the
@@ -1131,7 +1134,8 @@ Verified live (pi 1.0.0, Oct 2026):
   advances with each text or thinking event by the gap since the last one, capped at `STALL_MS` (1s): longer
   pauses inside a response (a tool call in between, reasoning the provider does not stream, a stall) are waits, so
   the live readout holds instead of dropping; it also holds while a tool call streams, and tool runs fall between
-  responses. A response that only calls tools has no rate. Providers report output tokens only when a response ends
+  responses. The readout ticks (500 ms) only while that can change it, under `STALL_MS` after a stream event
+  (`rateMoving`); stream events re-render it anyway. A response that only calls tools has no rate. Providers report output tokens only when a response ends
   (pi's `message_update` usage is not live), so while it streams the count is estimated from the streamed text and
   thinking (4 characters a token, shown as `~`), and `message_end`'s `usage.output` replaces it, unless the response
   has tool calls: that count includes their arguments, which cannot be split off reliably, so the estimate stays.

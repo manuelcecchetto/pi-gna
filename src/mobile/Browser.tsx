@@ -4,12 +4,13 @@
 // click. Comment mode turns a tap into an annotation that rides with this phone's next prompt (`chat.send`).
 import { AppWindow, ArrowLeft, ArrowRight, Bot, File, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "../renderer/src/components/icons";
 import { useEffect, useRef, useState } from "react";
+import { useWakeAt } from "../renderer/src/components/primitives";
 import { useStore } from "../renderer/src/lib/store";
 import type { Annotation, BrowserTab, HistoryEntry } from "../shared/browser";
 import type { BrowserInput } from "../shared/host-api";
 import { DEVICE_PRESETS } from "../shared/viewport";
 import { annotations, sendAnnotations, useAnnotations } from "./annotations";
-import { agentActive, type Box, classify, isWindowTab, KEYS, LONG_PRESS_MS, pageSize, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
+import { agentActive, agentLapse, type Box, classify, isWindowTab, KEYS, LONG_PRESS_MS, pageSize, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
 import type { HostClient } from "./client/host-client";
 import { clampView, distance, FIT, midpoint, type View, zoomAt } from "./pinch";
 import { Header } from "./Screens";
@@ -21,17 +22,6 @@ const round = (value: number, step: number) => Math.max(step, Math.round(value /
 /** A host call whose failure is a toast. */
 type Call = (method: string, args: unknown) => Promise<unknown>;
 const chip = "flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[13px]";
-
-/** Re-renders every second while `active`, so "agent is using this" fades without an event. */
-export function useNow(active: boolean): number {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return active ? now : Date.now();
-}
 
 export function AnnotationChips({ onRemove }: { onRemove?: (id: string) => void }) {
   const list = useAnnotations();
@@ -56,7 +46,9 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
   const [all, setAll] = useState(!handle);
   const allTabs = state?.tabs ?? [];
   const tabs = all ? allTabs : allTabs.filter((t) => t.agent === handle);
-  const now = useNow(allTabs.some((t) => t.agentAt !== undefined));
+  // "The agent is using this" fades without an event: the screen re-renders once when the next badge lapses.
+  const now = Date.now();
+  useWakeAt(agentLapse(allTabs, now));
   // The phone keeps its own selection: the Mac ignores activating a tab of a chat it is not showing.
   const [picked, setPicked] = useState(initialTab);
   const tab = tabs.find((t) => t.id === picked) ?? tabs.find((t) => t.id === state?.activeId) ?? tabs.find((t) => agentActive(t, now)) ?? tabs[0];

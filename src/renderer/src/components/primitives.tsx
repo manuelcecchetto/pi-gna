@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
 import { type AnsiStyle, parseAnsi } from "../lib/ansi";
 import { formatClock, formatDuration } from "../lib/format";
 import { clampPanel, type PanelBounds } from "../lib/layout";
@@ -28,14 +28,92 @@ function ansiStyle(style: AnsiStyle): CSSProperties | undefined {
   };
 }
 
+/** A shared clock behind `useNow`: every reader of an interval sees the same time. */
+export interface Clock {
+  subscribe: (listener: () => void) => () => void;
+  /** The time, renewed once per interval: stable between ticks, as `useSyncExternalStore` needs. */
+  read: () => number;
+}
+interface Ticking extends Clock {
+  ms: number;
+  now: number;
+  /** The interval (`now / ms`, floored) last announced to the listeners. */
+  told: number;
+  listeners: Set<() => void>;
+}
+const clocks = new Map<number, Ticking>();
+let wake: ReturnType<typeof setTimeout> | undefined;
+
+/** One timer serves every clock, firing at the next multiple of a ticking clock's interval: clocks due at the same moment
+ * (the run times each second, tok/s every 500 ms) tick in one task, so their readers re-render in one commit. */
+function arm() {
+  clearTimeout(wake);
+  wake = undefined;
+  const now = Date.now();
+  let next = Infinity;
+  for (const clock of clocks.values()) if (clock.listeners.size) next = Math.min(next, (Math.floor(now / clock.ms) + 1) * clock.ms);
+  if (next !== Infinity) wake = setTimeout(tick, next - now);
+}
+
+function tick() {
+  const due: Ticking[] = [];
+  for (const clock of clocks.values()) {
+    if (!clock.listeners.size || Math.floor(Date.now() / clock.ms) === clock.told) continue;
+    clock.told = Math.floor(clock.read() / clock.ms);
+    due.push(clock);
+  }
+  arm();
+  for (const clock of due) for (const listener of clock.listeners) listener();
+}
+
+export function clockFor(ms: number): Clock {
+  const known = clocks.get(ms);
+  if (known) return known;
+  const clock: Ticking = {
+    ms,
+    now: Date.now(),
+    told: 0,
+    listeners: new Set(),
+    read() {
+      const now = Date.now();
+      if (Math.floor(now / ms) !== Math.floor(clock.now / ms)) clock.now = now;
+      return clock.now;
+    },
+    subscribe(listener) {
+      if (!clock.listeners.size) {
+        // The listener rendered with `now`: the next tick announces any interval after it.
+        clock.told = Math.floor(clock.now / ms);
+        clock.listeners.add(listener);
+        arm();
+      } else clock.listeners.add(listener);
+      return () => {
+        clock.listeners.delete(listener);
+        if (!clock.listeners.size) arm();
+      };
+    },
+  };
+  clocks.set(ms, clock);
+  return clock;
+}
+
+const still = () => () => {};
+
+/** The current time, renewed every `intervalMs` while `enabled` (re-rendering the reader); readers share one timer. It can
+ * trail a time taken since by up to an interval, so clamp differences that must not go negative. */
 export function useNow(intervalMs: number, enabled = true): number {
-  const [now, setNow] = useState(() => Date.now());
+  const clock = clockFor(intervalMs);
+  return useSyncExternalStore(enabled ? clock.subscribe : still, clock.read, clock.read);
+}
+
+/** Re-renders once at `at` (a `Date.now()` time), for state that lapses with time alone, such as a fading badge. */
+export function useWakeAt(at: number | undefined): void {
+  const [woken, wakeUp] = useReducer((n: number) => n + 1, 0);
+  // `woken` re-arms the timer when it fired early and `at` is still ahead.
   useEffect(() => {
-    if (!enabled) return;
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs, enabled]);
-  return now;
+    if (at === undefined) return;
+    const timer = setTimeout(wakeUp, at - Date.now());
+    return () => clearTimeout(timer);
+  }, [at, woken]);
 }
 
 /** A live label with a bright band sweeping through it (.shimmer in styles.css: the band is a copy of the text). */

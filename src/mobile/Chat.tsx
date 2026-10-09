@@ -7,8 +7,8 @@ import { Transcript } from "../renderer/src/components/Transcript";
 import { useChatUi, useChatUiHandle } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
 import { attention } from "../shared/session-state";
-import { agentActive } from "./browser-data";
-import { useNow } from "./Browser";
+import { useWakeAt } from "../renderer/src/components/primitives";
+import { agentActive, agentLapse } from "./browser-data";
 import { showChat, toggleExpandAll } from "./chat-ui";
 import type { HostClient } from "./client/host-client";
 import { projectOf } from "../shared/board";
@@ -121,7 +121,8 @@ function ComputerPreview({ client, handle, running }: { client: HostClient; hand
 /** The chat's browser tabs on the Mac: how many, accented while the agent drives one. */
 function BrowserButton({ client, handle, onOpen }: { client: HostClient; handle: string; onOpen: () => void }) {
   const tabs = useStore(client.store, (s) => s.global.browser?.tabs)?.filter((t) => t.agent === handle) ?? [];
-  const now = useNow(tabs.some((t) => t.agentAt !== undefined));
+  const now = Date.now();
+  useWakeAt(agentLapse(tabs, now));
   const busy = tabs.some((t) => agentActive(t, now));
   const label = tabs.length ? `Browser, ${tabs.length} tab${tabs.length === 1 ? "" : "s"}` : "Browser";
   return (

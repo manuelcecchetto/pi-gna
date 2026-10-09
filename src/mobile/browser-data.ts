@@ -37,6 +37,13 @@ export const AGENT_BADGE = "agent";
 /** The agent drove this tab within the last few seconds. */
 export const agentActive = (tab: BrowserTab, now: number) => tab.agentAt !== undefined && now - tab.agentAt < AGENT_ACTIVE_MS;
 
+/** When the first of these tabs stops being `agentActive`, or undefined while none is: the one moment a badge changes. */
+export function agentLapse(tabs: BrowserTab[], now: number): number | undefined {
+  let at: number | undefined;
+  for (const tab of tabs) if (agentActive(tab, now)) at = Math.min(at ?? Infinity, (tab.agentAt as number) + AGENT_ACTIVE_MS);
+  return at;
+}
+
 /** A pop-out device window lives on the Mac: the phone can view and drive it, not move it. */
 export const isWindowTab = (tab: BrowserTab) => tab.surface === "window";
 
