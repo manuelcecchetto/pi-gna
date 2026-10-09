@@ -64,12 +64,15 @@ button.on { color: var(--accent); background: var(--accent-soft); border-color: 
 
 .scroller { flex: 1; min-height: 0; overflow: auto; }
 pre { margin: 0; padding: 8px 0; }
-.code { display: block; width: max-content; min-width: 100%; font: 12.5px/1.55 var(--font-mono); tab-size: 2; }
+/* The longest line (--columns) sets the width: a block off screen (content-visibility) adds none of its own. */
+.code { display: block; width: max-content; min-width: max(100%, calc(var(--gutter) + 28px + var(--columns, 0) * 1ch)); font: 12.5px/1.55 var(--font-mono); tab-size: 2; }
+.code .block { content-visibility: auto; contain-intrinsic-height: auto calc(var(--lines) * 1lh); }
 .code .line { position: relative; display: block; padding: 0 16px 0 calc(var(--gutter) + 12px); white-space: pre; }
 .code .line::before { content: counter(line); counter-increment: line; position: absolute; left: 0; width: var(--gutter); text-align: right; color: var(--faint); user-select: none; }
-.code { counter-reset: line; }
+/* A block contains its style, counters included: its first line starts the count at the block's first line number. */
+.code .block > .line:first-child { counter-reset: line var(--from); }
 .code .line.target { background: var(--accent-soft); box-shadow: inset 2px 0 var(--accent); }
-.wrap .code { width: auto; }
+.wrap .code { width: auto; min-width: 100%; }
 .wrap .code .line { white-space: pre-wrap; overflow-wrap: anywhere; }
 code.hl span { color: var(--shiki-dark); }
 @media (prefers-color-scheme: light) { code.hl span { color: var(--shiki-light); } }
@@ -81,9 +84,14 @@ code.hl .line::before { color: var(--faint); }
 .stage.zoomed img { max-width: none; max-height: none; cursor: zoom-out; }
 .checker { background: conic-gradient(var(--check-b) 25%, var(--check-a) 0 50%, var(--check-b) 0 75%, var(--check-a) 0) 0 0 / 16px 16px; }
 
-.table-wrap table { border-collapse: collapse; font-size: 12px; }
-.table-wrap th, .table-wrap td { padding: 3px 10px; border: 1px solid var(--line); text-align: left; white-space: nowrap; max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
-.table-wrap th { position: sticky; top: 0; background: var(--panel); font-weight: 500; z-index: 1; }
+/* The header and each block of rows are tables of the same fixed column widths (table.ts works them out from the
+   values); a block off screen skips style and layout. A cell has no top border: the row above draws that line. */
+.table-wrap table { border-collapse: collapse; font-size: 12px; table-layout: fixed; width: var(--width); }
+.table-wrap th, .table-wrap td { padding: 3px 10px; border: 1px solid var(--line); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.table-wrap td { border-top: 0; }
+.table-wrap .head { position: sticky; top: 0; z-index: 1; }
+.table-wrap th { background: var(--panel); font-weight: 500; }
+.table-wrap .rows { width: var(--width); content-visibility: auto; contain-intrinsic-height: auto calc(var(--rows) * var(--row, 22px)); }
 .table-wrap .n { color: var(--faint); text-align: right; background: var(--panel); }
 .table-wrap tbody tr:hover td:not(.n) { background: var(--raised); }
 

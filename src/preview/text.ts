@@ -1,15 +1,22 @@
 // Code, text and JSON view: shiki-highlighted lines with a gutter, a soft-wrap toggle, and a jump to `source.line`.
-// Big files stay responsive: highlighting is skipped above PREVIEW_LIMITS.highlight/highlightLines and only the first
-// PREVIEW_LIMITS.text bytes are ever read (with a notice).
-import { highlight } from "../renderer/src/lib/highlight";
+// Big files stay responsive: the lines go in blocks of BLOCK_LINES that skip style and layout while off screen
+// (content-visibility), highlighting runs a slice at a time and swaps a block in once its lines are done, it is
+// skipped above PREVIEW_LIMITS.highlight/highlightLines, and only the first PREVIEW_LIMITS.text bytes are ever read
+// (with a notice).
+import { highlightLines } from "../renderer/src/lib/highlight";
 import { PREVIEW_LIMITS, languageFor } from "../shared/preview";
 import { escapeHtml, formatBytes, lineFromHash, splitLines } from "./format";
 import { app, readBytes, showMessage, type Source } from "./shell";
 
 const WRAP_KEY = "pigna-preview-wrap";
+/** Lines per block: a block off screen costs no style or layout, and highlighting swaps in a block at a time. */
+export const BLOCK_LINES = 200;
+/** Lines this long stay plain: shiki would spend up to a second on one minified line, in one task. */
+const PLAIN_LINE = 5_000;
 
-function plainLines(lines: string[]): string {
-  return lines.map((line) => `<span class="line">${escapeHtml(line)}</span>`).join("");
+/** A block's lines as `.line` spans, escaped in one pass. */
+export function plainLines(lines: string[]): string {
+  return `<span class="line">${escapeHtml(lines.join("\n")).replaceAll("\n", '</span><span class="line">')}</span>`;
 }
 
 /** Pretty-printed JSON for rendered mode; the text itself when it does not parse (JSONC, truncated). */
@@ -50,7 +57,19 @@ export async function showText(source: Source): Promise<void> {
   const code = document.createElement("code");
   code.className = "code hl";
   code.style.setProperty("--gutter", `${String(lines.length).length + 2}ch`);
-  code.innerHTML = plainLines(lines);
+  // The longest line sets the width up front: a block off screen adds none of its own.
+  code.style.setProperty("--columns", String(lines.reduce((most, line) => Math.max(most, line.length), 0)));
+  const blocks: HTMLElement[] = [];
+  for (let from = 0; from < lines.length; from += BLOCK_LINES) {
+    const part = lines.slice(from, from + BLOCK_LINES);
+    const block = document.createElement("div");
+    block.className = "block";
+    block.style.setProperty("--from", String(from));
+    block.style.setProperty("--lines", String(part.length));
+    block.innerHTML = plainLines(part);
+    blocks.push(block);
+  }
+  code.append(...blocks);
   const pre = document.createElement("pre");
   pre.append(code);
   scroller.append(pre);
@@ -69,17 +88,17 @@ export async function showText(source: Source): Promise<void> {
     setWrap(wrap);
   });
 
-  // The jump target survives re-highlighting, which replaces the line elements.
-  const line = source.line ?? lineFromHash(window.location.hash);
-  const jump = (): void => {
-    if (!line) return;
-    code.querySelector(".target")?.classList.remove("target");
-    const element = code.children[Math.min(line, lines.length) - 1];
+  // The jump target is marked again when highlighting swaps in its block.
+  const asked = source.line ?? lineFromHash(window.location.hash);
+  const line = asked && Math.min(asked, lines.length);
+  const mark = (): Element | undefined => {
+    if (!line) return undefined;
+    const element = blocks[Math.floor((line - 1) / BLOCK_LINES)]?.children[(line - 1) % BLOCK_LINES];
     element?.classList.add("target");
-    element?.scrollIntoView({ block: "center" });
+    return element;
   };
   const SCROLL_KEY = `pigna-preview-scroll:${source.name}`;
-  if (line) jump();
+  if (line) mark()?.scrollIntoView({ block: "center" });
   else scroller.scrollTop = Number(sessionStorage.getItem(SCROLL_KEY) ?? 0);
   let pending = false;
   scroller.addEventListener("scroll", () => {
@@ -92,11 +111,23 @@ export async function showText(source: Source): Promise<void> {
   });
 
   if (canHighlight) {
-    const html = await highlight(text, lang, PREVIEW_LIMITS.highlight).catch(() => undefined);
-    // Shiki emits one `.line` span per line, separated by newlines that would render as blank lines in blocks.
-    if (html && code.isConnected) {
-      code.innerHTML = html.replaceAll("\n", "");
-      jump();
-    }
+    // Highlighted lines come in order; a block is swapped in once all of its lines are done.
+    let done: string[] = [];
+    let next = 0;
+    await highlightLines(text, lang, PLAIN_LINE, (slice) => {
+      if (!code.isConnected) return false;
+      for (const html of slice) {
+        const block = blocks[next];
+        // A trailing newline gives shiki one more (empty) line than the plain view numbers.
+        if (!block) return false;
+        done.push(html);
+        if (done.length < block.childElementCount) continue;
+        block.innerHTML = done.join("");
+        done = [];
+        next++;
+        mark();
+      }
+      return true;
+    }).catch(() => false);
   }
 }

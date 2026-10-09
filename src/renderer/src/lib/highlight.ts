@@ -147,24 +147,54 @@ interface Tokenizing {
   done: number;
   html: string[];
   state?: GrammarState;
+  /** Lines this long or longer stay plain; 0 for none. */
+  maxLine: number;
 }
 
-const tokenizing = (code: string): Tokenizing => ({ lines: code.split(/\r?\n/), done: 0, html: [] });
+const tokenizing = (code: string, maxLine = 0): Tokenizing => ({ lines: code.split(/\r?\n/), done: 0, html: [], maxLine });
 
-/** Tokenizes the next slice; returns whether the block is complete. */
-function step({ shiki, toHtml }: Engine, lang: string, run: Tokenizing): boolean {
+/** Tokenizes the next slice; returns its HTML, one `<span class="line">` per line, joined by newlines. */
+function step({ shiki, toHtml }: Engine, lang: string, run: Tokenizing): string {
   let end = run.done;
   for (let size = 0; end < run.lines.length && (end === run.done || size + (run.lines[end] as string).length < SLICE_CHARS); end++) {
     size += (run.lines[end] as string).length + 1;
   }
-  const hast = shiki.codeToHast(run.lines.slice(run.done, end).join("\n"), { lang, themes: THEMES, defaultColor: false, grammarState: run.state });
+  const hast = shiki.codeToHast(run.lines.slice(run.done, end).join("\n"), {
+    lang,
+    themes: THEMES,
+    defaultColor: false,
+    grammarState: run.state,
+    tokenizeMaxLineLength: run.maxLine,
+  });
   run.state = shiki.getLastGrammarState(hast);
-  run.html.push(toHtml(hast).match(/<code>([\s\S]*)<\/code>/)?.[1] ?? "");
   run.done = end;
-  return end === run.lines.length;
+  return toHtml(hast).match(/<code>([\s\S]*)<\/code>/)?.[1] ?? "";
 }
 
-/** Highlighted inner HTML for a <code> element, or undefined for unsupported languages. Runs at once; blocks in a page go through observeHighlight. */
+const complete = (run: Tokenizing): boolean => run.done === run.lines.length;
+
+/** Tokenizing time one task spends before a whole-file highlight gives the page a turn (input, paint). */
+const TASK_MS = 12;
+const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+/** The next task: `scheduler.yield()` where there is one (Chromium), as a nested `setTimeout(0)` waits at least 4 ms. */
+const nextTask = (): Promise<void> => (scheduler?.yield ? scheduler.yield() : new Promise((resolve) => setTimeout(resolve, 0)));
+
+/** Tokenizes all of `run`, handing each slice's HTML to `onSlice` (false stops it); the page gets a turn every TASK_MS. */
+async function tokenizeAll(engine: Engine, lang: string, run: Tokenizing, onSlice: (html: string) => boolean): Promise<void> {
+  let until = performance.now() + TASK_MS;
+  while (!complete(run)) {
+    if (!onSlice(step(engine, lang, run))) return;
+    if (performance.now() >= until) {
+      await nextTask();
+      until = performance.now() + TASK_MS;
+    }
+  }
+}
+
+/**
+ * Highlighted inner HTML for a <code> element, or undefined for unsupported languages. Tokenizes a slice at a time,
+ * giving the page a turn every TASK_MS (a whole file is seconds of work); blocks in a page go through observeHighlight.
+ */
 export async function highlight(code: string, hint: string | undefined, limit = BLOCK_LIMIT): Promise<string | undefined> {
   const lang = resolveLang(hint);
   if (!lang || code.length > limit) return undefined;
@@ -173,10 +203,27 @@ export async function highlight(code: string, hint: string | undefined, limit = 
   if (hit !== undefined) return hit;
   const engine = await grammar(lang);
   const run = tokenizing(code);
-  while (!step(engine, lang, run));
+  await tokenizeAll(engine, lang, run, (html) => {
+    run.html.push(html);
+    return true;
+  });
   const inner = run.html.join("\n");
   remember(key, inner);
   return inner;
+}
+
+/**
+ * A whole file highlighted for a view that shows lines as they come (the file preview): `onLines` gets each next run
+ * of lines' HTML, one `<span class="line">` per line in order, and returns false to stop. The page gets a turn every
+ * TASK_MS, and lines of `maxLine` characters or more stay plain: shiki spends up to a second on one minified line, in
+ * one task. Resolves false for a language without a grammar here.
+ */
+export async function highlightLines(code: string, hint: string | undefined, maxLine: number, onLines: (lines: string[]) => boolean): Promise<boolean> {
+  const lang = resolveLang(hint);
+  if (!lang) return false;
+  const engine = await grammar(lang);
+  await tokenizeAll(engine, lang, tokenizing(code, maxLine), (html) => onLines(html.split("\n")));
+  return true;
 }
 
 // Blocks are highlighted as they near the viewport, one per idle callback and a slice at a time, so neither a finished
@@ -263,7 +310,11 @@ function pump(): void {
       if (html === undefined) {
         const run = (job.run ??= tokenizing(job.code));
         const until = performance.now() + Math.min(deadline.timeRemaining(), IDLE_BUDGET_MS);
-        while (!step(engine, job.lang, run)) if (performance.now() >= until) return;
+        for (;;) {
+          run.html.push(step(engine, job.lang, run));
+          if (complete(run)) break;
+          if (performance.now() >= until) return;
+        }
         html = run.html.join("\n");
         remember(job.key, html);
       }

@@ -430,6 +430,10 @@ Messages: empty, password-protected, invalid/corrupt. `pnpm verify:preview` chec
 line fragment from its URL (append `#L<n>` to a preview URL to jump to and highlight a line), reads text with a
 `Range: bytes=0-<cap-1>` request (total size from `Content-Range`), sniffs extensionless files itself, and shows
 html in the code view.
+Big files stay responsive: the code view puts lines in blocks of 200 (`content-visibility: auto`, counters reset per
+block from `--from`, the width set up front from the longest line), highlights through `highlightLines` (slices, a
+yield every 12 ms, lines of 5,000+ characters plain) and swaps in a block once its lines are done; the table view puts
+rows in tables of 200 with the header's fixed column widths, measured with canvas from each column's longest values.
 
 **Markdown**: `src/preview/markdown.ts` renders markdown with the app's `renderMarkdown` (marked GFM + DOMPurify, no
 visual fences, so those stay plain code), shiki-highlights fences via `highlightWithin`, gives headings GitHub-style ids
