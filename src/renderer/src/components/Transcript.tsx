@@ -59,7 +59,8 @@ export interface TurnNav {
 
 export function Transcript({ session, earlier, turns, onPickProject }: { session: SessionState; earlier?: EarlierTurns; turns?: (nav: TurnNav) => React.ReactNode; /** Makes the project name of the empty state a button (the phone: switch project). */ onPickProject?: () => void }) {
   const derive = useMemo(() => createRunDeriver(), []);
-  const runs = derive(session);
+  const runs = useMemo(() => derive({ items: session.items, running: session.running }), [derive, session.items, session.running]);
+  const rail = useMemo(() => (earlier?.outline?.length ? [...outlineItems(earlier.outline, earlier.preview), ...railItems(runs)] : railItems(runs)), [runs, earlier?.outline, earlier?.preview]);
   const [limit, setLimit] = useState(PAGE);
   // Turns paged in from the host before the first one stay in view: the limit grows by as many runs.
   const [first, setFirst] = useState(runs[0]?.key);
@@ -132,7 +133,6 @@ export function Transcript({ session, earlier, turns, onPickProject }: { session
     flash(section);
   };
 
-  const rail = earlier?.outline?.length ? [...outlineItems(earlier.outline, earlier.preview), ...railItems(runs)] : railItems(runs);
   const last = visible.at(-1);
   // The newest turn gets at least a screen of height, so your message can sit at the top while the
   // answer streams in below it. Sessions opened from disk keep their natural height until you send.

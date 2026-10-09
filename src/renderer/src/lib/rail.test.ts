@@ -1,8 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserMessage } from "../../../shared/protocol";
 import { createSession, type Item } from "../../../shared/session-state";
-import { adjacentTurn, nearDistance, outlineItems, pagePreview, railItems } from "./rail";
-import type { Block, Run } from "./view";
+import { turnLabel } from "../../../shared/turn-outline";
+import { adjacentTurn, nearDistance, outlineItems, pagePreview, railItems, railPreview, sameMarkers } from "./rail";
+import { type Block, layoutRun, type Run } from "./view";
+
+// Pass-through spies: they count the label and layout work the rail does.
+vi.mock("./view", async (original) => {
+  const actual = await original<typeof import("./view")>();
+  return { ...actual, layoutRun: vi.fn(actual.layoutRun) };
+});
+vi.mock("../../../shared/turn-outline", async (original) => {
+  const actual = await original<typeof import("../../../shared/turn-outline")>();
+  return { ...actual, turnLabel: vi.fn(actual.turnLabel) };
+});
+
+beforeEach(() => {
+  vi.mocked(layoutRun).mockClear();
+  vi.mocked(turnLabel).mockClear();
+});
 
 const user = (content: UserMessage["content"], timestamp = 1): Run["user"] => ({ key: `u${timestamp}`, message: { role: "user", content, timestamp } });
 const text = (key: string, value: string, stopReason: "stop" | "toolUse" = "stop"): Block => ({ kind: "text", key, text: value, streaming: false, at: 2, stopReason });
@@ -11,7 +27,9 @@ const activity: Block = { kind: "activity", key: "group:a", steps: [], live: fal
 describe("railItems", () => {
   it("previews the final answer, not commentary before the last tool step", () => {
     const run: Run = { key: "r1", user: user("fix auth"), live: false, blocks: [text("t1", "Let me check"), activity, text("t2", "Fixed **auth**."), text("t3", "Tests pass.")] };
-    expect(railItems([run])).toEqual([{ key: "r1", at: 1, label: "fix auth", preview: "Fixed **auth**.\n\nTests pass.", live: false }]);
+    const [item] = railItems([run]);
+    expect(item).toEqual({ key: "r1", at: 1, label: "fix auth", run, live: false });
+    expect(item && railPreview(item)).toBe("Fixed **auth**.\n\nTests pass.");
   });
 
   it("puts the message on one line without pi-gna's file and comment blocks", () => {
@@ -28,7 +46,7 @@ describe("railItems", () => {
       { key: "r1", user: user("go"), live: false, blocks: [{ kind: "error", key: "e", text: "rate limited" }] },
       { key: "r2", user: user("again", 2), live: false, blocks: [activity, { kind: "aborted", key: "a" }] },
     ];
-    expect(railItems(runs).map((item) => [item.key, item.preview])).toEqual([
+    expect(railItems(runs).map((item) => [item.key, railPreview(item)])).toEqual([
       ["r1", "rate limited"],
       ["r2", "*Interrupted*"],
     ]);
@@ -38,6 +56,22 @@ describe("railItems", () => {
     const run: Run = { key: "r1", user: user("go"), live: false, blocks: [] };
     expect(railItems([run])[0]).toBe(railItems([run])[0]);
   });
+
+  it("builds no preview while a turn streams, and the message's label once", () => {
+    const first: Run = { key: "r1", user: user("go"), live: true, blocks: [text("t1", "Wor")] };
+    const next: Run = { ...first, blocks: [text("t1", "Working")] };
+    const [a] = railItems([first]);
+    const [b] = railItems([next]);
+    expect(b).not.toBe(a);
+    expect(b).toMatchObject({ key: "r1", label: "go", live: true, run: next });
+    expect(turnLabel).toHaveBeenCalledTimes(1);
+    expect(layoutRun).not.toHaveBeenCalled();
+    // The card asks: built once per turn object.
+    expect(b && railPreview(b)).toBe("Working");
+    expect(b && railPreview(b)).toBe("Working");
+    expect(a && railPreview(a)).toBe("Wor");
+    expect(layoutRun).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("turns the client has not loaded", () => {
@@ -45,7 +79,7 @@ describe("turns the client has not loaded", () => {
     const outline = [{ key: "i0", at: 5, label: "first" }, { key: "i3", at: 9, label: "second" }];
     const asked: number[] = [];
     const items = outlineItems(outline, async (index) => (asked.push(index), `answer ${index}`));
-    expect(items.map(({ key, at, label, preview, live }) => ({ key, at, label, preview, live }))).toEqual([
+    expect(items.map((item) => ({ key: item.key, at: item.at, label: item.label, preview: railPreview(item), live: item.live }))).toEqual([
       { key: "i0", at: 5, label: "first", preview: "", live: false },
       { key: "i3", at: 9, label: "second", preview: "", live: false },
     ]);
@@ -62,6 +96,19 @@ describe("turns the client has not loaded", () => {
     ];
     expect(pagePreview({ ...createSession("h", "/p"), items })).toBe("Done.");
     expect(pagePreview({ ...createSession("h", "/p"), items: [] })).toBe("");
+  });
+});
+
+describe("sameMarkers", () => {
+  it("ignores a new item for the same turn and notices any other change", () => {
+    const runs: Run[] = [1, 2, 3].map((at) => ({ key: `r${at}`, user: user(`m${at}`, at), live: false, blocks: [] }));
+    const rail = railItems(runs);
+    const streamed = railItems([...runs.slice(0, 2), { ...runs[2]!, live: true, blocks: [text("t", "more")] }]);
+    expect(streamed[2]).not.toBe(rail[2]);
+    expect(sameMarkers(rail, streamed)).toBe(true);
+    expect(sameMarkers(rail, rail.slice(0, 2))).toBe(false);
+    expect(sameMarkers(rail, [...rail.slice(0, 2), { ...rail[2]!, key: "r9" }])).toBe(false);
+    expect(sameMarkers(rail, [...rail.slice(0, 2), { ...rail[2]!, at: 9 }])).toBe(false);
   });
 });
 

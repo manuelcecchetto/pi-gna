@@ -3,10 +3,10 @@
 // the message with a preview of its answer; click jumps there, dragging scrubs through the chat, and
 // ⌥↑/⌥↓ step between messages. Lines of turns on screen are brighter, bookmarked ones stay lit.
 import { Bookmark } from "./icons";
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toggleBookmark, useBookmarks } from "../lib/bookmarks";
 import { renderMarkdown } from "../lib/markdown";
-import { adjacentTurn, nearDistance, RAIL_MIN_ITEMS, type RailItem } from "../lib/rail";
+import { adjacentTurn, nearDistance, RAIL_MIN_ITEMS, type RailItem, railPreview, sameMarkers } from "../lib/rail";
 
 /** Room the rail needs left of the transcript text; narrower windows hide it (the keys still work). */
 const GUTTER = 48;
@@ -91,7 +91,7 @@ function Rail({
 }) {
   const bookmarks = useBookmarks(sessionPath);
   const marked = useMemo(() => new Set(bookmarks), [bookmarks]);
-  const inView = useInView(scroller, items, topGap);
+  const inView = useInView(scroller, topGap);
   /** The marker under the pointer or being scrubbed: magnified, and the card shows its turn. */
   const [hot, setHot] = useState<number | null>(null);
   const [card, setCard] = useState(false);
@@ -100,26 +100,32 @@ function Rail({
   const nav = useRef<HTMLElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Apart, because entering the rail cancels a pending close but not the card a marker's hover is opening.
+  const opening = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const closing = useRef<ReturnType<typeof setTimeout>>(undefined);
   const scrub = useRef<{ pointerId: number; index: number; moved: boolean } | null>(null);
   /** A drag ends with a click on the marker it started from; that click must not jump back. */
   const dragged = useRef(false);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const settle = () => {
+    clearTimeout(opening.current);
+    clearTimeout(closing.current);
+  };
+  useEffect(() => settle, []);
 
   const hover = (index: number) => {
-    clearTimeout(timer.current);
+    settle();
     setHot(index);
-    if (!card) timer.current = setTimeout(() => setCard(true), OPEN_DELAY);
+    if (!card) opening.current = setTimeout(() => setCard(true), OPEN_DELAY);
   };
   const leave = () => {
-    clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
+    settle();
+    closing.current = setTimeout(() => {
       setCard(false);
       setHot(null);
     }, CLOSE_DELAY);
   };
-  const indexAt = (element: Element | null): number | undefined => {
-    const button = element?.closest<HTMLElement>("[data-rail-index]");
+  const indexAt = (target: EventTarget | null): number | undefined => {
+    const button = target instanceof Element ? target.closest<HTMLElement>("[data-rail-index]") : null;
     return button && list.current?.contains(button) ? Number(button.dataset.railIndex) : undefined;
   };
   const endScrub = (event: React.PointerEvent) => {
@@ -171,7 +177,7 @@ function Rail({
       ref={nav}
       aria-label="Your messages"
       className="turn-rail absolute top-1/2 left-3 z-20 -translate-y-1/2"
-      onPointerEnter={() => clearTimeout(timer.current)}
+      onPointerEnter={() => clearTimeout(closing.current)}
       onPointerLeave={() => {
         if (!scrub.current) leave();
       }}
@@ -182,8 +188,19 @@ function Rail({
         data-fade={fade || undefined}
         data-scrubbing={scrubbing || undefined}
         onScroll={(event) => setFade(edges(event.currentTarget))}
+        // Each marker's pointerenter and click, delegated: the markers render apart (Markers).
+        onPointerOver={(event) => {
+          if (scrub.current) return;
+          const index = indexAt(event.target);
+          if (index !== undefined && index !== indexAt(event.relatedTarget)) hover(index);
+        }}
+        onClick={(event) => {
+          const item = items[indexAt(event.target) ?? -1];
+          if (!item || dragged.current) return;
+          void jump(item.key, "smooth");
+        }}
         onPointerDown={(event) => {
-          const index = indexAt(event.target as Element);
+          const index = indexAt(event.target);
           if (event.button !== 0 || index === undefined) return;
           scrub.current = { pointerId: event.pointerId, index, moved: false };
           (event.target as Element).closest("button")?.setPointerCapture(event.pointerId);
@@ -199,7 +216,7 @@ function Rail({
           const item = index === undefined ? undefined : items[index];
           if (index === undefined || !item || index === state.index) return;
           scrub.current = { ...state, index, moved: true };
-          clearTimeout(timer.current);
+          settle();
           setHot(index);
           setCard(true);
           void jump(item.key, "instant");
@@ -208,33 +225,7 @@ function Rail({
         onPointerCancel={endScrub}
         onLostPointerCapture={endScrub}
       >
-        {items.map((item, index) => {
-          const bookmarked = marked.has(item.at);
-          return (
-            <button
-              key={item.key}
-              type="button"
-              tabIndex={-1}
-              data-rail-index={index}
-              data-hot={hot === index || undefined}
-              aria-current={inView.has(item.key) ? "true" : undefined}
-              aria-label={`Jump to message ${index + 1}${bookmarked ? ", bookmarked" : ""}`}
-              className="turn-rail-item"
-              onPointerEnter={() => {
-                if (!scrub.current) hover(index);
-              }}
-              onClick={() => {
-                if (dragged.current) return;
-                void jump(item.key, "smooth");
-              }}
-            >
-              <span className="turn-rail-marker" data-near={nearDistance(index, hot)} data-bookmarked={bookmarked || undefined}>
-                <span className="turn-rail-line" />
-                {bookmarked && <span className="turn-rail-dot" />}
-              </span>
-            </button>
-          );
-        })}
+        <Markers items={items} hot={hot} inView={inView} marked={marked} />
       </div>
       {card && hotItem && (
         <div
@@ -253,12 +244,44 @@ function Rail({
   );
 }
 
+/** One line per message. A streamed delta gives the rail a new item for the live turn but the same markers: none renders. */
+const Markers = memo(
+  function Markers({ items, hot, inView, marked }: { items: RailItem[]; hot: number | null; inView: ReadonlySet<string>; marked: ReadonlySet<number> }) {
+    return (
+      <>
+        {items.map((item, index) => {
+          const bookmarked = marked.has(item.at);
+          return (
+            <button
+              key={item.key}
+              type="button"
+              tabIndex={-1}
+              data-rail-index={index}
+              data-hot={hot === index || undefined}
+              aria-current={inView.has(item.key) ? "true" : undefined}
+              aria-label={`Jump to message ${index + 1}${bookmarked ? ", bookmarked" : ""}`}
+              className="turn-rail-item"
+            >
+              <span className="turn-rail-marker" data-near={nearDistance(index, hot)} data-bookmarked={bookmarked || undefined}>
+                <span className="turn-rail-line" />
+                {bookmarked && <span className="turn-rail-dot" />}
+              </span>
+            </button>
+          );
+        })}
+      </>
+    );
+  },
+  (previous, next) => previous.hot === next.hot && previous.inView === next.inView && previous.marked === next.marked && sameMarkers(previous.items, next.items),
+);
+
 /** Your message on one line, then the first lines of the answer (Codex's tooltip). */
 function RailCard({ item, bookmarked, onBookmark }: { item: RailItem; bookmarked: boolean; onBookmark?: (on: boolean) => void }) {
   const loaded = useLoadedPreview(item);
-  const preview = item.preview || loaded;
-  // Only the first lines show; long answers are cut before rendering.
-  const html = useMemo(() => (preview ? renderMarkdown(preview.slice(0, 1500)) : ""), [preview]);
+  // Built only while the card shows. Only the first lines show; long answers are cut before rendering, so a streaming
+  // answer past the cut renders no more.
+  const head = (railPreview(item) || loaded).slice(0, 1500);
+  const html = useMemo(() => (head ? renderMarkdown(head) : ""), [head]);
   return (
     <>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -318,16 +341,18 @@ function useGutter(scroller: React.RefObject<HTMLDivElement | null>, column: Rea
   return fits;
 }
 
-/** Keys of the turns on screen (below the jump position). */
-function useInView(scroller: React.RefObject<HTMLDivElement | null>, items: RailItem[], topGap: number): ReadonlySet<string> {
+/**
+ * Keys of the turns on screen (below the jump position); turns without a message of yours may be among them. One
+ * pair of observers per rail: sections that render later (new turns, earlier pages) are observed as they come.
+ */
+function useInView(scroller: React.RefObject<HTMLDivElement | null>, topGap: number): ReadonlySet<string> {
   const [inView, setInView] = useState<ReadonlySet<string>>(() => new Set());
-  const keys = items.map((item) => item.key).join("\0");
   useEffect(() => {
     const root = scroller.current;
     const sections = root?.querySelector("[data-run]")?.parentElement;
     if (!root || !sections) return;
-    const wanted = new Set(keys.split("\0"));
     const visible = new Set<string>();
+    const publish = () => setInView((current) => (current.size === visible.size && [...visible].every((key) => current.has(key)) ? current : new Set(visible)));
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -336,24 +361,32 @@ function useInView(scroller: React.RefObject<HTMLDivElement | null>, items: Rail
           if (entry.isIntersecting) visible.add(key);
           else visible.delete(key);
         }
-        setInView((current) => (current.size === visible.size && [...visible].every((key) => current.has(key)) ? current : new Set(visible)));
+        publish();
       },
       { root, rootMargin: `-${topGap}px 0px 0px 0px` },
     );
-    // Earlier pages render later; observing an observed section again is a no-op.
-    const observeAll = () => {
-      for (const section of sections.querySelectorAll<HTMLElement>(":scope > [data-run]")) {
-        if (wanted.has(section.dataset.run ?? "")) observer.observe(section);
-      }
+    const observe = (node: Node) => {
+      if (node instanceof HTMLElement && node.dataset.run) observer.observe(node);
     };
-    observeAll();
-    const mutations = new MutationObserver(observeAll);
+    sections.childNodes.forEach(observe);
+    const mutations = new MutationObserver((records) => {
+      let removed = false;
+      for (const record of records) {
+        record.addedNodes.forEach(observe);
+        record.removedNodes.forEach((node) => {
+          if (!(node instanceof HTMLElement) || !node.dataset.run) return;
+          observer.unobserve(node);
+          removed = visible.delete(node.dataset.run) || removed;
+        });
+      }
+      if (removed) publish();
+    });
     mutations.observe(sections, { childList: true });
     return () => {
       observer.disconnect();
       mutations.disconnect();
     };
-  }, [scroller, keys, topGap]);
+  }, [scroller, topGap]);
   return inView;
 }
 

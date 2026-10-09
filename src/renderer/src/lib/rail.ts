@@ -1,5 +1,6 @@
 // Turn rail model (Codex's "user message navigation rail"): one marker per message you sent, with a
 // hover preview of that turn's answer.
+import type { UserMessage } from "../../../shared/protocol";
 import type { SessionState } from "../../../shared/session-state";
 import { type TurnOutline, turnLabel } from "../../../shared/turn-outline";
 import { deriveRuns, layoutRun, type Run } from "./view";
@@ -11,8 +12,8 @@ export interface RailItem {
   at: number;
   /** Your message on one line. */
   label: string;
-  /** The final answer's markdown, an error or "Interrupted"; empty while there is none yet. */
-  preview: string;
+  /** The loaded turn, for `railPreview`: its preview is built when a card or list shows it, not per streamed delta. */
+  run?: Run;
   /** A turn on a page the client has not loaded: its preview comes from the host when the card shows. */
   loadPreview?: () => Promise<string>;
   live: boolean;
@@ -22,18 +23,43 @@ export interface RailItem {
 export const RAIL_MIN_ITEMS = 4;
 
 const cache = new WeakMap<Run, RailItem>();
+const labels = new WeakMap<UserMessage, string>();
+const previews = new WeakMap<Run, string>();
 
-/** Runs stay the same objects while unchanged (createRunDeriver), so only the live one is rebuilt. */
+/**
+ * Runs stay the same objects while unchanged (createRunDeriver), so only the live one gets a new item; its message
+ * keeps its label, and its preview waits for `railPreview`.
+ */
 export function railItems(runs: Run[]): RailItem[] {
-  return runs.flatMap((run) => {
-    if (!run.user) return [];
+  const result: RailItem[] = [];
+  for (const run of runs) {
+    if (!run.user) continue;
     let item = cache.get(run);
     if (!item) {
-      item = { key: run.key, at: run.user.message.timestamp, label: turnLabel(run.user.message.content), preview: railPreview(run), live: run.live };
+      const { message } = run.user;
+      let label = labels.get(message);
+      if (label === undefined) {
+        label = turnLabel(message.content);
+        labels.set(message, label);
+      }
+      item = { key: run.key, at: message.timestamp, label, run, live: run.live };
       cache.set(run, item);
     }
-    return [item];
-  });
+    result.push(item);
+  }
+  return result;
+}
+
+/** The final answer's markdown, an error or "Interrupted"; empty while there is none yet or the turn is not loaded. */
+export function railPreview(item: RailItem): string {
+  const { run } = item;
+  if (!run) return "";
+  let preview = previews.get(run);
+  if (preview === undefined) {
+    preview = buildPreview(run);
+    previews.set(run, preview);
+  }
+  return preview;
 }
 
 const outlined = new WeakMap<TurnOutline[], RailItem[]>();
@@ -42,7 +68,7 @@ const outlined = new WeakMap<TurnOutline[], RailItem[]>();
 export function outlineItems(outline: TurnOutline[], preview?: (index: number) => Promise<string>): RailItem[] {
   let items = outlined.get(outline);
   if (!items) {
-    items = outline.map((turn, index) => ({ key: turn.key, at: turn.at, label: turn.label, preview: "", loadPreview: preview && (() => preview(index)), live: false }));
+    items = outline.map((turn, index) => ({ key: turn.key, at: turn.at, label: turn.label, loadPreview: preview && (() => preview(index)), live: false }));
     outlined.set(outline, items);
   }
   return items;
@@ -51,15 +77,25 @@ export function outlineItems(outline: TurnOutline[], preview?: (index: number) =
 /** The preview of the turn a one-turn page holds (`pageSession(handle, index + 1, 1)`). */
 export function pagePreview(page: Pick<SessionState, "items">): string {
   const run = deriveRuns({ ...page, running: false }).findLast((candidate) => candidate.user);
-  return run ? railPreview(run) : "";
+  return run ? buildPreview(run) : "";
 }
 
-function railPreview(run: Run): string {
+function buildPreview(run: Run): string {
   const { final } = layoutRun(run);
   const text = final.flatMap((block) =>
     block.kind === "text" || block.kind === "error" ? [block.text] : block.kind === "aborted" ? ["*Interrupted*"] : [],
   );
   return text.join("\n\n").trim();
+}
+
+/** Whether two rails draw the same markers: a streamed delta only replaces the live turn's item. */
+export function sameMarkers(a: RailItem[], b: RailItem[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index++) {
+    if (a[index]!.key !== b[index]!.key || a[index]!.at !== b[index]!.at) return false;
+  }
+  return true;
 }
 
 /** Distance from the hovered or scrubbed marker, for the dock-style magnification (0-3, else none). */

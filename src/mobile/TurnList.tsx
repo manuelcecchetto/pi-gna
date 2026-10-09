@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { useStore } from "../renderer/src/lib/store";
 import { markdownText } from "../shared/markdown-text";
 import type { TurnNav } from "../renderer/src/components/Transcript";
+import { railPreview } from "../renderer/src/lib/rail";
 import type { HostClient } from "./client/host-client";
 import { Sheet } from "./Sheets";
 import { toast } from "./toasts";
@@ -48,31 +49,35 @@ export function TurnList({ client, nav, slot }: { client: HostClient; nav: TurnN
           )}
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             {rows.length === 0 && <div className="px-3 py-4 text-[13.5px] text-faint">No bookmarked turns.</div>}
-            {rows.map((item) => (
-              <div key={item.key} className="flex items-center">
-                <button
-                  type="button"
-                  data-testid="turn-row"
-                  onClick={() => {
-                    setOpen(false);
-                    void nav.jump(item.key);
-                  }}
-                  className="flex min-h-12 min-w-0 flex-1 flex-col justify-center rounded-xl px-3 text-left active:bg-raised"
-                >
-                  <span className="truncate text-[14.5px] text-fg">{item.label}</span>
-                  {item.preview && <span className="truncate text-[12px] text-faint">{markdownText(item.preview).slice(0, 120)}</span>}
-                </button>
-                <button
-                  type="button"
-                  aria-label={marked.has(item.at) ? "Remove bookmark" : "Bookmark"}
-                  aria-pressed={marked.has(item.at)}
-                  onClick={() => toggle(item.at)}
-                  className={`grid h-12 w-12 shrink-0 place-items-center ${marked.has(item.at) ? "text-warn" : "text-faint"}`}
-                >
-                  <Star size={17} fill={marked.has(item.at) ? "currentColor" : "none"} />
-                </button>
-              </div>
-            ))}
+            {rows.map((item) => {
+              // Built only while the sheet is open.
+              const preview = railPreview(item);
+              return (
+                <div key={item.key} className="flex items-center">
+                  <button
+                    type="button"
+                    data-testid="turn-row"
+                    onClick={() => {
+                      setOpen(false);
+                      void nav.jump(item.key);
+                    }}
+                    className="flex min-h-12 min-w-0 flex-1 flex-col justify-center rounded-xl px-3 text-left active:bg-raised"
+                  >
+                    <span className="truncate text-[14.5px] text-fg">{item.label}</span>
+                    {preview && <span className="truncate text-[12px] text-faint">{markdownText(preview).slice(0, 120)}</span>}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={marked.has(item.at) ? "Remove bookmark" : "Bookmark"}
+                    aria-pressed={marked.has(item.at)}
+                    onClick={() => toggle(item.at)}
+                    className={`grid h-12 w-12 shrink-0 place-items-center ${marked.has(item.at) ? "text-warn" : "text-faint"}`}
+                  >
+                    <Star size={17} fill={marked.has(item.at) ? "currentColor" : "none"} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </Sheet>
       )}

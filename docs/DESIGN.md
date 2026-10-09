@@ -1080,7 +1080,11 @@ Verified live (pi 1.0.0, Oct 2026):
   bubble; dragging scrubs instantly; ⌥↑/⌥↓ jump to the start of the current/previous or the next message
   (`adjacentTurn`; left to the caret while a text field has text). Turns on earlier pages are rendered first
   (`reveal`); the desktop also shows the turns the host has not sent yet (`outlineItems`), and a jump to one pages it
-  in. Turns paged in from the host stay rendered (the transcript's limit grows by them). Bookmarks are app-only state kept by the host (`ui-state.json`, `src/shared/ui-state.ts`), per session file, keyed by the message
+  in. Turns paged in from the host stay rendered (the transcript's limit grows by them). While an answer streams the
+  rail does no work: a card's preview is built only when the card (or the phone's turn list) shows it
+  (`railPreview`, kept per run), the lines render apart from the rail (`Markers`) and skip a delta that only replaced
+  the live turn's item (`sameMarkers`), and the on-screen observers watch sections as they are added instead of
+  starting over on each new turn. Bookmarks are app-only state kept by the host (`ui-state.json`, `src/shared/ui-state.ts`), per session file, keyed by the message
   timestamp because item keys change on every load.
 - Markdown: GFM via marked + DOMPurify, shiki highlighting, task lists rendered as styled boxes (the sanitizer
   strips `<input>`). `Markdown.tsx` renders a finished text whole (one sanitize call, remembered by text so a chat opened
