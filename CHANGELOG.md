@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
+
 ## 0.13.0 - 2026-10-10
 
 - Settings > Plugins and Setup's Superpowers step offer the recommended setup, the one pi-gna is made with, in one click: web access, image generation, fast fuzzy file search and subagents, codemode on, and a global AGENTS.md of good working habits. It only adds what is missing and never changes a choice you made. Subagents of a Claude chat run on Sonnet and those of an OpenAI chat on Luna, unless you pick a model. The Claude Code bridge is in the catalog too, to use a Claude subscription in pi.
