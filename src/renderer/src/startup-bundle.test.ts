@@ -69,6 +69,8 @@ describe("the startup bundle", () => {
       "components/Remote.tsx",
       "components/Settings.tsx",
       "components/Setup.tsx",
+      "components/Usage.tsx",
+      "lib/usage-filters.ts",
       "lib/provider-logos.ts",
       "qrcode-generator",
     ];

@@ -37,6 +37,10 @@ const faqs = [
     a: 'pi-gna has no server, no account and no telemetry. Your prompts go to your model provider through pi, exactly as they do in the terminal, pi-gna checks GitHub for updates, and it asks Google’s favicon service for the icon of each public site linked in an answer (the site’s address only, no cookies, never local or private hosts).',
   },
   {
+    q: 'Where do the Usage numbers come from?',
+    a: 'Settings › Usage reads pi’s session files on this Mac, the ones pi writes, plus pi-gna’s ATP sessions, and works everything out locally: no price list or other data is fetched. Costs are **estimates at list price**, what the same tokens would cost on the provider’s API. They are not your bill: a Claude plan is paid as a subscription, so its cost is an equivalent, not a charge. The cache holds counts and session details, never message text.',
+  },
+  {
     q: 'Can pi click around my Mac without asking?',
     a: 'Computer Use is off by default. When it is on, you approve each app (once or always), terminals, pi-gna and system security prompts are always off limits, and **Esc** stops it. pi uses a cursor of its own, never your mouse.',
   },

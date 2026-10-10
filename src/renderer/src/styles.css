@@ -32,6 +32,18 @@
   color-scheme: dark;
 }
 
+/* Category colours for charts (components/Charts.tsx), derived from the theme's own variables: a project palette recolours them. */
+:root {
+  --chart-1: var(--accent);
+  --chart-2: var(--ok);
+  --chart-3: var(--warn);
+  --chart-4: color-mix(in srgb, var(--secondary) 70%, var(--fg));
+  --chart-5: color-mix(in srgb, var(--highlight) 60%, var(--ok));
+  --chart-6: color-mix(in srgb, var(--bad) 55%, var(--accent));
+  --chart-7: var(--muted);
+  --chart-8: var(--bad);
+}
+
 @media (prefers-color-scheme: light) {
   :root:not([data-theme-mode]) {
     --canvas: #fcfcfb;
