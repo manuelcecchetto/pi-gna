@@ -164,11 +164,18 @@ export interface ModelRates {
   cacheWrite: number;
 }
 
+export interface PriceTier {
+  /** The turn's input (input + cacheRead + cacheWrite) must exceed this for the tier's rates to apply. */
+  inputTokensAbove: number;
+  rates: ModelRates;
+}
+
 export interface PriceEntry {
   provider: string;
   model: string;
   rates: ModelRates;
-  tier?: { inputTokensAbove: number; rates: ModelRates };
+  /** Empty when the model has no tier. */
+  tiers: PriceTier[];
 }
 
 export interface PriceTable {

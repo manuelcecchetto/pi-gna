@@ -1015,7 +1015,8 @@ category, and a session name is shown as plain text. Measurements below were tak
 Files (the node that builds each one is in brackets; the shapes are in `src/shared/usage.ts`):
 
 - `src/shared/usage.ts`: the shapes and constants, with `usage.test.ts` for their invariants [T01].
-- `src/shared/usage-prices.ts`: the price table snapshot and its lookup [T03].
+- `src/main/usage-pricing.ts`: the price table from pi's installed pi-ai data and the user's `models.json`, cached until either changes [T03].
+- `src/shared/usage-prices.ts`: the price index, the lookup order and `costOf` (pure) [T03].
 - `src/main/usage-extract.ts`: one session file to `FileUsageFacts`, streamed line by line [T02].
 - `src/main/usage-classify.ts`: root, surface, `pigna` flag and project key [T04].
 - `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
@@ -1118,20 +1119,27 @@ Two numbers, never summed into one:
 - **Estimated**: an API-equivalent at list price, computed at query time from the buckets and the price table. Labelled
   "estimate, list price"; for claude-bridge it is what the tokens would cost on the API, not a bill.
 
-Prices (T03): a snapshot of pi-ai's table from pi's installed bundle (`@earendil-works/pi-coding-agent/dist/bundle/chunks/*.js`,
-`cost:{input,output,cacheRead,cacheWrite}` in USD per million tokens), vendored into `src/shared/usage-prices.ts` with its
-`asOf`. It is not read at runtime: the bundle path is pi's internal layout, and the Lean principle rules out depending on
-pi. Examples from the table: anthropic `claude-opus-5-5` 4 / 20 / 0.2 / 5; `claude-sonnet-5-5` 2 / 10 / 0.2 / 2.5;
-`claude-haiku-4-5` 1 / 5 / 0.1 / 1.25; openai-codex `gpt-5.5` 5 / 30 / 0.5 / 0 with a tier above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
+Prices (T03): `src/main/usage-pricing.ts` reads pi's installed pi-ai data (`dist/providers/data/*.json` of
+`@earendil-works/pi-ai`, found from pi's package the way PiAuth finds it, or hoisted beside it) and the user's `models.json`
+(`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). It applies `models.json` the way pi does: a `models` entry replaces a model's
+cost, and `modelOverrides` merge per field. The table is cached until either file changes, so a pi upgrade changes the
+estimates without a pi-gna release. No pi install gives an empty table. Nothing is fetched, and nothing is vendored.
+Examples (pi-ai 1.0.4, 1,616 entries, USD per million): anthropic `claude-opus-5-5` 4 / 20 / 0.2 / 5; `claude-sonnet-5-5`
+2 / 10 / 0.1 / 2.5 (pi-ai has cacheRead 0.2; `models.json` overrides it); openai-codex `gpt-5.5` 5 / 30 / 0.5 / 0 with a tier
+above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
 
-- **Lookup**: `PRICE_PROVIDER_ALIASES` first (`claude-bridge` to `anthropic`), then `provider/model`. No match: unpriced.
-- **Unpriced**: `claude-haiku-5-5` (missing from pi-ai's table; pi-claude-bridge's local patch adds the id with zero cost;
-  166 turns, all time), `dynamic3_3090` (local models), and any new id. Unpriced turns are counted and shown, never guessed.
-- **Tiers**: pi-ai's `calculateCost` takes the highest tier whose `inputTokensAbove` the turn's input exceeds, and prices
-  the whole turn at its rates. The facts keep `tierTokens` (turns above `CONTEXT_TIER_EDGE`), so tier pricing is exact at
-  query time with no re-read. The table has one edge, 272,000; T03's test fails if another appears, and that bumps `USAGE_FACTS_VERSION`.
-- **Cache writes**: sessions carry no one-hour split, so every `cacheWrite` takes the `cacheWrite` rate. A hypothesis to
-  check against pi-ai's `cacheWrite1h` handling in T03.
+- **Lookup** (`src/shared/usage-prices.ts`): the exact provider and model; then `PRICE_PROVIDER_ALIASES` (`claude-bridge` to
+  `anthropic`); then the model id under any provider, the first in table order. No match: unpriced.
+- **Unpriced**: any id with no entry, such as `haiku-5.5-bridge`. `claude-haiku-5-5` is not in pi-ai; the user's
+  `models.json` prices it under `anthropic` (0.1 / 0.5, a tier above 100k), so it is priced. `dynamic3_3090`'s
+  `qwen3.8-27b-dynamic3` is priced at zero, as `models.json` says. A `models` entry without `cost` is skipped (pi would
+  price it at zero). Unpriced turns are counted and shown, never guessed.
+- **Tiers**: `costOf(usage, price)` applies pi-ai's rule per turn: the tier is the highest one whose `inputTokensAbove` is
+  below the turn's input (input + cacheRead + cacheWrite), and the whole turn is priced at its rates. The real table has
+  three edges: 100,000 (`models.json` haiku), 200,000 (xAI and GitHub Copilot grok, GitHub Copilot gpt-5.6-luna) and
+  272,000. The facts keep only `tierTokens` above 272,000, so they cannot price the other two edges; see Open items.
+- **Cache writes**: no session carries a `cacheWrite1h` field (checked on all 1,428 files), so every `cacheWrite` takes the
+  `cacheWrite` rate. pi-ai charges one-hour writes at twice the input rate; that is not modelled, because no session has the split.
 - **Not modelled**: fast-mode service tiers (`pi-openai-fast-mode` is installed; its billing is unverified), subscription
   limits and plan prices.
 
@@ -1215,7 +1223,7 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
 | node | builds | reads |
 | --- | --- | --- |
 | T02 extract | `usage-extract.ts` | Per-file facts |
-| T03 pricing | `usage-prices.ts` | Cost model |
+| T03 pricing | `usage-pricing.ts`, `usage-prices.ts` | Cost model |
 | T04 classify | `usage-classify.ts` | Sources and surfaces |
 | T05 index | `usage-index.ts`, worker | Per-file facts (cache), Performance budget |
 | T06 report core | `usage-report.ts` | Report API; metrics for totals, days, weekHour, models, projects, sessions |
@@ -1236,7 +1244,9 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
   written by pi-gna's extension would settle it; that is a later change, not v1.
 - **ATP orchestrator**: its first message is not known yet; T04 checks it before the surface is claimed.
 - **Tool durations** are upper bounds for parallel calls (see Per-file facts).
-- **claude-haiku-5-5** stays unpriced until pi-ai lists it; no rate is guessed.
+- **Tier edges**: the real table has tiers at 100,000, 200,000 and 272,000 (Cost model). The facts keep tokens only above
+  272,000, so a turn between 100k and 272k is priced wrong. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps
+  `USAGE_FACTS_VERSION` and changes `UsageBucket`. Decide before T02 and T05.
 - **Cache-write rate**: the 5-minute rate is assumed for every write (see Cost model).
 - **Heuristics**: surfaces and the insight thresholds are first guesses. T09 and T17 check them against the real data.
 
