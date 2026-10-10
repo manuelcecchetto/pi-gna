@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import { HostError } from "../shared/host-api";
 import { type PriceTable, type SourceRoot, USAGE_RANGES, type UsageProgress, type UsageQuery, type UsageRange, type UsageReport, type UsageSource } from "../shared/usage";
 import { buildReport } from "../shared/usage-report";
+import { log } from "./log";
 import { type Extractor, UsageIndex } from "./usage-index";
 import { loadPriceTable } from "./usage-pricing";
 
@@ -11,6 +12,10 @@ const DAY_MS = 86_400_000;
 /** A custom range is cut into days, so it is bounded; eleven years covers the sessions on disk. */
 const MAX_CUSTOM_DAYS = 4000;
 const PROGRESS_INTERVAL_MS = 250;
+/** A settled run's file is read once no other settle has come for this long, so a burst of runs is read once. */
+const CHANGE_SETTLE_MS = 1000;
+/** `usage.changed` goes out at most this often; the last change is always announced, late if need be. */
+const CHANGED_INTERVAL_MS = 10_000;
 const MAX_TEXT = 1024;
 
 const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
@@ -23,8 +28,11 @@ export interface UsageServiceOptions {
   openExtractor: () => Extractor;
   concurrency: number;
   publish: (progress: UsageProgress) => void;
+  changed: () => void;
   prices?: () => PriceTable;
   now?: () => number;
+  settleMs?: number;
+  changedIntervalMs?: number;
 }
 
 export class UsageService {
@@ -32,6 +40,11 @@ export class UsageService {
   private indexed: Promise<void> | undefined;
   private scanning: Promise<void> | undefined;
   private lastPublished = 0;
+  private warm = false;
+  private readonly changedFiles = new Set<string>();
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
+  private announceTimer: ReturnType<typeof setTimeout> | undefined;
+  private lastAnnounced = Number.NEGATIVE_INFINITY;
 
   constructor(private readonly options: UsageServiceOptions) {
     this.index = new UsageIndex({ roots: options.roots, file: options.file, openExtractor: options.openExtractor, concurrency: options.concurrency });
@@ -49,6 +62,19 @@ export class UsageService {
   /** Reads the files that changed since the last scan; the others come from the cache. */
   refresh(): Promise<void> {
     return this.scan();
+  }
+
+  /**
+   * A settled run wrote its session file. Nothing runs until a scan has been asked for: the first scan reads every file then.
+   * After that, the file is read once the settles of its burst have stopped, and the clients are told (`usage.changed`).
+   */
+  sessionChanged(path: string): void {
+    if (!this.warm && !this.scanning) return;
+    this.changedFiles.add(path);
+    clearTimeout(this.settleTimer);
+    this.settleTimer = setTimeout(() => {
+      this.applyChanges().catch((error: Error) => log.warn("usage", `refresh failed: ${error.message}`));
+    }, this.options.settleMs ?? CHANGE_SETTLE_MS);
   }
 
   private ready(): Promise<void> {
@@ -74,6 +100,7 @@ export class UsageService {
       await this.index.ensureIndexed((progress) =>
         this.publish({ phase: "index", done: progress.done, total: progress.total, bytes: progress.bytes, totalBytes: progress.totalBytes }),
       );
+      this.warm = true;
     } finally {
       const total = this.index.discovered();
       this.publish({ phase: "done", done: total, total }, true);
@@ -85,6 +112,32 @@ export class UsageService {
     if (!force && now - this.lastPublished < PROGRESS_INTERVAL_MS) return;
     this.lastPublished = now;
     this.options.publish(progress);
+  }
+
+  private async applyChanges(): Promise<void> {
+    this.settleTimer = undefined;
+    const paths = [...this.changedFiles];
+    this.changedFiles.clear();
+    for (const path of paths) await this.index.refreshFile(path);
+    this.announceChange();
+  }
+
+  private announceChange(): void {
+    if (this.announceTimer) return;
+    const wait = this.lastAnnounced + (this.options.changedIntervalMs ?? CHANGED_INTERVAL_MS) - Date.now();
+    if (wait <= 0) {
+      this.emitChanged();
+      return;
+    }
+    this.announceTimer = setTimeout(() => {
+      this.announceTimer = undefined;
+      this.emitChanged();
+    }, wait);
+  }
+
+  private emitChanged(): void {
+    this.lastAnnounced = Date.now();
+    this.options.changed();
   }
 }
 

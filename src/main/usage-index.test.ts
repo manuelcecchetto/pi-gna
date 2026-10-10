@@ -259,19 +259,23 @@ describe("UsageIndex", () => {
     expect(index.allFacts().map((f) => f.session.id)).toEqual(["sess-y"]);
   });
 
-  it("refreshes one file after it settles without a full scan", async () => {
+  it("refreshFile reads only the appended bytes, and the cache keeps them", async () => {
     const path = join(sessions, "proj", "a.jsonl");
     await put(path, join_(chatLines("sess-a", 1)), T0);
-    const index = open([]);
+    const calls: Call[] = [];
+    const index = open(calls);
     await index.ensureIndexed();
+    calls.length = 0;
 
     await appendFile(path, join_(turnLines(T0 + 10_000, 1)));
-    await utimes(path, new Date(T0 + 20_000), new Date(T0 + 20_000));
-    const calls: Call[] = [];
-    const refreshed = open(calls);
-    await refreshed.ensureIndexed();
-    await refreshed.refreshFile(path);
+    await index.refreshFile(path);
     expect(calls).toEqual([{ path, resumed: true }]);
-    expect(refreshed.allFacts()[0]?.prompts.count).toBe(2);
+    expect(index.allFacts()[0]?.prompts.count).toBe(2);
+
+    const reopened: Call[] = [];
+    const again = open(reopened);
+    await again.ensureIndexed();
+    expect(reopened).toEqual([]);
+    expect(again.allFacts()[0]?.prompts.count).toBe(2);
   });
 });

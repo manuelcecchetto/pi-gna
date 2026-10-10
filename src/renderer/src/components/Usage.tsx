@@ -64,6 +64,7 @@ export function UsageSection() {
 
   useEffect(() => saveUsageFilters(filters), [filters]);
   useEffect(() => window.studio.usage.onProgress((next) => setProgress(next.phase === "done" ? undefined : next)), []);
+  useEffect(() => window.studio.usage.onChanged(() => setReload((count) => count + 1)), []);
 
   const update = (patch: Partial<UsageFilters>) => setFilters((previous) => ({ ...previous, ...patch }));
   const refresh = () => {

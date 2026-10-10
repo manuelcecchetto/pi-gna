@@ -1174,6 +1174,14 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
 - `meta.files` is the session files found on disk (both roots); `meta.indexedFiles` is the ones the report's source covers, so
   for `pigna` it is lower than `files` even when everything is indexed.
 - `usage.progress` event (`UsageProgress`): `scan` while listing, `index` with done/total and bytes/totalBytes, `done`. At most every 250 ms.
+- Live refresh (T15): a settled run calls `UsageService.sessionChanged(path)`. Nothing runs until a report or `usage.refresh`
+  has asked for the index (the first scan then reads every file, so an unopened section costs nothing, not even a stat). After
+  that the settled file is read again with `refreshFile` (incremental: only the appended bytes) once no other settle has come
+  for 1 s, and the cache is saved then. Then `usage.changed` goes out on the global topic and the desktop as `usageChanged`, at
+  most every 10 s; the last change is always announced, late if needed. The open section re-queries on it. The index is kept
+  current whether or not the section is open.
+  Only the settled session's own file is refreshed: a subagent's file (under `<session>/tasks/`) is read at the next full scan
+  (Refresh, or a launch's first report), not at its parent's settle.
 - Ranges: `7d`, `14d`, `30d`, `90d` are the last N local days from the start of that day; `all` is from the first bucket;
   `{ from, to }` in epoch ms for anything else.
 - Local time is applied at query time: each hour bucket becomes a day, weekday and hour in `timeZone` (`Intl.DateTimeFormat`,

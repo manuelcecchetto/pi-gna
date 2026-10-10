@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -59,7 +59,16 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-function service(options: { piDirs?: Promise<void>; calls?: string[]; events?: UsageProgress[] } = {}): UsageService {
+interface ServiceOptions {
+  piDirs?: Promise<void>;
+  calls?: string[];
+  events?: UsageProgress[];
+  changes?: number[];
+  settleMs?: number;
+  changedIntervalMs?: number;
+}
+
+function service(options: ServiceOptions = {}): UsageService {
   return new UsageService({
     roots: () => ({ sessions, atp }),
     piDirs: options.piDirs ?? Promise.resolve(),
@@ -67,8 +76,11 @@ function service(options: { piDirs?: Promise<void>; calls?: string[]; events?: U
     openExtractor: () => spy(options.calls ?? []),
     concurrency: 2,
     publish: (progress) => options.events?.push(progress),
+    changed: () => options.changes?.push(Date.now()),
     prices: () => PRICES,
     now: () => NOW,
+    settleMs: options.settleMs,
+    changedIntervalMs: options.changedIntervalMs,
   });
 }
 
@@ -200,5 +212,61 @@ describe("UsageService", () => {
     expect(indexing.length).toBeLessThan(20);
     expect(events[0]).toEqual({ phase: "scan", done: 0, total: 0 });
     expect(events.at(-1)).toEqual({ phase: "done", done: 20, total: 20 });
+  });
+});
+
+/** The turn lines of a chat without its header: what pi appends to a running session. */
+const appended = (text: string) => text.slice(text.indexOf("\n") + 1);
+
+async function until(check: () => boolean): Promise<void> {
+  const start = Date.now();
+  while (!check()) {
+    if (Date.now() - start > 3000) throw new Error("timed out waiting for the index");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+describe("UsageService live refresh", () => {
+  it("reads nothing for a settled run before a report has asked for the index", async () => {
+    const path = join(sessions, "app", "a.jsonl");
+    await writeFile(path, chat("a"));
+    const calls: string[] = [];
+    const changes: number[] = [];
+    const svc = service({ calls, changes, settleMs: 5 });
+    svc.sessionChanged(path);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toEqual([]);
+    expect(changes).toEqual([]);
+  });
+
+  it("reads a settled file once per burst, and the totals include its new turns", async () => {
+    const path = join(sessions, "app", "a.jsonl");
+    await writeFile(path, chat("a", { turns: 2 }));
+    const calls: string[] = [];
+    const changes: number[] = [];
+    const svc = service({ calls, changes, settleMs: 5 });
+    expect((await svc.get({ range: "30d", source: "all" })).totals.turns).toBe(2);
+    await appendFile(path, appended(chat("a", { turns: 1 })));
+    for (let i = 0; i < 5; i++) svc.sessionChanged(path);
+    await until(() => changes.length === 1);
+    expect(calls).toHaveLength(2);
+    expect((await svc.get({ range: "30d", source: "all" })).totals.turns).toBe(3);
+  });
+
+  it("announces changes at most once per interval, and always the last one", async () => {
+    const path = join(sessions, "app", "a.jsonl");
+    await writeFile(path, chat("a", { turns: 1 }));
+    const changes: number[] = [];
+    const svc = service({ changes, settleMs: 5, changedIntervalMs: 300 });
+    await svc.get({ range: "30d", source: "all" });
+    await appendFile(path, appended(chat("a", { turns: 1 })));
+    svc.sessionChanged(path);
+    await until(() => changes.length === 1);
+    await appendFile(path, appended(chat("a", { turns: 1 })));
+    svc.sessionChanged(path);
+    await until(() => changes.length === 2);
+    const [first = 0, second = 0] = changes;
+    expect(second - first).toBeGreaterThanOrEqual(290);
+    expect((await svc.get({ range: "30d", source: "all" })).totals.turns).toBe(3);
   });
 });

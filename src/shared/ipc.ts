@@ -109,6 +109,7 @@ export const IPC = {
   usageGet: "usage:get",
   usageRefresh: "usage:refresh",
   usageProgress: "usage:progress",
+  usageChanged: "usage:changed",
   uiGet: "ui:get",
   uiApply: "ui:apply",
   uiChanged: "ui:changed",
@@ -229,6 +230,8 @@ export interface UsageApi {
   refresh(): Promise<void>;
   /** Index progress while the report reads the files; the last one has phase "done". */
   onProgress(listener: (progress: UsageProgress) => void): () => void;
+  /** A settled run changed the index (throttled); a report read after it is newer. */
+  onChanged(listener: () => void): () => void;
 }
 
 /** pi's provider logins, which main runs with pi's own SDK (src/main/pi-auth.ts). One login at a time. */

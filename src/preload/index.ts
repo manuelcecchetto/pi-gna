@@ -154,6 +154,7 @@ const api: StudioApi = {
     get: (query) => ipcRenderer.invoke(IPC.usageGet, query),
     refresh: () => ipcRenderer.invoke(IPC.usageRefresh),
     onProgress: (listener) => subscribe<UsageProgress>(IPC.usageProgress, listener),
+    onChanged: (listener) => subscribe<void>(IPC.usageChanged, listener),
   },
   settings: {
     get: () => ipcRenderer.invoke(IPC.settingsGet),

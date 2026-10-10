@@ -156,7 +156,9 @@ export type GlobalEvent =
   | { kind: "devices"; devices: DeviceInfo[] }
   | { kind: "remote"; status: RemoteStatus }
   /** Index progress while the usage report reads the session files; at most every 250 ms, and the last one is phase "done". */
-  | { kind: "usage.progress"; progress: UsageProgress };
+  | { kind: "usage.progress"; progress: UsageProgress }
+  /** A settled run's session file was read into the usage index (at most every 10 s): an open Usage section asks again. */
+  | { kind: "usage.changed" };
 
 /** A store value with its revision (incremented on every applied change; files without one load as 0). */
 export type Revved<T> = T & { rev: number };
