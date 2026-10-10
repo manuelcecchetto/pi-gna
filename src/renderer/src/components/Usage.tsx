@@ -172,7 +172,7 @@ function Report({ report, pending, onProject }: { report: UsageReport; pending: 
     );
   }
   return (
-    <div className={`grid gap-4 transition-opacity md:grid-cols-2 ${pending ? "opacity-60" : ""}`} aria-busy={pending}>
+    <div className={`grid grid-cols-1 gap-4 transition-opacity md:grid-cols-2 ${pending ? "opacity-60" : ""}`} aria-busy={pending}>
       <div className="md:col-span-2">
         <OverviewPanel report={report} />
       </div>
