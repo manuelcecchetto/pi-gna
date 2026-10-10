@@ -230,6 +230,8 @@ export interface UiState {
   hidden: string[];
   /** Per session file: the timestamps of the bookmarked messages. */
   bookmarks: Record<string, number[]>;
+  /** Pinned models as `provider/id`, in order: they sort to the top of the model menus (src/shared/model-pins.ts). */
+  models: string[];
 }
 
 /** Who is calling a host method: the desktop window (trusted) or a paired device. */

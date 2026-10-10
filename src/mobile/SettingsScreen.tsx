@@ -10,6 +10,7 @@ import type { Permissions } from "../shared/computer";
 import { deniedApps } from "../shared/computer";
 import type { DeviceInfo, RemoteStatus } from "../shared/host-api";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../shared/pi-settings";
+import { pinnedFirst } from "../shared/model-pins";
 import type { Model, ThinkingLevel } from "../shared/protocol";
 import {
   type Feature,
@@ -319,7 +320,9 @@ function ModelPick({ title, models, value, onPick, onReset, about, unset }: { ti
 
 function ModelsSection({ client, pi }: { client: HostClient; pi: Pi }) {
   const { settings, apply } = useHostSettings(client);
-  const models = useModels(client);
+  const listed = useModels(client);
+  const pins = useStore(client.store, (s) => s.global.ui?.models);
+  const models = useMemo(() => listed && pinnedFirst(listed, pins ?? []), [listed, pins]);
   const tasks = TASKS.filter((task) => {
     const feature = TASK_INFO[task].feature;
     return !feature || settings.features[feature];

@@ -1,4 +1,4 @@
-import { ArrowUp, Brain, Check, ChevronDown, Cpu, FileText, Folder, MessageSquare, Plus, Square, SquareKanban, X, Zap } from "./icons";
+import { ArrowUp, Brain, Check, ChevronDown, Cpu, FileText, Folder, MessageSquare, Pin, PinOff, Plus, Square, SquareKanban, X, Zap } from "./icons";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
@@ -9,6 +9,8 @@ import { fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
 import { desktopLinks, previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
 import { fastApplies, isFast, modelChipLabel, sharedNames } from "../../../shared/fast";
+import { modelKey, pinnedFirst } from "../../../shared/model-pins";
+import { toggleModelPin, usePinnedModels } from "../lib/model-pins";
 import type { SessionState } from "../../../shared/session-state";
 import {
   attachFiles,
@@ -417,7 +419,9 @@ function SessionTokenRate({ handle, running }: { handle: string; running: boolea
  * mode is on; the menu searches models, slides the level and switches fast mode (GPT models only).
  */
 function ModelMenu({ session }: { session: Pick<ComposerSession, "handle" | "phase" | "model" | "modelRef" | "thinkingLevel" | "fast"> }) {
-  const models = useApp((state) => state.models);
+  const all = useApp((state) => state.models);
+  const pins = usePinnedModels();
+  const models = useMemo(() => pinnedFirst(all, pins), [all, pins]);
   const levels = useApp((state) => state.levels[session.handle]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -462,20 +466,39 @@ function ModelMenu({ session }: { session: Pick<ComposerSession, "handle" | "pha
         <div className="max-h-64 overflow-y-auto">
           {filtered.map((model) => {
             const active = model.id === session.model?.id && model.provider === session.model?.provider;
+            const pinned = pins.includes(modelKey(model));
             return (
-              <button
-                key={`${model.provider}/${model.id}`}
-                type="button"
-                ref={active && !query ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
-                onClick={() => choose(model)}
-                title={`${model.provider}/${model.id}`}
-                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-raised ${active ? "text-accent" : "text-fg"}`}
-              >
-                <LazyProviderLogo id={model.provider} size={16} />
-                <span className="min-w-0 flex-1 truncate text-[12.5px]">{model.name}</span>
-                {shared.has(model.name) && <span className="shrink-0 font-mono text-[10.5px] text-faint">{model.provider}</span>}
-                {active && <Check size={13} className="shrink-0" />}
-              </button>
+              <div key={modelKey(model)} className="group/model flex items-center rounded-lg hover:bg-raised">
+                <button
+                  type="button"
+                  ref={active && !query ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                  onClick={() => choose(model)}
+                  title={modelKey(model)}
+                  className={`flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left ${active ? "text-accent" : "text-fg"}`}
+                >
+                  <LazyProviderLogo id={model.provider} size={16} />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px]">{model.name}</span>
+                  {shared.has(model.name) && <span className="shrink-0 font-mono text-[10.5px] text-faint">{model.provider}</span>}
+                  {active && <Check size={13} className="shrink-0" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleModelPin(model)}
+                  title={pinned ? "Unpin model" : "Pin model to the top"}
+                  aria-label={pinned ? `Unpin ${model.name}` : `Pin ${model.name}`}
+                  aria-pressed={pinned}
+                  className={`group/pin mx-1 shrink-0 rounded p-1 hover:text-fg ${pinned ? "text-muted" : "text-faint opacity-0 group-hover/model:opacity-100 focus-visible:opacity-100"}`}
+                >
+                  {pinned ? (
+                    <>
+                      <Pin size={12} className="group-hover/pin:hidden" />
+                      <PinOff size={12} className="hidden group-hover/pin:block" />
+                    </>
+                  ) : (
+                    <Pin size={12} />
+                  )}
+                </button>
+              </div>
             );
           })}
         </div>

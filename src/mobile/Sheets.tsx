@@ -1,8 +1,9 @@
 // Bottom sheets for the phone's composer: the generic sheet, and the model sheet (model, thinking, fast mode) on it.
-import { Brain, Check, X, Zap } from "../renderer/src/components/icons";
+import { Brain, Check, Pin, X, Zap } from "../renderer/src/components/icons";
 import { Switch } from "../renderer/src/components/primitives";
 import { LazyProviderLogo } from "../renderer/src/components/LazyProviderLogo";
 import { sharedNames } from "../shared/fast";
+import { modelKey, pinnedFirst } from "../shared/model-pins";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { fuzzyFilter } from "../renderer/src/lib/fuzzy";
 import type { Model, ThinkingLevel } from "../shared/protocol";
@@ -94,35 +95,45 @@ export function Sheet({ title, onClose, children, testId }: { title: string; onC
   );
 }
 
+const NO_PINS: readonly string[] = [];
+
 const row = (active: boolean) => `flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl px-4 text-left active:bg-raised ${active ? "text-accent" : "text-fg"}`;
 
 /**
- * Model, thinking level and fast mode in one sheet, as the desktop's model menu: the list in the middle, the level and
- * the Fast switch (GPT models only) at the bottom, under the thumb. Picking keeps the sheet open to set the rest.
+ * Model, thinking level and fast mode in one sheet, as the desktop's model menu: the list in the middle (pinned models
+ * first), the level and the Fast switch (GPT models only) at the bottom, under the thumb. Picking keeps the sheet open
+ * to set the rest.
  */
 export function ModelSheet({
-  models,
+  models: all,
+  pins = NO_PINS,
   current,
   levels,
   level,
   fast,
   onPick,
+  onPin,
   onLevel,
   onFast,
   onClose,
 }: {
   models: Model[];
+  /** Pinned models as `provider/id` (UiState.models): listed first. */
+  pins?: readonly string[];
   current?: Model;
   levels?: ThinkingLevel[];
   level?: ThinkingLevel;
   /** Fast mode's state, or undefined when the model is not a GPT one. */
   fast?: boolean;
   onPick: (model: Model) => void;
+  /** Pin or unpin a model; without it the rows have no pin button. */
+  onPin?: (model: Model, pinned: boolean) => void;
   onLevel?: (level: ThinkingLevel) => void;
   onFast?: (on: boolean) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const models = useMemo(() => pinnedFirst(all, pins), [all, pins]);
   const filtered = fuzzyFilter(models, query, (m: Model) => `${m.provider}/${m.id} ${m.name}`, 200);
   const shared = useMemo(() => sharedNames(models), [models]);
   return (
@@ -141,17 +152,32 @@ export function ModelSheet({
         {filtered.length === 0 && <div className="px-3 py-4 text-[13.5px] text-faint">{models.length ? "No model matches." : "Loading models…"}</div>}
         {filtered.map((model) => {
           const active = model.id === current?.id && model.provider === current?.provider;
+          const pinned = pins.includes(modelKey(model));
           return (
-            <button key={`${model.provider}/${model.id}`} type="button" onClick={() => onPick(model)} className={row(active)} data-testid="model-option">
-              <span className="flex min-w-0 items-center gap-3">
-                <LazyProviderLogo id={model.provider} size={22} />
-                <span className="min-w-0 truncate text-[15px]">{model.name}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-faint">
-                {shared.has(model.name) && model.provider}
-                {active && <Check size={15} className="text-accent" />}
-              </span>
-            </button>
+            <div key={modelKey(model)} className="flex items-center">
+              <button type="button" onClick={() => onPick(model)} className={row(active)} data-testid="model-option">
+                <span className="flex min-w-0 items-center gap-3">
+                  <LazyProviderLogo id={model.provider} size={22} />
+                  <span className="min-w-0 truncate text-[15px]">{model.name}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-faint">
+                  {shared.has(model.name) && model.provider}
+                  {active && <Check size={15} className="text-accent" />}
+                </span>
+              </button>
+              {onPin && (
+                <button
+                  type="button"
+                  onClick={() => onPin(model, !pinned)}
+                  aria-label={pinned ? `Unpin ${model.name}` : `Pin ${model.name}`}
+                  aria-pressed={pinned}
+                  data-testid="model-pin"
+                  className={`grid size-12 shrink-0 place-items-center rounded-2xl active:bg-raised ${pinned ? "text-accent" : "text-faint"}`}
+                >
+                  <Pin size={16} fill={pinned ? "currentColor" : "none"} />
+                </button>
+              )}
+            </div>
           );
         })}
       </div>

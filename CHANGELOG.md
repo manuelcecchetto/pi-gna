@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Pin models: the pin on a row of the composer's model menu (desktop and phone) keeps that model at the top of the list, on every device. The Settings model pickers list pinned models first too. A pin for a model pi does not list now (a signed-out provider) stays saved and comes back with it.
+
 ## 0.15.1 - 2026-10-10
 
 - Settings > Providers: when Claude Code uses an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` or an `apiKeyHelper`) instead of its own login, the Claude Code card says so and how to fix it: remove the key from your shell profile, then quit and reopen pi-gna. It used to offer Sign out, which reported success and left you signed in, since `claude auth logout` cannot remove such a key.

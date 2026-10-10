@@ -22,6 +22,7 @@ import { AttachmentChips, AttachSheet, HostFilesSheet } from "./Attachments";
 import { ModelSheet } from "./Sheets";
 import { LazyProviderLogo } from "../renderer/src/components/LazyProviderLogo";
 import { fastApplies, isFast, modelChipLabel } from "../shared/fast";
+import { modelKey } from "../shared/model-pins";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 import { toast } from "./toasts";
 import { annotations as phoneAnnotations, useAnnotations } from "./annotations";
@@ -45,6 +46,7 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
   const board = useStore(client.store, (s) => s.global.board);
   const cardTitle = card ? board?.cards.find((other) => other.id === card)?.title : undefined;
   const data = useComposerData(client, reduced);
+  const modelPins = useStore(client.store, (s) => s.global.ui?.models);
   const session = data.session;
   const provider = session.model?.provider ?? session.modelRef?.provider;
   const gpt = fastApplies(provider);
@@ -332,6 +334,10 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
       {sheet === "model" && (
         <ModelSheet
           models={data.models}
+          pins={modelPins}
+          onPin={(model, pin) => {
+            client.call("ui.apply", { op: { type: pin ? "pinModel" : "unpinModel", model: modelKey(model) } }).catch((error) => toast(`Could not pin: ${failure(error)}`, "error"));
+          }}
           current={session.model}
           levels={hasLevels(data.levels) ? data.levels : undefined}
           level={session.thinkingLevel}

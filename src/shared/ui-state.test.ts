@@ -52,11 +52,33 @@ describe("bookmarks", () => {
   });
 });
 
+describe("pinned models", () => {
+  it("pins below the existing ones, ignores repeats and unpins", () => {
+    const state = run([{ type: "pinModel", model: "openai/gpt-5.5" }, { type: "pinModel", model: "anthropic/claude-opus-5-5" }, { type: "pinModel", model: "openai/gpt-5.5" }]);
+    expect(state.models).toEqual(["openai/gpt-5.5", "anthropic/claude-opus-5-5"]);
+    expect(applyUiOp(state, { type: "pinModel", model: "openai/gpt-5.5" })).toBe(state);
+    expect(applyUiOp(state, { type: "unpinModel", model: "openai/gpt-5.5" }).models).toEqual(["anthropic/claude-opus-5-5"]);
+    expect(applyUiOp(state, { type: "unpinModel", model: "x/y" })).toBe(state);
+  });
+  it("rejects a key that is not provider/id", () => {
+    for (const model of ["gpt-5.5", "/gpt", "openai/", "a b/c", ""]) expect(() => applyUiOp(emptyUiState(), { type: "pinModel", model })).toThrow("provider/id");
+  });
+  it("refuses a change it does not know", () => {
+    expect(() => applyUiOp(emptyUiState(), { type: "later" } as unknown as UiOp)).toThrow("Unknown");
+  });
+});
+
 describe("parseUiState", () => {
   it("keeps well-formed entries and counts the rest", () => {
     const { value, dropped } = parseUiState({ pins: ["/a", "/a", 3, "rel"], bookmarks: { "/s": [1, "x", 1, 2], rel: [1], "/t": [] } });
-    expect(value).toEqual({ pins: ["/a"], hidden: [], bookmarks: { "/s": [1, 2] } });
+    expect(value).toEqual({ pins: ["/a"], hidden: [], bookmarks: { "/s": [1, 2] }, models: [] });
     expect(dropped).toBe(5);
+  });
+  it("keeps pinned models keyed provider/id, and reads a file from before them", () => {
+    const { value, dropped } = parseUiState({ models: ["openai/gpt-5.5", "openai/gpt-5.5", "openrouter/anthropic/claude-x", "gpt-5.5", "/x", 4] });
+    expect(value.models).toEqual(["openai/gpt-5.5", "openrouter/anthropic/claude-x"]);
+    expect(dropped).toBe(4);
+    expect(parseUiState({ pins: ["/a"] }).value.models).toEqual([]);
   });
   it("starts empty for anything else", () => {
     expect(parseUiState(null).value).toEqual(emptyUiState());

@@ -75,7 +75,7 @@ await scenario("mobile chat", async (ctx) => {
   check(!(await exists('[data-testid="stop"]')), "the phone no longer offers Stop");
   await until("the context meter after Stop", () => exists('button[aria-label^="Context usage"]'));
   await liveToolChecks({ phone, shot, exists, present });
-  await composerChecks({ phone, A, handle, shot, text, tap, exists, present });
+  await composerChecks({ phone, desktop, A, handle, shot, text, tap, exists, present });
   await reopenChecks({ phone, A, handle, sessionFile: ctx.sessionFile, tap, exists, present });
 });
 
@@ -165,7 +165,7 @@ async function followChecks({ phone, present }) {
 }
 
 /** The phone's composer chrome (T26): model and thinking sheets, commands, mentions, context meter, queue, extension UI. */
-async function composerChecks({ phone, A, handle, shot, text, tap, exists, present }) {
+async function composerChecks({ phone, desktop, A, handle, shot, text, tap, exists, present }) {
   log("mobile composer parity");
   const click = (testId) => phone.eval(`(() => { const e = document.querySelector('[data-testid="${testId}"]'); if (!e) return false; e.click(); return true; })()`);
   const clickText = (testId, label) => phone.eval(`(() => { const e = [...document.querySelectorAll('[data-testid="${testId}"]')].find((x) => x.innerText.includes(${JSON.stringify(label)})); if (!e) return false; e.click(); return true; })()`);
@@ -192,6 +192,19 @@ async function composerChecks({ phone, A, handle, shot, text, tap, exists, prese
   check(!(await exists('[data-testid="thinking-option"]')), "no thinking levels for a model without reasoning");
   check(!(await exists('[data-testid="fast-row"]')), "no fast mode for a model that is not GPT");
   await shot("8-model-sheet");
+  // Pinning a model floats it to the top, kept by the host (ui.models) so every client sorts the same.
+  const firstModel = () => phone.eval(`document.querySelector('[data-testid="model-option"]')?.innerText ?? ''`);
+  check(!(await firstModel()).includes("Fake GPT"), "Fake GPT is not first before it is pinned", await firstModel());
+  check(await phone.eval(`(() => { const row = [...document.querySelectorAll('[data-testid="model-option"]')].find((x) => x.innerText.includes("Fake GPT")); const pin = row?.parentElement.querySelector('[data-testid="model-pin"]'); pin?.click(); return !!pin; })()`), "the phone taps the pin on Fake GPT");
+  await until("the pin on the host", async () => (await A.ok("ui.get")).models.includes("openai/fake-gpt"));
+  await until("Fake GPT at the top", async () => (await firstModel()).includes("Fake GPT"));
+  check(await phone.eval(`document.querySelector('[data-testid="model-pin"]').getAttribute('aria-pressed') === 'true'`), "the top row's pin reads pressed");
+  await shot("8b-model-pinned");
+  // The desktop's model menu reads the same pins.
+  await desktop.eval(`document.querySelector('button[title^="Model, thinking"]').click()`);
+  await until("the desktop's menu with Fake GPT pinned at the top", () => desktop.eval(`(() => { const row = document.querySelector('button[aria-label="Unpin Fake GPT"]')?.parentElement; return !!row && row.parentElement.firstElementChild === row; })()`));
+  check(true, "the desktop's menu shows Fake GPT pinned at the top");
+  await desktop.eval(`document.querySelector('button[title^="Model, thinking"]').click()`);
   check(await clickText("model-option", "Fake Large"), "the sheet lists Fake Large and the phone taps it");
   await until("the new model", async () => (await label("model-chip")).includes("Fake Large"));
   check((await state()).model.id === "fake-large", "the host runs the chosen model");

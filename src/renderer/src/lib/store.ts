@@ -47,9 +47,10 @@ export function createStore<T>(initial: T): Store<T> {
   };
 }
 
-/** Select a stable slice; selectors must return existing references, not new objects. */
+/** Select a stable slice; selectors must return existing references, not new objects. The same read serves server rendering (tests render to strings). */
 export function useStore<T, S>(store: Store<T>, selector: (state: T) => S): S {
-  return useSyncExternalStore(store.subscribe, () => selector(store.snapshot()));
+  const read = () => selector(store.snapshot());
+  return useSyncExternalStore(store.subscribe, read, read);
 }
 
 /**

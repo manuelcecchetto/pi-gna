@@ -1,8 +1,10 @@
 // The controls of the Settings page's sections.
 import { ChevronDown, RotateCcw, TriangleAlert } from "./icons";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { pinnedFirst } from "../../../shared/model-pins";
 import type { Model } from "../../../shared/protocol";
 import { fuzzyFilter } from "../lib/fuzzy";
+import { usePinnedModels } from "../lib/model-pins";
 import { toast, useApp } from "../state/app";
 import { Popover } from "./primitives";
 
@@ -118,7 +120,9 @@ export function Choice<T extends string>({ value, options, mono, onChange }: { v
 
 /** One of the models pi has (state.models, listed once a chat started). */
 export function ModelChoice({ value, unset = "Not set", onChange }: { value?: { provider?: string; id: string }; unset?: string; onChange: (model: Model) => void }) {
-  const models = useApp((state) => state.models);
+  const all = useApp((state) => state.models);
+  const pins = usePinnedModels();
+  const models = useMemo(() => pinnedFirst(all, pins), [all, pins]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const close = useCallback(() => setOpen(false), []);
