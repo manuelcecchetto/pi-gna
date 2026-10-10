@@ -23,6 +23,22 @@ export function formatTokens(count: number): string {
   return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
+const digits = (value: number) => (value < 10 ? String(Number(value.toPrecision(2))) : String(Math.round(value)));
+
+/** "7", "0.25", "13", "999", "1.5k", "1.4M", "2B": at most two significant digits below 10, whole numbers above. */
+export function formatCompact(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
+  for (const [size, unit] of [
+    [1e9, "B"],
+    [1e6, "M"],
+    [1e3, "k"],
+  ] as const) {
+    if (abs >= size * 0.9995) return sign + digits(abs / size) + unit;
+  }
+  return sign + digits(abs);
+}
+
 export function formatCost(dollars: number): string {
   return dollars < 0.01 && dollars > 0 ? "<$0.01" : `$${dollars.toFixed(2)}`;
 }

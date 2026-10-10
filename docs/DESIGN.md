@@ -1183,6 +1183,11 @@ Windows     busiest 5-hour blocks · rate-limit hits in each
 Insights    behaviours at 10% or more of their base, each with a tip (max 6, by share)
 ```
 
+Charts (`components/Charts.tsx`, pure scales in `chart-scale.ts`) are hand-written SVG and CSS. Their colours come only from the theme:
+`--chart-1` to `--chart-8` in styles.css derive from the palette's accent, ok, warn, secondary and bad, so a project theme recolours them.
+`colorScale(keys)` gives the keys of one chart distinct colours and keeps each key's colour while its chart keeps its neighbours. Interactive charts
+(stacked bars, heat grids, split bar) show a tooltip on pointer hover and on keyboard focus (arrow keys).
+
 Definitions:
 
 | metric | definition |
