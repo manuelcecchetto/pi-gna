@@ -1291,8 +1291,13 @@ Verified live (pi 1.0.0, Oct 2026):
   count is estimated from the streamed text, thinking and tool-call argument text (4 characters a token, shown as
   `~`), and `message_end`'s `usage.output` replaces it. Under half a second there is no rate (a response delivered
   in one chunk would read as thousands of tok/s). The readout ticks (500 ms) only while a response streams
-  (`rateMoving`). The last response's rate stays, dimmed, after the run; responses read from a session file have no
-  timings, so they show none.
+  (`rateMoving`). The last response's rate stays, dimmed, after the run. Responses read from a session file are timed
+  from the message's own `timestamp` (pi stamps it when it sends the request) to its entry's (written at
+  `message_end`), so a reopened chat shows its rates too. Hovering it opens a card charting every measured response
+  of the chat (`rateHistory`): when it ended across (pauses over 5 minutes squeezed to a dotted break, so a chat
+  picked up hours later still shows its work), tok/s up, the line and its dots colored red to orange to green at fixed speeds (20, 50, 100 tok/s,
+  not relative to the chart's scale, so a slow model reads red however its responses vary), with the last response's
+  tokens and time and the session average.
 - Compaction visibility: `compaction_start` adds a running transcript record; `compaction_end` updates that
   same keyed record to completed, failed or interrupted. Show one live indicator with elapsed time in the
   chat, including manual compaction outside an agent run; do not repeat it above the composer or beside the

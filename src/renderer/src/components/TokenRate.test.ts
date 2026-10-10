@@ -48,7 +48,6 @@ describe("TokenRate", () => {
     const live = render(play(streamed), 2000);
     expect(live).toContain("~100 tok/s");
     expect(live).toContain("text-muted");
-    expect(live).toContain("Output speed of the response streaming now: ~100 tokens in 1.0s");
     const done = render(play([...streamed, ...ended(2000, 15), [3100, { type: "agent_settled" }]]), 60_000);
     expect(done).toContain("15 tok/s");
     expect(done).not.toContain("~");

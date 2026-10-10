@@ -70,7 +70,8 @@ export type Item =
       /** Argument JSON scanned so far per content index while a tool call streams. */
       partialArgs?: Record<number, StreamingArgs>;
       times?: Record<number, BlockTime>;
-      /** When the response started (`message_start`) and ended (`message_end`), for the tok/s readout. */
+      /** When the response started (`message_start`, or the message's own timestamp read from the session file) and
+       * ended (`message_end`, or its entry's timestamp), for the tok/s readout. */
       span?: { start: number; end?: number };
       /** The runs of this message's tool calls, by call id: a tool update copies this item alone. */
       runs?: Record<string, ToolRun>;
@@ -495,7 +496,9 @@ function messageChange(state: Pick<SessionState, "items">, message: AgentMessage
     case "user":
       return { item: steer ? { kind: "user", message, steer: true } : { kind: "user", message } };
     case "assistant":
-      return { item: { kind: "assistant", message: leanMessage(message), streaming: false } };
+      // Whole (from the session file): pi stamps the message when it sends the request and its entry at
+      // message_end, the same span the live events give.
+      return { item: { kind: "assistant", message: leanMessage(message), streaming: false, ...(at > message.timestamp && { span: { start: message.timestamp, end: at } }) } };
     case "toolResult":
       return {
         tool: message.toolCallId,
@@ -571,7 +574,7 @@ function replaceItem(state: SessionState, index: number, item: Item): SessionSta
 
 function endAssistant(state: SessionState, message: AssistantMessage, now: number): SessionState {
   const index = streamingIndex(state.items);
-  if (index === -1) return pushItem(state, { kind: "assistant", message, streaming: false });
+  if (index === -1) return addMessage(state, message, now); // never started here: as read from the session file
   const item = state.items[index] as AssistantItem;
   const times = { ...item.times };
   for (const key of Object.keys(times)) {

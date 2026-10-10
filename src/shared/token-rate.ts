@@ -21,8 +21,7 @@ export interface ResponseRate {
 
 /**
  * Output tokens per second of one response over its whole request, time to first token included; tool runs fall
- * between responses. Undefined without timings (responses read from a session file), when cut off before it ended,
- * or while too short to tell.
+ * between responses. Undefined without timings, when cut off before it ended, or while too short to tell.
  */
 export function responseRate(item: AssistantItem, now: number): ResponseRate | undefined {
   const span = item.span;
@@ -38,20 +37,32 @@ export function responseRate(item: AssistantItem, now: number): ResponseRate | u
   return { perSecond: tokens / seconds, tokens, seconds, estimated, live: item.streaming };
 }
 
-/**
- * The newest response with a rate: the one streaming, else the last one measured (also after the run). Stops at the
- * newest response read from the session file (no `span`): it and every older one have no timings, so a chat opened
- * from disk is not walked on every frame.
- */
+/** The newest response with a rate: the one streaming, else the last one measured (also after the run). */
 export function latestRate(items: Item[], now: number): ResponseRate | undefined {
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];
     if (item?.kind !== "assistant") continue;
-    if (!item.span) return undefined;
     const rate = responseRate(item, now);
     if (rate) return rate;
   }
   return undefined;
+}
+
+/** One measured response for the speed chart: when it ended (now while it streams) and its rate. */
+export interface RatePoint extends ResponseRate {
+  at: number;
+}
+
+/** Every measured response of the chat, oldest first, for the hover chart; those read from the session file too. */
+export function rateHistory(items: Item[], now: number): RatePoint[] {
+  const points: RatePoint[] = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item?.kind !== "assistant" || !item.span) continue;
+    const rate = responseRate(item, now);
+    if (rate) points.push({ ...rate, at: item.streaming ? now : (item.span.end ?? now) });
+  }
+  return points.reverse();
 }
 
 /** Whether `latestRate` still changes with time alone: the newest response is streaming. */

@@ -6,6 +6,7 @@ moves those lines under the new version, and they become its GitHub release note
 ## Unreleased
 
 - The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
+- Hovering the tok/s readout shows a chart of the output speed of every response in the chat over time, red when slow, orange, green when fast, with the average. It covers earlier responses too, also in chats reopened from disk, where tok/s used to show nothing.
 
 ## 0.12.0 - 2026-10-10
 

@@ -367,7 +367,7 @@ describe("session registry", () => {
     fake.pis[0]!.handlers.onRecords([...assistantTurn(1), rec("agent_start"), userStart(2), ...Array.from({ length: 12 }, (_, n) => answer(n)), rec("agent_end"), rec("agent_settled")]);
     const items = host.stateOf(handle)!.items;
     const keys = (state: unknown) => ((state as SessionState).items as Item[]).map((item) => item.key);
-    const first = (await host.snapshot(handle, { turns: 6, bytes: 16_000, outline: true }))!;
+    const first = (await host.snapshot(handle, { turns: 6, bytes: 16_500, outline: true }))!;
     // Three answers fit; the prompt of the turn and the turn before are outlined.
     expect(first.turns).toEqual({ total: 2, from: 1, offset: 10 });
     expect(keys(first.state)).toEqual(items.slice(-3).map((item) => item.key));
@@ -376,7 +376,7 @@ describe("session registry", () => {
     const pages = [keys(first.state)];
     let cursor = first.turns;
     while (cursor.from > 0 || cursor.offset) {
-      const page = (await host.snapshot(handle, { turns: 20, beforeTurn: cursor.from, offset: cursor.offset, bytes: 16_000, outline: true }))!;
+      const page = (await host.snapshot(handle, { turns: 20, beforeTurn: cursor.from, offset: cursor.offset, bytes: 16_500, outline: true }))!;
       pages.unshift(keys(page.state));
       expect(page.outline).toHaveLength(page.turns.from + (page.turns.offset ? 1 : 0));
       cursor = page.turns;

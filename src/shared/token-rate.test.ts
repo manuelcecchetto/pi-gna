@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent } from "./protocol";
 import { type AssistantItem, createSession, hydrate, reduceSessionEvent, type SessionState } from "./session-state";
-import { latestRate, rateMoving, responseRate } from "./token-rate";
+import { latestRate, rateHistory, rateMoving, responseRate } from "./token-rate";
 
 const usage = (output: number) => ({ input: 0, output, cacheRead: 0, cacheWrite: 0, totalTokens: output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
 const assistant = (content: AssistantMessage["content"], output = 0): AssistantMessage => ({
@@ -103,24 +103,39 @@ describe("token rate", () => {
     expect(latestRate(next.items, 5000)).toMatchObject({ perSecond: 10, tokens: 10, live: true });
   });
 
-  it("has no rate for responses read from a session file or cut off mid-stream", () => {
-    const entries: SessionEntry[] = [
-      { type: "message", id: "a", parentId: null, timestamp: "2026-10-03T10:00:00Z", message: assistant([{ type: "text", text: "x".repeat(400) }], 100) },
-    ];
-    expect(latestRate(hydrate(createSession("h", "/repo"), entries).items, 10_000)).toBeUndefined();
-    const crashed = play([[5000, { type: "agent_settled" }]], play(streamed));
-    expect(latestRate(crashed.items, 10_000)).toBeUndefined();
+  it("charts every measured response oldest first, the streaming one at now", () => {
+    const first = play([...streamed, ...ended(2000, 180)]);
+    const next = play([
+      [4000, { type: "message_start", message: assistant([]) }],
+      [4000, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
+      [4200, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "y".repeat(40) } }],
+    ], first);
+    expect(rateHistory(next.items, 5000)).toMatchObject([
+      { at: 2000, perSecond: 180, live: false },
+      { at: 5000, perSecond: 10, live: true },
+    ]);
+    // Too short yet: only the finished one.
+    expect(rateHistory(next.items, 4300)).toHaveLength(1);
   });
 
-  it("does not walk past the newest response read from the session file", () => {
-    const entries: SessionEntry[] = Array.from({ length: 50 }, (_, i) => ({
-      type: "message" as const, id: `a${i}`, parentId: i ? `a${i - 1}` : null, timestamp: "2026-10-03T10:00:00Z", message: assistant([{ type: "text", text: "x" }], 1),
-    }));
-    // Opened from disk, then a live response with nothing streamed yet: no rate, and nothing older has one.
-    const state = play([[0, { type: "message_start", message: assistant([]) }]], hydrate(createSession("h", "/repo"), entries));
-    const read: number[] = [];
-    const items = new Proxy(state.items, { get: (target, key, receiver) => (typeof key === "string" && /^\d+$/.test(key) && read.push(Number(key)), Reflect.get(target, key, receiver)) });
-    expect(latestRate(items, 10_000)).toBeUndefined();
-    expect(Math.min(...read)).toBe(state.items.length - 2);
+  it("times responses read from a session file from the request to the entry", () => {
+    const sent = Date.parse("2026-10-03T10:00:00Z");
+    const entry = (id: string, at: number, written: string, output: number): SessionEntry => ({
+      type: "message", id, parentId: null, timestamp: written, message: { ...assistant([{ type: "text", text: "x".repeat(400) }], output), timestamp: at },
+    });
+    const state = hydrate(createSession("h", "/repo"), [
+      entry("a", sent, "2026-10-03T10:00:04Z", 200),
+      entry("b", sent + 10_000, "2026-10-03T10:00:10.200Z", 5), // under half a second: no rate
+    ]);
+    expect(latestRate(state.items, 0)).toMatchObject({ perSecond: 50, tokens: 200, seconds: 4, estimated: false, live: false });
+    expect(rateHistory(state.items, 0)).toMatchObject([{ at: sent + 4000, perSecond: 50 }]);
+    // Then a live response joins the chart after them.
+    const live = play([...streamed.map(([at, event]): [number, SessionEvent] => [sent + 20_000 + at, event]), ...ended(sent + 22_000, 180)], state);
+    expect(rateHistory(live.items, 0).map((point) => point.perSecond)).toEqual([50, 180]);
+  });
+
+  it("has no rate for a response cut off mid-stream", () => {
+    const crashed = play([[5000, { type: "agent_settled" }]], play(streamed));
+    expect(latestRate(crashed.items, 10_000)).toBeUndefined();
   });
 });
