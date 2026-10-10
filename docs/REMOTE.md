@@ -512,7 +512,7 @@ or sleep sends nothing) and is the only "host unavailable" signal the system can
 3. Nothing else: **no other transcript text, tool names or arguments, file paths, repository names, error messages, hostname, tailnet name or device names.** The
    `Topic` header is a hash (`sha256(chatId|kind)` truncated, base64url), not the chat id.
 
-The notification is composed on the phone by the service worker: the title is the chat title (or "pi-gna"), the body the status text for `kind` ("Approval needed", "Run finished", "Run failed", "Plan stopped", "pi-gna is quitting"), followed by the reply excerpt when there is one.
+The notification is composed on the phone by the service worker: the title is the chat title (or "pi-gna"), the body the status text for `kind` ("Approval needed", "Run finished", "Run failed", "Plan stopped", "pi-gna is quitting"), or the reply excerpt instead when there is one. iOS adds its own "from <app name>" line under the title of every Home Screen web app notification; no API removes it.
 The opaque chat id is a handle the app resolves after the user opens it (authenticated); it is a random per-session id minted by the host, not the session file path. The title and
 excerpt are shown on the lock screen as iOS is configured to show them (the user's "Show Previews" setting applies); the payload is end-to-end encrypted to the phone, so the push service never sees them.
 

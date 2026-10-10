@@ -57,7 +57,7 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Web Push (REMOTE.md 13a): the payload is {kind, chat, t} plus the chat title and a reply excerpt; the status text comes from here. Every push shows a
+// Web Push (REMOTE.md 13a): the payload is {kind, chat, t} plus the chat title and a reply excerpt; the body is the excerpt, else the status text from here. Every push shows a
 // notification, even while the app is open: iOS silently ends a subscription after about three pushes that show nothing, and Apple keeps answering 201.
 const PUSH_TEXT = ${JSON.stringify(PUSH_TEXT)};
 self.addEventListener("push", (event) => {
@@ -68,7 +68,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     const title = typeof data.title === "string" && data.title ? data.title : "pi-gna";
     const preview = typeof data.preview === "string" && data.preview ? data.preview : "";
-    await self.registration.showNotification(title, { body: preview ? PUSH_TEXT[kind] + ": " + preview : PUSH_TEXT[kind], tag: kind + ":" + chat, data: { chat } });
+    await self.registration.showNotification(title, { body: preview || PUSH_TEXT[kind], tag: kind + ":" + chat, data: { chat } });
   })());
 });
 

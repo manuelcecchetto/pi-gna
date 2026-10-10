@@ -166,7 +166,8 @@ describe("sw.js", () => {
     const sw = worker(routes);
     await sw.receive({ v: 1, kind: "done", chat: "c1", t: 1, title: "Fix login" });
     await sw.receive({ v: 1, kind: "host_quit", t: 2 });
-    expect(sw.shown).toEqual(["Fix login: Run finished", "pi-gna: pi-gna is quitting"]);
+    await sw.receive({ v: 1, kind: "done", chat: "c1", t: 3, title: "Fix login", preview: "Fixed the redirect loop." });
+    expect(sw.shown).toEqual(["Fix login: Run finished", "pi-gna: pi-gna is quitting", "Fix login: Fixed the redirect loop."]);
   });
 
   it("keeps nothing from an install that failed", async () => {
