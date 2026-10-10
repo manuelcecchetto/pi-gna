@@ -1005,26 +1005,21 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
 
 ## Usage
 
-Settings > Usage (pi-gna group) shows in-depth, local-only analytics of how pi and pi-gna were used: tokens by type, an
-API-equivalent cost, models, projects, pi-gna's surfaces, tools, agent health and behaviour insights. It is read-only:
-it reads pi's session files and writes only its own cache, `userData/usage-index.json`. Nothing leaves the Mac: no price
-fetch, no network. The facts never hold message text, tool arguments or tool output; an error message is reduced to a
-category, and a session name is shown as plain text. Measurements below were taken on 2026-10-10 on this Mac over
-`~/.pi/agent/sessions` and `userData/atp-sessions` with one-off scripts that T09 repeats.
+Settings > Usage (pi-gna group) shows in-depth, local-only analytics of how pi and pi-gna were used: tokens by type, an API-equivalent estimated cost, models, projects, pi-gna's surfaces, tools, agent health and behaviour insights. It is read-only: it reads pi's session files and writes only its own cache, `userData/usage-index.json`. Nothing is fetched from the network: no price list, nothing else. The facts never hold message text, tool arguments or tool output; an error message is reduced to a category, and a session name is shown as plain text. In the report, "pi-gna" means its surfaces: its chats, Kanban card worktrees and ATP workers, and the subagents of any of those (see Sources and surfaces). Local time is the client's time zone (the Mac's, or the phone's), applied at query time. Remote: a paired phone reads the same report, and can ask for a refresh, through the remote host API (`usage.get`, `usage.refresh`; see Remote access), so the report leaves the Mac only over that paired connection. Measurements below were taken on 2026-10-10 on this Mac over `~/.pi/agent/sessions` and `userData/atp-sessions`.
 
-Files (the node that builds each one is in brackets; the shapes are in `src/shared/usage.ts`):
+Files (the shapes are in `src/shared/usage.ts`):
 
-- `src/shared/usage.ts`: the shapes and constants, with `usage.test.ts` for their invariants [T01].
-- `src/main/usage-pricing.ts`: the price table from pi's installed pi-ai data and the user's `models.json`, cached until either changes [T03].
-- `src/shared/usage-prices.ts`: the price index, the lookup order and `costOf` (pure) [T03].
-- `src/main/usage-extract.ts`: one session file to `FileUsageFacts`, streamed line by line [T02].
-- `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure [T04].
-- `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
-- `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, from T07, the rest; pure, no I/O [T06, T07].
-- `scripts/usage-crosscheck.mjs` (naive reader and diff) and `scripts/usage-crosscheck-real.test.mjs` (the real index and report over the same snapshot; skipped unless `USAGE_CROSSCHECK_WORK` is set): the independent cross-check [T09].
-- Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check) [T08]. Renderer: `Usage.tsx` (the section: filters, report, states; a lazy chunk
-  from Settings), `UsageOverview.tsx` ... `UsageInsights.tsx` (one file per panel, plus `UsageSurfaces.tsx` and `UsageWindows.tsx`, which T14 added beyond the eight slots), `Charts.tsx` (SVG primitives) [T10 to T14].
-  Phone: a compact section [T16].
+- `src/shared/usage.ts`: the shapes and constants, with `usage.test.ts` for their invariants.
+- `src/main/usage-pricing.ts`: the price table from pi's installed pi-ai data and the user's `models.json`, cached until either changes.
+- `src/shared/usage-prices.ts`: the price index, the lookup order and `costOf` (pure).
+- `src/main/usage-extract.ts`: one session file to `FileUsageFacts`, streamed line by line.
+- `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure.
+- `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress`.
+- `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, the rest; pure, no I/O.
+- `scripts/usage-crosscheck.mjs` (naive reader and diff) and `scripts/usage-crosscheck-real.test.mjs` (the real index and report over the same snapshot; skipped unless `USAGE_CROSSCHECK_WORK` is set): the independent cross-check.
+- Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check). Renderer: `Usage.tsx` (the section: filters, report, states; a lazy chunk
+  from Settings), `UsageOverview.tsx` ... `UsageInsights.tsx` (one file per panel, plus `UsageSurfaces.tsx` and `UsageWindows.tsx`, which sit beyond the eight panel files first planned), `Charts.tsx` (SVG primitives).
+  Phone: a compact section.
 
 ### Sources and surfaces
 
@@ -1115,7 +1110,7 @@ prompt) is skipped on a substring test. Each field's rule:
   parses, so a record pi is still writing is read on the next pass. A grown file is read from `consumedBytes` with
   `resume` carried over (pending tool calls, closed prompts, the open prompt, the last timestamp in `session.lastAt`). A
   file with no prompt yet, or one that shrank, is read in full: its surface is decided by its first prompt.
-- **Measured** (T02, this Mac): the largest file (115.5 MB) in 0.16 s at 151 MB RSS; the whole history (1,675 files,
+- **Measured** (this Mac): the largest file (115.5 MB) in 0.16 s at 151 MB RSS; the whole history (1,675 files,
   2.83 GB) in 5.9 s on one thread at 447 MB RSS. A parse-every-line baseline takes 8.4 s. The substring test skips only
   4.6% of the bytes: tool results are 76% and must be parsed for their ids, timestamps and error flags.
 
@@ -1134,7 +1129,7 @@ Two numbers, never summed into one:
 - **Estimated**: an API-equivalent at list price, computed at query time from the buckets and the price table. Labelled
   "estimate, list price"; for claude-bridge it is what the tokens would cost on the API, not a bill.
 
-Prices (T03): `src/main/usage-pricing.ts` reads pi's installed pi-ai data (`dist/providers/data/*.json` of
+Prices: `src/main/usage-pricing.ts` reads pi's installed pi-ai data (`dist/providers/data/*.json` of
 `@earendil-works/pi-ai`, found from pi's package the way PiAuth finds it, or hoisted beside it) and the user's `models.json`
 (`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). It applies `models.json` the way pi does: a `models` entry replaces a model's
 cost, and `modelOverrides` merge per field. The table is cached until either file changes, so a pi upgrade changes the
@@ -1160,7 +1155,7 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
 
 ### Report API
 
-- Host (T08): `usage.get({ query? })` is remote and read-only; an omitted query is `{ range: "30d", source: "pigna" }`. The
+- Host: `usage.get({ query? })` is remote and read-only; an omitted query is `{ range: "30d", source: "pigna" }`. The
   type is `UsageQuery` in `src/shared/usage.ts`. `usage.refresh` is remote and mutating (it rewrites `usage-index.json`), so a
   phone sends an `Idempotency-Key`. `parseUsageQuery` checks the query: presets, or `{ from, to }` at most 4,000 days apart;
   `source`; a `project` of at most 1,024 characters; an IANA `timeZone` from the client. Anything else is `bad_request`.
@@ -1169,12 +1164,12 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
   while a scan runs joins it.
 - Progress: `usage.progress` (`UsageProgress`) goes out on the global topic (phones) and on the desktop as `usageProgress`,
   at most every 250 ms. A scan starts with `scan`, moves to `index` with done and total, and ends with `done`.
-- Bounds: sessions 10, models 30, projects 50, tools 50, windows 5, insights 6. Totals count every row. Measured (T08, this Mac,
+- Bounds: sessions 10, models 30, projects 50, tools 50, windows 5, insights 6. Totals count every row. Measured (this Mac,
   1,685 files, 4 workers): cold scan 2.5 s; warm 30-day pigna report 76 ms and 28.6 KB; all-time report 64 ms and 52 KB.
 - `meta.files` is the session files found on disk (both roots); `meta.indexedFiles` is the ones the report's source covers, so
   for `pigna` it is lower than `files` even when everything is indexed.
 - `usage.progress` event (`UsageProgress`): `scan` while listing, `index` with done/total and bytes/totalBytes, `done`. At most every 250 ms.
-- Live refresh (T15): a settled run calls `UsageService.sessionChanged(path)`. Nothing runs until a report or `usage.refresh`
+- Live refresh: a settled run calls `UsageService.sessionChanged(path)`. Nothing runs until a report or `usage.refresh`
   has asked for the index (the first scan then reads every file, so an unopened section costs nothing, not even a stat). After
   that the settled file is read again with `refreshFile` (incremental: only the appended bytes) once no other settle has come
   for 1 s, and the cache is saved then. Then `usage.changed` goes out on the global topic and the desktop as `usageChanged`, at
@@ -1188,12 +1183,12 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
   cached per day). Nothing local is stored, so DST and a changed zone come out right.
 - Filters: `source`, then `project` (a `SessionMeta.project`), applied to every panel.
 - `buildReport` reads only facts, the price table, the query and `now`; the host calls it on cached facts. It never reads files.
-- Core (T06): a file counts when it has a turn in the range (buckets are cut at their midpoint, so the range is hour-precise).
+- Core: a file counts when it has a turn in the range (buckets are cut at their midpoint, so the range is hour-precise).
   Prompts, tool calls and active time are the file's whole-file totals, since the facts are not bucketed below the hour.
   A subagent rolls into its parent's session row when the parent is in scope. Streaks run over the range's days; the current
   streak ends on the last day, or the day before while the last day has no turns. Top model is the first row of the models table.
 - The models table has no thinking-level split: thinking is counted per file, not per model, so the facts cannot give it.
-- Behaviour (T07): `buildBehaviourReport` gives surfaces, tools, health, windows and insights; `buildReport` joins it to the core. Turn-level figures (cost share, errors, cache misses, subagent turns, windows) use the hour buckets in range. Prompt, tool, stop, error, compaction and context figures are whole-file totals of the files in range, as the core's prompts are. A subagent's usage is attributed to its parent's surface when the parent is in scope; otherwise it is a `subagent` surface row of its own. Windows start at the first in-range turn, hour-aligned, and the next starts at the first hour at or after the previous end. Burn rate is tokens per minute over the elapsed time (to the end, or to now for the active window). Rate-limit hits per window are not in v1: the facts keep error categories per file, not per hour. Median and p90 tool durations are not in v1 either: `ToolStat` keeps only the summed duration.
+- Behaviour: `buildBehaviourReport` gives surfaces, tools, health, windows and insights; `buildReport` joins it to the core. Turn-level figures (cost share, errors, cache misses, subagent turns, windows) use the hour buckets in range. Prompt, tool, stop, error, compaction and context figures are whole-file totals of the files in range, as the core's prompts are. A subagent's usage is attributed to its parent's surface when the parent is in scope; otherwise it is a `subagent` surface row of its own. Windows start at the first in-range turn, hour-aligned, and the next starts at the first hour at or after the previous end. Burn rate is tokens per minute over the elapsed time (to the end, or to now for the active window). Rate-limit hits per window are not in v1: the facts keep error categories per file, not per hour. Median and p90 tool durations are not in v1 either: `ToolStat` keeps only the summed duration.
 
 ### Metrics and layout
 
@@ -1217,16 +1212,16 @@ Charts (`components/Charts.tsx`, pure scales in `chart-scale.ts`) are hand-writt
 `colorScale(keys)` gives the keys of one chart distinct colours and keeps each key's colour while its chart keeps its neighbours. Interactive charts
 (stacked bars, heat grids, split bar) show a tooltip on pointer hover and on keyboard focus (arrow keys).
 
-Overview and Activity (T12): `UsageDay.models` carries tokens and estimated cost per model, not turns, so the Turns view of the per-day bars is one series. The per-day bars keep the 7 largest models and fold the rest into "Other models"; the calendar shows the last 26 weeks of the range; the weekday by hour matrix offers turns, tokens or cost. The view mapping lives in `lib/usage-view.ts`, not in the components.
+Overview and Activity: `UsageDay.models` carries tokens and estimated cost per model, not turns, so the Turns view of the per-day bars is one series. The per-day bars keep the 7 largest models and fold the rest into "Other models"; the calendar shows the last 26 weeks of the range; the weekday by hour matrix offers turns, tokens or cost. The view mapping lives in `lib/usage-view.ts`, not in the components.
 
-Surfaces, Tools, Health, Windows and Insights (T14): the surface split (`SplitBar`, tokens or estimated cost) and its table; tool bars of calls with failure rate and mean duration, and the most failing tools. The report keeps the first 50 tool rows, the bars show 12, and the note gives the calls of the rest from the total. Mean only: the facts keep summed durations, so there is no median or p90. Health gives range totals (stop reasons and error categories as bars, prompts by steps and turns by input size as `Histogram`s, which keep their bin order where `HBars` sorts by value), compactions per session, and steps, tool calls and aborts per prompt. Windows show the busiest five and the one running now. Insights shows one card per rule that fires, with its value, threshold and tip, and nothing when none fires. The figures' labels and bin labels are in `lib/usage-view.ts`, with the tests in `usage-view.test.ts`.
+Surfaces, Tools, Health, Windows and Insights: the surface split (`SplitBar`, tokens or estimated cost) and its table; tool bars of calls with failure rate and mean duration, and the most failing tools. The report keeps the first 50 tool rows, the bars show 12, and the note gives the calls of the rest from the total. Mean only: the facts keep summed durations, so there is no median or p90. Health gives range totals (stop reasons and error categories as bars, prompts by steps and turns by input size as `Histogram`s, which keep their bin order where `HBars` sorts by value), compactions per session, and steps, tool calls and aborts per prompt. Windows show the busiest five and the one running now. Insights shows one card per rule that fires, with its value, threshold and tip, and nothing when none fires. The figures' labels and bin labels are in `lib/usage-view.ts`, with the tests in `usage-view.test.ts`.
 
-The page (T11): the section uses a wider column than the other Settings sections (`SectionInfo.wide`). Its filters (range,
+The page: the section uses a wider column than the other Settings sections (`SectionInfo.wide`). Its filters (range,
 source, project) are kept per window in localStorage (`pigna:usage-filters`, `lib/usage-filters.ts`), as the ATP panels are,
 not in the host's ui-state, which every client shares. The project picker reads an unfiltered report, since a scoped one
 lists only its own project; a picked project stays listed even when the range leaves it out.
 
-The phone (T16): Settings > Usage (`src/mobile/UsageSection.tsx`) calls `usage.get` through the host client with the same query as the desktop, minus the project filter. It shows six headline figures, the tokens per day as stacked bars by model, the top six models and the top five projects by estimated cost, all from the report. Range and source are segmented controls. The phone reads `usage.progress` and `usage.changed` from the global stream (`host-client.ts`), so a cold first load shows the Mac's file count and a settled run reloads the report. It has no refresh button and no charts beyond the daily bars.
+The phone: Settings > Usage (`src/mobile/UsageSection.tsx`) calls `usage.get` through the host client with the same query as the desktop, minus the project filter. It shows six headline figures, the tokens per day as stacked bars by model, the top six models and the top five projects by estimated cost, all from the report. Range and source are segmented controls. The phone reads `usage.progress` and `usage.changed` from the global stream (`host-client.ts`), so a cold first load shows the Mac's file count and a settled run reloads the report. It has no refresh button and no charts beyond the daily bars.
 
 Definitions:
 
@@ -1256,29 +1251,35 @@ Insight rules (share = its count / base; base in brackets). A rule fires at `INS
 
 Out of scope for v1: spend budgets and alerts; CSV or image export; any message content viewer or search; editing or
 deleting sessions; rates from the network or user-editable rates; fast-mode and service-tier pricing; the ATP orchestrator
-as its own surface; full charts on the phone (T16 shows a compact summary).
+as its own surface; full charts on the phone (the phone section shows a compact summary).
 
 ### Performance budget
 
 - Cold index of the whole history (1,674 files, 2.8 GB): at most 30 s on this Mac, in a worker_thread pool of
   `min(4, cores - 1)`; the main thread parses nothing and no task blocks it for more than 50 ms.
-  Measured (T05, 4 workers, 8 cores): cold 6.4 s, warm 0.19 s (a second warm run 0.06 s), 1,682 files; peak RSS 626 MB in the
+  Measured (4 workers, 8 cores): cold 6.4 s, warm 0.19 s (a second warm run 0.06 s), 1,682 files; peak RSS 626 MB in the
   bench process (vitest included); main-thread event-loop max 33 ms cold and 39 ms warm, the warm block being the cache's JSON.parse
   (the 3.8 MB cache is the main-thread cost to watch as history grows).
-- Cross-check run (T09, this Mac, 1,686 files, 2.7 GB, one thread): cold index 5.9 to 6.9 s (in-process extractor, not the worker);
+- Cross-check run (this Mac, 1,686 files, 2.7 GB, one thread): cold index 5.9 to 6.9 s (in-process extractor, not the worker);
   warm index 28 to 37 ms; `buildReport` for the 14-day range 26 to 36 ms. The naive reader's full parse takes 10 to 12 s and is
   not a budget item.
-- Warm `usage.get` (cache hit, 30 days) to a rendered page: at most 500 ms, covering 1,674 stats, the ~1.5 MB cache load and
+- Warm `usage.get` (cache hit, 30 days) to a rendered page: at most 500 ms, covering 1,674 stats, the 3.8 MB cache load and
   the aggregation (at most 150 ms over the whole history).
-- Cache file: at most 4 MB for the whole history (estimate ~1.5 MB).
+- Cache file: at most 4 MB for the whole history (3.8 MB measured on 2026-10-10).
 - Incremental: a file is re-read only when its size or mtime changed (as `session-index.ts` does). A chat that settles is
   re-indexed at once (`indexSettled`), so a live chat shows up without a rebuild.
+- Measured on 2026-10-10 by the real-app run (hidden test window, so timings are indicative): a fresh profile whose `atp-sessions` is an APFS clone of the real one, reading the real `~/.pi/agent/sessions`, 1,686 files. Cold: the Usage click to a rendered report took 2.26 s, and the cache was written 2 s after the click. Warm (cache present): 142 ms. On the warm path the main-thread cost of the cache is `JSON.parse` 10.2 ms and `JSON.stringify` 5.5 ms (the write is async). A 20 ms main-thread probe logged no gap over 25 ms across launch, the cold index and the warm open, and no renderer `longtask` entries appeared.
 - Renderer: `Usage.tsx` is a lazy chunk, loaded when Settings > Usage first renders (see Architecture); no chart library.
+
+### Refresh and reset
+
+- Refresh (Settings > Usage, `usage.refresh`) reads the session files that changed since the cache was written and rewrites the cache. It does not start over.
+- To rebuild the whole index, quit pi-gna first (a running app keeps the facts in memory and writes the cache again after its next scan), delete `userData/usage-index.json`, and open Settings > Usage again. On macOS `userData` is `~/Library/Application Support/pi-gna/`; a test instance's is its `PIGNA_USER_DATA` folder. A missing cache is a full scan, and so is one with another `USAGE_FACTS_VERSION` (a version mismatch rebuilds the whole cache). The UI has no reset button.
 
 ### Verification
 
-- `pnpm typecheck` and `pnpm test`; `usage.test.ts` locks the constants, and each later node adds its own tests.
-- Cross-check (T09): `node scripts/usage-crosscheck.mjs [--days=14] [--work=/tmp/pi-gna-usage-crosscheck]`, macOS only. It
+- `pnpm typecheck` and `pnpm test`; `usage.test.ts` locks the constants, and each module adds its own tests.
+- Cross-check: `node scripts/usage-crosscheck.mjs [--days=14] [--work=/tmp/pi-gna-usage-crosscheck]`, macOS only. It
   clones both roots with `cp -Rc` (an APFS clone, so pi can keep writing while both sides read the same bytes), then runs:
   (1) a naive reader that `JSON.parse`s every line of every file and shares no code with `src/`, deriving the totals from
   the rules in this section; (2) the real index (cold, then warm over the cache) and `buildReport` (`source: all`, the
@@ -1301,43 +1302,23 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
   (0.75%) at 14 days; 1 prompt and 49 tool calls at 7 days. That is the straddle over-count, the documented trade-off.
 - Not cross-checked: surfaces, projects, top sessions, streaks, active time, the expensive-subagent split by model, and the
   other insight rules beyond cache-miss share and the long-context count.
-- No bug was found in T02 to T07 by this check, so no code changed for it.
-- T17 drives the real app over CDP with the real data and times the warm open.
-
-### Inputs for later nodes
-
-| node | builds | reads |
-| --- | --- | --- |
-| T02 extract | `usage-extract.ts` | Per-file facts |
-| T03 pricing | `usage-pricing.ts`, `usage-prices.ts` | Cost model |
-| T04 classify | `usage-classify.ts` | Sources and surfaces |
-| T05 index | `usage-index.ts`, worker | Per-file facts (cache), Performance budget |
-| T06 report core | `usage-report.ts` | Report API; metrics for totals, days, weekHour, models, projects, sessions |
-| T07 behaviour | `usage-report.ts` | Metrics for tools, health, surfaces, windows, insights |
-| T08 host API | `host-api.ts` | Report API |
-| T09 cross-check | independent script | Verification |
-| T10 charts | `UsageCharts.tsx` | Layout |
-| T11 shell | `UsagePage.tsx`, `SettingsNav` | Settings paragraph |
-| T12 to T14 panels | `UsagePage.tsx` panels | Layout, definitions, insight rules |
-| T15 live refresh | index | Performance budget, incremental |
-| T16 phone | compact section | Report API over the remote host API |
-| T17 verify | the app over CDP | Verification |
-| T18 docs | this section | all |
+- - No bug was found in the index or report code by this check, so no code changed for it.
+- Real app (2026-10-10): a test instance drove Settings > Usage over CDP on the real data, in dark, light and a project theme, at 1470 px and 760 px. The figures agree with the cross-check. At 760 px the Report grid is one column (`grid-cols-1`) and `scrollWidth == clientWidth`; only the Models table scrolls, in its own wrapper. The filters (7d, 30d, pi-gna, all pi, one project, cleared) match the displayed turn totals. Chart tooltips show on pointer hover and on arrow keys after focus. A pi-gna chat opened from Sessions shows its transcript. Phone: `node scripts/remote-e2e/run.mjs mobile-usage` passes on the harness's seeded data, not on a device.
 
 ### Open items and risks
 
 - **pi-gna chat or terminal**: a pi-gna chat with every pi-gna feature off has no marker and counts as terminal. A marker
   written by pi-gna's extension would settle it; that is a later change, not v1.
-- **ATP orchestrator**: settled by T04. Its system addendum says `You are the orchestrator of an ATP plan in pi-gna` (a worker's
+- **ATP orchestrator**: settled. Its system addendum says `You are the orchestrator of an ATP plan in pi-gna` (a worker's
   says `You are an ATP worker in pi-gna`), and both are atp-worker in v1 since the orchestrator is not a surface. Its first prompt
   is the user's, so only the root tells it apart.
-- **Subagent pigna**: settled by T05. After each run and each `refreshFile`, the index calls `classifySession` again for every
+- **Subagent pigna**: settled. After each run and each `refreshFile`, the index calls `classifySession` again for every
   subagent with its parent's `pigna` (the parent is `<dir of tasks>.jsonl`). A subagent whose parent is not indexed stays false.
 - **Tool durations** are upper bounds for parallel calls (see Per-file facts).
 - **Tier edges**: the real table has tiers at 100,000, 200,000 and 272,000 (Cost model). The facts keep tokens only above
-  272,000, so a turn between 100k and 272k is priced at base rates. Measured on this Mac (T06): 9 of the 166 `claude-haiku-5-5`
+  272,000, so a turn between 100k and 272k is priced at base rates. Measured on this Mac: 9 of the 166 `claude-haiku-5-5`
   turns sit in (100k, 272k], an input and output understatement of $0.03. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps
-  `USAGE_FACTS_VERSION` and changes `UsageBucket`. Decide before T02 and T05.
+  `USAGE_FACTS_VERSION` and changes `UsageBucket`. Still open.
 - **Long-context count is whole-file.** The `long-context` insight takes its share from the range's buckets, but its count
   comes from the whole-file context histogram. At 14 days the count is 30 turns above the exact in-range count (0.4%). The
   buckets carry no turns-over-edge count, so an exact count needs `tierTurns` on `UsageBucket` and a `USAGE_FACTS_VERSION`
@@ -1346,7 +1327,12 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
   list output rate is at least 15 USD/M; Opus is 20). `cache-misses` 2.4% of input, below the 10% gate, so it is not shown.
   `reasoning` 42.1% of output.
 - **Cache-write rate**: the 5-minute rate is assumed for every write (see Cost model).
-- **Heuristics**: surfaces and the insight thresholds are first guesses. T09 and T17 check them against the real data.
+- **Heuristics**: surfaces and the insight thresholds are first guesses. The real-data checks (the cross-check and the real-app run) compare the numbers; they do not test whether a threshold is right.
+- **Live-refresh latency is not timed.** The 10 s target was not measured: the Usage page was closed when the chat settled, so the update was seen only on reopening. The design bound is about 11 s: the 1 s settle debounce plus the 10 s announce throttle (`usage-service.ts`). Measuring it needs the section open during a settle.
+- **Layout gaps**: blank space under Projects beside Sessions (about 240 px), and Insights alone beside Health and Windows. Not decided.
+- **Project picker** lists full paths (for example `/private/tmp/...`) while the Projects panel shows short labels.
+- **Stall reading not reproduced**: one run of the main-thread probe reported a 53.6 ms maximum, in a window that included first-run setup. Three later runs with the probe showed no gap over 25 ms; the cause of the first reading is not known.
+- **Not walked**: the real Tab order through the controls, and the Tokens tile's hover panel (CSS-driven).
 
 ## Setup
 

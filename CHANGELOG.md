@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > Usage (pi-gna group): in-depth analytics of how pi and pi-gna were used, computed on this Mac from pi's session files: tokens by type, estimated cost at list price, models, projects, pi-gna's chats, card worktrees and ATP workers, subagents, tools, activity over time, agent health and insights. The phone has a compact copy under Settings > Usage.
+
 - Updates refresh the app's icon in Finder and the Dock, which kept showing the old one after an update changed it.
 
 - The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
