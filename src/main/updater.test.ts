@@ -122,8 +122,9 @@ describe("SWAP_SCRIPT", () => {
     return { ...paths, done };
   }
 
+  // Up to 5 s: the relaunched app is a detached shell that, under a loaded full suite, took over the old 1 s to start.
   async function launched(): Promise<string> {
-    for (let i = 0; i < 50 && !existsSync(join(dir, "launched")); i++) await new Promise((resolve) => setTimeout(resolve, 20));
+    for (let i = 0; i < 250 && !existsSync(join(dir, "launched")); i++) await new Promise((resolve) => setTimeout(resolve, 20));
     return readFileSync(join(dir, "launched"), "utf8").trim();
   }
 

@@ -3,7 +3,7 @@
 // of pi's package. The request (PluginsRequest) arrives as JSON on stdin; the reply (PluginsReply) leaves as one JSON
 // line on fd 3, since `npm install` writes to stdout. Every change goes through pi's own code: `pi config`'s resource
 // list (ConfigSelectorComponent) for toggles, its package manager for installs, its MCP config module for mcp.json.
-import { readFileSync, writeSync } from "node:fs";
+import { constants, copyFileSync, existsSync, readFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,13 +19,14 @@ import type {
   PluginToggle,
   PluginView,
   ProjectOverride,
+  RecommendedDefaults,
   ResourceType,
 } from "../src/shared/plugins";
 
 type PackageSource = string | ({ source: string; autoload?: boolean } & Partial<Record<ResourceType, string[]>>);
 
 interface SettingsManager {
-  getGlobalSettings(): { packages?: PackageSource[] };
+  getGlobalSettings(): { packages?: PackageSource[]; defaultTools?: unknown };
   setPackages(packages: PackageSource[]): void;
   isProjectTrusted(): boolean;
   flush(): Promise<void>;
@@ -95,6 +96,8 @@ interface McpConfig {
 }
 
 const RESOURCE_TYPES: ResourceType[] = ["extensions", "skills", "prompts", "themes"];
+/** The global context files pi reads from its agent folder, any of which is your guide (loadContextFileFromDir). */
+const GUIDES = ["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 /** pi-gna's own folder name of a project's pi files (CONFIG_DIR_NAME in pi). */
 const CONFIG_DIR = ".pi";
 
@@ -169,7 +172,30 @@ class Plugins {
       servers: await this.servers(),
       mcpAdapter: loaded((group) => group.kind === "package" && isAdapter(group.source)),
       builtinMcp: loaded((group) => group.kind === "builtin", "builtin:mcp"),
+      defaults: this.defaults(),
     };
+  }
+
+  defaults(): RecommendedDefaults {
+    return { codemode: codemode(this.global.getGlobalSettings().defaultTools), guide: GUIDES.some((name) => existsSync(join(this.agentDir, name))) };
+  }
+
+  /** The recommended setup: each of `sources` your settings lack (by npm name, any version), codemode on unless your
+   * defaultTools name it, and pi-gna's guide as the global AGENTS.md unless you have one. Never replaces a choice. */
+  async recommend(sources: string[], guide: string): Promise<void> {
+    const configured = new Set(this.packages(this.global).listConfiguredPackages().map((pkg) => npmName(pkg.source)));
+    for (const source of sources) if (!configured.has(npmName(source))) await this.install(source);
+    const tools = this.global.getGlobalSettings().defaultTools;
+    if (codemode(tools) === "unset") {
+      setGlobal(this.global, "defaultTools", [...(Array.isArray(tools) ? tools : []), "+codemode"]);
+      await this.global.flush();
+    }
+    if (this.defaults().guide) return;
+    try {
+      copyFileSync(guide, join(this.agentDir, "AGENTS.md"), constants.COPYFILE_EXCL);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
   }
 
   async servers(): Promise<McpServerInfo[]> {
@@ -293,6 +319,30 @@ function isAdapter(source: string): boolean {
   }
 }
 
+/** What `defaultTools` says about codemode: `codemode` or `+codemode` add it, `-codemode` removes it. */
+function codemode(defaultTools: unknown): RecommendedDefaults["codemode"] {
+  const tools = Array.isArray(defaultTools) ? defaultTools.filter((tool): tool is string => typeof tool === "string") : [];
+  if (tools.includes("-codemode")) return "off";
+  return tools.includes("codemode") || tools.includes("+codemode") ? "on" : "unset";
+}
+
+/** The npm name of a source (`npm:@scope/name@1.2.3` → `@scope/name`), else the source (npmName in src/shared). */
+function npmName(source: string): string {
+  return /^npm:((?:@[^/@]+\/)?[^@]+)(?:@.*)?$/.exec(source.trim())?.[1] ?? source;
+}
+
+/** A global setting pi's SettingsManager has no setter for (defaultTools), written as its setters write theirs:
+ * private at type level only, like the ResourceList parts above. */
+function setGlobal(settings: SettingsManager, key: string, value: unknown): void {
+  const internal = settings as unknown as { globalSettings?: Record<string, unknown>; markModified?(field: string): void; save?(): void };
+  if (!internal.globalSettings || typeof internal.markModified !== "function" || typeof internal.save !== "function") {
+    throw new Error(`This pi's settings cannot be changed from pi-gna; add "+codemode" to defaultTools in settings.json yourself`);
+  }
+  internal.globalSettings[key] = value;
+  internal.markModified(key);
+  internal.save();
+}
+
 function noop(): void {}
 
 async function run(request: PluginsRequest): Promise<unknown> {
@@ -313,6 +363,8 @@ async function run(request: PluginsRequest): Promise<unknown> {
       return plugins.install(request.source);
     case "remove":
       return plugins.remove(request.source, request.scope);
+    case "recommend":
+      return plugins.recommend(request.sources, request.guide);
     case "mcpAdd": {
       const mcp = (await load("extensions", "mcp", "config.js")) as McpConfig;
       mcp.addMcpServerConfig(plugins.mcpFile("global"), request.name, { url: request.url, ...(request.headers && { headers: request.headers }) });

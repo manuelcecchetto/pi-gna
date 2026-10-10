@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,18 +16,19 @@ export const getAgentDir = () => process.env.FAKE_AGENT_DIR;
 const file = () => join(getAgentDir(), "settings.json");
 export const read = () => (existsSync(file()) ? JSON.parse(readFileSync(file(), "utf8")) : {});
 const write = (settings) => writeFileSync(file(), JSON.stringify(settings, null, 2));
+// As pi's: the setters change globalSettings and save; defaultTools has no setter (markModified + save, private in pi).
 export const SettingsManager = {
-  create: () => {
-    let settings = read();
-    return {
-      getGlobalSettings: () => settings,
-      getProjectSettings: () => ({}),
-      setPackages: (packages) => (settings = { ...settings, packages }),
-      setExtensions: (extensions) => (settings = { ...settings, extensions }),
-      isProjectTrusted: () => false,
-      flush: async () => write(settings),
-    };
-  },
+  create: () => ({
+    globalSettings: read(),
+    getGlobalSettings() { return this.globalSettings; },
+    getProjectSettings: () => ({}),
+    setPackages(packages) { this.globalSettings = { ...this.globalSettings, packages }; },
+    setExtensions(extensions) { this.globalSettings = { ...this.globalSettings, extensions }; },
+    markModified() {},
+    save() {},
+    isProjectTrusted: () => false,
+    async flush() { write(this.globalSettings); },
+  }),
 };
 const source = (pkg) => (typeof pkg === "string" ? pkg : pkg.source);
 export class DefaultPackageManager {
@@ -49,8 +50,8 @@ export class DefaultPackageManager {
   }
   async installAndPersist(src) {
     process.stdout.write("added 12 packages in 2s\\n");
-    const settings = read();
-    write({ ...settings, packages: [...(settings.packages ?? []), src] });
+    this.settings.setPackages([...(this.settings.getGlobalSettings().packages ?? []), src]);
+    await this.settings.flush();
   }
   async removeAndPersist(src) {
     const settings = read();
@@ -129,7 +130,9 @@ const CATALOG = {
       endpoints: [{ id: "default", label: "Keyed", url: "https://mcp.keyed.test/mcp" }],
       auth: { type: "key", label: "MCP token", help: "Make one.", url: "https://keyed.test/keys" },
     },
-    { id: "web", kind: "package", name: "Web", publisher: "web", description: "Search", homepage: "https://npm.test/web", source: "npm:pi-web@1.0.0" },
+    { id: "web", kind: "package", name: "Web", publisher: "web", description: "Search", homepage: "https://npm.test/web", source: "npm:pi-web@1.0.0", recommended: true },
+    { id: "find", kind: "package", name: "Find", publisher: "@x/find", description: "Find", homepage: "https://npm.test/find", source: "npm:@x/find@2.0.0", recommended: true },
+    { id: "extra", kind: "package", name: "Extra", publisher: "extra", description: "Extra", homepage: "https://npm.test/extra", source: "npm:extra@1.0.0" },
   ],
 };
 
@@ -153,6 +156,7 @@ beforeEach(() => {
     writeFileSync(join(dist, path), body);
   }
   writeFileSync(join(dir, "bundled.json"), JSON.stringify(CATALOG));
+  writeFileSync(join(dir, "guide.md"), "# Guide\n");
   vi.stubEnv("FAKE_AGENT_DIR", agent);
 });
 
@@ -163,7 +167,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const settings = () => JSON.parse(readFileSync(join(agent, "settings.json"), "utf8")) as { packages?: unknown[]; extensions?: string[] };
+const settings = () => JSON.parse(readFileSync(join(agent, "settings.json"), "utf8")) as { packages?: unknown[]; extensions?: string[]; defaultTools?: string[] };
 const writeSettings = (value: unknown) => writeFileSync(join(agent, "settings.json"), JSON.stringify(value));
 
 /** `fetched`: the remote catalog's body, or an error. */
@@ -177,6 +181,7 @@ function start(options: { sdk?: string | null; fetched?: unknown } = {}) {
     bundled: join(dir, "bundled.json"),
     cache: join(dir, "cache", "catalog.json"),
     remote: "https://catalog.test/catalog.json",
+    guide: join(dir, "guide.md"),
     onLogin: vi.fn(),
     sdk: () => (options.sdk === null ? undefined : (options.sdk ?? join(dir, "pkg"))),
     node: process.execPath,
@@ -216,6 +221,7 @@ describe("pi's state", () => {
     expect(state.missing).toEqual([{ source: "npm:missing-one", scope: "user" }]);
     expect(state.mcpAdapter).toBe(true);
     expect(state.builtinMcp).toBe(false);
+    expect(state.defaults).toEqual({ codemode: "unset", guide: false });
     expect(state.project).toBeUndefined();
   });
 
@@ -253,6 +259,25 @@ describe("changes", () => {
     await expect(plugins.install("acme")).rejects.toThrow(/no package acme/);
     await plugins.remove(undefined, "npm:pi-web@1.0.0", "user");
     expect(settings().packages).toHaveLength(1);
+  });
+
+  it("applies the recommended setup: the recommended packages it lacks, codemode, and the guide when there is none", async () => {
+    writeSettings({ packages: ["npm:pi-web@0.9.0"], defaultTools: ["read", "bash"] });
+    const { plugins } = start();
+    await plugins.recommend();
+    expect(settings()).toEqual({ packages: ["npm:pi-web@0.9.0", "npm:@x/find@2.0.0"], defaultTools: ["read", "bash", "+codemode"] });
+    expect(readFileSync(join(agent, "AGENTS.md"), "utf8")).toBe("# Guide\n");
+    expect((await plugins.state(undefined)).defaults).toEqual({ codemode: "on", guide: true });
+  });
+
+  it("leaves your choices alone: codemode turned off, and an AGENTS.md or CLAUDE.md of your own", async () => {
+    writeSettings({ packages: ["npm:pi-web@1.0.0", "npm:@x/find"], defaultTools: ["-codemode"] });
+    writeFileSync(join(agent, "CLAUDE.md"), "mine");
+    const { plugins } = start();
+    await plugins.recommend();
+    expect(settings()).toEqual({ packages: ["npm:pi-web@1.0.0", "npm:@x/find"], defaultTools: ["-codemode"] });
+    expect(existsSync(join(agent, "AGENTS.md"))).toBe(false);
+    expect((await plugins.state(undefined)).defaults).toEqual({ codemode: "off", guide: true });
   });
 
   it("adds a catalog connection to mcp.json, turns it off and on, and checks a token before keeping it", async () => {

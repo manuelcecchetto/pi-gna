@@ -15,7 +15,8 @@ function withEntry(kind: "mcp" | "package", change: Record<string, unknown>) {
 describe("parseCatalog", () => {
   it("reads the bundled catalog: connections with logos, and pinned packages", () => {
     const catalog = parseCatalog(bundled());
-    expect(catalog.entries.map((entry) => entry.id)).toEqual(["attio", "notion", "granola", "intercom", "brevo", "pi-web-access", "pi-codex-image-gen"]);
+    expect(catalog.entries.map((entry) => entry.id)).toEqual(["attio", "notion", "granola", "intercom", "brevo", "pi-web-access", "pi-codex-image-gen", "pi-fff", "pi-subagents", "pi-claude-bridge"]);
+    expect(catalog.entries.filter((entry) => entry.recommended).map((entry) => entry.id)).toEqual(["pi-web-access", "pi-codex-image-gen", "pi-fff", "pi-subagents"]);
     for (const entry of catalog.entries) if (entry.kind === "mcp") expect(entry.logo?.src).toMatch(/^data:image\/(svg\+xml|png);base64,/);
     expect(catalog.entries.find((entry) => entry.id === "intercom")).toMatchObject({ endpoints: [{ id: "us" }, { id: "eu" }] });
     expect(catalog.entries.find((entry) => entry.id === "brevo")).toMatchObject({ auth: { type: "key", label: "MCP token" } });

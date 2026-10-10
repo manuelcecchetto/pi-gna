@@ -691,6 +691,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       async (_ctx, { cwd, toggle }) => (await env(), await plugins.togglePackage(cwd, toggle), null),
     ),
     "plugins.install": method<{ id: string }>("desktop", (raw) => ({ id: text(raw.id, "catalog id") }), async (_ctx, { id }) => (await env(), await plugins.install(id), null)),
+    "plugins.recommend": any("desktop", async () => (await env(), await plugins.recommend(), null)),
     "plugins.remove": method<{ cwd?: string; source: string; scope: "user" | "project" }>(
       "desktop",
       (raw) => ({ cwd: maybeProject(raw.cwd), source: text(raw.source, "package"), scope: packageScope(raw.scope) }),
@@ -921,6 +922,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.pluginsToggle, "plugins.toggle", (cwd, toggle) => ({ cwd, toggle })),
   route(IPC.pluginsTogglePackage, "plugins.togglePackage", (cwd, toggle) => ({ cwd, toggle })),
   route(IPC.pluginsInstall, "plugins.install", (id) => ({ id })),
+  route(IPC.pluginsRecommend, "plugins.recommend"),
   route(IPC.pluginsRemove, "plugins.remove", (cwd, source, scope) => ({ cwd, source, scope })),
   route(IPC.pluginsConnect, "plugins.connect", (id, endpoint, token) => ({ id, endpoint, token })),
   route(IPC.pluginsDisconnect, "plugins.disconnect", (cwd, server, scope) => ({ cwd, server, scope })),

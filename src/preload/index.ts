@@ -180,6 +180,7 @@ const api: StudioApi = {
     toggle: (cwd, toggle) => ipcRenderer.invoke(IPC.pluginsToggle, cwd, toggle),
     togglePackage: (cwd, toggle) => ipcRenderer.invoke(IPC.pluginsTogglePackage, cwd, toggle),
     install: (id) => ipcRenderer.invoke(IPC.pluginsInstall, id),
+    recommend: () => ipcRenderer.invoke(IPC.pluginsRecommend),
     remove: (cwd, source, scope) => ipcRenderer.invoke(IPC.pluginsRemove, cwd, source, scope),
     connect: (id, endpoint, token) => ipcRenderer.invoke(IPC.pluginsConnect, id, endpoint, token),
     disconnect: (cwd, server, scope) => ipcRenderer.invoke(IPC.pluginsDisconnect, cwd, server, scope),

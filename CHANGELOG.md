@@ -7,8 +7,16 @@ moves those lines under the new version, and they become its GitHub release note
 
 - Fast mode for GPT models, as in Codex: a Fast switch in the model menu (or `/fast`) asks OpenAI and ChatGPT models for priority processing, which answers faster at about twice the price. It is per chat, kept when the chat reopens, and a zap on the model chip shows it is on.
 - The model, thinking level and fast mode are one menu now, on the Mac and the phone: the chip reads "GPT-6.1 Sol · medium" with the provider's logo, the menu lists models with their logos, and the thinking level is a slider (buttons on the phone). The phone's sheets drag down to close, as on iOS.
-- Settings > Usage (pi-gna group): in-depth analytics of how pi and pi-gna were used, computed on this Mac from pi's session files: tokens by type, estimated cost at list price, models, projects, pi-gna's chats, card worktrees and ATP workers, subagents, tools, activity over time, agent health and insights. The phone has a compact copy under Settings > Usage.
+- A new plan's architect chat on the ATP page is kept as a draft: leaving the page no longer loses it. Drafts are listed in the plan menu on the Mac and the phone, with an unread dot and Discard, and reopening one resumes it.
+- Photos you attach on the phone show as thumbnails in the composer, and a sent image no longer repeats as a path chip or with pi's note about its size.
+- Phone notifications for a finished run show pi's reply as their text instead of "Run finished: …".
+- A chat named during its first turn keeps that name in the sidebar after the chat grows long.
 - The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
+
+## 0.13.0 - 2026-10-10
+
+- Settings > Plugins and Setup's Superpowers step offer the recommended setup, the one pi-gna is made with, in one click: web access, image generation, fast fuzzy file search and subagents, codemode on, and a global AGENTS.md of good working habits. It only adds what is missing and never changes a choice you made. Subagents of a Claude chat run on Sonnet and those of an OpenAI chat on Luna, unless you pick a model. The Claude Code bridge is in the catalog too, to use a Claude subscription in pi.
+- Settings > Usage (pi-gna group): in-depth analytics of how pi and pi-gna were used, computed on this Mac from pi's session files: tokens by type, estimated cost at list price, models, projects, pi-gna's chats, card worktrees and ATP workers, subagents, tools, activity over time, agent health and insights. The phone has a compact copy under Settings > Usage.
 - Hovering the tok/s readout shows a chart of the output speed of every response in the chat over time, red when slow, orange, green when fast, with the average. It covers earlier responses too, also in chats reopened from disk, where tok/s used to show nothing.
 
 - Updating no longer leaves a second pi-gna in Spotlight and Launchpad: the copy the update was staged in stayed listed after it moved into Applications.

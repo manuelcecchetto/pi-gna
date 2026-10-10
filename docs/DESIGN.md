@@ -1038,7 +1038,22 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   logos as base64 SVG/PNG `data:` URLs drawn with `<img>`, npm packages pinned to an exact version) is fetched from
   this repository's `main` once per launch and kept in `userData/plugins-catalog.json`; a failed or invalid fetch
   falls back to that copy, then to the bundled one. Logos: Notion, Intercom and Brevo from simple-icons (CC0), Attio's
-  mark from attio.com, Granola's app icon from granola.ai.
+  mark from attio.com, Granola's app icon from granola.ai, the Claude Code bridge's from the LobeHub ClaudeCode mark.
+  A new catalog field must stay optional and a new icon name waits until no supported build lacks it: older builds
+  fetch the same file, ignore unknown fields, and reject the whole catalog on an unknown icon.
+- **Recommended setup** (Discover's first section, also in Setup's simple Plugins step): the setup pi-gna is made with,
+  applied by one `plugins.recommend` (`PiPlugins.recommend`, helper op `recommend`). It installs the catalog's
+  `recommended` packages that `listConfiguredPackages` lacks (by npm name, any version), adds `+codemode` to the global
+  `defaultTools` unless they name codemode either way (pi has no setter: the helper sets `globalSettings` and calls
+  `markModified` + `save`, private in pi's types only), and copies `resources/recommended/AGENTS.md` to the agent folder
+  unless a context file pi reads there exists (`AGENTS.md`, `CLAUDE.md`, …; `COPYFILE_EXCL`). Never a replacement:
+  your choices stay. `PluginsState.defaults` reports codemode (`on | off | unset`) and the guide. MCP is not part of
+  it: pi loads `builtin:mcp` by default.
+  Every chat loads `resources/subagent-models-extension.ts`: with pi-subagents, a `subagent` call that names no model,
+  whose agent file names none either, runs on Sonnet under a Claude parent (anthropic, claude-bridge) and on Luna under
+  openai-codex. Known gap: pi writes a pinned npm source as `^version` into its npm folder's package.json, so a later
+  install can lift another package to a newer patch, which pi then lists as missing (and reinstalls at the pin when a
+  chat starts); keep catalog pins at the newest patch of their range.
 
 ## Usage
 

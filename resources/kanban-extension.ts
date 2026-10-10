@@ -42,6 +42,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "When you work on a card from the pi-gna Kanban board (the user's message names it, or they ask you to take one), keep it current: kanban_update with column in_progress when you start and in_review with a short report for the user when you finish. Do not create, claim or move cards otherwise.",
       "A chat can work on several cards; when this chat has more than one, pass card to kanban_update to say which one.",
+      "When a reply mentions a card, link it in place as [label](card:<id>) so it opens the card; a bare id in backticks renders as code, not a link.",
     ],
     parameters: Type.Object({
       column: column("Only this column"),
