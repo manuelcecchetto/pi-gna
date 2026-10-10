@@ -2,7 +2,7 @@ import { mkdtempSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { debounced, isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
+import { debounced, isRunnable, needsReload, previewRoot, relativeTo, reusableTab, samePreviewPage, watchFile } from "./preview-tabs";
 
 describe("reusableTab", () => {
   it("finds the tab previewing the same path", () => {
@@ -19,6 +19,19 @@ describe("needsReload", () => {
     expect(needsReload("rendered", "raw")).toBe(true);
     expect(needsReload("raw", "raw", 12)).toBe(true);
     expect(needsReload("rendered", "rendered", undefined, true)).toBe(true);
+  });
+});
+
+describe("samePreviewPage", () => {
+  it("compares file and view, not the line or the viewer's state", () => {
+    expect(samePreviewPage("pigna-file://t1/docs/a%20b.md#L12", "pigna-file://t1/docs/a b.md")).toBe(true);
+    expect(samePreviewPage("pigna-file://t1/a.md?view=source", "pigna-file://t1/a.md?view=raw")).toBe(true);
+    expect(samePreviewPage("pigna-file://t1/a.md?view=raw", "pigna-file://t1/a.md")).toBe(false);
+    expect(samePreviewPage("pigna-file://t1/a.md", "pigna-file://t1/b.md")).toBe(false);
+    expect(samePreviewPage("pigna-file://t1/a.md", "pigna-file://t2/a.md")).toBe(false);
+    expect(samePreviewPage("https://site.test/", "https://site.test/")).toBe(true);
+    expect(samePreviewPage("https://site.test/", "pigna-file://t1/a.md")).toBe(false);
+    expect(samePreviewPage("", "pigna-file://t1/a.md")).toBe(false);
   });
 });
 

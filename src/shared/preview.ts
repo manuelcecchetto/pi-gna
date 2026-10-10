@@ -15,6 +15,8 @@ export interface TabPreview {
   mode: PreviewMode;
   /** Modes the kind supports, default first. */
   modes: PreviewMode[];
+  /** Bumped each time the file changes on disk, so a client that draws the file itself (the phone) reads it again. */
+  rev?: number;
 }
 
 /** Options of opening a file in a preview tab. */

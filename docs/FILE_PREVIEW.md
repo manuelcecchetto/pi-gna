@@ -2,7 +2,10 @@
 
 Source of truth for the file-preview feature. A preview
 is a normal browser tab: one `WebContentsView` in `persist:pigna-browser` that loads a privileged custom scheme. It
-shares the tab strip, activation, pop-out, agent tools, DevTools and phone streaming with web tabs. Sections marked
+shares the tab strip, activation, pop-out, agent tools, DevTools and phone streaming with web tabs. Unlike a web page,
+each viewer has its own copy of a preview: the agent reads and drives a second view of the file
+(`BrowserManager.agentPage`, docs/DESIGN.md "What the agent sees"), and the phone draws text files and images itself
+(Phone below), so the user's zoom and scroll on the Mac reach neither. Sections marked
 **(spiked)** record behavior observed in Electron 44.5.1 while designing it; the rest is a decision. Code map: handler and
 token registry `src/main/browser/preview-protocol.ts`, tab wiring and live reload `preview-tabs.ts` + `manager.ts`
 (`openPreview`), target resolution `resolve-targets.ts`, shared model `src/shared/preview.ts`, viewer `src/preview/`.
@@ -102,7 +105,7 @@ The Chromium viewer described here is no longer used: see **PDF viewer** below. 
   rail, `1 / 1`, zoom controls. `document.contentType` is `application/pdf`. The CDP `Page.captureScreenshot` of the
   tab shows the whole viewer, byte-for-byte the same size (71,368 b base64) as the same PDF loaded from `file://`.
 - Zoom works through CDP input (two `+` clicks: 73% -> 80% -> 90%). The agent's `browser_screenshot` therefore sees
-  the rendered page. In-PDF search (Cmd+F through CDP key events) did not show a find bar in my attempt; not
+  the rendered page. (Since then the agent screenshots its own copy of a preview, so the user's zoom is not in it.) In-PDF search (Cmd+F through CDP key events) did not show a find bar in my attempt; not
   verified, so do not promise search (open question 1). The viewer's own toolbar has no search button.
 - **No pdf.js needed; no `file://` fallback needed.** `file://` is not used for anything.
 - `webContents.loadURL` of the PDF resolved normally.
@@ -528,6 +531,13 @@ chat link opens:
 
   The screen has Rendered/Raw where the kind has both, and Copy. Comments (the Browser screen's comment mode) are not
   offered there yet.
+- **Preview tabs on the Browser screen**: a tab of such a file (opened by the agent, the address bar, Open file, a drop)
+  is drawn the same way instead of streamed (`drawnPreview` in `file-data.ts`, `DrawnFile` in `Browser.tsx`): read
+  from the folders of the chat the screen opened from, else the tab's owner, so its scroll, zoom and Rendered/Raw are
+  the phone's own and the Mac tab is not held for it. A file outside those folders (`scope_denied`), a binary one or a
+  too large image streams the tab as before. A change on disk bumps the tab's `preview.rev`, and the phone reads the
+  file again keeping its place; the tab's line (`#L12` on its URL) is jumped to once. Comment mode, the viewport sheet
+  and typing need the stream and are off for a drawn tab.
 - **Other files** (PDF, Office, HTML, media): `chat.openFile { handle, path, line }` opens the preview in a tab the chat
   owns, and the phone shows it on the Browser screen (`{screen:"browser", handle, tab}`). The tab label shows the file
   name, the address field the real path. A tab without a viewport gets

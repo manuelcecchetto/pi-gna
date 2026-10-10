@@ -1,7 +1,7 @@
 // Pure parts of preview tabs: which tab a file opens in, which root it is served from, and the file watcher.
 import { watch, type FSWatcher } from "node:fs";
 import { dirname, basename, sep } from "node:path";
-import type { PreviewMode } from "../../shared/preview";
+import { parsePreviewUrl, type PreviewMode } from "../../shared/preview";
 
 export const RELOAD_DEBOUNCE_MS = 150;
 
@@ -17,6 +17,19 @@ export function reusableTab(tabs: { id: string; path?: string }[], path: string)
  */
 export function needsReload(shown: PreviewMode, wanted: PreviewMode, line?: number, crashed = false): boolean {
   return crashed || shown !== wanted || (line !== undefined && Number.isInteger(line) && line > 0);
+}
+
+/**
+ * Whether two preview URLs show the same page: the same file of the same token in the same view. The line hash and the
+ * viewer's own state do not count, so the agent's copy of a preview is loaded again only when the tab shows another
+ * file or view. Any other URL is the same page only when it is equal.
+ */
+export function samePreviewPage(a: string, b: string): boolean {
+  const left = parsePreviewUrl(a);
+  const right = parsePreviewUrl(b);
+  if (!left || !right) return a === b;
+  const view = (parsed: { view?: string }) => (parsed.view === "raw" || parsed.view === "source" ? "raw" : "rendered");
+  return left.token === right.token && left.relative === right.relative && view(left) === view(right);
 }
 
 /** Root a file is served from: the project when the file lies inside it, otherwise the file's own directory. Both realpathed. */

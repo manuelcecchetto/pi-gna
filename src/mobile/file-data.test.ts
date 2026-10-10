@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { blockForLine, drawnOnPhone, linesBefore, prettyJson } from "./file-data";
+import type { BrowserTab } from "../shared/browser";
+import { previewFor } from "../shared/preview";
+import { blockForLine, drawnOnPhone, drawnPreview, linesBefore, prettyJson } from "./file-data";
 
 describe("the phone's File screen", () => {
   it("draws text kinds and images itself and streams the rest", () => {
@@ -20,5 +22,21 @@ describe("the phone's File screen", () => {
     expect(linesBefore("# Body", "# Body")).toBe(0);
     expect(prettyJson('{"a":1}')).toBe('{\n  "a": 1\n}');
     expect(prettyJson("{ // jsonc")).toBe("{ // jsonc");
+  });
+});
+
+describe("preview tabs on the Browser screen", () => {
+  const tab = (path: string | undefined, url = "pigna-file://t/a", agent: string | null = "chat1"): BrowserTab =>
+    ({ id: "t1", url, title: "", loading: false, canGoBack: false, canGoForward: false, agent: agent ?? undefined, surface: "pane", preview: path ? { ...previewFor(path), rev: 2 } : undefined }) as BrowserTab;
+
+  it("draws a text or image preview from the chat's folders, at the tab's line", () => {
+    expect(drawnPreview(tab("/p/README.md", "pigna-file://t/README.md#L12"))).toEqual({ chat: "chat1", path: "/p/README.md", rev: 2, line: 12 });
+    expect(drawnPreview(tab("/p/shot.png"), "chat2")).toEqual({ chat: "chat2", path: "/p/shot.png", rev: 2, line: undefined });
+  });
+
+  it("streams web pages, kinds the phone cannot draw, and previews no chat owns", () => {
+    expect(drawnPreview(tab(undefined, "https://site.test/"))).toBeUndefined();
+    expect(drawnPreview(tab("/p/report.pdf"))).toBeUndefined();
+    expect(drawnPreview(tab("/p/README.md", "pigna-file://t/README.md", null))).toBeUndefined();
   });
 });

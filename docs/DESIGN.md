@@ -228,6 +228,15 @@ tabs close when its session ends. The phone still lists every chat's tabs.
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
   and its actions run through a per-session queue, because a page is sequential.
+- **What the agent sees**: a web page is shared: the agent reads and drives the page in the pane, so the user can watch
+  and step in (finish a login). A file preview is not: the user's zoom, scroll and pane size are theirs, so the agent
+  reads and drives its own copy of the file (`BrowserManager.agentPage`), a second view in the keeper window at
+  `AGENT_PREVIEW_SIZE` (1280x800) or the size `browser_viewport` asked for (`setAgentViewport`; the user's tab keeps its
+  own). It is made on first use and closed with the tab, or once the tab leaves the file for a web page. The copy follows
+  the file and Rendered/Raw the tab shows and reloads with the file; `browser_open` with a line loads both at that line.
+  A link the agent follows in its copy goes to the tab: another file of the preview there, and a web page in the tab
+  itself, which is then shared like any page. Closing, scrolling or zooming the pane never reaches the agent's view;
+  before this, the agent's screenshot of an image showed the user's zoom.
 - **Call order**: every browser tool is `executionMode: "sequential"`, so pi runs a message's tool calls in the order
   the agent wrote them (by default it runs them in parallel). Ordering by arrival at the bridge is not enough:
   `browser_open` checks the URL policy before its request, so a `browser_screenshot` sent in the same message

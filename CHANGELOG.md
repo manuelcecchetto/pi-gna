@@ -5,6 +5,9 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The agent no longer sees how you zoom, scroll or size a file preview. For an image, PDF, Markdown or other file tab it reads and screenshots its own copy of the file at a fixed 1280×800, so closing or resizing the browser pane does not get in its way. Web pages stay shared, so you can still watch and finish a login for it.
+- On the phone, a browser tab showing a Markdown, code, text or image file is drawn on the phone instead of streamed from the Mac: it is sharp, scrolls and zooms on its own, has its own Rendered/Raw, and reloads when the file changes. Files outside the chat's folders, PDFs and Office files still stream.
+
 ## 0.15.1 - 2026-10-10
 
 - Settings > Providers: when Claude Code uses an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` or an `apiKeyHelper`) instead of its own login, the Claude Code card says so and how to fix it: remove the key from your shell profile, then quit and reopen pi-gna. It used to offer Sign out, which reported success and left you signed in, since `claude auth logout` cannot remove such a key.

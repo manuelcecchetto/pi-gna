@@ -1,6 +1,8 @@
 // Agent browser actions behind the browser_* tools. Each pi session drives its own tab. Input and
 // screenshots go through CDP (webContents.debugger): OS-level input and capturePage need composited
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
+// A web page is the one the user sees; a file preview is read and driven in the agent's own copy
+// (BrowserManager.agentPage), so the user's zoom, scroll and pane never reach it.
 import { homedir } from "node:os";
 import { nativeImage, type WebContents } from "electron";
 import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize, viewportLine } from "../../shared/browser";
@@ -9,7 +11,7 @@ import { resolveViewport, toInputCoords, type ViewportSpec } from "../../shared/
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import { cdp } from "./cdp";
-import type { BrowserManager, Tab } from "./manager";
+import type { AgentPage, BrowserManager, Tab } from "./manager";
 import { focusForTyping, ISOLATED_WORLD, locate, SNAPSHOT } from "./page-scripts";
 
 const TEXT_LIMIT = 20_000;
@@ -92,7 +94,8 @@ export class BrowserAgent {
   private async perform(handle: string, request: AgentAction): Promise<AgentResult> {
     const result = await this.dispatch(handle, request);
     if (result.viewport) return result;
-    const viewport = this.agentTab(handle)?.viewport;
+    const tab = this.agentTab(handle);
+    const viewport = tab && this.browser.agentViewport(tab);
     return viewport ? { ...result, viewport } : result;
   }
 
@@ -100,33 +103,38 @@ export class BrowserAgent {
     if (request.action === "open") return this.open(handle, request.url, request.newTab ?? false, request.tab, request.cwd);
     if (request.action === "window") return this.window(handle, request);
     const tab = this.tabFor(handle, request.tab);
-    // A tab of a chat that is not on screen is in no window; holding it keeps the page rendering for the action.
-    this.browser.hold(tab.id);
+    // A tab of a chat that is not on screen is in no window; holding it keeps the page rendering for the action. The
+    // agent's copy of a preview lives in the keeper already.
+    const held = !tab.preview;
+    if (held) this.browser.hold(tab.id);
     try {
       return await this.act(handle, request, tab);
     } finally {
       this.browser.staleStill(tab);
-      this.browser.release(tab.id);
+      if (held) this.browser.release(tab.id);
     }
   }
 
   private async act(handle: string, request: Exclude<AgentAction, { action: "open" | "window" }>, tab: Tab): Promise<AgentResult> {
-    const wc = tab.view.webContents;
     this.browser.markAgent(tab);
     log.info("browser", `${handle.slice(0, 4)} ${request.action}${"ref" in request ? ` [${request.ref}]` : ""}`);
+    // The page to act on; a shared web page is first drawn where the user sees it, when `shown`.
+    const page = async (shown = true): Promise<AgentPage> => {
+      if (shown && !tab.preview) await this.browser.ensureVisible(tab);
+      return this.browser.agentPage(tab);
+    };
     switch (request.action) {
       case "snapshot":
-        await this.browser.ensureVisible(tab);
-        return this.snapshot(wc);
+        return this.snapshot((await page()).wc);
       case "click": {
-        await this.browser.ensureVisible(tab);
+        const { wc, scale, touch } = await page();
         const point = await this.exec<{ x: number; y: number } | null>(wc, locate(request.ref));
         if (!point) throw new Error(`No element [${request.ref}] on the page. Take a new browser_snapshot first.`);
         await delay(60); // let scrollIntoView settle
         const before = wc.getURL();
         // Input takes view pixels; a fitted viewport is drawn scaled.
-        const { x, y } = toInputCoords(point.x, point.y, tab.emulatedScale ?? 1);
-        if (tab.viewport?.touch) {
+        const { x, y } = toInputCoords(point.x, point.y, scale);
+        if (touch) {
           // Under touch emulation a CDP mouse press becomes a touch whose ack never comes, which would wedge this queue; tap instead.
           await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
           await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -138,7 +146,7 @@ export class BrowserAgent {
         return this.afterAction(wc, `Clicked [${request.ref}].`, before);
       }
       case "type": {
-        await this.browser.ensureVisible(tab);
+        const { wc } = await page();
         const ok = await this.exec<boolean>(wc, focusForTyping(request.ref, request.clear ?? true));
         if (!ok) throw new Error(`No element [${request.ref}] on the page. Take a new browser_snapshot first.`);
         const before = wc.getURL();
@@ -147,18 +155,19 @@ export class BrowserAgent {
         return this.afterAction(wc, `Typed into [${request.ref}]${request.submit ? " and pressed Enter" : ""}.`, before);
       }
       case "press": {
-        await this.browser.ensureVisible(tab);
+        const { wc } = await page();
         const before = wc.getURL();
         await pressKey(wc, request.key);
         return this.afterAction(wc, `Pressed ${request.key}.`, before);
       }
       case "back": {
+        const { wc } = await page(false);
         const before = wc.getURL();
         if (wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
         return this.afterAction(wc, "Went back.", before);
       }
       case "screenshot": {
-        await this.browser.ensureVisible(tab);
+        const { wc } = await page();
         const { data } = (await cdp(wc, "Page.captureScreenshot", { format: "png" })) as { data: string };
         let image = nativeImage.createFromBuffer(Buffer.from(data, "base64"));
         if (image.isEmpty()) throw new Error("The page could not be captured.");
@@ -172,6 +181,7 @@ export class BrowserAgent {
         // (executeJavaScript runs a classic script, where await is a syntax error reported as "Script failed to execute".)
         // REPL mode only awaits its own wrapper, so an object result goes through callFunctionOn, which awaits a
         // returned promise and serializes the value.
+        const { wc } = await page(false);
         const group = "pigna-evaluate";
         let reply = (await cdp(wc, "Runtime.evaluate", { expression: request.expression, replMode: true, awaitPromise: true, userGesture: true, objectGroup: group })) as Evaluated;
         try {
@@ -195,6 +205,7 @@ export class BrowserAgent {
         return { ...this.where(wc), text: clip(text ?? result.description ?? String(value)) };
       }
       case "console": {
+        const { wc } = await page(false);
         const entries = tab.console.slice(-100);
         if (request.clear) tab.console.length = 0;
         const text = entries.length
@@ -203,12 +214,14 @@ export class BrowserAgent {
         return { ...this.where(wc), text: clip(text) };
       }
       case "state":
-        return this.where(wc);
+        return this.where((await page(false)).wc);
       case "viewport": {
-        await this.browser.ensureVisible(tab);
+        const { wc, viewport: current } = await page();
         const set = request.reset ? undefined : request.set;
-        if (!request.reset && !set) return { ...this.where(wc), viewport: tab.viewport };
-        const viewport = await this.browser.setViewport(tab.id, set && { ...set, source: "agent" });
+        if (!request.reset && !set) return { ...this.where(wc), viewport: current };
+        const wanted = set && { ...set, source: "agent" as const };
+        // The size of the agent's copy of a preview: the user's pane keeps its own.
+        const viewport = tab.preview ? await this.browser.setAgentViewport(tab, wanted) : await this.browser.setViewport(tab.id, wanted);
         return { ...this.where(wc), viewport };
       }
     }
@@ -252,10 +265,11 @@ export class BrowserAgent {
   /** A local file opens as a preview tab; the result names the file instead of the internal preview URL. */
   private async openFile(handle: string, target: { path: string; line?: number }, newTab: boolean, cwd?: string): Promise<AgentResult> {
     log.info("browser", `${handle.slice(0, 4)} preview ${target.path}`);
+    // The user's tab shows the file at the line; the agent reads its own copy (agentPage), loaded at the same line.
     const tab = await this.browser.openPreview(target.path, { newTab, agent: handle, line: target.line, root: cwd });
     tab.agent = handle;
-    const wc = tab.view.webContents;
-    await this.browser.ensureVisible(tab);
+    this.browser.markAgent(tab);
+    const { wc } = await this.browser.agentPage(tab, target.line);
     await waitForStop(wc, 15_000);
     const info = tab.preview?.info;
     const snap = await this.snapshot(wc).catch(() => this.where(wc));

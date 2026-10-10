@@ -143,7 +143,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
           {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
           {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
           {route.screen === "file" && <FileScreen key={`${route.path}:${route.line ?? ""}`} client={client} handle={route.handle} path={route.path} line={route.line} push={push} back={back} />}
-          {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} back={back} />}
+          {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} push={push} back={back} />}
           {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
           {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
           {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
