@@ -104,11 +104,20 @@ describe("SWAP_SCRIPT", () => {
     chmodSync(exe, 0o755);
   }
 
+  /** Stands in for lsregister: logs its arguments, so the test neither touches nor litters Launch Services. */
+  function fakeLsregister(): string {
+    const path = join(dir, "lsregister");
+    writeFileSync(path, `#!/bin/sh\necho "$@" >> "${join(dir, "lsregister.log")}"\n`);
+    chmodSync(path, 0o755);
+    return path;
+  }
+
   function swap(pid: number, exe: string) {
+    const lsregister = fakeLsregister();
     const paths = { target: join(dir, "Applications", "pi-gna.app"), staged: join(dir, "update", "pi-gna.app"), failed: join(dir, "failed.txt") };
     const args = [String(pid), paths.target, paths.staged, join(dir, "update", "previous.app"), paths.failed, exe];
     const done = new Promise<string>((resolve, reject) =>
-      execFile("/bin/sh", ["-c", SWAP_SCRIPT, "pigna-update", ...args], (error, stdout) => (error ? reject(error) : resolve(stdout))),
+      execFile("/bin/sh", ["-c", SWAP_SCRIPT, "pigna-update", ...args], { env: { ...process.env, PIGNA_LSREGISTER: lsregister } }, (error, stdout) => (error ? reject(error) : resolve(stdout))),
     );
     return { ...paths, done };
   }
@@ -134,6 +143,8 @@ describe("SWAP_SCRIPT", () => {
     expect(existsSync(staged)).toBe(false);
     expect(existsSync(join(dir, "update", "previous.app"))).toBe(false);
     expect(existsSync(failed)).toBe(false);
+    // The staged and backup paths are unregistered, or Spotlight and Launchpad list a second, ghost pi-gna.
+    expect(readFileSync(join(dir, "lsregister.log"), "utf8")).toBe(`-u ${staged}\n-u ${join(dir, "update", "previous.app")}\n-f ${target}\n`);
     expect(await launched()).toBe("new");
   });
 

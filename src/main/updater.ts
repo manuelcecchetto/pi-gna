@@ -70,15 +70,20 @@ export function installBlocker(bundle: string | undefined, packaged: boolean, wr
   return undefined;
 }
 
+const LSREGISTER = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+
 /**
  * Runs detached as pi-gna quits: waits for its pid to exit, moves the old app aside, moves the staged one into
  * its place (putting the old one back if that fails), and with an executable name starts the app at the
  * target, touched and re-registered with Launch Services so Finder and the Dock show its icon. A failure goes to the `failed` file for the next launch to report. The profile and /Applications
- * share the Data volume, so the swap is two renames. Arguments: pid target staged backup failed [executable].
+ * share the Data volume, so the swap is two renames. Launch Services keeps an app registered at every path it
+ * saw it at, even once that bundle is moved or deleted, and Spotlight and Launchpad then list a second pi-gna; so
+ * the staged and backup paths are unregistered. Arguments: pid target staged backup failed [executable].
  * Its output is appended to main.log in the log's file format.
  */
 export const SWAP_SCRIPT = `
 pid=$1 target=$2 staged=$3 backup=$4 failed=$5 exe=$6
+lsregister=\${PIGNA_LSREGISTER:-${LSREGISTER}}
 say() { printf '%s %-5s %-10s %s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" updater "$2"; }
 while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
 rm -rf "$backup"
@@ -91,11 +96,21 @@ else
   rm -rf "$backup"
   # Finder and the Dock cache an app's icon by path; a fresh date and re-registering make them read the new one.
   touch "$target"
-  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
+  "$lsregister" -u "$staged" >/dev/null 2>&1
+  "$lsregister" -u "$backup" >/dev/null 2>&1
+  "$lsregister" -f "$target" >/dev/null 2>&1 || true
 fi
 if [ -s "$failed" ]; then say error "$(cat "$failed")"; else say info "installed $target"; fi
 if [ -n "$exe" ]; then "$target/Contents/MacOS/$exe" >/dev/null 2>&1 & fi
 `;
+
+/** Deletes `dir`, first unregistering the apps in it and its version folders, so no ghost pi-gna stays listed. */
+function removeStaged(dir: string): void {
+  const apps = (path: string) => (existsSync(path) ? readdirSync(path).filter((entry) => entry.endsWith(".app")).map((entry) => join(path, entry)) : []);
+  const subdirs = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && !entry.name.endsWith(".app")) : [];
+  for (const path of [...apps(dir), ...subdirs.flatMap((entry) => apps(join(dir, entry.name)))]) execFile(LSREGISTER, ["-u", path], () => {});
+  rmSync(dir, { recursive: true, force: true });
+}
 
 const run = (file: string, args: string[]) =>
   new Promise<string>((resolve, reject) =>
@@ -134,7 +149,7 @@ export class Updater {
     if (this.installError) log.error("updater", `the last update did not install: ${this.installError}`);
     rmSync(this.failedFile, { force: true });
     // Leftovers of a download that never got installed (pi-gna was killed before it quit cleanly).
-    rmSync(this.dir, { recursive: true, force: true });
+    removeStaged(this.dir);
   }
 
   get(): UpdateState {
@@ -222,13 +237,13 @@ export class Updater {
       await this.fetchDmg(release.dmg, dmg, (progress) => this.set({ phase: "downloading", release: shown, progress }));
       const staged = await this.stage(dmg, release.version, dir);
       rmSync(dmg, { force: true });
-      if (this.staged) rmSync(dirname(this.staged.app), { recursive: true, force: true });
+      if (this.staged) removeStaged(dirname(this.staged.app));
       this.staged = { ...staged, release };
       log.info("updater", `${release.version} is ready to install (${Math.round((Date.now() - started) / 1000)} s)`);
       this.set({ phase: "ready", release: shown });
     } catch (error) {
       log.error("updater", `could not download ${release.version}: ${(error as Error).message}`);
-      rmSync(dir, { recursive: true, force: true });
+      removeStaged(dir);
       if (this.staged) this.set({ phase: "ready", release: publicRelease(this.staged.release) });
       else this.set({ phase: "failed", release: shown, error: (error as Error).message });
     }
