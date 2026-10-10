@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.15.1 - 2026-10-10
+
 - Settings > Providers: when Claude Code uses an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` or an `apiKeyHelper`) instead of its own login, the Claude Code card says so and how to fix it: remove the key from your shell profile, then quit and reopen pi-gna. It used to offer Sign out, which reported success and left you signed in, since `claude auth logout` cannot remove such a key.
 
 ## 0.15.0 - 2026-10-10
