@@ -1021,6 +1021,7 @@ Files (the node that builds each one is in brackets; the shapes are in `src/shar
 - `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure [T04].
 - `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
 - `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, from T07, the rest; pure, no I/O [T06, T07].
+- `scripts/usage-crosscheck.mjs` (naive reader and diff) and `scripts/usage-crosscheck-real.test.mjs` (the real index and report over the same snapshot; skipped unless `USAGE_CROSSCHECK_WORK` is set): the independent cross-check [T09].
 - Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check) [T08]. Renderer: `UsagePage.tsx` (lazy chunk), `UsageCharts.tsx` (SVG
   primitives), panels [T10 to T14]. Phone: a compact section [T16].
 
@@ -1244,6 +1245,9 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
   Measured (T05, 4 workers, 8 cores): cold 6.4 s, warm 0.19 s (a second warm run 0.06 s), 1,682 files; peak RSS 626 MB in the
   bench process (vitest included); main-thread event-loop max 33 ms cold and 39 ms warm, the warm block being the cache's JSON.parse
   (the 3.8 MB cache is the main-thread cost to watch as history grows).
+- Cross-check run (T09, this Mac, 1,686 files, 2.7 GB, one thread): cold index 5.9 to 6.9 s (in-process extractor, not the worker);
+  warm index 28 to 37 ms; `buildReport` for the 14-day range 26 to 36 ms. The naive reader's full parse takes 10 to 12 s and is
+  not a budget item.
 - Warm `usage.get` (cache hit, 30 days) to a rendered page: at most 500 ms, covering 1,674 stats, the ~1.5 MB cache load and
   the aggregation (at most 150 ms over the whole history).
 - Cache file: at most 4 MB for the whole history (estimate ~1.5 MB).
@@ -1254,8 +1258,30 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
 ### Verification
 
 - `pnpm typecheck` and `pnpm test`; `usage.test.ts` locks the constants, and each later node adds its own tests.
-- T09 cross-checks the report against an independent script over the same files. Reference numbers for the last 14 days
-  (all providers, 1,322 files): 46,821 assistant turns, 7.58 billion cache-read tokens.
+- Cross-check (T09): `node scripts/usage-crosscheck.mjs [--days=14] [--work=/tmp/pi-gna-usage-crosscheck]`, macOS only. It
+  clones both roots with `cp -Rc` (an APFS clone, so pi can keep writing while both sides read the same bytes), then runs:
+  (1) a naive reader that `JSON.parse`s every line of every file and shares no code with `src/`, deriving the totals from
+  the rules in this section; (2) the real index (cold, then warm over the cache) and `buildReport` (`source: all`, the
+  preset `{days}d`) through `scripts/usage-crosscheck-real.test.mjs`, under vitest. It writes `naive.json`, `real.json` and
+  `diff.json` to the work directory only, never to `~/.pi`. Exit 1 on any unexplained difference.
+- Result (last run, 2026-10-10, 14 days, `Europe/Rome`, 1,686 files, 43 of 43 checks equal): 46,979 assistant turns; billed
+  7.87 billion tokens (input 16.2 M, output 44.0 M, cacheRead 7.64 billion, cacheWrite 172.4 M; reasoning 18.5 M is inside
+  output); cache hit 97.6%; 265 error turns; 2,824 USD estimated at list price and 164 USD recorded (claude-bridge records
+  zero); 2,629 prompts and 51,898 tool calls, both whole-file; 1,333 files with a turn in the range, 886 of them top-level
+  chats; 46 five-hour windows, the busiest 613 M tokens from 8 Oct 06:00 UTC. History: 100,017 turns over 1,686 files.
+- Compared exactly: turns; tokens by type, per model and per day; recorded cost per model; error turns; the window count and
+  the top five windows; the period bounds; stop reasons; error categories; compactions, compacted tokens and context edits;
+  subagent statuses; aborted prompts; steps and tool calls per prompt; the cache-miss share; per-tool calls, errors, nested
+  calls and mean duration; the whole-history totals; facts totals against the naive history; the warm cache against the cold.
+- Cost: the naive reader prices claude-opus-5-5 at 4 / 20 / 0.20 / 5 USD per million, the same as the price table. The
+  range's 35,815 Opus turns come to 2,541.53 USD on both sides. One hand-computed turn (6 Oct 2026, 2 input, 2,591 output,
+  768,710 cacheRead and 3,069 cacheWrite tokens) is 0.000008 + 0.05182 + 0.153742 + 0.015345 = 0.220915 USD.
+- Window boundaries and durations match the naive rules. Tool and prompt counts are whole-file totals on both sides (a file
+  counts when it has a turn in the range). The exact in-range counts differ from them by 17 prompts (0.6%) and 390 tool calls
+  (0.75%) at 14 days; 1 prompt and 49 tool calls at 7 days. That is the straddle over-count, the documented trade-off.
+- Not cross-checked: surfaces, projects, top sessions, streaks, active time, the expensive-subagent split by model, and the
+  other insight rules beyond cache-miss share and the long-context count.
+- No bug was found in T02 to T07 by this check, so no code changed for it.
 - T17 drives the real app over CDP with the real data and times the warm open.
 
 ### Inputs for later nodes
@@ -1292,6 +1318,13 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
   272,000, so a turn between 100k and 272k is priced at base rates. Measured on this Mac (T06): 9 of the 166 `claude-haiku-5-5`
   turns sit in (100k, 272k], an input and output understatement of $0.03. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps
   `USAGE_FACTS_VERSION` and changes `UsageBucket`. Decide before T02 and T05.
+- **Long-context count is whole-file.** The `long-context` insight takes its share from the range's buckets, but its count
+  comes from the whole-file context histogram. At 14 days the count is 30 turns above the exact in-range count (0.4%). The
+  buckets carry no turns-over-edge count, so an exact count needs `tierTurns` on `UsageBucket` and a `USAGE_FACTS_VERSION`
+  bump. Not changed here; decide with the tier-edge fix above.
+- **Insight shares on the last run.** `expensive-subagents` 90.2% (268.55 USD of subagent cost on 4,489 turns, on models whose
+  list output rate is at least 15 USD/M; Opus is 20). `cache-misses` 2.4% of input, below the 10% gate, so it is not shown.
+  `reasoning` 42.1% of output.
 - **Cache-write rate**: the 5-minute rate is assumed for every write (see Cost model).
 - **Heuristics**: surfaces and the insight thresholds are first guesses. T09 and T17 check them against the real data.
 
