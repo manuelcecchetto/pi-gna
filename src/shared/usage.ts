@@ -31,7 +31,31 @@ export type StopReason = (typeof STOP_REASONS)[number];
 export const ERROR_CATEGORIES = ["aborted", "rate-limit", "overloaded", "context-overflow", "network", "process", "other"] as const;
 export type ErrorCategory = (typeof ERROR_CATEGORIES)[number];
 
-export const INSIGHT_IDS = ["long-context", "cache-misses", "errors", "aborts", "compactions", "subagents", "reasoning", "long-prompts"] as const;
+/** A rule fires when its share of its base reaches this. */
+export const INSIGHT_MIN_SHARE = 0.1;
+
+/** Insights shown at most, by share. */
+export const INSIGHT_MAX = 6;
+
+/** Subagent turns on a model whose list output rate is at least this (USD per million) count as expensive. */
+export const EXPENSIVE_OUTPUT_RATE = 15;
+
+export const TOP_WINDOWS = 5;
+
+export const WINDOW_MS = 5 * 3_600_000;
+
+export const INSIGHT_IDS = [
+  "long-context",
+  "cache-misses",
+  "errors",
+  "bash-errors",
+  "aborts",
+  "compactions",
+  "subagents",
+  "expensive-subagents",
+  "reasoning",
+  "long-prompts",
+] as const;
 export type InsightId = (typeof INSIGHT_IDS)[number];
 
 /** Session files' providers whose list prices apply to another provider's model ids (claude-bridge runs Claude Code on a subscription). */
@@ -304,18 +328,32 @@ export interface SessionRow {
 
 export interface SurfaceRow {
   surface: Surface;
+  /** Top-level sessions of this surface; a subagent counts here only when its parent is out of scope. */
   sessions: number;
   turns: number;
   tokens: number;
   estimated: number;
+  /** The part of tokens and estimated that subagents of this surface's sessions used. */
+  subagentTokens: number;
+  subagentEstimated: number;
 }
 
 export interface ToolRow {
   name: string;
   calls: number;
   errors: number;
+  /** errors / calls, 0..1. */
+  errorRate: number;
   /** Mean duration of the timed calls; null when none was timed. */
   avgMs: number | null;
+  nestedCalls: number;
+}
+
+export interface ToolsReport {
+  /** Every tool, most calls first. */
+  rows: ToolRow[];
+  /** Tools with at least one error, most errors first; at most 5. */
+  topFailing: ToolRow[];
   nestedCalls: number;
 }
 
@@ -327,6 +365,15 @@ export interface AgentHealth {
   compactions: number;
   compactedTokens: number;
   contextEdits: number;
+  /** Sessions with at least one compaction, and with at least one context edit. */
+  compactingSessions: number;
+  editingSessions: number;
+  prompts: number;
+  abortedPrompts: number;
+  /** abortedPrompts / prompts, 0..1. */
+  abortRate: number;
+  stepsPerPrompt: number;
+  toolCallsPerPrompt: number;
   subagentRuns: Record<string, number>;
 }
 
@@ -338,14 +385,32 @@ export interface WindowRow {
   tokens: number;
   estimated: number;
   sessions: number;
-  rateLimits: number;
+  /** Tokens per minute over the window's elapsed time (to its end, or to now while it is active). */
+  burnRate: number;
+  active: boolean;
+}
+
+export interface WindowsReport {
+  /** Windows in the range. */
+  count: number;
+  /** Busiest by tokens, at most TOP_WINDOWS. */
+  top: WindowRow[];
+  /** The window running now, if any. */
+  current: WindowRow | null;
 }
 
 export interface Insight {
   id: InsightId;
-  /** The share of its base (estimated cost, turns or prompts) the behaviour accounts for, 0..1. */
+  /** The part of its base the behaviour accounts for, 0..1; a rule fires at INSIGHT_MIN_SHARE and above. */
   share: number;
+  /** How many of the base's units (turns, prompts, calls, tokens or output tokens) the behaviour covers. */
   count: number;
+  /** The base the share is of (estimated USD, turns, prompts, calls or tokens, per rule). */
+  base: number;
+  /** The measured value in the rule's unit, shown next to the threshold. */
+  value: number;
+  threshold: number;
+  tip: string;
 }
 
 export interface UsageReportMeta {
@@ -370,9 +435,9 @@ export interface UsageReport {
   projects: ProjectRow[];
   sessions: SessionRow[];
   surfaces: SurfaceRow[];
-  tools: ToolRow[];
+  tools: ToolsReport;
   health: AgentHealth;
-  windows: WindowRow[];
+  windows: WindowsReport;
   insights: Insight[];
 }
 

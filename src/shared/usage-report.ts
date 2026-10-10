@@ -1,11 +1,29 @@
+import {
+  CONTEXT_EDGES,
+  CONTEXT_TIER_EDGE,
+  EXPENSIVE_OUTPUT_RATE,
+  INSIGHT_MAX,
+  INSIGHT_MIN_SHARE,
+  STEP_EDGES,
+  SURFACES,
+  TOP_WINDOWS,
+  WINDOW_MS,
+} from "./usage";
 import type {
+  AgentHealth,
   FileUsageFacts,
+  Insight,
   ModelRow,
   PriceEntry,
   PriceTable,
   ProjectRow,
   SessionRow,
+  Surface,
+  SurfaceRow,
   TokenCounts,
+  ToolRow,
+  ToolsReport,
+  ToolStat,
   UsageBucket,
   UsageDay,
   UsageQuery,
@@ -14,6 +32,8 @@ import type {
   UsageReportMeta,
   UsageTotals,
   WeekHour,
+  WindowRow,
+  WindowsReport,
 } from "./usage";
 import { projectLabels } from "./usage-classify";
 import { findPrice, largeContextRates, type PriceIndex, priceIndex, priceTokens } from "./usage-prices";
@@ -23,6 +43,7 @@ export type CoreUsageReport = Omit<UsageReport, "surfaces" | "tools" | "health" 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const TOP_SESSIONS = 10;
+const TOP_FAILING_TOOLS = 5;
 const PRESET_DAYS: Record<Exclude<UsageRange, "all">, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90 };
 
 interface Sum {
@@ -193,6 +214,21 @@ function rootOf(row: FileRow, byId: Map<string, FileRow>): FileRow {
   }
 }
 
+function scopeOf(facts: readonly FileUsageFacts[], query: UsageQuery, prices: PriceTable, now: number) {
+  const timeZone = query.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const clock = zoneClock(timeZone);
+  const priceOf = priceLookup(priceIndex(prices));
+  const sourced = facts.filter((fact) => query.source === "all" || fact.session.pigna);
+  const scoped = sourced.filter((fact) => query.project === undefined || fact.session.project === query.project);
+  const { from, to } = resolveRange(query.range, now, clock, scoped);
+  return { timeZone, clock, priceOf, sourced, scoped, from, to };
+}
+
+const bucketInRange = (bucket: UsageBucket, from: number, to: number): boolean => {
+  const mid = bucket.hour * HOUR_MS + HOUR_MS / 2;
+  return mid >= from && mid < to;
+};
+
 /**
  * The core of the usage report: the headline, the daily and weekday-hour series, the models, projects and top sessions.
  * Pure: reads the facts, the price table, the query and `now`; `files` is the number of session files the index holds
@@ -206,12 +242,7 @@ export function buildCoreReport(
   now: number,
   files: number,
 ): CoreUsageReport {
-  const timeZone = query.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const clock = zoneClock(timeZone);
-  const priceOf = priceLookup(priceIndex(prices));
-  const sourced = facts.filter((fact) => query.source === "all" || fact.session.pigna);
-  const scoped = sourced.filter((fact) => query.project === undefined || fact.session.project === query.project);
-  const { from, to } = resolveRange(query.range, now, clock, scoped);
+  const { timeZone, clock, priceOf, sourced, scoped, from, to } = scopeOf(facts, query, prices, now);
 
   const dayAcc = new Map<string, { sum: Sum; models: Map<string, { tokens: number; estimated: number }> }>();
   const newDay = () => ({ sum: newSum(), models: new Map<string, { tokens: number; estimated: number }>() });
@@ -402,4 +433,341 @@ function longestRun(days: readonly UsageDay[]): number {
     longest = Math.max(longest, run);
   }
   return longest;
+}
+
+type Scope = ReturnType<typeof scopeOf>;
+type PriceOf = ReturnType<typeof priceLookup>;
+
+interface RangeRow {
+  fact: FileUsageFacts;
+  buckets: UsageBucket[];
+}
+
+function rangeRowsOf(scope: Scope): RangeRow[] {
+  const rows: RangeRow[] = [];
+  for (const fact of scope.scoped) {
+    const buckets = fact.buckets.filter((bucket) => bucketInRange(bucket, scope.from, scope.to));
+    if (buckets.length > 0) rows.push({ fact, buckets });
+  }
+  return rows;
+}
+
+function estimateOf(bucket: UsageBucket, priceOf: PriceOf): number | undefined {
+  const price = priceOf(bucket.provider, bucket.model);
+  return price === undefined ? undefined : estimateBucket(bucket, price);
+}
+
+function sumBuckets(buckets: readonly UsageBucket[], priceOf: PriceOf): Sum {
+  const sum = newSum();
+  for (const bucket of buckets) addBucket(sum, bucket, estimateOf(bucket, priceOf));
+  return sum;
+}
+
+function addCounts<K extends string>(into: Partial<Record<K, number>>, from: Partial<Record<K, number>>): void {
+  for (const key of Object.keys(from) as K[]) into[key] = (into[key] ?? 0) + (from[key] ?? 0);
+}
+
+function addEach(into: number[], from: readonly number[]): void {
+  from.forEach((count, index) => addAt(into, index, count));
+}
+
+function toolsOf(rows: RangeRow[]): ToolsReport {
+  const acc = new Map<string, ToolStat>();
+  for (const { fact } of rows) {
+    for (const [name, stat] of Object.entries(fact.tools)) {
+      const entry = acc.get(name) ?? { calls: 0, errors: 0, timedCalls: 0, durationMs: 0, nestedCalls: 0 };
+      entry.calls += stat.calls;
+      entry.errors += stat.errors;
+      entry.timedCalls += stat.timedCalls;
+      entry.durationMs += stat.durationMs;
+      entry.nestedCalls += stat.nestedCalls;
+      acc.set(name, entry);
+    }
+  }
+  const all: ToolRow[] = [...acc]
+    .map(([name, stat]) => ({
+      name,
+      calls: stat.calls,
+      errors: stat.errors,
+      errorRate: stat.calls === 0 ? 0 : stat.errors / stat.calls,
+      avgMs: stat.timedCalls === 0 ? null : stat.durationMs / stat.timedCalls,
+      nestedCalls: stat.nestedCalls,
+    }))
+    .sort((a, b) => b.calls - a.calls || compare(a.name, b.name));
+  const topFailing = all
+    .filter((row) => row.errors > 0)
+    .sort((a, b) => b.errors - a.errors || b.errorRate - a.errorRate || compare(a.name, b.name))
+    .slice(0, TOP_FAILING_TOOLS);
+  return { rows: all, topFailing, nestedCalls: all.reduce((sum, row) => sum + row.nestedCalls, 0) };
+}
+
+function healthOf(rows: RangeRow[]): AgentHealth {
+  const health: AgentHealth = {
+    stops: {},
+    errors: {},
+    promptSteps: zeros(STEP_EDGES.length + 1),
+    contextHist: zeros(CONTEXT_EDGES.length + 1),
+    compactions: 0,
+    compactedTokens: 0,
+    contextEdits: 0,
+    compactingSessions: 0,
+    editingSessions: 0,
+    prompts: 0,
+    abortedPrompts: 0,
+    abortRate: 0,
+    stepsPerPrompt: 0,
+    toolCallsPerPrompt: 0,
+    subagentRuns: {},
+  };
+  let steps = 0;
+  let toolCalls = 0;
+  for (const { fact } of rows) {
+    addCounts(health.stops, fact.stops);
+    addCounts(health.errors, fact.errors);
+    addEach(health.promptSteps, fact.prompts.stepHist);
+    addEach(health.contextHist, fact.contextHist);
+    health.compactions += fact.compactions;
+    health.compactedTokens += fact.compactedTokens;
+    health.contextEdits += fact.contextEdits;
+    if (fact.compactions > 0) health.compactingSessions += 1;
+    if (fact.contextEdits > 0) health.editingSessions += 1;
+    health.prompts += fact.prompts.count;
+    health.abortedPrompts += fact.prompts.aborted;
+    steps += fact.prompts.steps;
+    toolCalls += fact.prompts.toolCalls;
+    addCounts(health.subagentRuns, fact.subagentRuns);
+  }
+  if (health.prompts > 0) {
+    health.abortRate = health.abortedPrompts / health.prompts;
+    health.stepsPerPrompt = steps / health.prompts;
+    health.toolCallsPerPrompt = toolCalls / health.prompts;
+  }
+  return health;
+}
+
+function surfacesOf(rows: RangeRow[], priceOf: PriceOf): SurfaceRow[] {
+  const fileRows: FileRow[] = rows.map(({ fact, buckets }) => ({ fact, sum: sumBuckets(buckets, priceOf) }));
+  const byId = new Map(fileRows.map((row) => [row.fact.session.id, row]));
+  const acc = Object.fromEntries(
+    SURFACES.map((surface) => [surface, { surface, sessions: 0, turns: 0, tokens: 0, estimated: 0, subagentTokens: 0, subagentEstimated: 0 }]),
+  ) as Record<Surface, SurfaceRow>;
+  for (const row of fileRows) {
+    const root = rootOf(row, byId);
+    const entry = acc[root.fact.session.surface];
+    if (root === row) entry.sessions += 1;
+    entry.turns += row.sum.turns;
+    entry.tokens += billed(row.sum.tokens);
+    entry.estimated += row.sum.estimated;
+    if (root !== row) {
+      entry.subagentTokens += billed(row.sum.tokens);
+      entry.subagentEstimated += row.sum.estimated;
+    }
+  }
+  return SURFACES.map((surface) => acc[surface]);
+}
+
+interface WindowAcc {
+  start: number;
+  end: number;
+  turns: number;
+  tokens: number;
+  estimated: number;
+  sessions: Set<string>;
+}
+
+/** Five-hour blocks over the hour buckets: a block starts at the first turn after the previous one ends, hour-aligned. */
+function windowsOf(rows: RangeRow[], priceOf: PriceOf, now: number): WindowsReport {
+  const hours = new Map<number, Omit<WindowAcc, "start" | "end">>();
+  for (const { fact, buckets } of rows) {
+    for (const bucket of buckets) {
+      const entry = hours.get(bucket.hour) ?? { turns: 0, tokens: 0, estimated: 0, sessions: new Set<string>() };
+      entry.turns += bucket.turns;
+      entry.tokens += billed(bucket.tokens);
+      entry.estimated += estimateOf(bucket, priceOf) ?? 0;
+      entry.sessions.add(fact.session.id);
+      hours.set(bucket.hour, entry);
+    }
+  }
+  const blocks: WindowAcc[] = [];
+  let block: WindowAcc | undefined;
+  for (const [hour, entry] of [...hours].sort(([a], [b]) => a - b)) {
+    const start = hour * HOUR_MS;
+    if (!block || start >= block.end) {
+      block = { start, end: start + WINDOW_MS, turns: 0, tokens: 0, estimated: 0, sessions: new Set<string>() };
+      blocks.push(block);
+    }
+    block.turns += entry.turns;
+    block.tokens += entry.tokens;
+    block.estimated += entry.estimated;
+    for (const id of entry.sessions) block.sessions.add(id);
+  }
+  const windows: WindowRow[] = blocks.map((item) => {
+    const elapsedMs = Math.min(item.end, now) - item.start;
+    return {
+      start: item.start,
+      end: item.end,
+      turns: item.turns,
+      tokens: item.tokens,
+      estimated: item.estimated,
+      sessions: item.sessions.size,
+      burnRate: elapsedMs > 0 ? item.tokens / (elapsedMs / 60_000) : 0,
+      active: item.start <= now && now < item.end,
+    };
+  });
+  return {
+    count: windows.length,
+    top: [...windows].sort((a, b) => b.tokens - a.tokens || a.start - b.start).slice(0, TOP_WINDOWS),
+    current: windows.find((item) => item.active) ?? null,
+  };
+}
+
+function insightsOf(rows: RangeRow[], priceOf: PriceOf, health: AgentHealth, tools: ToolsReport): Insight[] {
+  const all = newSum();
+  let tierCost = 0;
+  let inputBilled = 0;
+  let missTokens = 0;
+  let subagentTurns = 0;
+  let subagentEstimated = 0;
+  let expensiveTurns = 0;
+  let expensiveEstimated = 0;
+  for (const { fact, buckets } of rows) {
+    const subagent = fact.session.parentId !== undefined;
+    for (const bucket of buckets) {
+      const price = priceOf(bucket.provider, bucket.model);
+      const estimate = estimateOf(bucket, priceOf);
+      addBucket(all, bucket, estimate);
+      if (price !== undefined) tierCost += priceTokens(bucket.tierTokens, largeContextRates(price));
+      inputBilled += bucket.tokens.input + bucket.tokens.cacheRead + bucket.tokens.cacheWrite;
+      missTokens += bucket.tokens.input + bucket.tokens.cacheWrite;
+      if (subagent) {
+        subagentTurns += bucket.turns;
+        subagentEstimated += estimate ?? 0;
+        if (price !== undefined && price.rates.output >= EXPENSIVE_OUTPUT_RATE) {
+          expensiveTurns += bucket.turns;
+          expensiveEstimated += estimate ?? 0;
+        }
+      }
+    }
+  }
+  const bash = tools.rows.find((row) => row.name === "bash");
+  const longPrompts = health.promptSteps.at(-1) ?? 0;
+  const overEdge = health.contextHist.slice(CONTEXT_EDGES.indexOf(CONTEXT_TIER_EDGE) + 1).reduce((sum, count) => sum + count, 0);
+  const reasoning = all.tokens.reasoning;
+  const candidates: Insight[] = [
+    {
+      id: "long-context",
+      share: all.estimated === 0 ? 0 : tierCost / all.estimated,
+      count: overEdge,
+      base: all.estimated,
+      value: all.estimated === 0 ? 0 : tierCost / all.estimated,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Compact or start a fresh chat before the context passes 272k tokens.",
+    },
+    {
+      id: "cache-misses",
+      share: inputBilled === 0 ? 0 : missTokens / inputBilled,
+      count: missTokens,
+      base: inputBilled,
+      value: inputBilled === 0 ? 0 : missTokens / inputBilled,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Keep the prompt prefix stable: a skill or tool added mid-chat rewrites it and misses the cache.",
+    },
+    {
+      id: "errors",
+      share: all.turns === 0 ? 0 : all.errorTurns / all.turns,
+      count: all.errorTurns,
+      base: all.turns,
+      value: all.turns === 0 ? 0 : all.errorTurns / all.turns,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Check the provider's status page before retrying.",
+    },
+    {
+      id: "bash-errors",
+      share: bash?.errorRate ?? 0,
+      count: bash?.errors ?? 0,
+      base: bash?.calls ?? 0,
+      value: bash?.errorRate ?? 0,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Check the failing bash commands; a repeated failure usually has one cause.",
+    },
+    {
+      id: "aborts",
+      share: health.abortRate,
+      count: health.abortedPrompts,
+      base: health.prompts,
+      value: health.abortRate,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "A long wait ended early; check whether the task was what you wanted.",
+    },
+    {
+      id: "compactions",
+      share: health.prompts === 0 ? 0 : health.compactions / health.prompts,
+      count: health.compactions,
+      base: health.prompts,
+      value: health.compactions === 0 ? 0 : health.prompts / health.compactions,
+      threshold: Math.round(1 / INSIGHT_MIN_SHARE),
+      tip: "A compaction is cheap; compacting early keeps the context below the tier.",
+    },
+    {
+      id: "subagents",
+      share: all.turns === 0 ? 0 : subagentTurns / all.turns,
+      count: subagentTurns,
+      base: all.turns,
+      value: all.turns === 0 ? 0 : subagentTurns / all.turns,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Review the turn budgets of the subagents that ran long.",
+    },
+    {
+      id: "expensive-subagents",
+      share: subagentEstimated === 0 ? 0 : expensiveEstimated / subagentEstimated,
+      count: expensiveTurns,
+      base: subagentEstimated,
+      value: subagentEstimated === 0 ? 0 : expensiveEstimated / subagentEstimated,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Give search and read subagents a cheaper model.",
+    },
+    {
+      id: "reasoning",
+      share: all.tokens.output === 0 ? 0 : reasoning / all.tokens.output,
+      count: reasoning,
+      base: all.tokens.output,
+      value: all.tokens.output === 0 ? 0 : reasoning / all.tokens.output,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Lower the thinking level for routine turns.",
+    },
+    {
+      id: "long-prompts",
+      share: health.prompts === 0 ? 0 : longPrompts / health.prompts,
+      count: longPrompts,
+      base: health.prompts,
+      value: health.prompts === 0 ? 0 : longPrompts / health.prompts,
+      threshold: INSIGHT_MIN_SHARE,
+      tip: "Split the work into smaller prompts.",
+    },
+  ];
+  return candidates
+    .filter((insight) => insight.base > 0 && insight.share >= INSIGHT_MIN_SHARE)
+    .sort((a, b) => b.share - a.share || compare(a.id, b.id))
+    .slice(0, INSIGHT_MAX);
+}
+
+export type BehaviourUsageReport = Pick<UsageReport, "surfaces" | "tools" | "health" | "windows" | "insights">;
+
+/** The behaviour parts of the report: surfaces, tools, agent health, five-hour windows and insights. Pure, like buildCoreReport. */
+export function buildBehaviourReport(facts: readonly FileUsageFacts[], query: UsageQuery, prices: PriceTable, now: number): BehaviourUsageReport {
+  const scope = scopeOf(facts, query, prices, now);
+  const rows = rangeRowsOf(scope);
+  const tools = toolsOf(rows);
+  const health = healthOf(rows);
+  return {
+    surfaces: surfacesOf(rows, scope.priceOf),
+    tools,
+    health,
+    windows: windowsOf(rows, scope.priceOf, now),
+    insights: insightsOf(rows, scope.priceOf, health, tools),
+  };
+}
+
+export function buildReport(facts: readonly FileUsageFacts[], query: UsageQuery, prices: PriceTable, now: number, files: number): UsageReport {
+  return { ...buildCoreReport(facts, query, prices, now, files), ...buildBehaviourReport(facts, query, prices, now) };
 }

@@ -1172,6 +1172,7 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
   A subagent rolls into its parent's session row when the parent is in scope. Streaks run over the range's days; the current
   streak ends on the last day, or the day before while the last day has no turns. Top model is the first row of the models table.
 - The models table has no thinking-level split: thinking is counted per file, not per model, so the facts cannot give it.
+- Behaviour (T07): `buildBehaviourReport` gives surfaces, tools, health, windows and insights; `buildReport` joins it to the core. Turn-level figures (cost share, errors, cache misses, subagent turns, windows) use the hour buckets in range. Prompt, tool, stop, error, compaction and context figures are whole-file totals of the files in range, as the core's prompts are. A subagent's usage is attributed to its parent's surface when the parent is in scope; otherwise it is a `subagent` surface row of its own. Windows start at the first in-range turn, hour-aligned, and the next starts at the first hour at or after the previous end. Burn rate is tokens per minute over the elapsed time (to the end, or to now for the active window). Rate-limit hits per window are not in v1: the facts keep error categories per file, not per hour. Median and p90 tool durations are not in v1 either: `ToolStat` keeps only the summed duration.
 
 ### Metrics and layout
 
@@ -1184,9 +1185,9 @@ Models      provider/model · turns · tokens by type · est. · recorded · err
 Projects    project · sessions · turns · tokens · est. · card-worktree sessions
 Sessions    top 10 by est. cost, subagents rolled in · open chat
 Surfaces    chats · card worktrees · ATP workers · subagents · CI · terminal
-Tools       calls · errors · avg duration · nested calls (top 15)
+Tools       calls · error rate · avg duration · nested calls · top failing (median and p90 need per-call durations, not in the facts)
 Health      stop reasons · error categories · prompts by steps · context histogram · compactions · subagent statuses
-Windows     busiest 5-hour blocks · rate-limit hits in each
+Windows     busiest 5-hour blocks (top 5) · the block running now · turns, tokens, est. cost, burn rate
 Insights    behaviours at 10% or more of their base, each with a tip (max 6, by share)
 ```
 
@@ -1208,14 +1209,16 @@ Definitions:
 | 5-hour block | from the first turn, hour-aligned; the next starts at the first turn after the previous one ends; ranked by tokens. The hour buckets make the edges hour-precise. |
 | context histogram | turns per `CONTEXT_EDGES` bin |
 
-Insight rules (share = its count / base; base in brackets):
+Insight rules (share = its count / base; base in brackets). A rule fires at `INSIGHT_MIN_SHARE` (10%) and above, shows its value and threshold, and at most `INSIGHT_MAX` (6) are kept, by share. `compactions` is the one rule whose value is a ratio: prompts per compaction, against a threshold of 10:
 
-- `long-context`: turns above `CONTEXT_TIER_EDGE` [est. cost]. Tip: compact or start a fresh chat before the context grows.
-- `cache-misses`: `missTurns` [turns]. Tip: keep the prefix stable; a skill or tool added mid-chat rewrites it.
+- `long-context`: est. cost of turns above `CONTEXT_TIER_EDGE` (272k, the only edge the facts can price) [est. cost]. Tip: compact or start a fresh chat before the context grows.
+- `cache-misses`: (input + cacheWrite) / (input + cacheRead + cacheWrite) [input tokens]. Tip: keep the prefix stable; a skill or tool added mid-chat rewrites it.
 - `errors`: errorTurns [turns]. Tip: check the provider's status page before retrying.
 - `aborts`: aborted prompts [prompts]. Tip: a long wait ended early; check whether the task was what you wanted.
 - `compactions`: compactions [prompts]. Tip: a compaction is cheap; compacting early keeps the context below the tier.
 - `subagents`: subagent turns [turns]. Tip: review the turn budgets of the subagents that ran long.
+- `bash-errors`: bash errors / bash calls [calls]. Tip: check the failing bash commands; a repeated failure usually has one cause.
+- `expensive-subagents`: est. cost of subagent turns on a model with list output at or above `EXPENSIVE_OUTPUT_RATE` (15 USD/M) [subagent est. cost]. Tip: give search and read subagents a cheaper model.
 - `reasoning`: reasoning tokens [output tokens]. Tip: lower the thinking level for routine turns.
 - `long-prompts`: prompts with more than 50 steps [prompts]. Tip: split the work into smaller prompts.
 
