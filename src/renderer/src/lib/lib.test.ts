@@ -107,6 +107,11 @@ describe("file attachments", () => {
     expect(found.map((m) => m.path)).toEqual(["/r/a.ts"]);
     const quoted = "# Files mentioned by the user:\nplease explain this header";
     expect(splitFileMentions(quoted)).toEqual([quoted, []]);
+    // pi's downscale note is for the model, not the transcript.
+    const note = "[Image: original 1206x2622, displayed at 920x2000. Multiply coordinates by 1.31 to map to original image.]";
+    const [plain, shots] = splitFileMentions(`Check this out\n\n# Files mentioned by the user:\n\n## a.png: /u/a.png (image attached)\n\n${note}\n${note}`);
+    expect(plain).toBe("Check this out");
+    expect(shots.map((m) => m.image)).toEqual([true]);
     const first = [fromPicked({ path: "/repo/a.ts", name: "a.ts", isDir: false })];
     expect(mergeAttachments(first, [fromPicked({ path: "/repo/a.ts", name: "a.ts", isDir: false })])).toHaveLength(1);
   });

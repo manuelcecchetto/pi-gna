@@ -440,11 +440,13 @@ function userParts(message: UserMessage): { text: string; images: ImageContent[]
 function UserMessageView({ message, divider }: { message: UserMessage; divider: boolean }) {
   const { openLightbox, homeDir, links } = useChatActions();
   const parts = userParts(message);
-  const [withoutFiles, mentions] = splitFileMentions(parts.text);
+  const [withoutFiles, allMentions] = splitFileMentions(parts.text);
   const [withoutCard, card] = splitCardBlock(withoutFiles);
   const [withoutThread, sender] = splitThreadMessage(withoutCard);
   const [text, comments] = splitComments(withoutThread);
   const images = parts.images;
+  // An image that came through shows as its thumbnail; its path chip would only repeat it.
+  const mentions = images.length ? allMentions.filter((mention) => !mention.image) : allMentions;
   const [expanded, setOpen] = useState(false);
   const [tapped, setTapped] = useState(false);
   const long = text.split("\n").length > 14 || text.length > 1400;

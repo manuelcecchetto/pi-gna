@@ -10,18 +10,49 @@ const failure = (error: unknown) => (error instanceof Error ? error.message : St
 
 export function AttachmentChips({ list, onRemove }: { list: Attached[]; onRemove: (key: string) => void }) {
   if (!list.length) return null;
+  // One row that scrolls sideways: photos as thumbnails, everything else as a chip.
   return (
-    <div className="flex flex-wrap gap-1.5 px-3 pt-2.5" data-testid="attachment-chips">
-      {list.map((a) => (
-        <span key={a.key} className={`flex min-h-8 max-w-full items-center gap-1.5 rounded-lg border px-2 text-[12.5px] ${a.state === "error" ? "border-bad/50 text-bad" : "border-line text-muted"}`} data-testid="attachment-chip" title={a.error}>
-          {a.state === "uploading" ? <Loader2 size={13} className="shrink-0 animate-spin" /> : a.isDir ? <Folder size={13} className="shrink-0" /> : a.image ? <FileImage size={13} className="shrink-0" /> : <File size={13} className="shrink-0" />}
-          <span className="min-w-0 truncate">{a.name}</span>
-          <button type="button" aria-label={`Remove ${a.name}`} onClick={() => onRemove(a.key)} className="grid h-8 w-6 shrink-0 place-items-center">
-            <X size={13} />
-          </button>
-        </span>
-      ))}
+    <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain px-3 pt-2.5 [scrollbar-width:none]" data-testid="attachment-chips">
+      {list.map((a) =>
+        a.file ? (
+          <PhotoThumb key={a.key} attached={a} file={a.file} onRemove={() => onRemove(a.key)} />
+        ) : (
+          <span key={a.key} className={`flex min-h-8 max-w-[75%] shrink-0 items-center gap-1.5 self-start rounded-lg border px-2 text-[12.5px] ${a.state === "error" ? "border-bad/50 text-bad" : "border-line text-muted"}`} data-testid="attachment-chip" title={a.error}>
+            {a.state === "uploading" ? <Loader2 size={13} className="shrink-0 animate-spin" /> : a.isDir ? <Folder size={13} className="shrink-0" /> : a.image ? <FileImage size={13} className="shrink-0" /> : <File size={13} className="shrink-0" />}
+            <span className="min-w-0 truncate">{a.name}</span>
+            <button type="button" aria-label={`Remove ${a.name}`} onClick={() => onRemove(a.key)} className="grid h-8 w-6 shrink-0 place-items-center">
+              <X size={13} />
+            </button>
+          </span>
+        ),
+      )}
     </div>
+  );
+}
+
+/** A picked photo; the object URL lives as long as the thumbnail. */
+function PhotoThumb({ attached, file, onRemove }: { attached: Attached; file: File; onRemove: () => void }) {
+  const [src, setSrc] = useState<string>();
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  const failed = attached.state === "error";
+  return (
+    <span className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border ${failed ? "border-bad" : "border-line"}`} data-testid="attachment-chip" title={attached.error ?? attached.name}>
+      {src && <img src={src} alt={attached.name} className={`h-full w-full object-cover ${failed ? "opacity-40" : ""}`} />}
+      {attached.state === "uploading" && (
+        <span className="absolute inset-0 grid place-items-center bg-black/40 text-white">
+          <Loader2 size={16} className="animate-spin" />
+        </span>
+      )}
+      <button type="button" aria-label={`Remove ${attached.name}`} onClick={onRemove} className="absolute right-0 top-0 grid h-7 w-7 place-items-center">
+        <span className="grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white">
+          <X size={12} />
+        </span>
+      </button>
+    </span>
   );
 }
 

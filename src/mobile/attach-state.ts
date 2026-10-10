@@ -11,6 +11,8 @@ export interface Attached {
   source: "upload" | "host";
   isDir?: boolean;
   image?: boolean;
+  /** The picked photo, for its thumbnail in the composer. */
+  file?: File;
   state: "uploading" | "ready" | "error";
   ref?: AttachmentRef;
   error?: string;

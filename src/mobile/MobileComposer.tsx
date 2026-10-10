@@ -140,7 +140,7 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
       }
       const key = nextKey();
       const image = file.type.startsWith("image/");
-      current = [...current, { key, name, source: "upload", image, state: "uploading" }];
+      current = [...current, { key, name, source: "upload", image, ...(image ? { file } : {}), state: "uploading" }];
       const settle = (patch: Partial<Attached>) => setAttached((list) => list.map((a) => (a.key === key ? { ...a, ...patch } : a)));
       void client
         .upload(file, name)
