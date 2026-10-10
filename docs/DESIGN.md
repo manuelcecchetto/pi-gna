@@ -1196,7 +1196,7 @@ Activity    daily stacked bars by model (tokens | est. cost)      calendar heatm
             weekday x hour heatmap (turns | tokens | cost)
 Models      provider/model · turns · tokens by type · est. · recorded · error rate · priced
 Projects    project · sessions · turns · tokens · est. · card-worktree sessions
-Sessions    top 10 by est. cost, subagents rolled in · open chat
+Sessions    top 10 by est. cost, subagents rolled in · open chat (not ATP runs; a file gone from disk does not open)
 Surfaces    chats · card worktrees · ATP workers · subagents · CI · terminal
 Tools       calls · error rate · avg duration · nested calls · top failing (median and p90 need per-call durations, not in the facts)
 Health      stop reasons · error categories · prompts by steps · context histogram · compactions · subagent statuses

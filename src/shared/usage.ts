@@ -311,6 +311,8 @@ export interface ProjectRow {
 export interface SessionRow {
   id: string;
   path: string;
+  /** The folder the chat ran in (a card chat's worktree): where opening it starts pi. */
+  cwd: string;
   title: string;
   project: string;
   surface: Surface;
@@ -322,7 +324,7 @@ export interface SessionRow {
   tokens: number;
   estimated: number;
   subagents: number;
-  /** Whether the Usage page can open it as a chat (pi-gna's surfaces). */
+  /** Whether the Usage page can open it as a chat: not an ATP run (it needs its plan identity) and not a subagent. usage-service clears it when the file is gone. */
   openable: boolean;
 }
 

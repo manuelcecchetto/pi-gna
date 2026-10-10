@@ -100,7 +100,7 @@ export function UsageSection() {
       {current.error ? (
         <ErrorState message={current.error} onRetry={() => setReload((count) => count + 1)} />
       ) : report ? (
-        <Report report={report} pending={current.pending || base.pending} />
+        <Report report={report} pending={current.pending || base.pending} onProject={(project) => update({ project })} />
       ) : (
         <LoadingState progress={progress} />
       )}
@@ -160,7 +160,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function Report({ report, pending }: { report: UsageReport; pending: boolean }) {
+function Report({ report, pending, onProject }: { report: UsageReport; pending: boolean; onProject: (project: string) => void }) {
   if (report.totals.turns === 0) {
     return (
       <Card title="Nothing to show yet" note="Widen the range, or pick All pi sessions to include the chats pi-gna did not start.">
@@ -181,8 +181,10 @@ function Report({ report, pending }: { report: UsageReport; pending: boolean }) 
       <div className="md:col-span-2">
         <SurfacesPanel report={report} />
       </div>
-      <ModelsPanel report={report} />
-      <ProjectsPanel report={report} />
+      <div className="md:col-span-2">
+        <ModelsPanel report={report} />
+      </div>
+      <ProjectsPanel report={report} onProject={onProject} />
       <SessionsPanel report={report} />
       <ToolsPanel report={report} />
       <HealthPanel report={report} />

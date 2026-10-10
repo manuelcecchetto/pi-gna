@@ -183,6 +183,15 @@ describe("UsageService", () => {
     expect(report.projects).toHaveLength(50);
   });
 
+  it("opens a top session only while its file is on disk", async () => {
+    const path = join(sessions, "app", "gone.jsonl");
+    await writeFile(path, chat("gone", { turns: 1 }));
+    const svc = service();
+    expect((await svc.get({ range: "30d", source: "all" })).sessions[0]).toMatchObject({ openable: true });
+    await rm(path);
+    expect((await svc.get({ range: "30d", source: "all" })).sessions[0]).toMatchObject({ openable: false });
+  });
+
   it("throttles progress events while files are read", async () => {
     for (let i = 0; i < 20; i++) await writeFile(join(sessions, "app", `s${i}.jsonl`), chat(`s${i}`, { turns: 1 }));
     const events: UsageProgress[] = [];

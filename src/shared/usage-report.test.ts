@@ -257,6 +257,16 @@ describe("buildCoreReport tables", () => {
     expect(report.sessions[0]).toMatchObject({ subagents: 1, turns: 2, estimated: 2, activeMs: 150, firstAt: 1, lastAt: 9, openable: true, prompts: 2 });
   });
 
+  it("gives each top session its folder, and leaves ATP runs out of the openable rows", () => {
+    const facts = [
+      file({ id: "atp", surface: "atp-worker", cwd: "/work/app" }, [bucket("2026-01-14T10:00:00Z", "anthropic", "sonnet", { input: 2_000_000 })]),
+      file({ id: "term", surface: "terminal", pigna: false, cwd: "/work/other" }, [bucket("2026-01-14T11:00:00Z", "anthropic", "sonnet", { input: 1 })]),
+    ];
+    const report = build(facts, { range: "all", source: "all" });
+    expect(report.sessions.find((row) => row.id === "atp")).toMatchObject({ openable: false, cwd: "/work/app" });
+    expect(report.sessions.find((row) => row.id === "term")).toMatchObject({ openable: true, cwd: "/work/other" });
+  });
+
   it("folds card worktrees into their project and labels the projects", () => {
     const facts = [
       file({ id: "chat", project: "/Users/me/app", card: undefined }, [bucket("2026-01-14T10:00:00Z", "anthropic", "sonnet", { input: 1 })]),

@@ -1,5 +1,6 @@
 // Settings > Usage on the host: one index and the price table, scanned on the first report of a launch and again on
 // usage.refresh. The index reads and caches the files; this decides when that runs and what a client is told.
+import { stat } from "node:fs/promises";
 import { HostError } from "../shared/host-api";
 import { type PriceTable, type SourceRoot, USAGE_RANGES, type UsageProgress, type UsageQuery, type UsageRange, type UsageReport, type UsageSource } from "../shared/usage";
 import { buildReport } from "../shared/usage-report";
@@ -11,6 +12,8 @@ const DAY_MS = 86_400_000;
 const MAX_CUSTOM_DAYS = 4000;
 const PROGRESS_INTERVAL_MS = 250;
 const MAX_TEXT = 1024;
+
+const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
 export interface UsageServiceOptions {
   roots: () => Record<SourceRoot, string>;
@@ -38,7 +41,9 @@ export class UsageService {
   async get(query: UsageQuery): Promise<UsageReport> {
     await this.ready();
     const prices = (this.options.prices ?? loadPriceTable)();
-    return buildReport(this.index.allFacts(), query, prices, (this.options.now ?? Date.now)(), this.index.discovered());
+    const report = buildReport(this.index.allFacts(), query, prices, (this.options.now ?? Date.now)(), this.index.discovered());
+    const sessions = await Promise.all(report.sessions.map(async (row) => ({ ...row, openable: row.openable && (await exists(row.path)) })));
+    return { ...report, sessions };
   }
 
   /** Reads the files that changed since the last scan; the others come from the cache. */

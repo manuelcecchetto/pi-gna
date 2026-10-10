@@ -8,6 +8,7 @@ import {
   EXPENSIVE_OUTPUT_RATE,
   type Insight,
   type InsightId,
+  type ModelRow,
   STEP_EDGES,
   type StopReason,
   type Surface,
@@ -205,4 +206,27 @@ function insightDetail({ id, count, base }: Insight): string {
     case "long-prompts":
       return `${n(count)} of ${n(base)} prompts ran over ${STEP_EDGES.at(-1)} steps`;
   }
+}
+
+export type ModelSortKey = "model" | "turns" | "tokens" | "estimated" | "share" | "cacheHitRate";
+export interface ModelSort {
+  key: ModelSortKey;
+  desc: boolean;
+}
+
+const modelName = (row: ModelRow): string => `${row.provider}/${row.model}`;
+const byModelName = (a: ModelRow, b: ModelRow): number => (modelName(a) < modelName(b) ? -1 : modelName(a) > modelName(b) ? 1 : 0);
+const MODEL_VALUE: Record<Exclude<ModelSortKey, "model">, (row: ModelRow) => number> = {
+  turns: (row) => row.turns,
+  tokens: (row) => billedTokens(row.tokens),
+  estimated: (row) => row.estimated,
+  share: (row) => row.share,
+  cacheHitRate: (row) => row.cacheHitRate,
+};
+
+/** The models in a column's order; ties, and the model column itself, fall back to the name, A to Z. */
+export function sortModels(rows: readonly ModelRow[], { key, desc }: ModelSort): ModelRow[] {
+  const sign = desc ? -1 : 1;
+  const value = key === "model" ? undefined : MODEL_VALUE[key];
+  return [...rows].sort((a, b) => sign * (value ? value(a) - value(b) : byModelName(a, b)) || byModelName(a, b));
 }

@@ -4,6 +4,7 @@ import {
   ERROR_CATEGORIES,
   INSIGHT_IDS,
   type Insight,
+  type ModelRow,
   STEP_EDGES,
   STOP_REASONS,
   SURFACES,
@@ -35,6 +36,7 @@ import {
   toolBars,
   toolSummary,
   plural,
+  sortModels,
   turnDayBars,
   usd,
   weekHourRows,
@@ -184,3 +186,43 @@ describe("usage panels", () => {
     expect(insightFigures(insight)).toEqual({ value: "25.0% of turns", threshold: "10.0%", detail: "30 of 120 turns" });
   });
 });
+
+describe("sortModels", () => {
+  const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
+  const model = (provider: string, name: string, over: Partial<ModelRow>): ModelRow => ({
+    provider,
+    model: name,
+    turns: 1,
+    errorTurns: 0,
+    tokens: zero,
+    estimated: 0,
+    recorded: 0,
+    priced: true,
+    share: 0,
+    cacheHitRate: 0,
+    ...over,
+  });
+  const rows = [
+    model("anthropic", "sonnet", { turns: 5, tokens: { ...zero, input: 10, output: 1 }, estimated: 2, share: 0.5, cacheHitRate: 0.2 }),
+    model("openai", "gpt", { turns: 9, tokens: { ...zero, input: 1, output: 1, cacheRead: 1, cacheWrite: 1 }, estimated: 4, share: 0.25, cacheHitRate: 0.9 }),
+    model("anthropic", "opus", { turns: 5, priced: false, share: 0.25, cacheHitRate: 0.2 }),
+  ];
+  const names = (sort: { key: Parameters<typeof sortModels>[1]["key"]; desc: boolean }) =>
+    sortModels(rows, sort).map((row) => `${row.provider}/${row.model}`);
+
+  it("sorts by estimated cost, tokens, turns, share and cache hit, both ways", () => {
+    expect(names({ key: "estimated", desc: true })).toEqual(["openai/gpt", "anthropic/sonnet", "anthropic/opus"]);
+    expect(names({ key: "estimated", desc: false })).toEqual(["anthropic/opus", "anthropic/sonnet", "openai/gpt"]);
+    expect(names({ key: "tokens", desc: true })).toEqual(["anthropic/sonnet", "openai/gpt", "anthropic/opus"]);
+    expect(names({ key: "tokens", desc: false })).toEqual(["anthropic/opus", "openai/gpt", "anthropic/sonnet"]);
+    expect(names({ key: "turns", desc: true })).toEqual(["openai/gpt", "anthropic/opus", "anthropic/sonnet"]);
+    expect(names({ key: "share", desc: true })).toEqual(["anthropic/sonnet", "anthropic/opus", "openai/gpt"]);
+    expect(names({ key: "cacheHitRate", desc: false })).toEqual(["anthropic/opus", "anthropic/sonnet", "openai/gpt"]);
+  });
+
+  it("sorts the model column by name, A to Z or Z to A", () => {
+    expect(names({ key: "model", desc: false })).toEqual(["anthropic/opus", "anthropic/sonnet", "openai/gpt"]);
+    expect(names({ key: "model", desc: true })).toEqual(["openai/gpt", "anthropic/sonnet", "anthropic/opus"]);
+  });
+});
+

@@ -442,7 +442,19 @@ export function MatrixHeatmap({
 }
 
 /** Ranked by value, each bar against the top one; the share is of the whole list. */
-export function HBars({ rows, format, summary, aside }: { rows: Amount[]; format: (value: number) => string; summary: string; aside?: (row: Amount) => ReactNode }) {
+export function HBars({
+  rows,
+  format,
+  summary,
+  aside,
+  onSelect,
+}: {
+  rows: Amount[];
+  format: (value: number) => string;
+  summary: string;
+  aside?: (row: Amount) => ReactNode;
+  onSelect?: (row: Amount) => void;
+}) {
   const ranked = [...rows].sort((a, b) => b.value - a.value);
   const total = sum(ranked.map((row) => row.value));
   const top = ranked[0]?.value ?? 0;
@@ -456,9 +468,20 @@ export function HBars({ rows, format, summary, aside }: { rows: Amount[]; format
     >
       {ranked.map((row) => (
         <div key={row.key} className="contents">
-          <span className="truncate text-fg" title={row.label}>
-            {row.label}
-          </span>
+          {onSelect ? (
+            <button
+              type="button"
+              onClick={() => onSelect(row)}
+              title={row.label}
+              className="truncate text-left text-fg hover:text-accent focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {row.label}
+            </button>
+          ) : (
+            <span className="truncate text-fg" title={row.label}>
+              {row.label}
+            </span>
+          )}
           <div className="h-1.5 overflow-hidden rounded-full bg-sunken">
             <div className="h-full rounded-full" style={{ width: `${(row.value / top) * 100}%`, background: color(row.key) }} />
           </div>

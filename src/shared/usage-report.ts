@@ -345,6 +345,7 @@ export function buildCoreReport(
     return {
       id: meta.id,
       path: meta.path,
+      cwd: meta.cwd,
       title: meta.name ?? meta.id,
       project: meta.project,
       surface: meta.surface,
@@ -356,7 +357,7 @@ export function buildCoreReport(
       tokens: billed(group.sum.tokens),
       estimated: group.sum.estimated,
       subagents: group.members - 1,
-      openable: meta.pigna && meta.parentId === undefined,
+      openable: meta.surface !== "atp-worker" && meta.parentId === undefined,
     };
   });
 
