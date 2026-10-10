@@ -3,7 +3,7 @@
 // running with this window closed; the page shows it, starts and stops it. ATP chats never show in the sidebar:
 // the page opens them.
 import type { AtpProjectPlans, AtpSession } from "../../../shared/atp";
-import type { AtpPlanThreads, AtpRunNote, AtpRunner, AtpRunnerState } from "../../../shared/host-api";
+import type { AtpDraft, AtpPlanThreads, AtpRunNote, AtpRunner, AtpRunnerState } from "../../../shared/host-api";
 import { createStore, useStore } from "../lib/store";
 import { useEffect } from "react";
 import { adopt, remoteError, startAtpChat, store as app, toast } from "./app";
@@ -19,11 +19,13 @@ export interface AtpState {
   held: string[];
   runners: Record<string, Runner>;
   notes: Record<string, RunNote>;
-  /** Live orchestrator chats: by plan, or `new:<project>` for a plan the architect is still writing. */
+  /** Live orchestrator chats: by plan, or `draft:<id>` for a plan the architect is still writing. */
   orchestrators: Record<string, string>;
+  /** Architect chats whose plan is not written yet, every project's. */
+  drafts: Record<string, AtpDraft>;
 }
 
-export const atpStore = createStore<AtpState>({ held: [], runners: {}, notes: {}, orchestrators: {} });
+export const atpStore = createStore<AtpState>({ held: [], runners: {}, notes: {}, orchestrators: {}, drafts: {} });
 
 let booted = false;
 const studio = () => window.studio;
@@ -93,8 +95,8 @@ function boot(): void {
   importLegacyThreads();
 }
 
-function showRunners({ runners, notes, orchestrators }: AtpRunnerState): void {
-  atpStore.set((s) => ({ ...s, runners, notes, orchestrators }));
+function showRunners({ runners, notes, orchestrators, drafts }: AtpRunnerState): void {
+  atpStore.set((s) => ({ ...s, runners, notes, orchestrators, drafts }));
   // The running worker's chat is the host's: join it, so the page can open it.
   for (const runner of Object.values(runners)) if (runner.handle) void adopt(runner.handle);
 }
@@ -148,18 +150,18 @@ export function threadHandle(cwd: string, path: string, title: string, atp: AtpS
 }
 
 /**
- * The plan's orchestrator chat: the host starts it (or resumes it from its session file) when the page shows the
- * plan, and this window joins it. `plan` undefined: a chat for a new plan, which the architect skills write.
+ * The plan's or the draft's orchestrator chat: the host starts it (or resumes it from its session file) when the page
+ * shows it, and this window joins it. Neither: a new draft, a chat for a plan the architect skills are about to write.
  */
-export async function orchestrator(cwd: string, plan: string | undefined): Promise<string> {
+export async function orchestrator(cwd: string, target: { plan?: string; draft?: string } = {}): Promise<{ handle: string; draft?: string }> {
   boot();
-  const { handle } = await studio().atp.orchestrator(cwd, plan);
-  await adopt(handle);
-  return handle;
+  const opened = await studio().atp.orchestrator(cwd, target);
+  await adopt(opened.handle);
+  return opened;
 }
 
-/** Drop a new-plan chat (New ATP again, or you cancelled it), so the next one starts fresh. */
-export const discardNewPlanChat = (cwd: string): Promise<void> => call(() => studio().atp.discardNewPlan(cwd));
+/** Forget a draft and stop its chat. */
+export const discardDraft = (draft: string): Promise<void> => call(() => studio().atp.discardDraft(draft));
 
 /** The page closed: the host stops the orchestrators that are idle (a pi process each); busy ones once they finish. */
 export const releaseOrchestrators = (): Promise<void> => call(() => studio().atp.releaseOrchestrators());

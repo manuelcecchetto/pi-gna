@@ -3,12 +3,14 @@
 // with the claim packet (workerMessage), wait for its run, check the node, commit what the worker left, repeat until
 // nothing is READY. Workers complete, fail or decompose their node themselves; nothing here judges them. The runner
 // also owns the plans' orchestrator chats (a client shows a plan: its orchestrator runs; nobody does: it stops) and
-// the threads (which chats worked on what). A new plan's chat works in a git worktree of the project (Atp.newPlanCwd),
-// and a plan's run and orchestrator work where the plan is: in that worktree, or in the project.
-import { ATP_CONFIG, type AtpClaim, type AtpNode, type AtpPlan, type AtpProjectPlans, type AtpSession, nudgeMessage, workerMessage, workingNodes } from "../shared/atp";
+// the threads (which chats worked on what). A new plan's chat (a draft until its plan file appears) works in a git
+// worktree of the project (Atp.newPlanCwd), and a plan's run and orchestrator work where the plan is: in that
+// worktree, or in the project.
+import { randomBytes } from "node:crypto";
+import { ATP_CONFIG, type AtpClaim, type AtpNode, type AtpPlan, type AtpProjectPlans, type AtpSession, draftKey, draftTitle, nudgeMessage, workerMessage, workingNodes } from "../shared/atp";
 import { checkoutOf } from "../shared/board";
-import type { AtpRunNote, AtpRunner, AtpRunnerState, ClientPresence } from "../shared/host-api";
-import type { RunOutcome } from "../shared/session-state";
+import type { AtpDraft, AtpRunNote, AtpRunner, AtpRunnerState, ClientPresence } from "../shared/host-api";
+import { type RunOutcome, userText } from "../shared/session-state";
 import { type Settings, taskModel } from "../shared/settings";
 import type { Atp } from "./atp";
 import type { AtpThreads } from "./atp-threads";
@@ -20,7 +22,7 @@ export interface AtpRunnerDeps {
   host: Pick<SessionHost, "open" | "attach" | "detach" | "command" | "stateOf" | "presence" | "close" | "interrupt" | "identify" | "onSettled" | "onExit" | "onPresence">;
   tasks: Pick<ChatTasks, "launch" | "useModel">;
   atp: Pick<Atp, "activate" | "read" | "claim" | "release" | "head" | "commit" | "setHeld" | "newPlanCwd">;
-  threads: Pick<AtpThreads, "get" | "remember" | "setOrchestrator">;
+  threads: Pick<AtpThreads, "get" | "remember" | "setOrchestrator" | "drafts" | "setDraft" | "dropDraft">;
   settings: { get(): Promise<Settings> };
   /** The bundled librarian CLI, for the workers' prompts. */
   librarian: string;
@@ -32,14 +34,16 @@ export interface AtpRunnerDeps {
 
 type Settled = RunOutcome | "exited";
 
-/** The key of a project's orchestrator while its plan is not written yet. */
-export const newPlanKey = (cwd: string): string => `new:${cwd}`;
-
 export class AtpRuns {
   private readonly runners = new Map<string, AtpRunner>();
   private readonly notes = new Map<string, AtpRunNote>();
-  /** Live orchestrator chats, by plan or `new:<project>`. */
+  /** Live orchestrator chats, by plan or `draft:<id>`. */
   private readonly orchestrators = new Map<string, string>();
+  /** Chats for plans not written yet: those kept on disk, and new ones until their pi exits without a run. */
+  private readonly drafts = new Map<string, AtpDraft>();
+  private readonly draftsLoaded: Promise<void>;
+  /** New drafts pick their worktree one at a time. */
+  private placing: Promise<void> = Promise.resolve();
   private readonly opening = new Map<string, Promise<{ handle: string }>>();
   /** Orchestrator chats a client left while busy: they stop once idle, if nobody shows them by then. */
   private readonly releasing = new Set<string>();
@@ -57,12 +61,19 @@ export class AtpRuns {
     host.onSettled((handle, outcome) => this.settled(handle, outcome));
     host.onExit((handle) => this.exited(handle));
     host.onPresence((handle) => this.presenceChanged(handle));
+    this.draftsLoaded = deps.threads.drafts().then(
+      (drafts) => {
+        for (const draft of drafts) if (!this.drafts.has(draft.id)) this.drafts.set(draft.id, draft);
+        if (drafts.length) this.emit();
+      },
+      (error: Error) => log.warn("atp", `cannot read the drafts: ${error.message}`),
+    );
   }
 
   // ── State ──────────────────────────────────────────────────────────────────
 
   state(): AtpRunnerState {
-    return { runners: Object.fromEntries(this.runners), notes: Object.fromEntries(this.notes), orchestrators: Object.fromEntries(this.orchestrators) };
+    return { runners: Object.fromEntries(this.runners), notes: Object.fromEntries(this.notes), orchestrators: Object.fromEntries(this.orchestrators), drafts: Object.fromEntries(this.drafts) };
   }
 
   private emit(): void {
@@ -252,6 +263,9 @@ export class AtpRuns {
     for (const [key, owner] of this.orchestrators) {
       if (owner !== handle) continue;
       this.orchestrators.delete(key);
+      // A draft that never ran has nothing to resume: it goes with its chat.
+      const draft = key.startsWith("draft:") ? key.slice("draft:".length) : undefined;
+      if (draft && !this.drafts.get(draft)?.session) this.drafts.delete(draft);
       this.emit();
     }
   }
@@ -324,32 +338,45 @@ export class AtpRuns {
   // ── Orchestrators ──────────────────────────────────────────────────────────
 
   /**
-   * The plan's orchestrator chat for this client, started (or resumed from its session file) when it shows the plan.
-   * `plan` undefined: a chat for a new plan, which the architect skills write, in a worktree of the project.
+   * The orchestrator chat of a plan, or of a draft, for this client: started (or resumed from its session file) when
+   * it shows it. Neither: a new draft, a chat for a plan the architect skills are about to write, in a worktree of the
+   * project; it is kept once its first run ends, and becomes the orchestrator of the plan it writes (plansChanged).
    */
-  orchestrator(client: ClientPresence, cwd: string, plan: string | undefined): Promise<{ handle: string }> {
-    const key = plan ?? newPlanKey(cwd);
+  orchestrator(client: ClientPresence, cwd: string, target: { plan?: string; draft?: string } = {}): Promise<{ handle: string; draft?: string }> {
+    const { plan } = target;
+    if (target.draft && !this.drafts.has(target.draft)) return Promise.reject(new Error("That draft is gone: its plan was written, or it was discarded."));
+    const draft = plan ? undefined : (target.draft ?? newDraftId(this.drafts));
+    const key = plan ?? draftKey(draft as string);
+    const result = (handle: string) => ({ handle, ...(draft ? { draft } : {}) });
+    if (draft) this.seen(draft);
     const live = this.orchestrators.get(key);
     if (live && this.deps.host.stateOf(live)) {
       this.releasing.delete(live);
       this.deps.host.attach(live, client);
-      return Promise.resolve({ handle: live });
+      return Promise.resolve(result(live));
     }
-    const pending = this.opening.get(key) ?? this.openOrchestrator(key, client, cwd, plan).finally(() => this.opening.delete(key));
+    const pending = this.opening.get(key) ?? this.openOrchestrator(key, client, cwd, plan, draft).finally(() => this.opening.delete(key));
     this.opening.set(key, pending);
     return pending.then(({ handle }) => {
       // A second client that asked while the first was opening it joins it.
       if (!this.deps.host.presence(handle).some((other) => other.clientId === client.clientId)) this.deps.host.attach(handle, client);
-      return { handle };
+      return result(handle);
     });
   }
 
-  private async openOrchestrator(key: string, client: ClientPresence, cwd: string, plan: string | undefined): Promise<{ handle: string }> {
+  private async openOrchestrator(key: string, client: ClientPresence, cwd: string, plan: string | undefined, draft: string | undefined): Promise<{ handle: string }> {
     const { host, tasks, threads, settings } = this.deps;
     await this.deps.shellEnv;
-    const sessionPath = plan ? (await threads.get(plan)).orchestrator : undefined;
-    const where = plan ? checkoutOf(plan, cwd) : await this.deps.atp.newPlanCwd(cwd);
-    const { handle } = await host.open({ cwd: where, ...(sessionPath ? { sessionPath } : {}), atp: { role: "orchestrator", ...(plan ? { plan } : {}) } }, { client });
+    const kept = draft ? this.drafts.get(draft) : undefined;
+    const sessionPath = plan ? (await threads.get(plan)).orchestrator : kept?.session;
+    const where = plan ? checkoutOf(plan, cwd) : (kept?.cwd ?? (await this.newDraft(draft as string, cwd)).cwd);
+    let handle: string;
+    try {
+      ({ handle } = await host.open({ cwd: where, ...(sessionPath ? { sessionPath } : {}), atp: { role: "orchestrator", ...(plan ? { plan } : {}) } }, { client }));
+    } catch (error) {
+      if (draft && !kept) this.drafts.delete(draft);
+      throw error;
+    }
     if (!sessionPath) {
       // A new chat runs on the orchestrator model (Settings > Models); a resumed one keeps its own.
       try {
@@ -357,6 +384,7 @@ export class AtpRuns {
         if (!ready.success) throw new Error(ready.error ?? "pi did not start");
         await tasks.useModel(handle, taskModel(await settings.get(), "orchestrator"));
       } catch (error) {
+        if (draft && !kept) this.drafts.delete(draft);
         await host.close(handle, "host");
         throw error;
       }
@@ -367,36 +395,84 @@ export class AtpRuns {
     return { handle };
   }
 
-  /** A new plan appeared while its project's new-plan chat ran: that chat (the architect) becomes its orchestrator. */
+  /**
+   * A new draft's place, held at once so a second new draft gets another worktree (asks for one queue up: each
+   * sees the drafts before it). Not kept on disk, nor published, until its chat is ready.
+   */
+  private newDraft(id: string, project: string): Promise<AtpDraft> {
+    const placed = this.placing.then(async () => {
+      const taken = new Set([...this.drafts.values()].filter((draft) => draft.project === project).map((draft) => draft.cwd));
+      const cwd = await this.deps.atp.newPlanCwd(project, taken);
+      const now = Date.now();
+      const draft: AtpDraft = { id, project, cwd, title: "", startedAt: now, updatedAt: now, seenAt: now };
+      this.drafts.set(id, draft);
+      return draft;
+    });
+    this.placing = placed.then(
+      () => undefined,
+      () => undefined,
+    );
+    return placed;
+  }
+
+  /** A client opened the draft: what it did so far is read. */
+  private seen(id: string): void {
+    const draft = this.drafts.get(id);
+    if (!draft || draft.seenAt >= draft.updatedAt) return;
+    this.saveDraft({ ...draft, seenAt: Date.now() });
+  }
+
+  private saveDraft(draft: AtpDraft): void {
+    this.drafts.set(draft.id, draft);
+    this.emit();
+    void this.deps.threads.setDraft(draft).catch((error: Error) => log.warn("atp", `cannot keep the draft: ${error.message}`));
+  }
+
+  /**
+   * A project's plans changed: a plan a draft wrote makes the draft its orchestrator. Its plan is one in the draft's
+   * folder, written since the draft started, that has no orchestrator yet; drafts that share a folder (a project
+   * outside git) give it to the latest one started before it was written. A draft nobody has talked to writes nothing.
+   */
   async plansChanged(project: AtpProjectPlans): Promise<void> {
     const { host, threads } = this.deps;
-    const key = newPlanKey(project.cwd);
-    const handle = this.orchestrators.get(key);
-    const state = handle ? host.stateOf(handle) : undefined;
-    if (!handle || !state?.prompted) return;
-    const first = state.items[0];
-    const since = first?.kind === "user" ? first.message.timestamp : 0;
+    await this.draftsLoaded;
     for (const file of project.plans) {
-      if (!file.plan || this.orchestrators.has(file.path) || file.modifiedAt < since) continue;
-      if ((await threads.get(file.path)).orchestrator) continue;
-      if (this.orchestrators.get(key) !== handle) return;
-      this.orchestrators.delete(key);
-      this.orchestrators.set(file.path, handle);
+      if (!file.plan || this.orchestrators.has(file.path)) continue;
+      const draft = [...this.drafts.values()]
+        .filter((draft) => draft.project === project.cwd && file.path.startsWith(`${draft.cwd}/`) && draft.startedAt <= file.modifiedAt)
+        .filter((draft) => draft.session || this.liveDraft(draft.id)?.prompted)
+        .sort((a, b) => b.startedAt - a.startedAt)[0];
+      if (!draft || (await threads.get(file.path)).orchestrator) continue;
+      // Something else moved while the threads were read.
+      if (this.drafts.get(draft.id) !== draft || this.orchestrators.has(file.path)) continue;
+      const key = draftKey(draft.id);
+      const handle = this.orchestrators.get(key);
+      const session = (handle ? host.stateOf(handle)?.sessionPath : undefined) ?? draft.session;
+      this.drafts.delete(draft.id);
+      if (handle) {
+        this.orchestrators.delete(key);
+        this.orchestrators.set(file.path, handle);
+      }
       this.emit();
-      const path = host.stateOf(handle)?.sessionPath;
-      if (path) await threads.setOrchestrator(file.path, path);
-      return;
+      void threads.dropDraft(draft.id).catch((error: Error) => log.warn("atp", `cannot forget the draft: ${error.message}`));
+      if (session) await threads.setOrchestrator(file.path, session);
     }
   }
 
-  /** Drop a project's new-plan chat (New ATP again, or the user cancelled it), so the next one starts fresh. */
-  discardNewPlan(cwd: string): void {
-    const key = newPlanKey(cwd);
+  private liveDraft(id: string) {
+    const handle = this.orchestrators.get(draftKey(id));
+    return handle ? this.deps.host.stateOf(handle) : undefined;
+  }
+
+  /** Forget a draft and stop its chat. Its worktree stays: the next draft reuses it if it holds no plan and no change. */
+  discardDraft(id: string): void {
+    const key = draftKey(id);
     const handle = this.orchestrators.get(key);
-    if (!handle) return;
+    const had = this.drafts.delete(id);
     this.orchestrators.delete(key);
-    this.emit();
-    if (this.deps.host.stateOf(handle)) void this.deps.host.close(handle, "host");
+    if (had || handle) this.emit();
+    void this.deps.threads.dropDraft(id).catch((error: Error) => log.warn("atp", `cannot forget the draft: ${error.message}`));
+    if (handle && this.deps.host.stateOf(handle)) void this.deps.host.close(handle, "host");
   }
 
   /** A client no longer shows the plans: the orchestrators nobody else is in stop (a pi process each); busy ones once they finish. */
@@ -426,11 +502,30 @@ export class AtpRuns {
     void host.close(handle, "host");
   }
 
-  /** Remember an orchestrator's session file once it has one worth resuming: after its first run. */
+  /**
+   * Remember an orchestrator's session file once it has one worth resuming: after a run. A draft's run also names it
+   * (its first message) and is unread unless a client is looking at it.
+   */
   private rememberOrchestrator(handle: string): void {
     const key = [...this.orchestrators].find(([, owner]) => owner === handle)?.[0];
-    const path = this.deps.host.stateOf(handle)?.sessionPath;
-    if (key && !key.startsWith("new:") && path) void this.deps.threads.setOrchestrator(key, path).catch((error: Error) => log.warn("atp", `cannot keep the orchestrator's chat: ${error.message}`));
+    const state = this.deps.host.stateOf(handle);
+    const path = state?.sessionPath;
+    if (!key || !path) return;
+    const draft = key.startsWith("draft:") ? this.drafts.get(key.slice("draft:".length)) : undefined;
+    if (draft) {
+      const first = state.items.find((item) => item.kind === "user");
+      const now = Date.now();
+      const viewing = this.deps.host.presence(handle).some((client) => client.viewing);
+      this.saveDraft({ ...draft, session: path, title: (first?.kind === "user" && draftTitle(userText(first.message))) || draft.title, updatedAt: now, ...(viewing ? { seenAt: now } : {}) });
+    } else if (!key.startsWith("draft:")) void this.deps.threads.setOrchestrator(key, path).catch((error: Error) => log.warn("atp", `cannot keep the orchestrator's chat: ${error.message}`));
+  }
+}
+
+/** A short id no draft has. */
+function newDraftId(drafts: ReadonlyMap<string, AtpDraft>): string {
+  for (;;) {
+    const id = randomBytes(4).toString("hex");
+    if (!drafts.has(id)) return id;
   }
 }
 
