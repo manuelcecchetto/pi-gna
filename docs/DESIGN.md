@@ -1020,7 +1020,7 @@ Files (the node that builds each one is in brackets; the shapes are in `src/shar
 - `src/main/usage-extract.ts`: one session file to `FileUsageFacts`, streamed line by line [T02].
 - `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure [T04].
 - `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
-- `src/shared/usage-report.ts`: `buildReport(facts, query, prices, now)`, a pure function with no I/O [T06, T07].
+- `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, from T07, the rest; pure, no I/O [T06, T07].
 - Host: `usage.get` in `src/shared/host-api.ts` [T08]. Renderer: `UsagePage.tsx` (lazy chunk), `UsageCharts.tsx` (SVG
   primitives), panels [T10 to T14]. Phone: a compact section [T16].
 
@@ -1167,6 +1167,11 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
   cached per day). Nothing local is stored, so DST and a changed zone come out right.
 - Filters: `source`, then `project` (a `SessionMeta.project`), applied to every panel.
 - `buildReport` reads only facts, the price table, the query and `now`; the host calls it on cached facts. It never reads files.
+- Core (T06): a file counts when it has a turn in the range (buckets are cut at their midpoint, so the range is hour-precise).
+  Prompts, tool calls and active time are the file's whole-file totals, since the facts are not bucketed below the hour.
+  A subagent rolls into its parent's session row when the parent is in scope. Streaks run over the range's days; the current
+  streak ends on the last day, or the day before while the last day has no turns. Top model is the first row of the models table.
+- The models table has no thinking-level split: thinking is counted per file, not per model, so the facts cannot give it.
 
 ### Metrics and layout
 
@@ -1270,7 +1275,8 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
   subagent with its parent's `pigna` (the parent is `<dir of tasks>.jsonl`). A subagent whose parent is not indexed stays false.
 - **Tool durations** are upper bounds for parallel calls (see Per-file facts).
 - **Tier edges**: the real table has tiers at 100,000, 200,000 and 272,000 (Cost model). The facts keep tokens only above
-  272,000, so a turn between 100k and 272k is priced wrong. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps
+  272,000, so a turn between 100k and 272k is priced at base rates. Measured on this Mac (T06): 9 of the 166 `claude-haiku-5-5`
+  turns sit in (100k, 272k], an input and output understatement of $0.03. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps
   `USAGE_FACTS_VERSION` and changes `UsageBucket`. Decide before T02 and T05.
 - **Cache-write rate**: the 5-minute rate is assumed for every write (see Cost model).
 - **Heuristics**: surfaces and the insight thresholds are first guesses. T09 and T17 check them against the real data.

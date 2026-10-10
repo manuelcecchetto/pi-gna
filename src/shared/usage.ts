@@ -214,6 +214,8 @@ export interface CostTotals {
   recorded: number;
   /** Turns whose model has no price; left out of `estimated`. */
   unpricedTurns: number;
+  /** Share of the billed tokens (input, output, cacheRead, cacheWrite) on turns with no price, 0..1. */
+  unpricedShare: number;
 }
 
 export interface UsageTotals {
@@ -229,6 +231,11 @@ export interface UsageTotals {
   errorTurns: number;
   abortedPrompts: number;
   cost: CostTotals;
+  /** Consecutive local days with turns, ending at the range's last day (yesterday while today has none). */
+  currentStreak: number;
+  longestStreak: number;
+  /** The first row of the models table (largest estimate, then tokens); null with no turns. */
+  topModel: string | null;
 }
 
 export interface UsageDay {
@@ -257,6 +264,10 @@ export interface ModelRow {
   estimated: number;
   recorded: number;
   priced: boolean;
+  /** Share of the billed tokens in the range, 0..1. */
+  share: number;
+  /** cacheRead / (input + cacheRead + cacheWrite). */
+  cacheHitRate: number;
 }
 
 export interface ProjectRow {
@@ -268,6 +279,8 @@ export interface ProjectRow {
   estimated: number;
   /** Sessions that ran in a card worktree of this project. */
   worktreeSessions: number;
+  /** The last activity (epoch ms) of its sessions. */
+  lastAt: number;
 }
 
 /** A top-level session with its subagents' usage rolled in. */

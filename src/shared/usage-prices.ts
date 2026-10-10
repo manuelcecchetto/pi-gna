@@ -1,4 +1,4 @@
-import { type ModelRates, PRICE_PROVIDER_ALIASES, type PriceEntry, type PriceTable } from "./usage";
+import { CONTEXT_TIER_EDGE, type ModelRates, PRICE_PROVIDER_ALIASES, type PriceEntry, type PriceTable } from "./usage";
 
 export interface TurnTokens {
   input: number;
@@ -35,6 +35,24 @@ export function findPrice(index: PriceIndex, provider: string, model: string): P
   );
 }
 
+/** USD of the tokens at the given rates. */
+export function priceTokens(tokens: TurnTokens, rates: ModelRates): number {
+  return (tokens.input * rates.input + tokens.output * rates.output + tokens.cacheRead * rates.cacheRead + tokens.cacheWrite * rates.cacheWrite) / 1_000_000;
+}
+
+/** The rates for a turn above CONTEXT_TIER_EDGE: the highest tier at or below that edge, else the base rates. */
+export function largeContextRates(price: PriceEntry): ModelRates {
+  let rates: ModelRates = price.rates;
+  let edge = -Infinity;
+  for (const tier of price.tiers) {
+    if (tier.inputTokensAbove <= CONTEXT_TIER_EDGE && tier.inputTokensAbove > edge) {
+      rates = tier.rates;
+      edge = tier.inputTokensAbove;
+    }
+  }
+  return rates;
+}
+
 /** USD at list price. The tier is the highest one the turn's input (input + cacheRead + cacheWrite) exceeds, and the whole turn is priced at its rates. */
 export function costOf(usage: TurnTokens, price: PriceEntry): number {
   const context = usage.input + usage.cacheRead + usage.cacheWrite;
@@ -46,8 +64,5 @@ export function costOf(usage: TurnTokens, price: PriceEntry): number {
       edge = tier.inputTokensAbove;
     }
   }
-  return (
-    (usage.input * rates.input + usage.output * rates.output + usage.cacheRead * rates.cacheRead + usage.cacheWrite * rates.cacheWrite) /
-    1_000_000
-  );
+  return priceTokens(usage, rates);
 }
