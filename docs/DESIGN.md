@@ -1226,6 +1226,8 @@ source, project) are kept per window in localStorage (`pigna:usage-filters`, `li
 not in the host's ui-state, which every client shares. The project picker reads an unfiltered report, since a scoped one
 lists only its own project; a picked project stays listed even when the range leaves it out.
 
+The phone (T16): Settings > Usage (`src/mobile/UsageSection.tsx`) calls `usage.get` through the host client with the same query as the desktop, minus the project filter. It shows six headline figures, the tokens per day as stacked bars by model, the top six models and the top five projects by estimated cost, all from the report. Range and source are segmented controls. The phone reads `usage.progress` and `usage.changed` from the global stream (`host-client.ts`), so a cold first load shows the Mac's file count and a settled run reloads the report. It has no refresh button and no charts beyond the daily bars.
+
 Definitions:
 
 | metric | definition |

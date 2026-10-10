@@ -23,6 +23,7 @@ import {
 import type { LoginUpdate } from "../../shared/auth";
 import { reduceHostEvent, type SessionState } from "../../shared/session-state";
 import { patchProjects } from "../../shared/session-list";
+import type { UsageProgress } from "../../shared/usage";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "unreachable" | "unauthorized" | "outdated";
 
@@ -96,6 +97,9 @@ export interface GlobalState {
   atp?: HostResult<"atp.state">["value"];
   browser?: HostResult<"browser.state">["value"];
   update?: HostResult<"update.get">;
+  usageProgress?: UsageProgress;
+  /** Counts the `usage.changed` events; a Usage section that shows a report reads it again when this moves. */
+  usageRevision?: number;
 }
 
 export interface ChatEntry {
@@ -178,6 +182,8 @@ function applyGlobal(state: GlobalState, event: GlobalEvent): GlobalState {
   if (event.kind === "atp.held") {
     return state.atp ? { ...state, atp: { ...state.atp, held: event.plans } } : state;
   }
+  if (event.kind === "usage.progress") return { ...state, usageProgress: event.progress };
+  if (event.kind === "usage.changed") return { ...state, usageRevision: (state.usageRevision ?? 0) + 1 };
   const patch = globalPatch(event);
   return patch ? { ...state, [patch.key]: patch.value } : state;
 }

@@ -1,13 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { UpdateRelease } from "../shared/ipc";
-import { canDownload, changeError, HOST_ONLY_SECTIONS, MOBILE_SECTIONS, updateSummary } from "./settings-data";
+import { USAGE_SOURCES } from "../renderer/src/lib/usage-filters";
+import { USAGE_RANGES } from "../shared/usage";
+import { canDownload, changeError, HOST_ONLY_SECTIONS, MOBILE_SECTIONS, SECTION_LABELS, updateSummary, USAGE_RANGE_LABELS, USAGE_SOURCE_LABELS, usageProgressText } from "./settings-data";
 
 const release: UpdateRelease = { version: "1.2.0", notes: "", url: "https://example.com", publishedAt: "" };
 
 describe("settings sections", () => {
   it("leaves out the keyboard shortcuts and the plugins, keeps the rest", () => {
-    expect(HOST_ONLY_SECTIONS).toEqual(["shortcuts", "plugins", "usage", "about"]);
+    expect(HOST_ONLY_SECTIONS).toEqual(["shortcuts", "plugins", "about"]);
     expect(new Set(MOBILE_SECTIONS).size).toBe(MOBILE_SECTIONS.length);
+  });
+
+  it("offers Usage, with a label for every range and source the filters offer", () => {
+    expect(MOBILE_SECTIONS).toContain("usage");
+    expect(SECTION_LABELS.usage).toBe("Usage");
+    expect(Object.keys(USAGE_RANGE_LABELS)).toEqual([...USAGE_RANGES]);
+    expect(Object.keys(USAGE_SOURCE_LABELS)).toEqual([...USAGE_SOURCES]);
+  });
+});
+
+describe("usage progress", () => {
+  it("says what the Mac is doing while it reads the session files", () => {
+    expect(usageProgressText(undefined)).toBe("Preparing the report…");
+    expect(usageProgressText({ phase: "scan", done: 0, total: 0 })).toBe("Listing session files…");
+    expect(usageProgressText({ phase: "index", done: 12, total: 85 })).toBe("12 of 85 files");
+    expect(usageProgressText({ phase: "done", done: 85, total: 85 })).toBe("Preparing the report…");
   });
 });
 

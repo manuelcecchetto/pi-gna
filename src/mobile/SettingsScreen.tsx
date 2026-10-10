@@ -34,6 +34,7 @@ import { Header } from "./Screens";
 import { canDownload, changeError, isMobileSection, MOBILE_SECTIONS, type MobileSection, SECTION_LABELS, TASK_INFO, updateSummary } from "./settings-data";
 import { ModelSheet, Sheet } from "./Sheets";
 import { ProvidersSection } from "./ProvidersSection";
+import { UsageSection } from "./UsageSection";
 import { toast } from "./toasts";
 
 // ── Controls ─────────────────────────────────────────────────────────────────
@@ -637,6 +638,8 @@ export function SettingsScreen({ client, section, push, back, signOut }: { clien
         return <ComputerSection client={client} />;
       case "remote":
         return <RemoteSection client={client} signOut={signOut} />;
+      case "usage":
+        return <UsageSection client={client} />;
       case "updates":
         return <UpdatesSection client={client} />;
       default:
