@@ -1117,9 +1117,11 @@ prompt) is skipped on a substring test. Each field's rule:
   2.83 GB) in 5.9 s on one thread at 447 MB RSS. A parse-every-line baseline takes 8.4 s. The substring test skips only
   4.6% of the bytes: tool results are 76% and must be parsed for their ids, timestamps and error flags.
 
-The cache is `userData/usage-index.json`: `{ version, entries }` keyed by path, each with `size`, `mtimeMs` and facts,
-saved through a temp file and a rename as `session-index.ts` does. From the counts above it comes to about 1.5 MB for the
-whole history; the budget is 4 MB.
+The cache is `userData/usage-index.json`: `{ version, entries }`, where each entry is `[path, { head, headBytes, facts }]`
+(`size` and `mtimeMs` live in `facts`). `head` hashes the file's first `headBytes` bytes, so a grown file resumes only while
+that prefix is unchanged; a rewrite that keeps its size, or a smaller file, is read in full. A version mismatch or an
+unreadable file rebuilds the whole cache. Saved through a temp file and a rename as `session-index.ts` does. Measured
+at 3.8 MB for the 1,682 files (the 1.5 MB estimate was low); the budget is 4 MB, so the cache is close to it.
 
 ### Cost model
 
@@ -1220,6 +1222,9 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
 
 - Cold index of the whole history (1,674 files, 2.8 GB): at most 30 s on this Mac, in a worker_thread pool of
   `min(4, cores - 1)`; the main thread parses nothing and no task blocks it for more than 50 ms.
+  Measured (T05, 4 workers, 8 cores): cold 6.4 s, warm 0.19 s (a second warm run 0.06 s), 1,682 files; peak RSS 626 MB in the
+  bench process (vitest included); main-thread event-loop max 33 ms cold and 39 ms warm, the warm block being the cache's JSON.parse
+  (the 3.8 MB cache is the main-thread cost to watch as history grows).
 - Warm `usage.get` (cache hit, 30 days) to a rendered page: at most 500 ms, covering 1,674 stats, the ~1.5 MB cache load and
   the aggregation (at most 150 ms over the whole history).
 - Cache file: at most 4 MB for the whole history (estimate ~1.5 MB).
@@ -1261,8 +1266,8 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
 - **ATP orchestrator**: settled by T04. Its system addendum says `You are the orchestrator of an ATP plan in pi-gna` (a worker's
   says `You are an ATP worker in pi-gna`), and both are atp-worker in v1 since the orchestrator is not a surface. Its first prompt
   is the user's, so only the root tells it apart.
-- **Subagent pigna** (T05): `classifySession` takes the parent's flag; the index must call it again for each subagent with
-  the parent's `pigna` (the parent is the file `<dir of tasks>.jsonl`, found for all 435 subagents). Until then it is false.
+- **Subagent pigna**: settled by T05. After each run and each `refreshFile`, the index calls `classifySession` again for every
+  subagent with its parent's `pigna` (the parent is `<dir of tasks>.jsonl`). A subagent whose parent is not indexed stays false.
 - **Tool durations** are upper bounds for parallel calls (see Per-file facts).
 - **Tier edges**: the real table has tiers at 100,000, 200,000 and 272,000 (Cost model). The facts keep tokens only above
   272,000, so a turn between 100k and 272k is priced wrong. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps

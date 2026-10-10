@@ -8,7 +8,11 @@ import { vendorChunk } from "./vite.chunks";
 const BUILD = { __PIGNA_BUILD__: JSON.stringify(process.env.PIGNA_BUILD ?? Date.now().toString(36)) };
 
 export default defineConfig({
-  main: { define: BUILD },
+  main: {
+    define: BUILD,
+    // The usage index runs its extraction in a worker_thread, which needs its own bundle next to index.js.
+    build: { rollupOptions: { input: { index: "src/main/index.ts", "usage-worker": "src/main/usage-worker.ts" } } },
+  },
   preload: {
     define: BUILD,
     build: {
