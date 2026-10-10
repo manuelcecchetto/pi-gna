@@ -32,7 +32,8 @@ await scenario("mobile usage", async (ctx) => {
   check((await exists('[data-testid="usage-projects"]')) === (await words()).includes("Top projects"), "the top projects appear exactly when the report has projects");
   await click("usage-range-7d");
   await until("7 days selected", async () => (await pressed("usage-range-7d")) === "true");
-  await until("the report for 7 days", async () => (await exists('[data-testid="usage-figures"]')) && !(await phone.eval(`document.querySelector('[data-testid="usage-report"]')?.className.includes("opacity-60")`)));
+  // The seeded chats are dated (harness.mjs), so they leave the 7-day range as the calendar moves on: either outcome is a reload.
+  await until("the report for 7 days", async () => (await words()).includes("Nothing to show yet") || ((await exists('[data-testid="usage-figures"]')) && !(await phone.eval(`document.querySelector('[data-testid="usage-report"]')?.className.includes("opacity-60")`))));
   check(true, "the range control reloads the report");
   await shot("usage-all");
   await tapBack();
