@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.14.0 - 2026-10-10
+
 - Fast mode for GPT models, as in Codex: a Fast switch in the model menu (or `/fast`) asks OpenAI and ChatGPT models for priority processing, which answers faster at about twice the price. It is per chat, kept when the chat reopens, and a zap on the model chip shows it is on.
 - The model, thinking level and fast mode are one menu now, on the Mac and the phone: the chip reads "GPT-6.1 Sol · medium" with the provider's logo, the menu lists models with their logos, and the thinking level is a slider (buttons on the phone). The phone's sheets drag down to close, as on iOS.
 - A new plan's architect chat on the ATP page is kept as a draft: leaving the page no longer loses it. Drafts are listed in the plan menu on the Mac and the phone, with an unread dot and Discard, and reopening one resumes it.
