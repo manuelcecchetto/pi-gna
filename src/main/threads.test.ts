@@ -5,7 +5,7 @@ import type { SessionEntry } from "../shared/protocol";
 import { splitThreadMessage, threadMessageBlock } from "../shared/threads";
 import { type Delivery, threadsRoute } from "./threads";
 
-const session = (id: string, cwd: string, title: string, modifiedAt: number): SessionSummary => ({ path: `/s/${id}.jsonl`, id, cwd, title, named: false, createdAt: 0, modifiedAt });
+const session = (id: string, cwd: string, title: string, modifiedAt: number): SessionSummary => ({ path: `/s/${id}.jsonl`, id, cwd, title, named: false, createdAt: 0, modifiedAt, promptedAt: modifiedAt });
 const SESSIONS = [
   session("0000-aaaa1111", "/repo", "Fix the login", 3_000),
   session("0000-bbbb1111", "/home/.pi-gna/worktrees/k1k1k1/repo", "Card k1 resolve", 2_000),
@@ -21,7 +21,7 @@ const reply = (...content: object[]) => entry({ role: "assistant", content, stop
 function route(entries: SessionEntry[] = [], live: Partial<AttentionSummary>[] = []) {
   return threadsRoute({
     identify: async () => ({ path: "/s/0000-aaaa9999.jsonl", cwd: "/repo" }),
-    sessions: async () => [{ cwd: "/", modifiedAt: 0, sessions: SESSIONS }],
+    sessions: async () => [{ cwd: "/", promptedAt: 0, sessions: SESSIONS }],
     live: () => live as AttentionSummary[],
     read: async () => entries,
     deliver,

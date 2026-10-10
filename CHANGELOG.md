@@ -5,6 +5,9 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The sidebar has a Recent view beside Projects: every project's chats in one list, newest first, each with its project's name. Your choice is remembered.
+- A chat's time in the sidebar (and its place in the list) now moves only when you send a message, not while the agent runs tools or answers.
+
 ## 0.14.0 - 2026-10-10
 
 - Fast mode for GPT models, as in Codex: a Fast switch in the model menu (or `/fast`) asks OpenAI and ChatGPT models for priority processing, which answers faster at about twice the price. It is per chat, kept when the chat reopens, and a zap on the model chip shows it is on.

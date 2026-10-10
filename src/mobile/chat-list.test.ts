@@ -4,11 +4,11 @@ import type { ProjectGroup } from "../shared/ipc";
 import { chatItems, projectItems, searchChats, searchProjects } from "./chat-list";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 
-const session = (path: string, modifiedAt: number, title = path) => ({ path, id: path, cwd: "/a", title, named: false, createdAt: 1, modifiedAt });
+const session = (path: string, modifiedAt: number, title = path) => ({ path, id: path, cwd: "/a", title, named: false, createdAt: 1, modifiedAt, promptedAt: modifiedAt });
 const projects: ProjectGroup[] = [
-  { cwd: "/a", modifiedAt: 50, sessions: [session("/a/1.jsonl", 10), session("/a/2.jsonl", 50)] },
-  { cwd: "/b", modifiedAt: 80, sessions: [session("/b/1.jsonl", 80)] },
-  { cwd: "/c", modifiedAt: 5, sessions: [session("/c/1.jsonl", 5)] },
+  { cwd: "/a", promptedAt: 50, sessions: [session("/a/1.jsonl", 10), session("/a/2.jsonl", 50)] },
+  { cwd: "/b", promptedAt: 80, sessions: [session("/b/1.jsonl", 80)] },
+  { cwd: "/c", promptedAt: 5, sessions: [session("/c/1.jsonl", 5)] },
 ];
 const live = (handle: string, sessionPath: string, level: AttentionSummary["attention"]): AttentionSummary => ({ handle, cwd: "/a", sessionPath, title: handle, listed: true, attention: level, running: level === "running", dialogs: 0 });
 
@@ -45,7 +45,7 @@ describe("project and chat lists", () => {
   });
 
   it("searches projects by folder or chat title, and chats by title", () => {
-    const named: ProjectGroup[] = [{ cwd: "/a/alpha", modifiedAt: 2, sessions: [session("/a/1.jsonl", 1, "Fix login bug")] }, { cwd: "/a/beta", modifiedAt: 1, sessions: [session("/b/1.jsonl", 1, "Write docs")] }];
+    const named: ProjectGroup[] = [{ cwd: "/a/alpha", promptedAt: 2, sessions: [session("/a/1.jsonl", 1, "Fix login bug")] }, { cwd: "/a/beta", promptedAt: 1, sessions: [session("/b/1.jsonl", 1, "Write docs")] }];
     const items = projectItems(named, [], {});
     expect(searchProjects(items, "beta").map((p) => p.cwd)).toEqual(["/a/beta"]);
     expect(searchProjects(items, "login").map((p) => p.cwd)).toEqual(["/a/alpha"]);

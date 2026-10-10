@@ -47,7 +47,7 @@ export function findSummary(projects: ProjectGroup[], path: string): SessionSumm
 
 /** What opens a card's chat: its indexed session, else what the card knows about it. */
 export function chatSummary(projects: ProjectGroup[], ref: ChatRef): SessionSummary {
-  return findSummary(projects, ref.path) ?? { path: ref.path, id: "", cwd: ref.cwd, title: ref.label ?? "Chat", named: Boolean(ref.label), createdAt: ref.at, modifiedAt: ref.at };
+  return findSummary(projects, ref.path) ?? { path: ref.path, id: "", cwd: ref.cwd, title: ref.label ?? "Chat", named: Boolean(ref.label), createdAt: ref.at, modifiedAt: ref.at, promptedAt: ref.at };
 }
 
 /** A chat's title: the open chat's, else the session index's, else its label on the card. */

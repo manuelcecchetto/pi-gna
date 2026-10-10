@@ -1,5 +1,6 @@
 // Sidebar projects: pinned folders first (in the order you pinned them), then the rest by latest activity.
-// Opening or switching chats never reorders anything; only pinning and sending a message do. Hidden projects come
+// A chat's time is its last user message (SessionSummary.promptedAt), not the agent's writes: opening or switching
+// chats, tool calls and answers never reorder anything; only pinning and sending a message do. Hidden projects come
 // last, flagged, for the lists to leave out. Pins and hidden projects are app-only state kept by the host (lib/host-ui.ts).
 import { projectOf } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
@@ -62,8 +63,8 @@ export function projectViews(projects: ProjectGroup[], open: OpenChat[], pinned:
   for (const project of projects) {
     const sessions = project.sessions.filter((summary) => !(summary.named && isTriage(summary.title)));
     if (!sessions.length) continue;
-    const rows = sessions.map((summary) => ({ key: summary.path, time: summary.modifiedAt, summary }));
-    groups.set(project.cwd, { cwd: project.cwd, activeAt: Math.max(...sessions.map((summary) => summary.modifiedAt)), rows });
+    const rows = sessions.map((summary) => ({ key: summary.path, time: summary.promptedAt, summary }));
+    groups.set(project.cwd, { cwd: project.cwd, activeAt: Math.max(...sessions.map((summary) => summary.promptedAt)), rows });
   }
   for (const session of open) {
     if (!session.listed) continue;
@@ -93,6 +94,14 @@ export function projectViews(projects: ProjectGroup[], open: OpenChat[], pinned:
       // Chats not in the index yet (just started) have no time and stay on top until it catches up.
       rows: rows.sort((a, b) => (b.time ?? Number.POSITIVE_INFINITY) - (a.time ?? Number.POSITIVE_INFINITY)),
     }));
+}
+
+/** The rows of the projects listed (not hidden), merged into one list newest first: the sidebar's Recent view. */
+export function recentRows(views: ProjectView[]): ProjectRow[] {
+  return views
+    .filter((view) => !view.hidden)
+    .flatMap((view) => view.rows)
+    .sort((a, b) => (b.time ?? Number.POSITIVE_INFINITY) - (a.time ?? Number.POSITIVE_INFINITY));
 }
 
 // ── Pins ─────────────────────────────────────────────────────────────────────

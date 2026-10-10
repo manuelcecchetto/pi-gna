@@ -1005,8 +1005,9 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   provider (`codex`, `claude-code`), never a pi provider, so pi always replays them as another model's turns. A
   source compaction becomes a pi `compaction` entry: Claude Code's summary as is; Codex's is encrypted, so the entry
   says so and lists the person's earlier messages, which is what Codex itself keeps besides it. Dates: the header
-  has the chat's start, and the file's mtime is set to the source's mtime, because the sidebar orders chats and
-  projects by mtime: an import must not jump above today's chats (a test checks this order). The session id is a
+  has the chat's start, every entry its source time, and the file's mtime is set to the source's mtime: the sidebar
+  orders chats by their last user message's entry time (`promptedAt`), so an import must not jump above today's chats
+  (a test checks this order). The session id is a
   hash of the source and its id, and a `custom` entry (`pigna.import`, never sent to the model) records the source
   file's size and mtime: importing again skips unchanged chats, rewrites a chat that went on in the other agent, and
   never touches one whose mtime moved since (pi appended to it: you continued it). Chats with nothing to import (no
@@ -1443,7 +1444,11 @@ Docs live in the installed package: `$(npm root -g)/@earendil-works/pi-coding-ag
   64 KB tail for names instead of parsing whole (up to 50 MB) files. Only head lines that can be the header, a name or
   a user message are parsed (`"type":"session` or `"role":"user"`; pi writes compact JSON with escaped quotes, so
   the system prompt never matches). A first prompt whose images run past the 1 MB head gets its title from the cut
-  line (`cutUserTitle`: pi writes the text block before the images). Summaries are kept in
+  line (`cutUserTitle`: pi writes the text block before the images). A chat's time in the lists (`promptedAt`) is
+  its last user message's entry timestamp, not the mtime, so tool calls and answers never reorder the sidebar;
+  `lastPromptAt` searches the file back from its end, and a file that only grew is searched past its last indexed size.
+  The sidebar shows it grouped by project or, in its Recent view (`recentRows`, saved with the sidebar layout), as one
+  list across projects. Summaries are kept in
   `userData/session-index.json` (path, mtime, size to summary; `CACHE_VERSION`), loaded at launch and saved after a
   listing that changed them, with missing files dropped, so a relaunch stats the files and reads only changed ones
   (941 files: about 600 ms cold, 15 to 18 ms warm). After a run settles, main re-indexes only that chat's file

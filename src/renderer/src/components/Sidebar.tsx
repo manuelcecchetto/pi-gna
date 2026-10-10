@@ -8,7 +8,7 @@ import { type Attention, strongestLevel } from "../../../shared/session-state";
 import { shallow } from "../lib/store";
 import { worstSeverity } from "../lib/laments";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
-import { type ProjectRow, type ProjectView, projectViews, setProjectHidden, togglePinnedProject, useHiddenProjects, usePinnedProjects } from "../lib/projects";
+import { type ProjectRow, type ProjectView, projectViews, recentRows, setProjectHidden, togglePinnedProject, useHiddenProjects, usePinnedProjects } from "../lib/projects";
 import {
   activate,
   addChatToBoard,
@@ -37,6 +37,9 @@ import { UpdateRow } from "./Update";
 const SESSIONS_PER_PROJECT = 6;
 /** How many more chats each "Show more" reveals in a project. */
 const SESSIONS_PAGE = 10;
+/** How many chats the Recent view lists before "Show more", and how many more each one reveals. */
+const RECENT_FIRST = 30;
+const RECENT_PAGE = 30;
 
 export function Sidebar() {
   const projects = useApp((state) => state.projects);
@@ -73,6 +76,9 @@ export function Sidebar() {
   // Once nothing is hidden, the next project you hide leaves the list again.
   if (showHidden && !hiddenCount) setShowHidden(false);
   const groups = showHidden ? all : all.filter((group) => !group.hidden);
+  const recentView = layout.view === "recent";
+  const recent = useMemo(() => (recentView ? recentRows(all) : []), [recentView, all]);
+  const [recentShown, setRecentShown] = useState(RECENT_FIRST);
   const width = clampSidebarWidth(layout.width, window.innerWidth);
 
   // Which projects are open and how many of their chats they show, here rather than in each section: ⌘1…⌘9 number the chat rows
@@ -84,7 +90,9 @@ export function Sidebar() {
     if (!firstOpen.current.has(group.cwd)) firstOpen.current.set(group.cwd, index < 4 || group.cwd === activeCwd);
   });
   const isOpen = (cwd: string) => opened[cwd] ?? firstOpen.current.get(cwd) ?? false;
-  const visible = groups.flatMap((group) => (isOpen(group.cwd) ? group.rows.slice(0, shown[group.cwd] ?? SESSIONS_PER_PROJECT) : []));
+  const visible = recentView
+    ? recent.slice(0, recentShown)
+    : groups.flatMap((group) => (isOpen(group.cwd) ? group.rows.slice(0, shown[group.cwd] ?? SESSIONS_PER_PROJECT) : []));
   const numbered = visible.slice(0, 9);
   const settingsMode = page?.kind === "settings";
   const hints = useCommandDigits(numbered.map((row) => () => openRow(row)), !settingsMode);
@@ -208,8 +216,20 @@ export function Sidebar() {
               )}
             </div>
 
-            <div className="group/projects flex items-center px-4 pt-2 pb-1">
-              <span className="flex-1 text-[13.5px] font-medium text-faint">Projects</span>
+            <div className="group/projects flex items-center gap-3 px-4 pt-2 pb-1">
+              {(["projects", "recent"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  aria-pressed={layout.view === view}
+                  title={view === "projects" ? "Chats grouped by project" : "Every project's chats, by your latest message"}
+                  onClick={() => setSidebar({ view })}
+                  className={`text-[13.5px] font-medium ${layout.view === view ? "text-muted" : "text-faint/70 hover:text-muted"}`}
+                >
+                  {view === "projects" ? "Projects" : "Recent"}
+                </button>
+              ))}
+              <span className="flex-1" />
               <button
                 type="button"
                 title="Open folder…"
@@ -220,7 +240,34 @@ export function Sidebar() {
               </button>
             </div>
             <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-              {groups.map((group) => (
+              {recentView && (
+                <div className="flex flex-col">
+                  {visible.map((row) => (
+                    <SessionRow
+                      key={row.key}
+                      row={row}
+                      project={baseName(projectOf(row.live?.cwd ?? row.summary?.cwd ?? "")) || "/"}
+                      active={row.live?.handle === active && active !== undefined}
+                      kanban={features.kanban}
+                      digit={hints ? digits.get(row.key) : undefined}
+                      onMenu={openMenu}
+                    />
+                  ))}
+                  <div className="flex">
+                    {recentShown < recent.length && (
+                      <button type="button" onClick={() => setRecentShown(recentShown + RECENT_PAGE)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
+                        Show more
+                      </button>
+                    )}
+                    {recentShown > RECENT_FIRST && (
+                      <button type="button" onClick={() => setRecentShown(RECENT_FIRST)} className="px-3 py-1 text-left text-[13px] text-faint hover:text-muted">
+                        Show less
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!recentView && groups.map((group) => (
                 <ProjectSection
                   key={group.cwd}
                   group={group}
@@ -235,7 +282,7 @@ export function Sidebar() {
                   onMenu={openMenu}
                 />
               ))}
-              {hiddenCount > 0 && (
+              {!recentView && hiddenCount > 0 && (
                 <button type="button" onClick={() => setShowHidden(!showHidden)} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] text-faint hover:bg-raised/50 hover:text-muted">
                   {showHidden ? <EyeOff size={14} className="shrink-0" /> : <Eye size={14} className="shrink-0" />}
                   <span>{showHidden ? "Leave out hidden projects" : `Show ${hiddenCount} hidden project${hiddenCount === 1 ? "" : "s"}`}</span>
@@ -463,7 +510,22 @@ function openRow(row: ProjectRow): void {
 
 const SessionRow = memo(SessionRowView, ({ row: a, ...rest }, { row: b, ...next }) => shallow(a, b) && shallow(rest, next));
 
-function SessionRowView({ row, active, kanban, digit, onMenu }: { row: ProjectRow; active: boolean; kanban: boolean; digit?: number; onMenu: OpenMenu }) {
+function SessionRowView({
+  row,
+  project,
+  active,
+  kanban,
+  digit,
+  onMenu,
+}: {
+  row: ProjectRow;
+  /** The project's name, shown beside the title in the Recent view. */
+  project?: string;
+  active: boolean;
+  kanban: boolean;
+  digit?: number;
+  onMenu: OpenMenu;
+}) {
   const live = row.live;
   const title = live ? live.title : (row.summary?.title ?? "New chat");
   const level = live?.attention;
@@ -478,6 +540,7 @@ function SessionRowView({ row, active, kanban, digit, onMenu }: { row: ProjectRo
     >
       <span className="grid w-4 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
       <span className={`min-w-0 flex-1 truncate text-[14px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
+      {project && <span className="max-w-[35%] shrink truncate text-[11.5px] text-faint">{project}</span>}
       {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <RowTime time={row.time} />}
     </button>
   );

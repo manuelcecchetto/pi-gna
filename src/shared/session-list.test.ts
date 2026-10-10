@@ -10,13 +10,14 @@ const chat = (path: string, cwd: string, modifiedAt: number, title = path): Sess
   named: false,
   createdAt: 0,
   modifiedAt,
+  promptedAt: modifiedAt,
 });
 
 describe("session list", () => {
   const list = groupSessions([chat("a1", "/a", 30), chat("b1", "/b", 20), chat("a2", "/a", 10), undefined]);
 
   it("groups by project, newest first", () => {
-    expect(list.map((g) => [g.cwd, g.modifiedAt, g.sessions.map((s) => s.path)])).toEqual([
+    expect(list.map((g) => [g.cwd, g.promptedAt, g.sessions.map((s) => s.path)])).toEqual([
       ["/a", 30, ["a1", "a2"]],
       ["/b", 20, ["b1"]],
     ]);
@@ -29,7 +30,7 @@ describe("session list", () => {
 
   it("moves a settled chat and its project to the top, with its new title", () => {
     const next = patchProjects(list, "b1", chat("b1", "/b", 40, "Renamed"));
-    expect(next.map((g) => [g.cwd, g.modifiedAt, g.sessions.map((s) => s.title)])).toEqual([
+    expect(next.map((g) => [g.cwd, g.promptedAt, g.sessions.map((s) => s.title)])).toEqual([
       ["/b", 40, ["Renamed"]],
       ["/a", 30, ["a1", "a2"]],
     ]);
@@ -51,7 +52,7 @@ describe("session list", () => {
   it("keeps the same list when nothing changed, so nothing renders again", () => {
     expect(patchProjects(list, "zz", null)).toBe(list);
     expect(patchProjects(list, "a2", chat("a2", "/a", 10))).toBe(list);
-    for (const change of [{ title: "x" }, { named: true }, { createdAt: 1 }, { modifiedAt: 11 }, { id: "other" }, { cwd: "/c" }]) {
+    for (const change of [{ title: "x" }, { named: true }, { createdAt: 1 }, { modifiedAt: 11 }, { promptedAt: 11 }, { id: "other" }, { cwd: "/c" }]) {
       expect(patchProjects(list, "a2", { ...chat("a2", "/a", 10), ...change })).not.toBe(list);
     }
   });
