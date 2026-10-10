@@ -1,7 +1,7 @@
 {
   "name": "pi-gna",
   "productName": "pi-gna",
-  "version": "0.11.4",
+  "version": "0.12.0",
   "private": true,
   "description": "A desktop app for the pi coding agent",
   "author": "Manuel Cecchetto",
