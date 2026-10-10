@@ -169,8 +169,8 @@ function applyGlobal(state: GlobalState, event: GlobalEvent): GlobalState {
     return { ...state, attention };
   }
   if (event.kind === "atp.runners") {
-    const { runners, notes, orchestrators } = event;
-    return { ...state, atp: { runners, notes, orchestrators, held: state.atp?.held ?? [] } };
+    const { runners, notes, orchestrators, drafts } = event;
+    return { ...state, atp: { runners, notes, orchestrators, drafts, held: state.atp?.held ?? [] } };
   }
   if (event.kind === "session.indexed") {
     return state.projects ? { ...state, projects: patchProjects(state.projects, event.path, event.summary) } : state;

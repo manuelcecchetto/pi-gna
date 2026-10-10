@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
-import { isPlanPath } from "../shared/atp";
+import { isDraftId, isPlanPath } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
 import { type BoardOp, type Column, projectOf } from "../shared/board";
 import { PAGE_BYTES, PAGE_TURNS } from "../shared/chat-page";
@@ -145,6 +145,10 @@ const presence = (ctx: HostContext) => ({ clientId: ctx.clientId, actor: ctx.cli
 const planPath = (plan: unknown): string => {
   if (!isPlanPath(plan)) throw new Error(`not an ATP plan path: ${String(plan)}`);
   return plan;
+};
+const draftId = (id: unknown): string => {
+  if (!isDraftId(id)) throw new Error(`not an ATP draft: ${String(id)}`);
+  return id;
 };
 
 /** Uploads belong to a device; the desktop never has one. */
@@ -731,7 +735,13 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     // python3, rg and git come from the login shell's PATH.
     "atp.watch": method<{ cwd: string | null }>("desktop", (raw) => ({ cwd: raw.cwd === null ? null : project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.watch(cwd))),
     // A project's plans without watching it: the phone asks again while its ATP page is open (the desktop's watch is one project for all).
-    "atp.plans": method<{ cwd: string }>("remote", (raw) => ({ cwd: project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.scan(cwd))),
+    "atp.plans": method<{ cwd: string }>("remote", (raw) => ({ cwd: project(raw.cwd) }), async (_ctx, { cwd }) => {
+      await env();
+      const plans = await atp.scan(cwd);
+      // A draft whose plan appeared while only the phone looks becomes its orchestrator too.
+      void atpRuns.plansChanged(plans);
+      return plans;
+    }),
     "atp.read": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), (_ctx, { plan }) => atp.read(plan)),
     "atp.start": method<{ plan: string; cwd: string }>("remote", (raw) => ({ plan: planPath(raw.plan), cwd: project(raw.cwd) }), (_ctx, { plan, cwd }) => (atpRuns.start(plan, cwd), null)),
     "atp.stop": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), async (_ctx, { plan }) => (await atpRuns.stop(plan), null)),
@@ -742,13 +752,13 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     ),
     "atp.liftHold": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), (_ctx, { plan }) => (atpRuns.liftHold(plan), null)),
     "atp.threads": method<{ plan: string }>("remote", (raw) => ({ plan: planPath(raw.plan) }), (_ctx, { plan }) => atpThreads.get(plan)),
-    "atp.orchestrator": method<{ cwd: string; plan?: string }>(
+    "atp.orchestrator": method<{ cwd: string; plan?: string; draft?: string }>(
       "remote",
-      (raw) => ({ cwd: project(raw.cwd), plan: raw.plan === undefined ? undefined : planPath(raw.plan) }),
-      (ctx, { cwd, plan }) => atpRuns.orchestrator(presence(ctx), cwd, plan),
+      (raw) => ({ cwd: project(raw.cwd), plan: raw.plan === undefined ? undefined : planPath(raw.plan), draft: raw.draft === undefined ? undefined : draftId(raw.draft) }),
+      (ctx, { cwd, plan, draft }) => atpRuns.orchestrator(presence(ctx), cwd, { plan, draft }),
     ),
     "atp.releaseOrchestrators": any("remote", (ctx) => (atpRuns.releaseOrchestrators(presence(ctx)), null)),
-    "atp.discardNewPlan": method<{ cwd: string }>("remote", (raw) => ({ cwd: project(raw.cwd) }), (_ctx, { cwd }) => (atpRuns.discardNewPlan(cwd), null)),
+    "atp.discardDraft": method<{ draft: string }>("remote", (raw) => ({ draft: draftId(raw.draft) }), (_ctx, { draft }) => (atpRuns.discardDraft(draft), null)),
     "atp.importThreads": any<{ threads: unknown }>("desktop", async (_ctx, { threads }) => (await atpThreads.importLegacy(threads), null)),
     "atp.state": any("remote", () => ({ ...atpRuns.state(), held: atp.heldPlans() })),
 
@@ -909,9 +919,9 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.atpReleaseInterrupted, "atp.releaseInterrupted", (plan, node) => ({ plan, node })),
   route(IPC.atpLiftHold, "atp.liftHold", (plan) => ({ plan })),
   route(IPC.atpThreads, "atp.threads", (plan) => ({ plan })),
-  route(IPC.atpOrchestrator, "atp.orchestrator", (cwd, plan) => ({ cwd, plan })),
+  route(IPC.atpOrchestrator, "atp.orchestrator", (cwd, target) => ({ cwd, ...(target as object | undefined) })),
   route(IPC.atpReleaseOrchestrators, "atp.releaseOrchestrators"),
-  route(IPC.atpDiscardNewPlan, "atp.discardNewPlan", (cwd) => ({ cwd })),
+  route(IPC.atpDiscardDraft, "atp.discardDraft", (draft) => ({ draft })),
   route(IPC.atpImportThreads, "atp.importThreads", (threads) => ({ threads })),
   route(IPC.relaunch, "host.relaunch"),
   route(IPC.updateGet, "update.get"),

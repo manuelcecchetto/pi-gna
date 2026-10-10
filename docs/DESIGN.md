@@ -679,10 +679,16 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   librarian refuses future patches while any node is CLAIMED, SCOPE nodes included; the prompt says so. It starts
   (or resumes from its session file) when a client shows the plan (`atp.orchestrator`, a client lease on the chat),
   without a model call, and idle ones stop when that client leaves (`atp.releaseOrchestrators`; busy ones once they
-  finish, unless a client is back in them). New ATP opens the same composer with the architect skills; the chat that writes the plan
-  becomes its orchestrator. That chat works in a git worktree of its own (`Atp.newPlanCwd`; `atpWorktree` in
+  finish, unless a client is back in them). New ATP opens the same composer with the architect skills in a new
+  **draft**: the chat for a plan not written yet. A draft is kept once its first run ends (`AtpThreads` drafts: its
+  worktree, session file, first message as title, and when it last ran and was opened, which makes it unread), so
+  leaving the page stops its chat but not the draft; the plan menus (desktop `PlanSwitch`, the phone's Plans sheet)
+  list drafts to reopen (`atp.orchestrator {draft}` resumes the session) or discard (`atp.discardDraft`; the worktree
+  stays for the next draft to reuse). A draft never run goes with its chat. The plan that appears in a draft's folder,
+  written since the draft started and with no orchestrator yet, makes the draft its orchestrator, live or not
+  (`AtpRuns.plansChanged`, on the desktop's watch and on the phone's `atp.plans`). A draft works in a git worktree of its own (`Atp.newPlanCwd`; `atpWorktree` in
   `worktree.ts`, branch `pigna/atp-<id>`, laid out like a card's under `~/.pi-gna/worktrees/<id>/`), reusing one that
-  holds no plan and no change (fast-forwarded to the checkout's HEAD); outside git or before a first commit it writes in
+  holds no plan, no change and no other draft (fast-forwarded to the checkout's HEAD); outside git or before a first commit it writes in
   place. The project's plans include those worktrees' plans that the checkout has no copy of at the same relative path
   (a worktree's copies of committed plans are the checkout's), and their `NEW_PLAN_DIR` is watched too. A plan's run and
   orchestrator work where the plan is (`checkoutOf` in `shared/board.ts`), so a worktree plan's workers commit on its
@@ -1504,7 +1510,10 @@ scroll logic by simulating the gesture in `eval` (dispatch `wheel`, set `scrollT
 `PIGNA_PI_BIN`) streams a long answer to every prompt (Stop/Esc abort ends it; prompt directives such as `[tools=N]` and `[think=N]`, listed in its
 header, add tool calls and thinking), for streaming UI checks without a model; it names a session file
 (never written, so relaunching on the same `PIGNA_USER_DATA` fails to reopen remembered ATP orchestrator chats with
-ENOENT and the page shows no composer: start each run with a fresh profile), so a card's or lament's chats link as with pi.
+ENOENT and the page shows no composer: start each run with a fresh profile; to test a resume, write a small pi
+session (a `session` header line, then `message` lines) at the named path and press Try again), so a card's or lament's chats link as with pi.
+A new ATP draft's worktree lands in the real `~/.pi-gna/worktrees/<id>/` even with `PIGNA_USER_DATA` set: remove it
+(`git -C <project> worktree remove --force <path>`) with the throwaway project.
 Under fake-pi the ATP orchestrator and worker defaults do not exist ("… is not available"): point them at it first,
 `window.studio.settings.get().then((s) => window.studio.settings.apply({ type: "model", task: "orchestrator", model: { provider: "fake", id: "fake", thinking: "off" } }, s.rev))`
 (again with `task: "worker"`, and `FAKE_ATP=idle` for a worker that streams). An unfocused (`PIGNA_BACKGROUND=1`) window

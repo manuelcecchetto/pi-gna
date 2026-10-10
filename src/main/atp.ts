@@ -206,14 +206,15 @@ export class Atp {
   /**
    * Where a new plan's architect works: a git worktree of the project on a branch of its own, so the plan and what
    * its runs change stay off the checkout until you merge them. An earlier one that holds no plan and no change is
-   * reused (brought up to the checkout's HEAD); a project outside git, or without a commit, writes in place.
+   * reused (brought up to the checkout's HEAD), unless another draft works there (`taken`); a project outside git, or
+   * without a commit, writes in place.
    */
-  async newPlanCwd(cwd: string): Promise<string> {
+  async newPlanCwd(cwd: string, taken: ReadonlySet<string> = new Set()): Promise<string> {
     const head = (await this.exec("git", ["-C", cwd, "rev-parse", "--verify", "-q", "HEAD"]).catch(() => "")).trim();
     if (!head) return cwd;
     const { plans, roots } = await this.collect(cwd);
     for (const root of roots.slice(1)) {
-      if (plans.plans.some((file) => file.path.startsWith(`${root}/`))) continue;
+      if (taken.has(root) || plans.plans.some((file) => file.path.startsWith(`${root}/`))) continue;
       const clean = (await this.exec("git", ["-C", root, "status", "--porcelain"]).catch(() => "?")).trim() === "";
       if (clean && (await this.exec("git", ["-C", root, "merge", "--ff-only", "-q", head]).then(() => true, () => false))) return this.made(cwd, root);
     }

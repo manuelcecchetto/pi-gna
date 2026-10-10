@@ -1,7 +1,7 @@
 // The phone's ATP page: a project's plans as on the desktop (Atp.tsx), run by the host. Nodes grouped by status are the
 // primary view, the graph (AtpGraph, with touch pan and pinch) the other; a node opens to its instruction, report and
 // chats, and the orchestrator is a full chat screen. The run lives in Electron main, so closing the page stops nothing.
-import { ChevronRight, Layers, MessagesSquare, Network, Pause, Play, Plus, Search, Square } from "../renderer/src/components/icons";
+import { ChevronRight, Layers, MessagesSquare, Network, Pause, Play, Plus, Search, Square, X } from "../renderer/src/components/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AtpGraph, type GraphHandle, LOOK_LABEL, lookOf, StatusIcon } from "../renderer/src/components/AtpGraph";
 import { Markdown } from "../renderer/src/components/Markdown";
@@ -9,7 +9,7 @@ import { Elapsed } from "../renderer/src/components/primitives";
 import { baseName, formatStamp, relativeTime, tildify } from "../renderer/src/lib/format";
 import { useStore } from "../renderer/src/lib/store";
 import { type AtpNode, type AtpPlan, type AtpPlanFile, NEW_PLAN_DIR, planName, planProgress } from "../shared/atp";
-import type { AtpPlanThreads, AtpRunner } from "../shared/host-api";
+import type { AtpDraft, AtpPlanThreads, AtpRunner } from "../shared/host-api";
 import { ARCHITECTS, defaultPlan, groupNodes, PHASES, stalledNode, startLabel } from "./atp-data";
 import type { HostClient } from "./client/host-client";
 import type { Route } from "./nav";
@@ -76,6 +76,10 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
   const runners = state?.runners ?? {};
   const held = state?.held ?? [];
   const notes = state?.notes ?? {};
+  const allDrafts = state?.drafts;
+  // The architect chats whose plan is not written yet, worked on last first.
+  const drafts = useMemo(() => Object.values(allDrafts ?? {}).filter((draft) => draft.project === cwd).sort((a, b) => b.updatedAt - a.updatedAt), [allDrafts, cwd]);
+  const draftNews = drafts.some((draft) => draft.updatedAt > draft.seenAt);
   const { files, loaded, refresh } = usePlans(client, cwd, state?.runners);
   const [selected, setSelected] = useState(() => lastSelected.get(cwd));
   const [view, setView] = useState<"nodes" | "graph">("nodes");
@@ -103,13 +107,16 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
     setNode(undefined);
   };
 
-  /** The plan's orchestrator (or a new plan's architect) as a full chat; the chat screen gives its lease back on leave. */
-  const openOrchestrator = async (forPlan: string | undefined, prefill?: string) => {
+  /**
+   * The plan's orchestrator, a draft's architect, or (neither) a new draft's, as a full chat; the chat screen gives its
+   * lease back on leave. A draft stays in Plans until its plan appears.
+   */
+  const openOrchestrator = async (target: { plan?: string; draft?: AtpDraft }, prefill?: string) => {
     setBusy(true);
     try {
-      if (!forPlan) await client.call("atp.discardNewPlan", { cwd });
-      const { handle } = await client.call("atp.orchestrator", { cwd, ...(forPlan ? { plan: forPlan } : {}) });
-      push({ screen: "chat", cwd, handle, title: forPlan ? `Orchestrator: ${planName(forPlan)}` : "New plan", orchestrator: true, prefill });
+      const { plan: forPlan, draft } = target;
+      const { handle } = await client.call("atp.orchestrator", { cwd, ...(forPlan ? { plan: forPlan } : draft ? { draft: draft.id } : {}) });
+      push({ screen: "chat", cwd, handle, title: forPlan ? `Orchestrator: ${planName(forPlan)}` : draft?.title || "New plan", orchestrator: true, prefill });
     } catch (error) {
       toast(`Could not start the orchestrator: ${message(error)}`, "error");
     } finally {
@@ -128,9 +135,10 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
         onBack={back}
         trailing={
           <>
-            {files.length > 0 && (
+            {files.length + drafts.length > 0 && (
               <button type="button" onClick={() => setSheet("plans")} className="flex h-11 items-center gap-1 px-2 text-[13px] text-muted" data-testid="plans-button">
-                Plans <span className="font-mono text-[11px] text-faint">{files.length}</span>
+                Plans <span className="font-mono text-[11px] text-faint">{files.length + drafts.length}</span>
+                {draftNews && <span className="h-2 w-2 rounded-full bg-accent" data-testid="drafts-news" />}
               </button>
             )}
             <button type="button" aria-label="New plan" onClick={() => setSheet("new")} className="grid h-11 w-11 place-items-center text-muted active:text-fg" data-testid="new-plan">
@@ -146,6 +154,13 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
           <p className="text-[13.5px] leading-relaxed text-muted">
             No plans in {baseName(cwd)} yet. An architect writes one to <span className="font-mono text-[12px]">{NEW_PLAN_DIR}/&lt;name&gt;.atp.json</span> as a DRAFT; review it, then start it.
           </p>
+          {drafts.length > 0 && (
+            <div className="flex w-full flex-col">
+              {drafts.map((draft) => (
+                <DraftRow key={draft.id} draft={draft} disabled={busy} onOpen={() => void openOrchestrator({ draft })} onDiscard={() => void run(client.call("atp.discardDraft", { draft: draft.id }))} />
+              ))}
+            </div>
+          )}
           <button type="button" onClick={() => setSheet("new")} className="min-h-11 rounded-xl bg-accent px-5 text-[14px] font-medium text-white">
             New plan
           </button>
@@ -229,7 +244,7 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
             )}
           </div>
           <div className="shrink-0 border-t border-line px-3 py-2">
-            <button type="button" disabled={busy} onClick={() => void openOrchestrator(plan.path)} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-line-strong text-[15px] text-fg active:bg-raised disabled:opacity-50" data-testid="orchestrator">
+            <button type="button" disabled={busy} onClick={() => void openOrchestrator({ plan: plan.path })} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-line-strong text-[15px] text-fg active:bg-raised disabled:opacity-50" data-testid="orchestrator">
               <MessagesSquare size={17} className="text-muted" /> Orchestrator chat
             </button>
           </div>
@@ -241,6 +256,10 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
       {sheet === "plans" && (
         <Sheet title="Plans" onClose={() => setSheet(undefined)} testId="plans-sheet">
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            {drafts.map((draft) => (
+              <DraftRow key={draft.id} draft={draft} disabled={busy} onOpen={() => (setSheet(undefined), void openOrchestrator({ draft }))} onDiscard={() => void run(client.call("atp.discardDraft", { draft: draft.id }))} />
+            ))}
+            {drafts.length > 0 && files.length > 0 && <div className="mx-3 my-1 border-t border-line" />}
             {files.map((file) => {
               const found = file.plan && planProgress(file.plan);
               return (
@@ -274,7 +293,7 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
           <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             <p className="px-3 pb-2 text-[13px] leading-relaxed text-faint">The architect asks what it needs, then writes the plan to {NEW_PLAN_DIR}/ as a DRAFT.</p>
             {ARCHITECTS.map((architect) => (
-              <button key={architect.skill} type="button" disabled={busy} onClick={() => (setSheet(undefined), void openOrchestrator(undefined, `/skill:${architect.skill} `))} className={`${sheetRow} flex-col items-start gap-0.5 py-2.5`} data-testid={`architect-${architect.skill}`}>
+              <button key={architect.skill} type="button" disabled={busy} onClick={() => (setSheet(undefined), void openOrchestrator({}, `/skill:${architect.skill} `))} className={`${sheetRow} flex-col items-start gap-0.5 py-2.5`} data-testid={`architect-${architect.skill}`}>
                 <span className="text-fg">{architect.label}</span>
                 <span className="text-[13px] text-faint">{architect.about}</span>
               </button>
@@ -282,6 +301,35 @@ export function AtpScreen({ client, homeDir, cwd, push, back }: { client: HostCl
           </div>
         </Sheet>
       )}
+    </div>
+  );
+}
+
+/** A plan the architect is still writing: open its chat, or discard it (a second tap, it loses the chat). */
+function DraftRow({ draft, disabled, onOpen, onDiscard }: { draft: AtpDraft; disabled: boolean; onOpen: () => void; onDiscard: () => void }) {
+  const [arming, setArming] = useState(false);
+  return (
+    <div className="flex items-center gap-1" data-testid="draft-option">
+      <button type="button" disabled={disabled} onClick={onOpen} className={`${sheetRow} min-w-0 flex-1 flex-col items-stretch gap-1 py-2.5 disabled:opacity-50`}>
+        <span className="flex min-w-0 items-center gap-2">
+          {draft.updatedAt > draft.seenAt && <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />}
+          <span className="min-w-0 flex-1 truncate">{draft.title || "New plan"}</span>
+        </span>
+        <span className="flex items-center gap-2 text-[12px] text-faint">
+          <span className="rounded border border-line-strong px-1 font-mono text-[10px] leading-[15px] tracking-wide">WRITING</span>
+          No plan file yet
+          <span className="ml-auto">{relativeTime(draft.updatedAt)}</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label="Discard draft"
+        onClick={() => (arming ? onDiscard() : setArming(true))}
+        className={`grid h-11 shrink-0 place-items-center rounded-xl px-3 text-[13px] ${arming ? "bg-bad/15 text-bad" : "text-faint"}`}
+        data-testid="discard-draft"
+      >
+        {arming ? "Discard" : <X size={16} />}
+      </button>
     </div>
   );
 }

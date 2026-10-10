@@ -138,6 +138,16 @@ export interface AtpSession {
 /** Where the architect writes a new plan, relative to the project root: plans stay out of the root. */
 export const NEW_PLAN_DIR = "docs/plans/draft";
 
+/** The key of a draft's live orchestrator chat (AtpRunnerState.orchestrators), and of its selection on the page. */
+export const draftKey = (id: string): string => `draft:${id}`;
+export const isDraftId = (id: unknown): id is string => typeof id === "string" && /^[a-z0-9]{6,16}$/.test(id);
+
+/** A draft's name in the plan menus: its first message, without the skill it asked for. */
+export function draftTitle(text: string): string {
+  const line = text.replace(/^\/skill:\S+\s*/, "").trim().split("\n")[0]?.trim() ?? "";
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+}
+
 export const isPlanPath = (path: unknown): path is string => typeof path === "string" && path.startsWith("/") && path.endsWith(".atp.json") && !path.includes("\0");
 
 /** The project's plans as main found them; a plan that cannot be read has an error instead. */

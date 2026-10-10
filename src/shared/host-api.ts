@@ -183,9 +183,32 @@ export interface AtpRunNote {
 export type AtpRunnerState = {
   runners: Record<string, AtpRunner>;
   notes: Record<string, AtpRunNote>;
-  /** Live orchestrator chats: by plan, or `new:<project>` for a plan the architect is still writing. */
+  /** Live orchestrator chats: by plan, or `draft:<id>` (draftKey) for a plan the architect is still writing. */
   orchestrators: Record<string, string>;
+  /** Chats for plans not written yet, by id: they survive leaving the page until their plan appears or you discard them. */
+  drafts: Record<string, AtpDraft>;
 };
+
+/**
+ * A new plan's architect chat before its plan file exists. Kept (atp-threads.json) once its first run ended; the
+ * plan it writes in `cwd` makes it that plan's orchestrator and the draft goes.
+ */
+export interface AtpDraft {
+  id: string;
+  /** The project whose page started it. */
+  project: string;
+  /** Where it works: a worktree of the project (Atp.newPlanCwd), or the project. */
+  cwd: string;
+  /** Its session file, once a run of it ended. */
+  session?: string;
+  /** Its first message, or empty before one. */
+  title: string;
+  startedAt: number;
+  /** When its last run ended. */
+  updatedAt: number;
+  /** When a client last had it open: a run that ended after that is unread. */
+  seenAt: number;
+}
 
 /** Which chats worked on a plan: its orchestrator's session file and, per node, its workers' (oldest first; a node runs again after a stop). */
 export interface AtpPlanThreads {
@@ -526,12 +549,12 @@ export interface HostMethods {
   "atp.releaseInterrupted": { args: { plan: string; node: string }; result: null };
   "atp.liftHold": { args: { plan: string }; result: null };
   "atp.threads": { args: { plan: string }; result: AtpPlanThreads };
-  /** Opens (or joins) the plan's orchestrator chat for this client; without `plan`, the chat for a plan the architect is about to write. */
-  "atp.orchestrator": { args: { cwd: string; plan?: string }; result: { handle: string } };
+  /** Opens (or joins) the plan's orchestrator chat, or a draft's, for this client; with neither, a new draft for a plan the architect is about to write. */
+  "atp.orchestrator": { args: { cwd: string; plan?: string; draft?: string }; result: { handle: string; draft?: string } };
   /** The client no longer shows the plans: idle orchestrators stop, busy ones when they finish. */
   "atp.releaseOrchestrators": { args: Record<string, never>; result: null };
-  /** Drop the project's new-plan chat, so the next one starts fresh. */
-  "atp.discardNewPlan": { args: { cwd: string }; result: null };
+  /** Forget a draft and stop its chat; its worktree stays (a clean one is reused by the next draft). */
+  "atp.discardDraft": { args: { draft: string }; result: null };
   /** The desktop's threads from before they lived in the host (localStorage), merged once. */
   "atp.importThreads": { args: { threads: unknown }; result: null };
   "atp.state": { args: Record<string, never>; result: Snapshot<AtpRunnerState & { held: string[] }> };

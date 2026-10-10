@@ -2,8 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ATP_CONFIG, parseClaim, parsePlan } from "../shared/atp";
-import type { AtpRunnerState } from "../shared/host-api";
+import { ATP_CONFIG, draftKey, parseClaim, parsePlan } from "../shared/atp";
+import type { AtpDraft, AtpRunnerState } from "../shared/host-api";
 import type { RunOutcome } from "../shared/session-state";
 import { emptySettings } from "../shared/settings";
 import { AtpRuns } from "./atp-runner";
@@ -32,7 +32,7 @@ interface FakeChat {
  * A runner with a librarian, chats and git that are fakes. `worker` says what a worker does with the node when it gets a
  * prompt: finish it, end its run with the node still claimed, or run forever.
  */
-function harness() {
+function harness(kept: AtpDraft[] = []) {
   const nodes: Record<string, Raw> = {
     T1: { title: "First", instruction: "Do one", dependencies: [], status: "READY" },
     T2: { title: "Second", instruction: "Do two", dependencies: ["T1"], status: "LOCKED" },
@@ -142,7 +142,16 @@ function harness() {
     setHeld: vi.fn(),
     newPlanCwd: vi.fn(async (cwd: string) => `${WORKTREE}${cwd}`),
   };
-  const threads = { get: vi.fn(async () => ({ workers: {} as Record<string, string[]> })), remember: vi.fn(async (_plan: string, _node: string, _path: string) => undefined), setOrchestrator: vi.fn(async (_plan: string, _path: string) => undefined) };
+  /** The drafts on disk. */
+  const drafts = new Map(kept.map((draft) => [draft.id, draft]));
+  const threads = {
+    get: vi.fn(async () => ({ workers: {} as Record<string, string[]> })),
+    remember: vi.fn(async (_plan: string, _node: string, _path: string) => undefined),
+    setOrchestrator: vi.fn(async (_plan: string, _path: string) => undefined),
+    drafts: vi.fn(async () => [...drafts.values()]),
+    setDraft: vi.fn(async (draft: AtpDraft) => void drafts.set(draft.id, draft)),
+    dropDraft: vi.fn(async (id: string) => void drafts.delete(id)),
+  };
   const runs = new AtpRuns({
     host: host as never,
     tasks: tasks as never,
@@ -153,7 +162,7 @@ function harness() {
     shellEnv: Promise.resolve(),
     publish: (next) => published.push(next),
   });
-  return { runs, nodes, state, chats, viewing, attached, prompts, launched, closed, published, host, tasks, atp, threads, settle: settleLater, setHeld: (held: boolean) => ((state.held = held), runs.heldChanged()) };
+  return { runs, nodes, state, chats, drafts, viewing, attached, prompts, launched, closed, published, host, tasks, atp, threads, settle: settleLater, setHeld: (held: boolean) => ((state.held = held), runs.heldChanged()) };
 }
 
 type Harness = ReturnType<typeof harness>;
@@ -329,20 +338,20 @@ describe("the ATP runner", () => {
 describe("orchestrator chats", () => {
   it("does not expose a default-model orchestrator when the configured model cannot be selected", async () => {
     h.tasks.useModel.mockRejectedValueOnce(new Error("model selection rejected"));
-    await expect(h.runs.orchestrator(client, "/repo", PLAN)).rejects.toThrow("model selection rejected");
+    await expect(h.runs.orchestrator(client, "/repo", { plan: PLAN })).rejects.toThrow("model selection rejected");
     expect(h.runs.state().orchestrators[PLAN]).toBeUndefined();
     expect(h.closed).toEqual(["chat1"]);
-    await h.runs.orchestrator(client, "/repo", PLAN);
+    await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     expect(h.host.open).toHaveBeenCalledTimes(2);
   });
 
   it("does not hand a second client the chat before its model selection finishes", async () => {
     let finish!: () => void;
     h.tasks.useModel.mockImplementationOnce(() => new Promise<undefined>((resolve) => { finish = () => resolve(undefined); }));
-    const first = h.runs.orchestrator(client, "/repo", PLAN);
+    const first = h.runs.orchestrator(client, "/repo", { plan: PLAN });
     await vi.waitFor(() => expect(h.tasks.useModel).toHaveBeenCalledOnce());
     let joined = false;
-    const second = h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", PLAN).then((result) => { joined = true; return result; });
+    const second = h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", { plan: PLAN }).then((result) => { joined = true; return result; });
     await Promise.resolve();
     expect(joined).toBe(false);
     expect(h.runs.state().orchestrators[PLAN]).toBeUndefined();
@@ -351,10 +360,10 @@ describe("orchestrator chats", () => {
   });
 
   it("starts one per plan on the orchestrator model, and joins it for a second client", async () => {
-    const first = await h.runs.orchestrator(client, "/repo", PLAN);
+    const first = await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     expect(h.host.open).toHaveBeenCalledWith({ cwd: "/repo", atp: { role: "orchestrator", plan: PLAN } }, { client });
     expect(h.tasks.useModel).toHaveBeenCalledOnce();
-    const second = await h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", PLAN);
+    const second = await h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", { plan: PLAN });
     expect(second.handle).toBe(first.handle);
     expect(h.host.open).toHaveBeenCalledOnce();
     expect(h.attached.get(first.handle)).toEqual(new Set(["w", "phone"]));
@@ -362,7 +371,7 @@ describe("orchestrator chats", () => {
   });
 
   it("opens a plan's chat once when two clients ask at the same time", async () => {
-    const [a, b] = await Promise.all([h.runs.orchestrator(client, "/repo", PLAN), h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", PLAN)]);
+    const [a, b] = await Promise.all([h.runs.orchestrator(client, "/repo", { plan: PLAN }), h.runs.orchestrator({ clientId: "phone", actor: "d1" }, "/repo", { plan: PLAN })]);
     expect(a.handle).toBe(b.handle);
     expect(h.host.open).toHaveBeenCalledOnce();
     expect(h.attached.get(a.handle)).toEqual(new Set(["w", "phone"]));
@@ -370,28 +379,21 @@ describe("orchestrator chats", () => {
 
   it("resumes from the plan's session file, and keeps its own model", async () => {
     h.threads.get.mockResolvedValueOnce({ orchestrator: "/atp-sessions/old.jsonl", workers: {} } as never);
-    await h.runs.orchestrator(client, "/repo", PLAN);
+    await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     expect(h.host.open).toHaveBeenCalledWith({ cwd: "/repo", sessionPath: "/atp-sessions/old.jsonl", atp: { role: "orchestrator", plan: PLAN } }, { client });
     expect(h.tasks.useModel).not.toHaveBeenCalled();
   });
 
   it("remembers the session file after its first run", async () => {
-    const { handle } = await h.runs.orchestrator(client, "/repo", PLAN);
+    const { handle } = await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     h.settle(handle);
     await vi.waitFor(() => expect(h.threads.setOrchestrator).toHaveBeenCalledWith(PLAN, `/atp-sessions/${handle}.jsonl`));
-    // A new plan's chat has no plan to keep it under yet.
-    const fresh = await h.runs.orchestrator(client, "/repo", undefined);
-    h.threads.setOrchestrator.mockClear();
-    h.settle(fresh.handle);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(h.threads.setOrchestrator).not.toHaveBeenCalled();
-    expect(h.runs.state().orchestrators["new:/repo"]).toBe(fresh.handle);
   });
 
   it("stops an idle orchestrator once the client leaves, a busy one once it finishes, and not one another client is in", async () => {
-    const idle = await h.runs.orchestrator(client, "/repo", PLAN);
-    const busy = await h.runs.orchestrator(client, "/repo", "/repo/other.atp.json");
-    const shared = await h.runs.orchestrator(client, "/repo", "/repo/third.atp.json");
+    const idle = await h.runs.orchestrator(client, "/repo", { plan: PLAN });
+    const busy = await h.runs.orchestrator(client, "/repo", { plan: "/repo/other.atp.json" });
+    const shared = await h.runs.orchestrator(client, "/repo", { plan: "/repo/third.atp.json" });
     h.host.attach(shared.handle, { clientId: "phone" });
     (h.chats.get(busy.handle) as FakeChat).running = true;
     h.runs.releaseOrchestrators(client);
@@ -403,55 +405,138 @@ describe("orchestrator chats", () => {
   });
 
   it("does not stop a busy orchestrator the client came back to", async () => {
-    const busy = await h.runs.orchestrator(client, "/repo", PLAN);
+    const busy = await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     (h.chats.get(busy.handle) as FakeChat).running = true;
     h.runs.releaseOrchestrators(client);
-    await h.runs.orchestrator(client, "/repo", PLAN);
+    await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     h.settle(busy.handle);
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(h.closed).toEqual([]);
   });
 
   it("the architect's chat becomes the orchestrator of the plan it wrote", async () => {
-    const { handle } = await h.runs.orchestrator(client, "/repo", undefined);
+    const { handle, draft } = await h.runs.orchestrator(client, "/repo");
     const chat = h.chats.get(handle) as FakeChat;
-    const written = { path: "/repo/docs/plans/draft/new.atp.json", modifiedAt: 2000, plan: parsePlan("/repo/docs/plans/draft/new.atp.json", { nodes: {} }) };
+    const written = { path: `${WORKTREE}/repo/docs/plans/draft/new.atp.json`, modifiedAt: Date.now() + 1000, plan: parsePlan("/x.atp.json", { nodes: {} }) };
     // Not prompted yet: it cannot have written anything.
     await h.runs.plansChanged({ cwd: "/repo", plans: [written] });
-    expect(h.runs.state().orchestrators).toEqual({ "new:/repo": handle });
+    expect(h.runs.state().orchestrators).toEqual({ [draftKey(draft as string)]: handle });
     chat.prompted = true;
-    chat.items = [{ kind: "user", message: { timestamp: 1000 } }];
-    await h.runs.plansChanged({ cwd: "/repo", plans: [{ ...written, path: "/repo/old.atp.json", modifiedAt: 10 }] });
-    expect(h.runs.state().orchestrators).toEqual({ "new:/repo": handle });
+    // Older than the draft, or outside its worktree: not its plan.
+    await h.runs.plansChanged({ cwd: "/repo", plans: [{ ...written, modifiedAt: 10 }, { ...written, path: "/repo/docs/plans/draft/new.atp.json" }] });
+    expect(h.runs.state().orchestrators).toEqual({ [draftKey(draft as string)]: handle });
     await h.runs.plansChanged({ cwd: "/repo", plans: [written] });
     expect(h.runs.state().orchestrators).toEqual({ [written.path]: handle });
+    expect(h.runs.state().drafts).toEqual({});
     expect(h.threads.setOrchestrator).toHaveBeenCalledWith(written.path, `/atp-sessions/${handle}.jsonl`);
+    expect(h.threads.dropDraft).toHaveBeenCalledWith(draft);
   });
 
   it("opens a new plan's chat in a worktree of the project, and a worktree plan's orchestrator in its worktree", async () => {
-    await h.runs.orchestrator(client, "/repo", undefined);
-    expect(h.atp.newPlanCwd).toHaveBeenCalledWith("/repo");
+    await h.runs.orchestrator(client, "/repo");
+    expect(h.atp.newPlanCwd).toHaveBeenCalledWith("/repo", new Set());
     expect(h.host.open).toHaveBeenLastCalledWith({ cwd: `${WORKTREE}/repo`, atp: { role: "orchestrator" } }, { client });
     const plan = `${WORKTREE}/repo/docs/plans/draft/new.atp.json`;
-    await h.runs.orchestrator(client, "/repo", plan);
+    await h.runs.orchestrator(client, "/repo", { plan });
     expect(h.host.open).toHaveBeenLastCalledWith({ cwd: `${WORKTREE}/repo`, atp: { role: "orchestrator", plan } }, { client });
     // A plan of the checkout keeps its orchestrator there, with no worktree made for it.
-    await h.runs.orchestrator(client, "/repo", PLAN);
+    await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     expect(h.host.open).toHaveBeenLastCalledWith({ cwd: "/repo", atp: { role: "orchestrator", plan: PLAN } }, { client });
     expect(h.atp.newPlanCwd).toHaveBeenCalledOnce();
   });
 
-  it("drops a new-plan chat so the next one starts fresh", async () => {
-    const { handle } = await h.runs.orchestrator(client, "/repo", undefined);
-    h.runs.discardNewPlan("/repo");
+  it("gives each new draft its own worktree: the next one is told which are taken", async () => {
+    h.atp.newPlanCwd.mockImplementation(async (cwd: string, taken?: ReadonlySet<string>) => `${WORKTREE}${taken?.size ?? 0}${cwd}`);
+    const [a, b] = await Promise.all([h.runs.orchestrator(client, "/repo"), h.runs.orchestrator(client, "/repo")]);
+    expect(a.draft).not.toBe(b.draft);
+    expect(h.atp.newPlanCwd).toHaveBeenLastCalledWith("/repo", new Set([`${WORKTREE}0/repo`]));
+    expect(new Set(Object.values(h.runs.state().drafts).map((draft) => draft.cwd))).toEqual(new Set([`${WORKTREE}0/repo`, `${WORKTREE}1/repo`]));
+  });
+
+  it("keeps a draft once it ran: named by its first message, it survives leaving the page and resumes", async () => {
+    const { handle, draft } = await h.runs.orchestrator(client, "/repo");
+    const id = draft as string;
+    const chat = h.chats.get(handle) as FakeChat;
+    chat.prompted = true;
+    chat.items = [{ kind: "user", message: { role: "user", content: "/skill:atp-architect  Plan the sync rewrite\nwith details", timestamp: 1 } }];
+    h.settle(handle);
+    await vi.waitFor(() => expect(h.drafts.get(id)?.session).toBe(`/atp-sessions/${handle}.jsonl`));
+    expect(h.runs.state().drafts[id]).toMatchObject({ project: "/repo", cwd: `${WORKTREE}/repo`, title: "Plan the sync rewrite" });
+    expect(h.threads.setOrchestrator).not.toHaveBeenCalled();
+
+    h.runs.releaseOrchestrators(client);
     expect(h.closed).toEqual([handle]);
     expect(h.runs.state().orchestrators).toEqual({});
-    const next = await h.runs.orchestrator(client, "/repo", undefined);
+    expect(Object.keys(h.runs.state().drafts)).toEqual([id]);
+
+    const again = await h.runs.orchestrator(client, "/repo", { draft: id });
+    expect(again).toEqual({ handle: "chat2", draft: id });
+    expect(h.host.open).toHaveBeenLastCalledWith({ cwd: `${WORKTREE}/repo`, sessionPath: `/atp-sessions/${handle}.jsonl`, atp: { role: "orchestrator" } }, { client });
+    expect(h.tasks.useModel).toHaveBeenCalledOnce();
+    expect(h.atp.newPlanCwd).toHaveBeenCalledOnce();
+  });
+
+  it("drops a draft nobody wrote to when its chat stops", async () => {
+    const { draft } = await h.runs.orchestrator(client, "/repo");
+    expect(Object.keys(h.runs.state().drafts)).toEqual([draft]);
+    h.runs.releaseOrchestrators(client);
+    expect(h.runs.state().drafts).toEqual({});
+    expect(h.threads.setDraft).not.toHaveBeenCalled();
+    await expect(h.runs.orchestrator(client, "/repo", { draft })).rejects.toThrow("gone");
+  });
+
+  it("marks a draft's run unread unless a client is looking, and read once it is opened", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      const { handle, draft } = await h.runs.orchestrator(client, "/repo");
+      const id = draft as string;
+      (h.chats.get(handle) as FakeChat).prompted = true;
+      now.mockReturnValue(2000);
+      h.settle(handle);
+      await vi.waitFor(() => expect(h.runs.state().drafts[id]?.updatedAt).toBe(2000));
+      expect(h.runs.state().drafts[id]?.seenAt).toBe(1000);
+      now.mockReturnValue(3000);
+      await h.runs.orchestrator(client, "/repo", { draft: id });
+      expect(h.runs.state().drafts[id]?.seenAt).toBe(3000);
+      h.viewing.add(handle);
+      now.mockReturnValue(4000);
+      h.settle(handle);
+      await vi.waitFor(() => expect(h.runs.state().drafts[id]?.updatedAt).toBe(4000));
+      expect(h.runs.state().drafts[id]?.seenAt).toBe(4000);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("reads the kept drafts at start, and a kept draft adopts its plan with no chat open", async () => {
+    const kept: AtpDraft = { id: "abc123", project: "/repo", cwd: `${WORKTREE}/repo`, session: "/atp-sessions/old.jsonl", title: "Sync", startedAt: 100, updatedAt: 200, seenAt: 200 };
+    h = harness([kept]);
+    await vi.waitFor(() => expect(h.runs.state().drafts).toEqual({ abc123: kept }));
+    expect(h.published.at(-1)?.drafts).toEqual({ abc123: kept });
+    const written = { path: `${WORKTREE}/repo/docs/plans/draft/sync.atp.json`, modifiedAt: 300, plan: parsePlan("/x.atp.json", { nodes: {} }) };
+    // Another project's plans are not its.
+    await h.runs.plansChanged({ cwd: "/other", plans: [written] });
+    expect(h.threads.setOrchestrator).not.toHaveBeenCalled();
+    await h.runs.plansChanged({ cwd: "/repo", plans: [written] });
+    expect(h.threads.setOrchestrator).toHaveBeenCalledWith(written.path, "/atp-sessions/old.jsonl");
+    expect(h.runs.state().drafts).toEqual({});
+    expect(h.drafts.size).toBe(0);
+  });
+
+  it("discards a draft: its chat stops and it is forgotten, and the next one starts fresh", async () => {
+    const { handle, draft } = await h.runs.orchestrator(client, "/repo");
+    h.runs.discardDraft(draft as string);
+    expect(h.closed).toEqual([handle]);
+    expect(h.runs.state().orchestrators).toEqual({});
+    expect(h.runs.state().drafts).toEqual({});
+    expect(h.threads.dropDraft).toHaveBeenCalledWith(draft);
+    const next = await h.runs.orchestrator(client, "/repo");
     expect(next.handle).not.toBe(handle);
+    expect(next.draft).not.toBe(draft);
   });
 
   it("forgets an orchestrator whose pi exited", async () => {
-    const { handle } = await h.runs.orchestrator(client, "/repo", PLAN);
+    const { handle } = await h.runs.orchestrator(client, "/repo", { plan: PLAN });
     await h.host.close(handle);
     expect(h.runs.state().orchestrators).toEqual({});
   });
@@ -496,6 +581,17 @@ describe("plan threads", () => {
     await threads.importLegacy({ [PLAN]: { workers: { T9: ["/s/z.jsonl"] } } });
     expect((await threads.get(PLAN)).workers.T9).toBeUndefined();
     expect((await new AtpThreads(file).get(PLAN)).workers.T2).toEqual(["/s/c.jsonl"]);
+  });
+
+  it("keeps drafts that have a session file, and forgets them", async () => {
+    const file = join(dir, "atp-threads.json");
+    const threads = new AtpThreads(file);
+    const draft: AtpDraft = { id: "abc123", project: "/repo", cwd: "/wt/repo", session: "/s/d.jsonl", title: "Sync", startedAt: 1, updatedAt: 2, seenAt: 2 };
+    await threads.setDraft({ ...draft, id: "nosess", session: undefined });
+    await threads.setDraft(draft);
+    expect(await new AtpThreads(file).drafts()).toEqual([draft]);
+    await threads.dropDraft(draft.id);
+    expect(await new AtpThreads(file).drafts()).toEqual([]);
   });
 
   it("starts empty from a missing or unreadable file", async () => {

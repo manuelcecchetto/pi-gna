@@ -118,9 +118,9 @@ const api: StudioApi = {
     liftHold: (plan) => ipcRenderer.invoke(IPC.atpLiftHold, plan),
     threads: (plan) => ipcRenderer.invoke(IPC.atpThreads, plan),
     onThreads: (listener) => subscribe<{ plan: string; threads: AtpPlanThreads }>(IPC.atpThreadsChanged, listener),
-    orchestrator: (cwd, plan) => ipcRenderer.invoke(IPC.atpOrchestrator, cwd, plan),
+    orchestrator: (cwd, target) => ipcRenderer.invoke(IPC.atpOrchestrator, cwd, target),
     releaseOrchestrators: () => ipcRenderer.invoke(IPC.atpReleaseOrchestrators),
-    discardNewPlan: (cwd) => ipcRenderer.invoke(IPC.atpDiscardNewPlan, cwd),
+    discardDraft: (draft) => ipcRenderer.invoke(IPC.atpDiscardDraft, draft),
     importThreads: (threads) => ipcRenderer.invoke(IPC.atpImportThreads, threads),
   },
   laments: {

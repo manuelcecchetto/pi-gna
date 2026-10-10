@@ -20,14 +20,15 @@ import {
   X,
 } from "./icons";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, NEW_PLAN_DIR, planName, planProgress } from "../../../shared/atp";
+import { ATP_CONFIG, type AtpNode, type AtpPlan, type AtpPlanFile, draftKey, NEW_PLAN_DIR, planName, planProgress } from "../../../shared/atp";
+import type { AtpDraft } from "../../../shared/host-api";
 import { taskModel } from "../../../shared/settings";
 import { baseName, formatStamp, relativeTime, tildify } from "../lib/format";
 import { ATP_DETAIL, ATP_DOCK, ATP_GRAPH_MIN, type AtpPanels, loadAtpPanels, saveAtpPanels } from "../lib/layout";
 import { activate, earlierTurns, openSettings, type PageState, prefill, releasePageChat, remoteError, showPage, showPageChat, toast, useApp, useAppShallow } from "../state/app";
 import { type ChatGlance, chatGlance } from "../lib/projects";
 import {
-  discardNewPlanChat,
+  discardDraft,
   liftHold,
   orchestrator,
   releaseInterrupted,
@@ -49,7 +50,10 @@ import { ProjectSwitch } from "./ProjectSwitch";
 import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
 
-/** The plan you looked at last per project, for this app run. "new": the architect's chat for a new plan. */
+/**
+ * The plan you looked at last per project, for this app run: its path, a draft's `draft:<id>` (the architect's chat
+ * for a plan not written yet), or "new" while a new draft starts.
+ */
 const lastSelected = new Map<string, string>();
 
 const ARCHITECTS = [
@@ -64,6 +68,7 @@ export function AtpPage({ page }: { page: PageState }) {
   const held = useAtp((state) => state.held);
   const notes = useAtp((state) => state.notes);
   const orchestrators = useAtp((state) => state.orchestrators);
+  const allDrafts = useAtp((state) => state.drafts);
   const projects = useApp((state) => state.projects);
   const inset = useApp((state) => state.sidebar.collapsed);
   const [selected, setSelectedState] = useState(() => lastSelected.get(page.cwd));
@@ -116,25 +121,30 @@ export function AtpPage({ page }: { page: PageState }) {
     },
     [page.cwd, showNode],
   );
-  // By default the plan that runs, else the one changed last.
+  const drafts = useMemo(() => Object.values(allDrafts).filter((draft) => draft.project === page.cwd).sort((a, b) => b.updatedAt - a.updatedAt), [allDrafts, page.cwd]);
+  const starting = selected === "new";
+  const chosenDraft = selected?.startsWith("draft:") ? allDrafts[selected.slice("draft:".length)] : undefined;
+  // By default the plan that runs, else the one changed last, else the draft worked on last.
   const fallback = files.find((file) => runners[file.path]) ?? [...files].sort((a, b) => b.modifiedAt - a.modifiedAt)[0];
-  const current = selected === "new" ? undefined : (files.find((file) => file.path === selected) ?? fallback);
+  const current = starting || chosenDraft ? undefined : (files.find((file) => file.path === selected) ?? fallback);
+  const draft = chosenDraft ?? (starting || current ? undefined : drafts[0]);
+  /** The architect's chat is the page: a draft, or one starting. */
+  const writing = starting || Boolean(draft);
   const plan = current?.plan;
   // pi-gna's worker holds a node, but nothing here runs it: a run that ended with pi-gna (a crash, a quit).
   const stalled = plan && !runners[plan.path] ? plan.nodes.find((other) => other.status === "CLAIMED" && !other.scope && other.worker === ATP_CONFIG.agentId)?.id : undefined;
 
-  // The architect's chat wrote its plan: show the plan, whose orchestrator that chat now is.
-  const newChat = useRef<string>(undefined);
+  // The draft's chat wrote its plan: show the plan, whose orchestrator that chat now is.
+  const followed = useRef<{ id: string; handle?: string }>(undefined);
   useEffect(() => {
-    if (selected !== "new") return;
-    const handle = orchestrators[`new:${page.cwd}`];
-    if (handle) newChat.current = handle;
-    else if (newChat.current) {
-      const adopted = Object.entries(orchestrators).find(([, other]) => other === newChat.current)?.[0];
-      newChat.current = undefined;
-      if (adopted) select(adopted);
+    const was = followed.current;
+    if (was && was.id !== draft?.id) {
+      followed.current = undefined;
+      const adopted = was.handle && !allDrafts[was.id] ? Object.entries(orchestrators).find(([key, other]) => other === was.handle && !key.startsWith("draft:"))?.[0] : undefined;
+      if (adopted) return select(adopted);
     }
-  }, [selected, orchestrators, page.cwd, select]);
+    if (draft) followed.current = { id: draft.id, handle: orchestrators[draftKey(draft.id)] ?? (was?.id === draft.id ? was.handle : undefined) };
+  }, [draft, allDrafts, orchestrators, select]);
 
   const matches = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -150,20 +160,27 @@ export function AtpPage({ page }: { page: PageState }) {
     showNode(id);
   };
 
+  // A new draft each time; the ones before stay in the plan menu.
   const newPlan = async (skill: string) => {
     select("new");
-    await discardNewPlanChat(page.cwd);
     try {
-      prefill(await orchestrator(page.cwd, undefined), `/skill:${skill} `);
+      const started = await orchestrator(page.cwd);
+      if (started.draft) select(draftKey(started.draft));
+      prefill(started.handle, `/skill:${skill} `);
     } catch (error) {
+      select(undefined);
       toast(`Could not start the architect: ${remoteError(error)}`, "error");
     }
+  };
+  const discard = (id: string) => {
+    if (draft?.id === id) select(undefined);
+    void discardDraft(id);
   };
 
   const switchable = useMemo(() => [...new Set([page.cwd, ...projects.map((other) => other.cwd)])].map((cwd) => ({ cwd, open: 0 })), [projects, page.cwd]);
   const selectedNode = node && plan?.nodes.find((other) => other.id === node);
-  const chatPlan = selected === "new" ? undefined : plan?.path;
-  const chat = useOrchestrator(page.cwd, chatPlan, selected === "new" || Boolean(plan));
+  const chatPlan = writing ? undefined : plan?.path;
+  const chat = useOrchestrator(page.cwd, chatPlan, draft?.id, writing || Boolean(plan));
   const glance = useAppShallow((state) => chatGlance(chat.handle ? state.sessions[chat.handle] : undefined));
   // A plan's orchestrator floats over the graph until you talk to it; then its chat is the side column's.
   const docked = Boolean(plan && glance?.talked);
@@ -172,7 +189,7 @@ export function AtpPage({ page }: { page: PageState }) {
     setFront("chat");
     setCollapsed(false);
   }, [docked]);
-  const dock = (selected === "new" || plan) && !docked && (
+  const dock = (writing || plan) && !docked && (
     <OrchestratorDock chat={chat} plan={chatPlan} height={panels.dock} onResize={resize("dock")} onInset={setCovered} />
   );
   // The worker tabs whose chats this window still has (the host closes a finished worker nobody looks at).
@@ -202,7 +219,16 @@ export function AtpPage({ page }: { page: PageState }) {
         <Network size={15} className="text-muted" />
         <span className="text-[13.5px] font-medium text-fg">ATP</span>
         <ProjectSwitch cwd={page.cwd} options={switchable} openTitle="Open ATP" onPick={(cwd) => showPage("atp", cwd)} />
-        <PlanSwitch files={files} current={selected === "new" ? "new" : current?.path} runners={runners} held={held} onSelect={select} />
+        <PlanSwitch
+          files={files}
+          drafts={drafts}
+          current={starting ? "new" : draft ? draftKey(draft.id) : current?.path}
+          runners={runners}
+          held={held}
+          orchestrators={orchestrators}
+          onSelect={select}
+          onDiscard={discard}
+        />
         <div className="flex-1" />
         {plan && (
           <label className="no-drag flex w-56 items-center gap-1.5 rounded-lg border border-line bg-sunken px-2 py-1 focus-within:border-line-strong">
@@ -236,9 +262,9 @@ export function AtpPage({ page }: { page: PageState }) {
 
       <div className="flex min-h-0 flex-1">
         <section className="relative flex min-w-0 flex-1 flex-col">
-          {selected === "new" ? (
+          {writing ? (
             <>
-              <NewPlanIntro cwd={page.cwd} inset={covered} />
+              <NewPlanIntro cwd={page.cwd} handle={draft ? orchestrators[draftKey(draft.id)] : undefined} inset={covered} />
               {dock}
             </>
           ) : current && plan ? (
@@ -383,19 +409,31 @@ function PlanSwitch({
   current,
   runners,
   held,
+  drafts,
+  orchestrators,
   onSelect,
+  onDiscard,
 }: {
   files: AtpPlanFile[];
+  drafts: AtpDraft[];
+  /** A plan's path, `draft:<id>`, or "new" while a draft starts. */
   current: string | undefined;
   runners: Record<string, Runner>;
   held: string[];
+  orchestrators: Record<string, string>;
   onSelect: (path: string) => void;
+  onDiscard: (draft: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const home = window.studio.homeDir;
-  if (!files.length && current !== "new") return null;
+  /** Which drafts' chats run now. */
+  const busy = useAppShallow((state) => drafts.filter((draft) => state.sessions[orchestrators[draftKey(draft.id)] ?? ""]?.running).map((draft) => draft.id));
+  if (!files.length && !drafts.length && current !== "new") return null;
   const file = files.find((other) => other.path === current);
+  const draft = drafts.find((other) => draftKey(other.id) === current);
+  // Another draft has news: the menu says so before you open it.
+  const news = drafts.some((other) => draftKey(other.id) !== current && (busy.includes(other.id) || other.updatedAt > other.seenAt));
   return (
     <>
       <ChevronRight size={13} className="shrink-0 text-faint" />
@@ -407,17 +445,32 @@ function PlanSwitch({
           className="flex max-w-80 min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] text-fg hover:bg-raised"
         >
           {file && runners[file.path] && <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
-          <span className="truncate">{current === "new" ? "New plan" : file ? (file.plan?.name ?? planName(file.path)) : "Plans"}</span>
+          <span className="truncate">{current === "new" ? "New plan" : draft ? draft.title || "New plan" : file ? (file.plan?.name ?? planName(file.path)) : "Plans"}</span>
           {file && held.includes(file.path) && <Pause size={11} className="shrink-0 text-warn" />}
+          {news && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
           <ChevronDown size={12} className="shrink-0 text-faint" />
         </button>
         <Popover open={open} onClose={close} className="top-full left-0 mt-1 flex max-h-[70vh] w-80 flex-col gap-0.5 overflow-y-auto p-1">
           {current === "new" && (
             <div className="rounded-lg bg-raised/60 px-2.5 py-2 text-[12.5px] text-fg">
               New plan
-              <div className="text-[11.5px] text-faint">The architect is writing it</div>
+              <div className="text-[11.5px] text-faint">The architect is starting</div>
             </div>
           )}
+          {drafts.map((option) => (
+            <DraftOption
+              key={option.id}
+              draft={option}
+              active={draftKey(option.id) === current}
+              running={busy.includes(option.id)}
+              onSelect={() => {
+                setOpen(false);
+                onSelect(draftKey(option.id));
+              }}
+              onDiscard={() => onDiscard(option.id)}
+            />
+          ))}
+          {drafts.length > 0 && files.length > 0 && <div className="mx-2 my-1 border-t border-line" />}
           {files.map((option) => {
             const progress = option.plan && planProgress(option.plan);
             const runner = runners[option.path];
@@ -460,6 +513,35 @@ function PlanSwitch({
         </Popover>
       </div>
     </>
+  );
+}
+
+/** A plan the architect is still writing, in the plan menu: open it, or discard it (a second click, it loses the chat). */
+function DraftOption({ draft, active, running, onSelect, onDiscard }: { draft: AtpDraft; active: boolean; running: boolean; onSelect: () => void; onDiscard: () => void }) {
+  const [arming, setArming] = useState(false);
+  const unread = !running && draft.updatedAt > draft.seenAt;
+  return (
+    <div className={`group flex items-start gap-1 rounded-lg hover:bg-raised ${active ? "bg-raised/60" : ""}`} onMouseLeave={() => setArming(false)}>
+      <button type="button" onClick={onSelect} title={tildify(draft.cwd, window.studio.homeDir)} className="flex min-w-0 flex-1 flex-col gap-1 px-2.5 py-2 text-left">
+        <span className="flex min-w-0 items-center gap-1.5">
+          {running ? <span className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-full bg-accent" /> : unread && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
+          <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{draft.title || "New plan"}</span>
+        </span>
+        <span className="flex items-center gap-1.5 text-[11px] whitespace-nowrap text-faint">
+          <span className="rounded border border-line-strong px-1 font-mono text-[9.5px] leading-[14px] tracking-wide">WRITING</span>
+          The architect has no plan file yet
+          <span className="ml-auto">{relativeTime(draft.updatedAt)}</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => (arming ? onDiscard() : setArming(true))}
+        title="Discard this draft: its chat stops and is forgotten"
+        className={`mt-1.5 mr-1.5 shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ${arming ? "bg-bad/15 text-bad" : "text-faint opacity-0 group-hover:opacity-100 hover:text-fg focus-visible:opacity-100"}`}
+      >
+        {arming ? "Discard?" : <X size={12} />}
+      </button>
+    </div>
   );
 }
 
@@ -826,26 +908,29 @@ interface Orchestrator {
   retry: () => void;
 }
 
-/** The plan's orchestrator (without a plan: the architect's chat for a new one), started while the page shows it. */
-function useOrchestrator(cwd: string, plan: string | undefined, shown: boolean): Orchestrator {
+/**
+ * The plan's orchestrator, or the draft's (the architect's chat for a new plan), started while the page shows it.
+ * Neither while a new draft starts: the page asked for that one itself.
+ */
+function useOrchestrator(cwd: string, plan: string | undefined, draft: string | undefined, shown: boolean): Orchestrator {
   const [handle, setHandle] = useState<string>();
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!shown) return;
-    let current = true;
     setHandle(undefined);
     setFailed(undefined);
-    orchestrator(cwd, plan).then(
-      (started) => current && setHandle(started),
+    if (!shown || !(plan || draft)) return;
+    let current = true;
+    orchestrator(cwd, plan ? { plan } : { draft }).then(
+      (started) => current && setHandle(started.handle),
       (error: unknown) => current && setFailed(remoteError(error)),
     );
     return () => {
       current = false;
     };
-  }, [cwd, plan, attempt, shown]);
-  // A new plan's chat moves to the plan once the architect writes it: keep showing it.
-  const adopted = useAtp((state) => (plan ? state.orchestrators[plan] : state.orchestrators[`new:${cwd}`]));
+  }, [cwd, plan, draft, attempt, shown]);
+  // A draft's chat moves to the plan once the architect writes it: keep showing it.
+  const adopted = useAtp((state) => (plan ? state.orchestrators[plan] : draft ? state.orchestrators[draftKey(draft)] : undefined));
   const open = useApp((state) => {
     const current = adopted ?? handle;
     return current && state.sessions[current] ? current : undefined;
@@ -1008,8 +1093,7 @@ const DOCK_MARGIN = 16;
 // ── Empty and broken ─────────────────────────────────────────────────────────
 
 /** Until the architect's chat starts: then the chat, floating over this, is the page. */
-function NewPlanIntro({ cwd, inset }: { cwd: string; inset: number }) {
-  const handle = useAtp((state) => state.orchestrators[`new:${cwd}`]);
+function NewPlanIntro({ cwd, handle, inset }: { cwd: string; handle: string | undefined; inset: number }) {
   const talked = useApp((state) => {
     const session = handle ? state.sessions[handle] : undefined;
     return Boolean(session && (session.items.length > 0 || session.running));

@@ -154,7 +154,7 @@ export const IPC = {
   atpThreads: "atp:threads",
   atpOrchestrator: "atp:orchestrator",
   atpReleaseOrchestrators: "atp:release-orchestrators",
-  atpDiscardNewPlan: "atp:discard-new-plan",
+  atpDiscardDraft: "atp:discard-draft",
   atpImportThreads: "atp:import-threads",
   startTask: "studio:start-task",
   addCard: "studio:add-card",
@@ -325,11 +325,11 @@ export interface AtpApi {
   /** The chats that worked on a plan, pushed again (onThreads) when they change. */
   threads(plan: string): Promise<AtpPlanThreads>;
   onThreads(listener: (change: { plan: string; threads: AtpPlanThreads }) => void): () => void;
-  /** The plan's orchestrator chat, started or resumed; without a plan, a chat for one the architect is about to write. The window attaches to it. */
-  orchestrator(cwd: string, plan?: string): Promise<{ handle: string }>;
+  /** The plan's or the draft's orchestrator chat, started or resumed; with neither, a new draft for a plan the architect is about to write. The window attaches to it. */
+  orchestrator(cwd: string, target?: { plan?: string; draft?: string }): Promise<{ handle: string; draft?: string }>;
   /** The page closed: idle orchestrators stop, busy ones when they finish. */
   releaseOrchestrators(): Promise<null>;
-  discardNewPlan(cwd: string): Promise<null>;
+  discardDraft(draft: string): Promise<null>;
   /** The threads this window kept in localStorage before they lived in main; merged once. */
   importThreads(threads: unknown): Promise<null>;
 }

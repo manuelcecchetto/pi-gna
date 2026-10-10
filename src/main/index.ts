@@ -13,7 +13,7 @@ import type { ViewportRequest } from "../shared/viewport";
 import type { GithubFilter, GithubKind } from "../shared/github";
 import type { ComputerOp } from "../shared/computer";
 import type { LamentOp } from "../shared/laments";
-import { HostError, type QueueEdit } from "../shared/host-api";
+import { type AtpRunnerState, HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared/protocol";
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
@@ -150,7 +150,7 @@ hub.subscribe({
         case "computer": send(IPC.computerChanged, e.settings); break;
         case "atp.plans": send(IPC.atpPlans, e.plans); break;
         case "atp.held": send(IPC.atpHeld, e.plans); break;
-        case "atp.runners": send(IPC.atpRunners, { runners: e.runners, notes: e.notes, orchestrators: e.orchestrators }); break;
+        case "atp.runners": send(IPC.atpRunners, { runners: e.runners, notes: e.notes, orchestrators: e.orchestrators, drafts: e.drafts } satisfies AtpRunnerState); break;
         case "atp.threads": send(IPC.atpThreadsChanged, { plan: e.plan, threads: e.threads }); break;
         case "browser": send(IPC.browserState, e.state); break;
         case "browser.reveal": send(IPC.browserReveal, e.chat); break;
