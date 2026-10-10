@@ -13,6 +13,7 @@ import { useAtp } from "../state/atp";
 import { applyComputer, ComputerSection, useComputerSettings } from "./Computer";
 import { PignaMark } from "./PignaMark";
 import { Kbd, Switch } from "./primitives";
+import { ImportChatsSection } from "./ImportChats";
 import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
 import { openSetup } from "./Setup";
@@ -57,6 +58,8 @@ export function SettingsPage({ page }: { page: PageState }) {
             <ModelsSection pi={pi} />
           ) : section.id === "agent" ? (
             <AgentSection pi={pi} />
+          ) : section.id === "import" ? (
+            <ImportChatsSection />
           ) : section.id === "features" ? (
             <FeaturesSection />
           ) : section.id === "remote" ? (

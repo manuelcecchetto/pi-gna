@@ -1,6 +1,6 @@
 // The Settings sections, and the sidebar's list of them while Settings is open (SettingsNav). Apart from the page, so
 // the sidebar and the command palette do not pull the Settings page into the startup bundle (it loads on first use).
-import { ArrowLeft, Blocks, Info, Bot, Cpu, KeyRound, Keyboard, type IconComponent, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight } from "./icons";
+import { ArrowLeft, Blocks, Info, Bot, Cpu, KeyRound, Keyboard, type IconComponent, MessagesSquare, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight } from "./icons";
 import { useMemo, useState } from "react";
 import type { SettingsSection } from "../../../shared/settings";
 import { closeSettings, openSettings } from "../state/app";
@@ -54,6 +54,14 @@ export const SECTIONS: SectionInfo[] = [
     group: "pi",
     about: "How pi works in new chats.",
     keywords: "steering follow-up queue messages compaction context summarize retry errors images resize block skills commands cache warming project trust",
+  },
+  {
+    id: "import",
+    label: "Import chats",
+    icon: MessagesSquare,
+    group: "pi",
+    about: "Bring the chats you had with Codex and Claude Code on this Mac into pi-gna. Each one lands in its project with its own date, and goes on like any chat.",
+    keywords: "import migrate codex claude code chats history sessions transcripts conversations openai anthropic move switch",
   },
   {
     id: "features",

@@ -64,6 +64,7 @@ import { debugRpc, log, logToFile } from "./log";
 import { readActiveBranch } from "./session-file";
 import { SessionHost } from "./session-host";
 import { indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
+import { ChatImporter } from "./chat-import";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
 import { atMostEvery } from "./store";
 import { Updater } from "./updater";
@@ -300,6 +301,7 @@ const plugins = new PiPlugins({
   onLogin: (update) => send(IPC.pluginsLoginUpdate, update),
 });
 const setup = new PiSetup({ onLine: (line) => send(IPC.setupLine, line) });
+const chatImport = new ChatImporter({ sessionsDir, progress: (update) => send(IPC.importProgress, update), emptyFile: join(app.getPath("userData"), "chat-import.json") });
 
 function createWindow(): void {
   const stateFile = join(app.getPath("userData"), "window-state.json");
@@ -491,6 +493,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     atpThreads,
     auth,
     plugins,
+    chatImport,
     setup,
     browser: () => browser,
     remoteBrowser: () => remoteBrowser,

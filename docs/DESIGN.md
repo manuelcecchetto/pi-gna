@@ -25,6 +25,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     PiProcess      one `pi --mode rpc` child per open session (LF-only JSONL, id-correlated commands)
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
+    chat-import/   ChatImporter: Codex and Claude Code transcripts -> pi session files (Settings > Import chats)
     files          `rg --files` for @ mentions, kept until a file comes or goes (a recursive watcher; 15 s on Linux)
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
@@ -926,7 +927,7 @@ frame token propagation covered together (the `themes` scenario in `scripts/remo
 
 Codex-style: a Settings row is fixed at the foot of the sidebar (⌘, or pi-gna > Settings…). While the page is open the
 sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appearance, Keyboard shortcuts), pi
-(Providers, Plugins, Models, Agent) and Integrations (Features, Remote access, Computer use), with a search over their labels and keywords.
+(Providers, Plugins, Models, Agent, Import chats) and Integrations (Features, Remote access, Computer use), with a search over their labels and keywords.
 Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible chat rows everywhere else
 (`useCommandDigits`). ⌘⇧U opens the Computer use section.
 
@@ -975,6 +976,34 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   to a local port), so its `auth_url` is marked `opened` and main does not open it again; the printed link (an OSC 8
   hyperlink) is the fallback, whose page shows a `code#state` that the paste prompt writes to Claude Code's stdin
   ("Invalid code" on stderr asks again). Sign out signs Claude Code out on the whole Mac, the terminal included.
+- **Import chats** (desktop only, `src/main/chat-import/`, `ImportChats.tsx`): another agent's chats become pi session
+  files in pi's own folder for their cwd (`--<cwd>--/<created>_<id>.jsonl`), so the sidebar lists them in their
+  projects and pi continues them. Sources: Codex rollouts (`$CODEX_HOME/sessions/**/rollout-*.jsonl`; the first line's
+  `session_meta` says where a thread came from, `session_index.jsonl` names it) and Claude Code sessions
+  (`$CLAUDE_CONFIG_DIR/projects/*/*.jsonl`). Only a person's chats list: Codex threads whose `source` is a string
+  other than `exec` and no subagent, agent-created or guardian thread; Claude Code sessions whose `entrypoint` is
+  `cli` or `claude-desktop` (the Agent SDK says `sdk-ts`, `claude -p` says `sdk-cli`), every user record carrying
+  `promptId` (pi-claude-bridge rebuilds its transcripts with cc-session-io, which writes `entrypoint: "cli"` but no
+  `promptId`), no `mcp__custom-tools__*` call (the bridge's MCP server for pi's tools) and not in a card worktree.
+  Checked on a real Mac: of 2,188 Codex and about 1,840 Claude Code transcripts, 826 and 19 were a person's.
+  Conversion keeps the active branch (Claude Code rewinds), user text minus the harness's blocks (a part that is one
+  whole `<tag>…</tag>`, or `# AGENTS.md instructions`), answers (Codex Desktop's `::git-…{}` directives and
+  `<oai-mem-citation>` dropped), thinking (Codex only has its reasoning summary), and tool calls mapped to pi's tools
+  where one exists (`exec_command`/`shell`/a code-mode script of one `exec_command` and `Bash` -> `bash`, `Read`,
+  `Write`, `Edit`/`MultiEdit` -> `edit`, `apply_patch`), so the transcript draws them as pi's and a continuing model
+  sees calls to tools it has. Outputs keep their first 3,000 and last 1,000 characters, arguments 16,000; images
+  become a note. Every call gets its result right after its message (`pairToolResults`). Answers carry the agent as
+  provider (`codex`, `claude-code`), never a pi provider, so pi always replays them as another model's turns. A
+  source compaction becomes a pi `compaction` entry: Claude Code's summary as is; Codex's is encrypted, so the entry
+  says so and lists the person's earlier messages, which is what Codex itself keeps besides it. Dates: the header
+  has the chat's start, and the file's mtime is set to the source's mtime, because the sidebar orders chats and
+  projects by mtime: an import must not jump above today's chats (a test checks this order). The session id is a
+  hash of the source and its id, and a `custom` entry (`pigna.import`, never sent to the model) records the source
+  file's size and mtime: importing again skips unchanged chats, rewrites a chat that went on in the other agent, and
+  never touches one whose mtime moved since (pi appended to it: you continued it). Chats with nothing to import (no
+  typed message) are remembered in `userData/chat-import.json`. Scratch folders (temp, and Codex's
+  `~/Documents/Codex/<date>/<slug>` for chats outside a project) are off by default. A heavy history (826 Codex
+  threads, 8.9 GB of rollouts) imports in about 45 s into about 0.8 GB.
 - **Logos** are real brand marks: `src/renderer/src/lib/provider-logos.ts`, generated by
   `node scripts/provider-logos.mjs` from pinned LobeHub icons (MIT), drawn as LobeHub's Avatar draws them; Radius,
   TypeSafe and Ant Ling come from the companies' own sites. A provider pi adds later shows its initial until it is

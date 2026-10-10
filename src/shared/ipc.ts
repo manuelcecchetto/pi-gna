@@ -13,6 +13,7 @@ import type { LamentOp, Laments } from "./laments";
 import type { ThemeOp, Themes } from "./themes";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
+import type { ImportProgress, ImportResult, ImportScan } from "./chat-import";
 import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, DeviceInfo, HostErrorCode, HostEvent, NewCardAttachment, PairingStatus, QueueEdit, RemoteStatus, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type { UiOp } from "./ui-state";
@@ -132,6 +133,9 @@ export const IPC = {
   pluginsLoginUpdate: "plugins:login-update",
   pluginsCancelLogin: "plugins:cancel-login",
   pluginsLogout: "plugins:logout",
+  importScan: "import:scan",
+  importRun: "import:run",
+  importProgress: "import:progress",
   setupStatus: "setup:status",
   setupInstallPi: "setup:install-pi",
   setupLine: "setup:line",
@@ -369,6 +373,14 @@ export type UpdateState =
   | { phase: "ready"; release: UpdateRelease }
   | { phase: "failed"; release: UpdateRelease; error: string };
 
+/** Settings > Import chats (src/shared/chat-import.ts): Codex and Claude Code chats, by project, into pi's sessions. */
+export interface ImportApi {
+  scan(): Promise<ImportScan>;
+  /** Imports the chats of these projects (cwds from the scan); resolves when done. */
+  run(projects: string[]): Promise<ImportResult>;
+  onProgress(listener: (progress: ImportProgress) => void): () => void;
+}
+
 /** The first-run Setup flow (src/shared/setup.ts): what pi-gna found, and pi's install with npm's output line by line. */
 export interface SetupApi {
   status(): Promise<SetupStatus>;
@@ -605,6 +617,7 @@ export interface StudioApi {
   ui: UiApi;
   auth: AuthApi;
   plugins: PluginsApi;
+  imports: ImportApi;
   github: GithubApi;
   atp: AtpApi;
   update: UpdateApi;
