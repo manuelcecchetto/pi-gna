@@ -1070,8 +1070,10 @@ after `/_work/` (`casus-review`), so the runners form one project.
 
 ### Per-file facts
 
-`FileUsageFacts` (`src/shared/usage.ts`), extracted in one streamed pass (`readline`, no whole-file load; an unparseable
-line is skipped). Each field's rule:
+`FileUsageFacts` (`src/shared/usage.ts`), extracted in one streamed pass over byte chunks split on LF (no whole-file load).
+A line that is not JSON counts in `skipped.lines`, an entry of an unknown type in `skipped.entries`; neither throws. Only
+lines that can change the facts are parsed: a message whose role is not user, assistant or toolResult (a 100 KB system
+prompt) is skipped on a substring test. Each field's rule:
 
 - **Buckets**: `(UTC hour, provider, model)`. 2,329 hour buckets across all 1,428 files, under two per file on average.
 - **Tools**: one call per `toolCall` block. Its `toolResult` (same `toolCallId`) gives `isError` and the duration
@@ -1082,17 +1084,26 @@ line is skipped). Each field's rule:
   `rate-limit` (/rate limit/i), `overloaded` (/overloaded|Service Unavailable/i), `context-overflow` (/context window/i),
   `process` (/signal|process terminated/i), `network` (/WebSocket|timed out|timeout|fetch failed/i), else `other`. Seen most
   often: "Operation aborted" (312), "WebSocket error" (100), "Service Unavailable" (70), "Claude Code process terminated by
-  signal SIGKILL" (30), "Claude rate limit (five_hour)" (20). A turn with `stopReason` `aborted` also counts as `aborted`.
+  signal SIGKILL" (30), "Claude rate limit (five_hour)" (20). A failed turn (an `errorMessage`, or `stopReason` `error` or
+  `aborted`) gets one category: the first rule its message matches, else `aborted` for a `stopReason` `aborted`, else `other`.
 - **Prompts**: a `user` message starts one; its steps are the assistant turns up to the next user message; it is `aborted`
   when its last turn stopped aborted. `custom_message` entries are not prompts.
 - **Active time**: the sum of gaps between consecutive timestamped entries, each capped at `ACTIVE_GAP_CAP_MS` (5 min).
-  `wallMs` per prompt uses the same cap.
+  `wallMs` per prompt sums the capped gaps between its entries, from its user message on.
 - **Context histogram**: every turn's input (input + cacheRead + cacheWrite) into `CONTEXT_EDGES`.
 - **Cache misses**: a turn with no cache read and at least `CACHE_MISS_MIN_INPUT` of input is a `missTurns`.
 - **Thinking**: a count per `thinkingLevel` on turns (36,904 of 92,703 carry it).
 - **Compactions and edits**: `compaction` entries (their `tokensBefore` summed) and `context_edit` entries.
 - **Subagent runs**: `subagents:record` counted by `status`. Other custom records (`web-search-results`,
   `pi-context-gc-checkpoint`, `codemode-store`, ...) are not read.
+
+- **Resume**: `consumedBytes` is the offset through the last complete record. A last line without LF counts only once it
+  parses, so a record pi is still writing is read on the next pass. A grown file is read from `consumedBytes` with
+  `resume` carried over (pending tool calls, closed prompts, the open prompt, the last timestamp in `session.lastAt`). A
+  file with no prompt yet, or one that shrank, is read in full: its surface is decided by its first prompt.
+- **Measured** (T02, this Mac): the largest file (115.5 MB) in 0.16 s at 151 MB RSS; the whole history (1,675 files,
+  2.83 GB) in 5.9 s on one thread at 447 MB RSS. A parse-every-line baseline takes 8.4 s. The substring test skips only
+  4.6% of the bytes: tool results are 76% and must be parsed for their ids, timestamps and error flags.
 
 The cache is `userData/usage-index.json`: `{ version, entries }` keyed by path, each with `size`, `mtimeMs` and facts,
 saved through a temp file and a rename as `session-index.ts` does. From the counts above it comes to about 1.5 MB for the

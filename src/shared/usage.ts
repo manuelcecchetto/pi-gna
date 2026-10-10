@@ -106,11 +106,37 @@ export interface SessionMeta {
   activeMs: number;
 }
 
+export interface PendingCall {
+  name: string;
+  /** The assistant turn's timestamp: the start of the call. */
+  at: number;
+}
+
+export interface OpenPrompt {
+  steps: number;
+  toolCalls: number;
+  wallMs: number;
+  aborted: boolean;
+}
+
+/** What a later append needs to continue the file without a re-read. */
+export interface UsageResume {
+  /** Tool calls whose toolResult has not been read yet, by toolCallId. */
+  pending: Record<string, PendingCall>;
+  /** Prompts whose next user message has arrived. */
+  closed: PromptStats;
+  /** The prompt the file currently ends in. */
+  open?: OpenPrompt;
+}
+
 /** Everything the report needs from one session file, compact enough to keep in a cache for thousands of files. */
 export interface FileUsageFacts {
   version: number;
+  /** The file's size and mtime when it was read: the index compares them to decide a re-read. */
   size: number;
   mtimeMs: number;
+  /** Bytes read through the last complete record; a torn last line stays unread until its end arrives. */
+  consumedBytes: number;
   session: SessionMeta;
   buckets: UsageBucket[];
   tools: Record<string, ToolStat>;
@@ -125,6 +151,9 @@ export interface FileUsageFacts {
   contextEdits: number;
   /** This file's subagents:record entries, counted by their status. */
   subagentRuns: Record<string, number>;
+  /** Lines that are not JSON, and entries of a type pi does not write. Counted, never thrown. */
+  skipped: { lines: number; entries: number };
+  resume: UsageResume;
 }
 
 /** USD per million tokens, as pi-ai lists them. */
