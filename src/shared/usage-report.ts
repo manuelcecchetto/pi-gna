@@ -44,6 +44,9 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const TOP_SESSIONS = 10;
 const TOP_FAILING_TOOLS = 5;
+const MAX_MODEL_ROWS = 30;
+const MAX_PROJECT_ROWS = 50;
+const MAX_TOOL_ROWS = 50;
 const PRESET_DAYS: Record<Exclude<UsageRange, "all">, number> = { "7d": 7, "14d": 14, "30d": 30, "90d": 90 };
 
 interface Sum {
@@ -231,9 +234,9 @@ const bucketInRange = (bucket: UsageBucket, from: number, to: number): boolean =
 
 /**
  * The core of the usage report: the headline, the daily and weekday-hour series, the models, projects and top sessions.
- * Pure: reads the facts, the price table, the query and `now`; `files` is the number of session files the index holds
- * for the source. A file counts when it has a turn in the range; its prompts, tools and active time are its whole-file
- * totals, since the facts are not bucketed by time below the hour.
+ * Pure: reads the facts, the price table, the query and `now`; `files` is the number of session files the index found
+ * on disk. The lists are cut at their caps; the totals count every row. A file counts when it has a turn in the range;
+ * its prompts, tools and active time are its whole-file totals, since the facts are not bucketed by time below the hour.
  */
 export function buildCoreReport(
   facts: readonly FileUsageFacts[],
@@ -314,7 +317,8 @@ export function buildCoreReport(
     .sort(
       (a, b) =>
         b.estimated - a.estimated || billed(b.tokens) - billed(a.tokens) || compare(`${a.provider}/${a.model}`, `${b.provider}/${b.model}`),
-    );
+    )
+    .slice(0, MAX_MODEL_ROWS);
 
   const byId = new Map(rows.map((row) => [row.fact.session.id, row]));
   const groups = new Map<string, SessionGroup>();
@@ -378,7 +382,8 @@ export function buildCoreReport(
       worktreeSessions: entry.worktreeSessions,
       lastAt: entry.lastAt,
     }))
-    .sort((a, b) => b.estimated - a.estimated || b.tokens - a.tokens || compare(a.project, b.project));
+    .sort((a, b) => b.estimated - a.estimated || b.tokens - a.tokens || compare(a.project, b.project))
+    .slice(0, MAX_PROJECT_ROWS);
 
   const currentStreak = streakEnding(days);
   const longestStreak = longestRun(days);
@@ -761,7 +766,7 @@ export function buildBehaviourReport(facts: readonly FileUsageFacts[], query: Us
   const health = healthOf(rows);
   return {
     surfaces: surfacesOf(rows, scope.priceOf),
-    tools,
+    tools: { ...tools, rows: tools.rows.slice(0, MAX_TOOL_ROWS) },
     health,
     windows: windowsOf(rows, scope.priceOf, now),
     insights: insightsOf(rows, scope.priceOf, health, tools),

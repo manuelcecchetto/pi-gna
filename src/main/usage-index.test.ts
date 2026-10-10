@@ -87,7 +87,7 @@ function spyExtractor(calls: Call[], failing = new Set<string>()): () => Extract
 }
 
 function open(calls: Call[], failing?: Set<string>): UsageIndex {
-  return new UsageIndex({ roots: { sessions, atp }, file: cacheFile, openExtractor: spyExtractor(calls, failing), concurrency: 2 });
+  return new UsageIndex({ roots: () => ({ sessions, atp }), file: cacheFile, openExtractor: spyExtractor(calls, failing), concurrency: 2 });
 }
 
 const byId = (facts: FileUsageFacts[]) => [...facts].sort((a, b) => a.session.id.localeCompare(b.session.id));

@@ -14,6 +14,7 @@ import type { ThemeOp, Themes } from "./themes";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { AtpPlanThreads, AtpRunnerState, AttentionSummary, ChatSnapshot, DeviceInfo, HostErrorCode, HostEvent, NewCardAttachment, PairingStatus, QueueEdit, RemoteStatus, Revved, TaskStarted, TaskTarget, UiState } from "./host-api";
+import type { UsageProgress, UsageQuery, UsageReport } from "./usage";
 import type { Settings, SettingsOp, SettingsSection } from "./settings";
 import type { UiOp } from "./ui-state";
 import type {
@@ -105,6 +106,9 @@ export const IPC = {
   settingsGet: "settings:get",
   settingsApply: "settings:apply",
   settingsChanged: "settings:changed",
+  usageGet: "usage:get",
+  usageRefresh: "usage:refresh",
+  usageProgress: "usage:progress",
   uiGet: "ui:get",
   uiApply: "ui:apply",
   uiChanged: "ui:changed",
@@ -217,6 +221,14 @@ export interface SettingsApi {
   setPi(patch: PiPatch): Promise<PiSettingsState>;
   /** Show pi's settings.json in the Finder. */
   revealPi(): Promise<void>;
+}
+
+/** pi's provider logins, which main runs with pi's own SDK (src/main/pi-auth.ts). One login at a time. */
+export interface UsageApi {
+  get(query: UsageQuery): Promise<UsageReport>;
+  refresh(): Promise<void>;
+  /** Index progress while the report reads the files; the last one has phase "done". */
+  onProgress(listener: (progress: UsageProgress) => void): () => void;
 }
 
 /** pi's provider logins, which main runs with pi's own SDK (src/main/pi-auth.ts). One login at a time. */
@@ -602,6 +614,7 @@ export interface StudioApi {
   themes: ThemesApi;
   computer: ComputerApi;
   settings: SettingsApi;
+  usage: UsageApi;
   ui: UiApi;
   auth: AuthApi;
   plugins: PluginsApi;

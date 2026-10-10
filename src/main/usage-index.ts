@@ -26,7 +26,8 @@ export interface IndexProgress {
 }
 
 export interface UsageIndexOptions {
-  roots: Record<SourceRoot, string>;
+  /** Read at each scan and each refresh: pi's folders can come from the login shell, after launch. */
+  roots: () => Record<SourceRoot, string>;
   /** userData/usage-index.json. */
   file: string;
   /** Opened per run and closed when the run settles. */
@@ -64,6 +65,7 @@ export class UsageIndex {
   private loaded: Promise<void> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
   private dirty = false;
+  private discoveredFiles = 0;
 
   constructor(private readonly options: UsageIndexOptions) {}
 
@@ -73,6 +75,11 @@ export class UsageIndex {
 
   refreshFile(path: string): Promise<void> {
     return this.enqueue(() => this.refreshOne(path));
+  }
+
+  /** Session files found on disk at the last scan, both roots. */
+  discovered(): number {
+    return this.discoveredFiles;
   }
 
   allFacts(): FileUsageFacts[] {
@@ -119,7 +126,9 @@ export class UsageIndex {
   }
 
   private async scanAll(onProgress?: (progress: IndexProgress) => void): Promise<void> {
-    const found = (await Promise.all(SOURCE_ROOTS.map((root) => findFiles(root, this.options.roots[root])))).flat();
+    const roots = this.options.roots();
+    const found = (await Promise.all(SOURCE_ROOTS.map((root) => findFiles(root, roots[root])))).flat();
+    this.discoveredFiles = found.length;
     const present = new Set(found.map((file) => file.path));
     for (const path of [...this.entries.keys()]) {
       if (present.has(path)) continue;
@@ -154,7 +163,7 @@ export class UsageIndex {
   }
 
   private async refreshOne(path: string): Promise<void> {
-    const root = SOURCE_ROOTS.find((candidate) => path.startsWith(this.options.roots[candidate] + sep));
+    const root = SOURCE_ROOTS.find((candidate) => path.startsWith(this.options.roots()[candidate] + sep));
     if (!root) return;
     const info = await statFile(path);
     if (!info) {

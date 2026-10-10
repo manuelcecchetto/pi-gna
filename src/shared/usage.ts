@@ -350,7 +350,7 @@ export interface ToolRow {
 }
 
 export interface ToolsReport {
-  /** Every tool, most calls first. */
+  /** Most calls first; at most 50 (usage-report.ts). */
   rows: ToolRow[];
   /** Tools with at least one error, most errors first; at most 5. */
   topFailing: ToolRow[];

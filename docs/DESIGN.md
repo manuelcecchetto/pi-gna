@@ -1021,7 +1021,7 @@ Files (the node that builds each one is in brackets; the shapes are in `src/shar
 - `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure [T04].
 - `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
 - `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, from T07, the rest; pure, no I/O [T06, T07].
-- Host: `usage.get` in `src/shared/host-api.ts` [T08]. Renderer: `UsagePage.tsx` (lazy chunk), `UsageCharts.tsx` (SVG
+- Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check) [T08]. Renderer: `UsagePage.tsx` (lazy chunk), `UsageCharts.tsx` (SVG
   primitives), panels [T10 to T14]. Phone: a compact section [T16].
 
 ### Sources and surfaces
@@ -1158,8 +1158,19 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
 
 ### Report API
 
-- `usage.get(query: UsageQuery): Promise<UsageReport>` in the host API (T08), read-only. Default query:
-  `{ range: "30d", source: "pigna" }`. The type is `UsageQuery` in `src/shared/usage.ts`.
+- Host (T08): `usage.get({ query? })` is remote and read-only; an omitted query is `{ range: "30d", source: "pigna" }`. The
+  type is `UsageQuery` in `src/shared/usage.ts`. `usage.refresh` is remote and mutating (it rewrites `usage-index.json`), so a
+  phone sends an `Idempotency-Key`. `parseUsageQuery` checks the query: presets, or `{ from, to }` at most 4,000 days apart;
+  `source`; a `project` of at most 1,024 characters; an IANA `timeZone` from the client. Anything else is `bad_request`.
+- The index is made on the first `usage.get` of a launch, after pi's folders are known (the roots are read at each scan,
+  since the login shell can move them), and its facts stay in memory. `usage.refresh` reads what changed; a refresh asked
+  while a scan runs joins it.
+- Progress: `usage.progress` (`UsageProgress`) goes out on the global topic (phones) and on the desktop as `usageProgress`,
+  at most every 250 ms. A scan starts with `scan`, moves to `index` with done and total, and ends with `done`.
+- Bounds: sessions 10, models 30, projects 50, tools 50, windows 5, insights 6. Totals count every row. Measured (T08, this Mac,
+  1,685 files, 4 workers): cold scan 2.5 s; warm 30-day pigna report 76 ms and 28.6 KB; all-time report 64 ms and 52 KB.
+- `meta.files` is the session files found on disk (both roots); `meta.indexedFiles` is the ones the report's source covers, so
+  for `pigna` it is lower than `files` even when everything is indexed.
 - `usage.progress` event (`UsageProgress`): `scan` while listing, `index` with done/total, `done`. At most every 250 ms.
 - Ranges: `7d`, `14d`, `30d`, `90d` are the last N local days from the start of that day; `all` is from the first bucket;
   `{ from, to }` in epoch ms for anything else.
