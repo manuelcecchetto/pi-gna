@@ -12,6 +12,7 @@ import { type AppInfo, type AttachmentRef, type BrowserInput, type HostCtx, Host
 import { type DialogAnswer, IPC, type OpenSessionRequest, type PickedPath } from "../shared/ipc";
 import type { LamentOp } from "../shared/laments";
 import type { ThemeOp } from "../shared/themes";
+import type { UsageQuery } from "../shared/usage";
 import { kindFor, parseLinkTarget, type PreviewMode, type PreviewOpenOptions } from "../shared/preview";
 import { embeddedImageTargets } from "../shared/markdown-images";
 import { type PackageToggle, type PluginToggle, RESOURCE_TYPES } from "../shared/plugins";
@@ -49,6 +50,7 @@ import type { ChatImporter } from "./chat-import";
 import type { PiSetup } from "./setup";
 import type { SessionHost } from "./session-host";
 import type { SettingsStore } from "./settings";
+import { parseUsageQuery, type UsageService } from "./usage-service";
 import type { UiStateStore } from "./ui-state";
 import type { Updater } from "./updater";
 import type { DeviceStore } from "./devices";
@@ -90,6 +92,7 @@ export interface HostDeps {
   computerHelper: ComputerService;
   computerPreviews: ComputerPreviews;
   laments: LamentStore;
+  usage: UsageService;
   themes: ThemeStore;
   /** The project on the window's screen changed (themes.active). */
   activeProject(project: string | null): void;
@@ -207,7 +210,7 @@ const explained = <T>(work: Promise<T>): Promise<T> =>
 const answerImages = new WeakMap<AssistantMessage, string[]>();
 
 export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
-  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerPreviews, laments, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
+  const { host, tasks, board, settings, uiState, computerPolicy, computerHelper, computerPreviews, laments, usage, github, atp, atpRuns, atpThreads, auth, plugins, native } = deps;
   // Spawning pi, rg, git, gh or node needs the login-shell environment (PATH, API keys); reading pi's files needs only
   // its folders (PI_CODING_AGENT_DIR), which are known sooner.
   const env = () => deps.shellEnv;
@@ -623,6 +626,11 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
     ),
 
+    "usage.get": method<{ query: UsageQuery }>("remote", (raw) => ({ query: parseUsageQuery(raw?.query) }), (_ctx, { query }) => usage.get(query)),
+    "usage.refresh": any("remote", async () => {
+      await usage.refresh();
+      return null;
+    }),
     "settings.get": any("remote", () => settings.get()),
     "settings.apply": any<{ op: SettingsOp; baseRev?: number }>("remote", (ctx, { op, baseRev }) => {
       // Yolo lets every chat act without asking: only the person at the Mac may switch it.
@@ -884,6 +892,8 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.computerRequest, "computer.requestPermissions", (pane) => ({ pane })),
   route(IPC.computerOpenSettings, "computer.openSettings", (pane) => ({ pane })),
   route(IPC.settingsGet, "settings.get"),
+  route(IPC.usageGet, "usage.get", (query) => ({ query })),
+  route(IPC.usageRefresh, "usage.refresh"),
   route(IPC.settingsApply, "settings.apply", (op, baseRev) => ({ op, baseRev })),
   route(IPC.uiGet, "ui.get"),
   route(IPC.uiApply, "ui.apply", (op, baseRev) => ({ op, baseRev })),

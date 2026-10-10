@@ -46,6 +46,9 @@ describe("method scopes", () => {
   it("marks reads as non-mutating", () => {
     expect(methodMutates("board.get")).toBe(false);
     expect(methodMutates("chat.send")).toBe(true);
+    expect(methodMutates("usage.get")).toBe(false);
+    expect(methodMutates("usage.refresh")).toBe(true);
+    expect(methodScope("usage.get")).toBe("remote");
   });
 });
 

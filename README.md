@@ -96,6 +96,7 @@ updates the `--pigna` flag.
   open links, look up selected text, edit fields, and act on projects, chats and browser tabs.
 - **Context at a glance.** A meter shows context use, auto-compaction and cache hits; compaction shows its
   progress.
+- **Usage.** Settings > Usage shows how pi and pi-gna were used: tokens, an estimated cost at list price, models, projects, pi-gna's chats and worktrees, tools, activity and insights. It is computed on this Mac from pi's own session files, with no network fetch.
 - **Settings in one place.** Cmd+, opens Settings: the theme, the models of the chats pi-gna starts itself, pi's
   own settings (default model, compaction, retries and more, for new chats), switches to turn Kanban, Laments,
   GitHub, ATP and Computer Use off, and **Providers**, to sign in to pi's model providers as pi's `/login` does,

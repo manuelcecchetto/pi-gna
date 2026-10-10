@@ -24,6 +24,7 @@ const deps = {
     frame: async (handle: string, since?: string) => (handle !== "held" ? null : since === "f1" ? { id: "f1", app: "Calc" } : { id: "f1", app: "Calc", mimeType: "image/jpeg", data: "AAAA" }),
   },
   laments: {},
+  usage: { get: record("usage.get"), refresh: record("usage.refresh") },
   github: { project: record("github.project"), list: record("github.list") },
   atp: { watch: record("atp.watch") },
   auth: {
@@ -48,7 +49,7 @@ describe("host methods table", () => {
     expect(new Set(routed).size).toBe(routed.length);
     for (const route of IPC_ROUTES) expect(core[route.method], route.method).toBeDefined();
     // Channels the main process pushes to the window have no route; every invoke/send channel does.
-    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.sessionIndexed, IPC.settingsChanged, IPC.uiChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.themesChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pluginsLoginUpdate, IPC.importProgress, IPC.setupLine, IPC.remoteChanged, IPC.devicesChanged, IPC.pairingChanged, IPC.pageToggle, IPC.sidebarToggle, IPC.paletteToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
+    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.sessionIndexed, IPC.settingsChanged, IPC.uiChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.themesChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pluginsLoginUpdate, IPC.setupLine, IPC.remoteChanged, IPC.usageProgress, IPC.importProgress, IPC.usageChanged, IPC.devicesChanged, IPC.pairingChanged, IPC.pageToggle, IPC.sidebarToggle, IPC.paletteToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
     expect(channels.filter((channel) => !pushes.has(channel) && !routed.includes(channel))).toEqual([]);
   });
 
@@ -383,5 +384,29 @@ describe("a phone's chat links", () => {
     await expect(dispatch(core, phone(), "chat.resolveLinks", { handle: "h1", targets: ["setup.md", "../LICENSE"], from: docs })).resolves.toEqual([join(docs, "setup.md"), join(cwd, "LICENSE")]);
     await expect(dispatch(core, phone(), "chat.linkImage", { handle: "h1", target: "shot.png", from: docs })).resolves.toMatchObject({ mimeType: "image/png" });
     await expect(dispatch(core, phone(), "chat.resolveLinks", { handle: "h1", targets: ["secret.md"], from: outside })).rejects.toMatchObject({ code: "scope_denied" });
+  });
+});
+
+describe("usage", () => {
+  it("checks the query before the report runs", () => {
+    calls.length = 0;
+    expect(() => dispatch(core, phone(), "usage.get", { query: { range: "1y", source: "pigna" } })).toThrow(expect.objectContaining({ code: "bad_request" }));
+    expect(calls).toEqual([]);
+  });
+
+  it("passes a valid query, or the default one, to the service", async () => {
+    calls.length = 0;
+    await dispatch(core, phone(), "usage.get", { query: { range: "7d", source: "all", timeZone: "Europe/Rome" } });
+    await dispatch(core, desktop(), "usage.get", {});
+    expect(calls).toEqual([
+      ["usage.get", { range: "7d", source: "all", timeZone: "Europe/Rome" }],
+      ["usage.get", { range: "30d", source: "pigna" }],
+    ]);
+  });
+
+  it("refreshes from a phone too", async () => {
+    calls.length = 0;
+    await dispatch(core, phone(), "usage.refresh", {});
+    expect(calls).toEqual([["usage.refresh"]]);
   });
 });

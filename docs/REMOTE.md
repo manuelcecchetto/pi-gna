@@ -94,6 +94,7 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `laments.get`, `laments.apply` | remote | apply yes | `lamentsGet`, `lamentsApply`. |
 | `settings.get`, `settings.apply` | remote | apply yes | `settingsGet`, `settingsApply`. |
 | `settings.pi`, `settings.setPi` | remote | setPi yes | `piSettingsGet`, `piSettingsApply`. |
+| `usage.get`, `usage.refresh` | remote | refresh yes | `usageGet`, `usageRefresh`; `usage:progress` pushes `usage.progress`. Reads pi's session files (DESIGN "Usage"). |
 | `settings.revealPi` | desktop | no | `piSettingsReveal`. |
 | `computer.get`, `computer.apply` | remote | apply yes | `computerGet`, `computerApply`. |
 | `computer.permissions`, `computer.requestPermissions` | remote | request yes | `computerPermissions`, `computerRequest` (status only; prompts show on the Mac). |

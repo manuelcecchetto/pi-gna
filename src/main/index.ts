@@ -65,6 +65,8 @@ import { readActiveBranch } from "./session-file";
 import { SessionHost } from "./session-host";
 import { indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { ChatImporter } from "./chat-import";
+import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
+import { UsageService } from "./usage-service";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
 import { atMostEvery } from "./store";
 import { Updater } from "./updater";
@@ -159,6 +161,8 @@ hub.subscribe({
         case "update": send(IPC.updateState, e.state); break;
         case "devices": send(IPC.devicesChanged, e.devices); break;
         case "remote": send(IPC.remoteChanged, e.status); break;
+        case "usage.progress": send(IPC.usageProgress, e.progress); break;
+        case "usage.changed": send(IPC.usageChanged); break;
       }
     }
   },
@@ -216,6 +220,7 @@ host.onSettled((handle) => {
     indexing.set(path, setTimeout(() => {
       indexing.delete(path);
       void indexSettled(path).then((summary) => summary !== undefined && publish({ kind: "session.indexed", path, summary }));
+      usage?.sessionChanged(path);
     }, 300));
   });
 });
@@ -435,6 +440,7 @@ const remoteContext = (device: { id: string }, clientId: string): HostContext =>
 
 /** Made once the shell environment is known (registerIpc); thread_send delivers through it. */
 let chatTasks: ChatTasks | undefined;
+let usage: UsageService | undefined;
 
 function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
   const tasks = (chatTasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv }));
@@ -466,6 +472,16 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     loopback: process.env.PIGNA_REMOTE_LOOPBACK === "1",
     log: (line) => log.info("remote", line),
   });
+  const usageConcurrency = defaultConcurrency();
+  usage = new UsageService({
+    roots: () => ({ sessions: sessionsDir(), atp: join(app.getPath("userData"), "atp-sessions") }),
+    piDirs,
+    file: join(app.getPath("userData"), "usage-index.json"),
+    openExtractor: () => openWorkerExtractor(join(import.meta.dirname, "usage-worker.js"), usageConcurrency),
+    concurrency: usageConcurrency,
+    publish: (progress) => publish({ kind: "usage.progress", progress }),
+    changed: () => publish({ kind: "usage.changed" }),
+  });
   const core = createHostCore({
     shellEnv,
     piDirs,
@@ -483,6 +499,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     computerHelper,
     computerPreviews,
     laments,
+    usage,
     themes,
     activeProject: (project) => {
       activeProject = project;

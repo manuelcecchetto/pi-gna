@@ -229,7 +229,7 @@ function newHandle(): string {
   return Math.random().toString(36).slice(2, 10).padEnd(8, "0");
 }
 
-export function openSession(summary: SessionSummary): void {
+export function openSession(summary: Pick<SessionSummary, "path" | "cwd" | "title">): void {
   const existing = Object.values(store.get().sessions).find((s) => s.sessionPath === summary.path);
   if (existing) return activate(existing.handle);
   start(summary.cwd, summary);

@@ -108,7 +108,7 @@ let cookie: string;
 let deviceId: string;
 let boot = "boot1";
 
-const names = new Set<string>(["board.get", "board.apply", "chat.command", "chat.list", "chat.snapshot", "atp.state", "fs.pickFolder"]);
+const names = new Set<string>(["board.get", "board.apply", "chat.command", "chat.list", "chat.snapshot", "atp.state", "fs.pickFolder", "usage.get", "usage.refresh"]);
 /** What chat.snapshot answers here: a page big enough to compress, with a screenshot. */
 const PAGE = {
   items: Array.from({ length: 200 }, (_, index) => ({ kind: "assistant", text: `step ${index}: ${"ran the tests again ".repeat(10)}` })),
@@ -291,6 +291,14 @@ describe("RemoteServer", () => {
     expect(changed.json.error.detail.reason).toBe("idempotency_mismatch");
     const stale = await send("POST", "/api/call/board.apply", { body: { op: 1 }, cookie, headers: { "idempotency-key": "other", "x-pigna-boot": "old" } });
     expect(stale.json.error.code).toBe("host_restarted");
+  });
+
+  it("reads the usage report without a key, and needs one to refresh it", async () => {
+    const report = await send("POST", "/api/call/usage.get", { body: { query: { range: "7d", source: "pigna" } }, cookie });
+    expect(report.status).toBe(200);
+    expect(calls.at(-1)).toMatchObject({ method: "usage.get", args: { query: { range: "7d", source: "pigna" } } });
+    const refresh = await send("POST", "/api/call/usage.refresh", { body: {}, cookie });
+    expect(refresh.status).toBe(400);
   });
 
   it("serves the shell with CSP and cache headers", async () => {

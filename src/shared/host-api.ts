@@ -20,6 +20,7 @@ import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
 import type { TurnOutline } from "./turn-outline";
 import type { UiOp } from "./ui-state";
+import type { UsageProgress, UsageQuery, UsageReport } from "./usage";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { DialogAnswer, OpenSessionRequest, OpenSessionResult, PickedPath, ProjectGroup, SessionSummary, UpdateState } from "./ipc";
 
@@ -154,7 +155,11 @@ export type GlobalEvent =
   | { kind: "update"; state: UpdateState }
   | { kind: "providers.login"; update: LoginUpdate }
   | { kind: "devices"; devices: DeviceInfo[] }
-  | { kind: "remote"; status: RemoteStatus };
+  | { kind: "remote"; status: RemoteStatus }
+  /** Index progress while the usage report reads the session files; at most every 250 ms, and the last one is phase "done". */
+  | { kind: "usage.progress"; progress: UsageProgress }
+  /** A settled run's session file was read into the usage index (at most every 10 s): an open Usage section asks again. */
+  | { kind: "usage.changed" };
 
 /** A store value with its revision (incremented on every applied change; files without one load as 0). */
 export type Revved<T> = T & { rev: number };
@@ -508,6 +513,10 @@ export interface HostMethods {
   "settings.pi": { args: Record<string, never>; result: PiSettingsState };
   "settings.setPi": { args: { patch: PiPatch }; result: PiSettingsState };
   "settings.revealPi": { args: Record<string, never>; result: null };
+  /** The usage report (Settings > Usage) from the local session files; `query` defaults to 30 days of pi-gna surfaces. */
+  "usage.get": { args: { query?: UsageQuery }; result: UsageReport };
+  /** Reads the session files that changed and rewrites the usage cache; the next usage.get reports them. */
+  "usage.refresh": { args: Record<string, never>; result: null };
   "computer.get": { args: Record<string, never>; result: Snapshot<Revved<ComputerSettings>> };
   "computer.apply": { args: { op: ComputerOp; baseRev?: number }; result: Revved<ComputerSettings> };
   "computer.permissions": { args: Record<string, never>; result: Permissions };
@@ -753,6 +762,7 @@ export const READ_ONLY_METHODS = [
   "themes.image",
   "settings.get",
   "settings.pi",
+  "usage.get",
   "computer.get",
   "computer.permissions",
   "computer.preview",

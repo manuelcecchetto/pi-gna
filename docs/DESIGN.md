@@ -926,12 +926,13 @@ frame token propagation covered together (the `themes` scenario in `scripts/remo
 ## Settings
 
 Codex-style: a Settings row is fixed at the foot of the sidebar (⌘, or pi-gna > Settings…). While the page is open the
-sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appearance, Keyboard shortcuts), pi
+sidebar is its nav (`SettingsNav`): sections grouped as pi-gna (General, Appearance, Usage, Keyboard shortcuts), pi
 (Providers, Plugins, Models, Agent, Import chats) and Integrations (Features, Remote access, Computer use), with a search over their labels and keywords.
 Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible chat rows everywhere else
 (`useCommandDigits`). ⌘⇧U opens the Computer use section.
 
 - **Remote access** (Settings > Remote access, `remote.enabled`, off by default): see the Remote access section below.
+- **Usage** (Settings > Usage, pi-gna group): read-only analytics of pi's session files, see Usage below. It has no settings keys; range and source are per page.
 - **pi-gna's settings** are `userData/settings.json` (`SettingsStore`; every change goes through `applySettingsOp` in
   `src/shared/settings.ts`) and apply to every project: the feature switches, the theme (`nativeTheme.themeSource`)
   and the models of the chats pi-gna starts itself (card triage, ATP orchestrator and worker; `pickModel` tries the
@@ -1045,6 +1046,337 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   openai-codex. Known gap: pi writes a pinned npm source as `^version` into its npm folder's package.json, so a later
   install can lift another package to a newer patch, which pi then lists as missing (and reinstalls at the pin when a
   chat starts); keep catalog pins at the newest patch of their range.
+
+## Usage
+
+Settings > Usage (pi-gna group) shows in-depth, local-only analytics of how pi and pi-gna were used: tokens by type, an API-equivalent estimated cost, models, projects, pi-gna's surfaces, tools, agent health and behaviour insights. It is read-only: it reads pi's session files and writes only its own cache, `userData/usage-index.json`. Nothing is fetched from the network: no price list, nothing else. The facts never hold message text, tool arguments or tool output; an error message is reduced to a category, and a session name is shown as plain text. In the report, "pi-gna" means its surfaces: its chats, Kanban card worktrees and ATP workers, and the subagents of any of those (see Sources and surfaces). Local time is the client's time zone (the Mac's, or the phone's), applied at query time. Remote: a paired phone reads the same report, and can ask for a refresh, through the remote host API (`usage.get`, `usage.refresh`; see Remote access), so the report leaves the Mac only over that paired connection. Measurements below were taken on 2026-10-10 on this Mac over `~/.pi/agent/sessions` and `userData/atp-sessions`.
+
+Files (the shapes are in `src/shared/usage.ts`):
+
+- `src/shared/usage.ts`: the shapes and constants, with `usage.test.ts` for their invariants.
+- `src/main/usage-pricing.ts`: the price table from pi's installed pi-ai data and the user's `models.json`, cached until either changes.
+- `src/shared/usage-prices.ts`: the price index, the lookup order and `costOf` (pure).
+- `src/main/usage-extract.ts`: one session file to `FileUsageFacts`, streamed line by line.
+- `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure.
+- `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress`.
+- `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, the rest; pure, no I/O.
+- `scripts/usage-crosscheck.mjs` (naive reader and diff) and `scripts/usage-crosscheck-real.test.mjs` (the real index and report over the same snapshot; skipped unless `USAGE_CROSSCHECK_WORK` is set): the independent cross-check.
+- Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check). Renderer: `Usage.tsx` (the section: filters, report, states; a lazy chunk
+  from Settings), `UsageOverview.tsx` ... `UsageInsights.tsx` (one file per panel, plus `UsageSurfaces.tsx` and `UsageWindows.tsx`, which sit beyond the eight panel files first planned), `Charts.tsx` (SVG primitives).
+  Phone: a compact section.
+
+### Sources and surfaces
+
+Scanned recursively, `*.jsonl` only:
+
+| root | path | measured |
+| --- | --- | --- |
+| `sessions` | `sessionsDir()` (`src/main/session-index.ts`) | 1,428 files, 2.68 GB, of which 435 subagents |
+| `atp` | `userData/atp-sessions` | 246 files, 142 MB; shares no session id with `sessions` |
+
+Layout: `sessions/<encoded cwd>/<ts>_<id>.jsonl`, and a chat's subagents at `sessions/<encoded cwd>/<ts>_<id>/tasks/<ts>_<id>.jsonl`.
+The encoded folder name is never parsed; the header's `cwd` is the truth (present in all 1,428 headers).
+
+Surface, first match wins:
+
+1. **subagent**: the path has `/tasks/` and the header has `parentSession`. All 435 point at an existing parent file. Its
+   `pigna` flag is the parent's.
+2. **atp-worker**: root `atp`, or the first user message starts with `### Runtime Context (Injected by pi-gna's ATP runner)`.
+   The ATP orchestrator is counted here too (open item).
+3. **ci**: `cwd` contains `/actions-runners/` (the CASUS review runners; 54 chats and 133 subagents in the last 14 days).
+4. **card**: `cwd` under `~/.pi-gna/worktrees/<6-char id>/` (Kanban card chats).
+5. **pigna-chat**: the system message names a tool only pi-gna loads: `kanban_`, `threads_`, `lament` or `pigna-visual-prompt`.
+   In a 14-day sample of 1,076 system messages, 434 name `kanban_`. The word `pi-gna` alone is not a marker: the global
+   AGENTS.md says it in 1,024 of them.
+6. **terminal**: the rest.
+
+`pigna` is true for pi-gna's surfaces (pigna-chat, card, atp-worker) and for subagents of a pigna parent. The source
+filter `pigna` is exactly that set.
+
+Project: `projectOf(cwd)` from `src/shared/board.ts`, which folds `~/.pi-gna/worktrees/<id>/<abs path>` into `<abs path>`
+(a card's or an ATP worker's worktree counts as its project; the card id is kept as `SessionMeta.card`). CI sessions get
+`ci:<repo>`, where `<repo>` is the segment after `/_work/` (`casus-review`), so the runners form one project. A project's
+label is its last folder names, as many as keep the labels unique (`projectLabels`); a CI project reads `CI runners (casus-review)`.
+
+Measured over the last 30 days (1,377 files in the window, 10 Oct 2026): 302 pigna-chat, 133 card, 237 atp-worker (15 of them
+orchestrators), 447 subagents (99 of a pi-gna parent), 54 ci, 204 terminal. 29 of the terminal sessions have no system message
+at all (28 under `casus-review`, 1 under `torntools_extension`): no evidence either way, so the report counts them as unclassified.
+
+### Dedupe and attribution
+
+- Count every entry in the file, including branches the `parentId` tree leaves behind: they were billed. Each assistant
+  `message` is one turn with its own `usage`.
+- Dedupe key: `(session id, entry id)`. No copies exist: the 1,428 header ids are unique, the two roots share none, and
+  `parentSession` appears only on subagent headers, so there are no forks to merge. Eight-hex entry ids do repeat across
+  unrelated files (six pairs in the data), so an entry id alone is never a key and nothing merges across files.
+- Subagent usage lives only in its own file. The parent holds a `subagents:record` (456 records: 438 completed, 16
+  stopped, 2 error) with no usage, and the record id is not the child's session id (record `f9b58cec-b6eb-43c`, child
+  `01a120aa-5651-…`). Attribution is the child's `parentSession`; the session row rolls its subagents in.
+- `totalTokens` equals input + output + cacheRead + cacheWrite on all 99,327 assistant turns checked, so it is derived,
+  not stored. `reasoning` is never above `output` (44,001 turns carry it): shown as "of which", never added.
+
+### Per-file facts
+
+`FileUsageFacts` (`src/shared/usage.ts`), extracted in one streamed pass over byte chunks split on LF (no whole-file load).
+A line that is not JSON counts in `skipped.lines`, an entry of an unknown type in `skipped.entries`; neither throws. Only
+lines that can change the facts are parsed: a message whose role is not user, assistant or toolResult (a 100 KB system
+prompt) is skipped on a substring test. Each field's rule:
+
+- **Buckets**: `(UTC hour, provider, model)`. 2,329 hour buckets across all 1,428 files, under two per file on average.
+- **Tools**: one call per `toolCall` block. Its `toolResult` (same `toolCallId`) gives `isError` and the duration
+  `toolResult.timestamp - assistant.timestamp`. Measured on 114,625 timed calls: median 8.8 s, p90 33 s; bash median 9.3 s,
+  subagent median 21 s. Parallel calls in one message share a start, so each duration is an upper bound. A codemode
+  result's `nestedCalls` (641 results) go to `nestedCalls`, not to `calls`.
+- **Errors**: a turn with `errorMessage` gets one category, by the first rule that matches: `aborted` (/abort/i),
+  `rate-limit` (/rate limit/i), `overloaded` (/overloaded|Service Unavailable/i), `context-overflow` (/context window/i),
+  `process` (/signal|process terminated/i), `network` (/WebSocket|timed out|timeout|fetch failed/i), else `other`. Seen most
+  often: "Operation aborted" (312), "WebSocket error" (100), "Service Unavailable" (70), "Claude Code process terminated by
+  signal SIGKILL" (30), "Claude rate limit (five_hour)" (20). A failed turn (an `errorMessage`, or `stopReason` `error` or
+  `aborted`) gets one category: the first rule its message matches, else `aborted` for a `stopReason` `aborted`, else `other`.
+- **Prompts**: a `user` message starts one; its steps are the assistant turns up to the next user message; it is `aborted`
+  when its last turn stopped aborted. `custom_message` entries are not prompts.
+- **Active time**: the sum of gaps between consecutive timestamped entries, each capped at `ACTIVE_GAP_CAP_MS` (5 min).
+  `wallMs` per prompt sums the capped gaps between its entries, from its user message on.
+- **Context histogram**: every turn's input (input + cacheRead + cacheWrite) into `CONTEXT_EDGES`.
+- **Cache misses**: a turn with no cache read and at least `CACHE_MISS_MIN_INPUT` of input is a `missTurns`.
+- **Thinking**: a count per `thinkingLevel` on turns (36,904 of 92,703 carry it).
+- **Compactions and edits**: `compaction` entries (their `tokensBefore` summed) and `context_edit` entries.
+- **Subagent runs**: `subagents:record` counted by `status`. Other custom records (`web-search-results`,
+  `pi-context-gc-checkpoint`, `codemode-store`, ...) are not read.
+
+- **Markers** (`SessionMarkers`): `systemMessage` when a `"message":{"role":"system"` record is in the file (in its first 512 bytes);
+  `pignaTools` when that record names one of `PIGNA_MARKERS` (`kanban_`, `threads_`, `lament`, `pigna-visual-prompt`; in the
+  measured files the first three sit in the system message's `rules`, the last in `project_context`); `atpRuntime` when the first prompt starts with the
+  ATP claim packet prefix. The surface, `pigna`, `project` and `card` of `session` come from `classifySession` in `finish`.
+  A subagent's `pigna` is provisional there (false) until the index passes its parent's flag (open item).
+
+- **Resume**: `consumedBytes` is the offset through the last complete record. A last line without LF counts only once it
+  parses, so a record pi is still writing is read on the next pass. A grown file is read from `consumedBytes` with
+  `resume` carried over (pending tool calls, closed prompts, the open prompt, the last timestamp in `session.lastAt`). A
+  file with no prompt yet, or one that shrank, is read in full: its surface is decided by its first prompt.
+- **Measured** (this Mac): the largest file (115.5 MB) in 0.16 s at 151 MB RSS; the whole history (1,675 files,
+  2.83 GB) in 5.9 s on one thread at 447 MB RSS. A parse-every-line baseline takes 8.4 s. The substring test skips only
+  4.6% of the bytes: tool results are 76% and must be parsed for their ids, timestamps and error flags.
+
+The cache is `userData/usage-index.json`: `{ version, entries }`, where each entry is `[path, { head, headBytes, facts }]`
+(`size` and `mtimeMs` live in `facts`). `head` hashes the file's first `headBytes` bytes, so a grown file resumes only while
+that prefix is unchanged; a rewrite that keeps its size, or a smaller file, is read in full. A version mismatch or an
+unreadable file rebuilds the whole cache. Saved through a temp file and a rename as `session-index.ts` does. Measured
+at 3.8 MB for the 1,682 files (the 1.5 MB estimate was low); the budget is 4 MB, so the cache is close to it.
+
+### Cost model
+
+Two numbers, never summed into one:
+
+- **Recorded**: pi's `usage.cost.total`. Zero for claude-bridge (its models carry zero rates, `pi-claude-bridge`
+  `src/models.ts`), so a subscription run shows no recorded cost; pi records one for openai-codex.
+- **Estimated**: an API-equivalent at list price, computed at query time from the buckets and the price table. Labelled
+  "estimate, list price"; for claude-bridge it is what the tokens would cost on the API, not a bill.
+
+Prices: `src/main/usage-pricing.ts` reads pi's installed pi-ai data (`dist/providers/data/*.json` of
+`@earendil-works/pi-ai`, found from pi's package the way PiAuth finds it, or hoisted beside it) and the user's `models.json`
+(`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). It applies `models.json` the way pi does: a `models` entry replaces a model's
+cost, and `modelOverrides` merge per field. The table is cached until either file changes, so a pi upgrade changes the
+estimates without a pi-gna release. No pi install gives an empty table. Nothing is fetched, and nothing is vendored.
+Examples (pi-ai 1.0.4, 1,616 entries, USD per million): anthropic `claude-opus-5-5` 4 / 20 / 0.2 / 5; `claude-sonnet-5-5`
+2 / 10 / 0.1 / 2.5 (pi-ai has cacheRead 0.2; `models.json` overrides it); openai-codex `gpt-5.5` 5 / 30 / 0.5 / 0 with a tier
+above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
+
+- **Lookup** (`src/shared/usage-prices.ts`): the exact provider and model; then `PRICE_PROVIDER_ALIASES` (`claude-bridge` to
+  `anthropic`); then the model id under any provider, the first in table order. No match: unpriced.
+- **Unpriced**: any id with no entry, such as `haiku-5.5-bridge`. `claude-haiku-5-5` is not in pi-ai; the user's
+  `models.json` prices it under `anthropic` (0.1 / 0.5, a tier above 100k), so it is priced. `dynamic3_3090`'s
+  `qwen3.8-27b-dynamic3` is priced at zero, as `models.json` says. A `models` entry without `cost` is skipped (pi would
+  price it at zero). Unpriced turns are counted and shown, never guessed.
+- **Tiers**: `costOf(usage, price)` applies pi-ai's rule per turn: the tier is the highest one whose `inputTokensAbove` is
+  below the turn's input (input + cacheRead + cacheWrite), and the whole turn is priced at its rates. The real table has
+  three edges: 100,000 (`models.json` haiku), 200,000 (xAI and GitHub Copilot grok, GitHub Copilot gpt-5.6-luna) and
+  272,000. The facts keep only `tierTokens` above 272,000, so they cannot price the other two edges; see Open items.
+- **Cache writes**: no session carries a `cacheWrite1h` field (checked on all 1,428 files), so every `cacheWrite` takes the
+  `cacheWrite` rate. pi-ai charges one-hour writes at twice the input rate; that is not modelled, because no session has the split.
+- **Not modelled**: fast-mode service tiers (`pi-openai-fast-mode` is installed; its billing is unverified), subscription
+  limits and plan prices.
+
+### Report API
+
+- Host: `usage.get({ query? })` is remote and read-only; an omitted query is `{ range: "30d", source: "pigna" }`. The
+  type is `UsageQuery` in `src/shared/usage.ts`. `usage.refresh` is remote and mutating (it rewrites `usage-index.json`), so a
+  phone sends an `Idempotency-Key`. `parseUsageQuery` checks the query: presets, or `{ from, to }` at most 4,000 days apart;
+  `source`; a `project` of at most 1,024 characters; an IANA `timeZone` from the client. Anything else is `bad_request`.
+- The index is made on the first `usage.get` of a launch, after pi's folders are known (the roots are read at each scan,
+  since the login shell can move them), and its facts stay in memory. `usage.refresh` reads what changed; a refresh asked
+  while a scan runs joins it.
+- Progress: `usage.progress` (`UsageProgress`) goes out on the global topic (phones) and on the desktop as `usageProgress`,
+  at most every 250 ms. A scan starts with `scan`, moves to `index` with done and total, and ends with `done`.
+- Bounds: sessions 10, models 30, projects 50, tools 50, windows 5, insights 6. Totals count every row. Measured (this Mac,
+  1,685 files, 4 workers): cold scan 2.5 s; warm 30-day pigna report 76 ms and 28.6 KB; all-time report 64 ms and 52 KB.
+- `meta.files` is the session files found on disk (both roots); `meta.indexedFiles` is the ones the report's source covers, so
+  for `pigna` it is lower than `files` even when everything is indexed.
+- `usage.progress` event (`UsageProgress`): `scan` while listing, `index` with done/total and bytes/totalBytes, `done`. At most every 250 ms.
+- Live refresh: a settled run calls `UsageService.sessionChanged(path)`. Nothing runs until a report or `usage.refresh`
+  has asked for the index (the first scan then reads every file, so an unopened section costs nothing, not even a stat). After
+  that the settled file is read again with `refreshFile` (incremental: only the appended bytes) once no other settle has come
+  for 1 s, and the cache is saved then. Then `usage.changed` goes out on the global topic and the desktop as `usageChanged`, at
+  most every 10 s; the last change is always announced, late if needed. The open section re-queries on it. The index is kept
+  current whether or not the section is open.
+  Only the settled session's own file is refreshed: a subagent's file (under `<session>/tasks/`) is read at the next full scan
+  (Refresh, or a launch's first report), not at its parent's settle.
+- Ranges: `7d`, `14d`, `30d`, `90d` are the last N local days from the start of that day; `all` is from the first bucket;
+  `{ from, to }` in epoch ms for anything else.
+- Local time is applied at query time: each hour bucket becomes a day, weekday and hour in `timeZone` (`Intl.DateTimeFormat`,
+  cached per day). Nothing local is stored, so DST and a changed zone come out right.
+- Filters: `source`, then `project` (a `SessionMeta.project`), applied to every panel.
+- `buildReport` reads only facts, the price table, the query and `now`; the host calls it on cached facts. It never reads files.
+- Core: a file counts when it has a turn in the range (buckets are cut at their midpoint, so the range is hour-precise).
+  Prompts, tool calls and active time are the file's whole-file totals, since the facts are not bucketed below the hour.
+  A subagent rolls into its parent's session row when the parent is in scope. Streaks run over the range's days; the current
+  streak ends on the last day, or the day before while the last day has no turns. Top model is the first row of the models table.
+- The models table has no thinking-level split: thinking is counted per file, not per model, so the facts cannot give it.
+- Behaviour: `buildBehaviourReport` gives surfaces, tools, health, windows and insights; `buildReport` joins it to the core. Turn-level figures (cost share, errors, cache misses, subagent turns, windows) use the hour buckets in range. Prompt, tool, stop, error, compaction and context figures are whole-file totals of the files in range, as the core's prompts are. A subagent's usage is attributed to its parent's surface when the parent is in scope; otherwise it is a `subagent` surface row of its own. Windows start at the first in-range turn, hour-aligned, and the next starts at the first hour at or after the previous end. Burn rate is tokens per minute over the elapsed time (to the end, or to now for the active window). Rate-limit hits per window are not in v1: the facts keep error categories per file, not per hour. Median and p90 tool durations are not in v1 either: `ToolStat` keeps only the summed duration.
+
+### Metrics and layout
+
+```
+Usage                 [7d 14d 30d 90d all]  [pi-gna | all pi]  [project]
+Headline    tokens · est. cost · turns · sessions · prompts · active time · cache hit · errors
+Activity    daily stacked bars by model (tokens | est. cost)      calendar heatmap (cost | tokens)
+            weekday x hour heatmap (turns | tokens | cost)
+Models      provider/model · turns · tokens by type · est. · recorded · error rate · priced
+Projects    project · sessions · turns · tokens · est. · card-worktree sessions
+Sessions    top 10 by est. cost, subagents rolled in · open chat (not ATP runs; a file gone from disk does not open)
+Surfaces    chats · card worktrees · ATP workers · subagents · CI · terminal
+Tools       calls · error rate · avg duration · nested calls · top failing (median and p90 need per-call durations, not in the facts)
+Health      stop reasons · error categories · prompts by steps · context histogram · compactions · subagent statuses
+Windows     busiest 5-hour blocks (top 5) · the block running now · turns, tokens, est. cost, burn rate
+Insights    behaviours at 10% or more of their base, each with a tip (max 6, by share)
+```
+
+Charts (`components/Charts.tsx`, pure scales in `chart-scale.ts`) are hand-written SVG and CSS. Their colours come only from the theme:
+`--chart-1` to `--chart-8` in styles.css derive from the palette's accent, ok, warn, secondary and bad, so a project theme recolours them.
+`colorScale(keys)` gives the keys of one chart distinct colours and keeps each key's colour while its chart keeps its neighbours. Interactive charts
+(stacked bars, heat grids, split bar) show a tooltip on pointer hover and on keyboard focus (arrow keys).
+
+Overview and Activity: `UsageDay.models` carries tokens and estimated cost per model, not turns, so the Turns view of the per-day bars is one series. The per-day bars keep the 7 largest models and fold the rest into "Other models"; the calendar shows the last 26 weeks of the range; the weekday by hour matrix offers turns, tokens or cost. The view mapping lives in `lib/usage-view.ts`, not in the components.
+
+Surfaces, Tools, Health, Windows and Insights: the surface split (`SplitBar`, tokens or estimated cost) and its table; tool bars of calls with failure rate and mean duration, and the most failing tools. The report keeps the first 50 tool rows, the bars show 12, and the note gives the calls of the rest from the total. Mean only: the facts keep summed durations, so there is no median or p90. Health gives range totals (stop reasons and error categories as bars, prompts by steps and turns by input size as `Histogram`s, which keep their bin order where `HBars` sorts by value), compactions per session, and steps, tool calls and aborts per prompt. Windows show the busiest five and the one running now. Insights shows one card per rule that fires, with its value, threshold and tip, and nothing when none fires. The figures' labels and bin labels are in `lib/usage-view.ts`, with the tests in `usage-view.test.ts`.
+
+The page: the section uses a wider column than the other Settings sections (`SectionInfo.wide`). Its filters (range,
+source, project) are kept per window in localStorage (`pigna:usage-filters`, `lib/usage-filters.ts`), as the ATP panels are,
+not in the host's ui-state, which every client shares. The project picker reads an unfiltered report, since a scoped one
+lists only its own project; a picked project stays listed even when the range leaves it out.
+
+The phone: Settings > Usage (`src/mobile/UsageSection.tsx`) calls `usage.get` through the host client with the same query as the desktop, minus the project filter. It shows six headline figures, the tokens per day as stacked bars by model, the top six models and the top five projects by estimated cost, all from the report. Range and source are segmented controls. The phone reads `usage.progress` and `usage.changed` from the global stream (`host-client.ts`), so a cold first load shows the Mac's file count and a settled run reloads the report. It has no refresh button and no charts beyond the daily bars.
+
+Definitions:
+
+| metric | definition |
+| --- | --- |
+| tokens | input + output + cacheRead + cacheWrite (pi's `totalTokens`) |
+| cache hit | cacheRead / (input + cacheRead + cacheWrite) |
+| est. cost | Σ token type × list rate; `tierTokens` at the tier rate |
+| active time | Σ capped gaps (`activeMs`) |
+| error rate | errorTurns / turns; aborted prompts / prompts |
+| avg duration | durationMs / timedCalls per tool |
+| 5-hour block | from the first turn, hour-aligned; the next starts at the first turn after the previous one ends; ranked by tokens. The hour buckets make the edges hour-precise. |
+| context histogram | turns per `CONTEXT_EDGES` bin |
+
+Insight rules (share = its count / base; base in brackets). A rule fires at `INSIGHT_MIN_SHARE` (10%) and above, shows its value and threshold, and at most `INSIGHT_MAX` (6) are kept, by share. `compactions` is the one rule whose value is a ratio: prompts per compaction, against a threshold of 10:
+
+- `long-context`: est. cost of turns above `CONTEXT_TIER_EDGE` (272k, the only edge the facts can price) [est. cost]. Tip: compact or start a fresh chat before the context grows.
+- `cache-misses`: (input + cacheWrite) / (input + cacheRead + cacheWrite) [input tokens]. Tip: keep the prefix stable; a skill or tool added mid-chat rewrites it.
+- `errors`: errorTurns [turns]. Tip: check the provider's status page before retrying.
+- `aborts`: aborted prompts [prompts]. Tip: a long wait ended early; check whether the task was what you wanted.
+- `compactions`: compactions [prompts]. Tip: a compaction is cheap; compacting early keeps the context below the tier.
+- `subagents`: subagent turns [turns]. Tip: review the turn budgets of the subagents that ran long.
+- `bash-errors`: bash errors / bash calls [calls]. Tip: check the failing bash commands; a repeated failure usually has one cause.
+- `expensive-subagents`: est. cost of subagent turns on a model with list output at or above `EXPENSIVE_OUTPUT_RATE` (15 USD/M) [subagent est. cost]. Tip: give search and read subagents a cheaper model.
+- `reasoning`: reasoning tokens [output tokens]. Tip: lower the thinking level for routine turns.
+- `long-prompts`: prompts with more than 50 steps [prompts]. Tip: split the work into smaller prompts.
+
+Out of scope for v1: spend budgets and alerts; CSV or image export; any message content viewer or search; editing or
+deleting sessions; rates from the network or user-editable rates; fast-mode and service-tier pricing; the ATP orchestrator
+as its own surface; full charts on the phone (the phone section shows a compact summary).
+
+### Performance budget
+
+- Cold index of the whole history (1,674 files, 2.8 GB): at most 30 s on this Mac, in a worker_thread pool of
+  `min(4, cores - 1)`; the main thread parses nothing and no task blocks it for more than 50 ms.
+  Measured (4 workers, 8 cores): cold 6.4 s, warm 0.19 s (a second warm run 0.06 s), 1,682 files; peak RSS 626 MB in the
+  bench process (vitest included); main-thread event-loop max 33 ms cold and 39 ms warm, the warm block being the cache's JSON.parse
+  (the 3.8 MB cache is the main-thread cost to watch as history grows).
+- Cross-check run (this Mac, 1,686 files, 2.7 GB, one thread): cold index 5.9 to 6.9 s (in-process extractor, not the worker);
+  warm index 28 to 37 ms; `buildReport` for the 14-day range 26 to 36 ms. The naive reader's full parse takes 10 to 12 s and is
+  not a budget item.
+- Warm `usage.get` (cache hit, 30 days) to a rendered page: at most 500 ms, covering 1,674 stats, the 3.8 MB cache load and
+  the aggregation (at most 150 ms over the whole history).
+- Cache file: at most 4 MB for the whole history (3.8 MB measured on 2026-10-10).
+- Incremental: a file is re-read only when its size or mtime changed (as `session-index.ts` does). A chat that settles is
+  re-indexed at once (`indexSettled`), so a live chat shows up without a rebuild.
+- Measured on 2026-10-10 by the real-app run (hidden test window, so timings are indicative): a fresh profile whose `atp-sessions` is an APFS clone of the real one, reading the real `~/.pi/agent/sessions`, 1,686 files. Cold: the Usage click to a rendered report took 2.26 s, and the cache was written 2 s after the click. Warm (cache present): 142 ms. On the warm path the main-thread cost of the cache is `JSON.parse` 10.2 ms and `JSON.stringify` 5.5 ms (the write is async). A 20 ms main-thread probe logged no gap over 25 ms across launch, the cold index and the warm open, and no renderer `longtask` entries appeared.
+- Renderer: `Usage.tsx` is a lazy chunk, loaded when Settings > Usage first renders (see Architecture); no chart library.
+
+### Refresh and reset
+
+- Refresh (Settings > Usage, `usage.refresh`) reads the session files that changed since the cache was written and rewrites the cache. It does not start over.
+- To rebuild the whole index, quit pi-gna first (a running app keeps the facts in memory and writes the cache again after its next scan), delete `userData/usage-index.json`, and open Settings > Usage again. On macOS `userData` is `~/Library/Application Support/pi-gna/`; a test instance's is its `PIGNA_USER_DATA` folder. A missing cache is a full scan, and so is one with another `USAGE_FACTS_VERSION` (a version mismatch rebuilds the whole cache). The UI has no reset button.
+
+### Verification
+
+- `pnpm typecheck` and `pnpm test`; `usage.test.ts` locks the constants, and each module adds its own tests.
+- Cross-check: `node scripts/usage-crosscheck.mjs [--days=14] [--work=/tmp/pi-gna-usage-crosscheck]`, macOS only. It
+  clones both roots with `cp -Rc` (an APFS clone, so pi can keep writing while both sides read the same bytes), then runs:
+  (1) a naive reader that `JSON.parse`s every line of every file and shares no code with `src/`, deriving the totals from
+  the rules in this section; (2) the real index (cold, then warm over the cache) and `buildReport` (`source: all`, the
+  preset `{days}d`) through `scripts/usage-crosscheck-real.test.mjs`, under vitest. It writes `naive.json`, `real.json` and
+  `diff.json` to the work directory only, never to `~/.pi`. Exit 1 on any unexplained difference.
+- Result (last run, 2026-10-10, 14 days, `Europe/Rome`, 1,686 files, 43 of 43 checks equal): 46,979 assistant turns; billed
+  7.87 billion tokens (input 16.2 M, output 44.0 M, cacheRead 7.64 billion, cacheWrite 172.4 M; reasoning 18.5 M is inside
+  output); cache hit 97.6%; 265 error turns; 2,824 USD estimated at list price and 164 USD recorded (claude-bridge records
+  zero); 2,629 prompts and 51,898 tool calls, both whole-file; 1,333 files with a turn in the range, 886 of them top-level
+  chats; 46 five-hour windows, the busiest 613 M tokens from 8 Oct 06:00 UTC. History: 100,017 turns over 1,686 files.
+- Compared exactly: turns; tokens by type, per model and per day; recorded cost per model; error turns; the window count and
+  the top five windows; the period bounds; stop reasons; error categories; compactions, compacted tokens and context edits;
+  subagent statuses; aborted prompts; steps and tool calls per prompt; the cache-miss share; per-tool calls, errors, nested
+  calls and mean duration; the whole-history totals; facts totals against the naive history; the warm cache against the cold.
+- Cost: the naive reader prices claude-opus-5-5 at 4 / 20 / 0.20 / 5 USD per million, the same as the price table. The
+  range's 35,815 Opus turns come to 2,541.53 USD on both sides. One hand-computed turn (6 Oct 2026, 2 input, 2,591 output,
+  768,710 cacheRead and 3,069 cacheWrite tokens) is 0.000008 + 0.05182 + 0.153742 + 0.015345 = 0.220915 USD.
+- Window boundaries and durations match the naive rules. Tool and prompt counts are whole-file totals on both sides (a file
+  counts when it has a turn in the range). The exact in-range counts differ from them by 17 prompts (0.6%) and 390 tool calls
+  (0.75%) at 14 days; 1 prompt and 49 tool calls at 7 days. That is the straddle over-count, the documented trade-off.
+- Not cross-checked: surfaces, projects, top sessions, streaks, active time, the expensive-subagent split by model, and the
+  other insight rules beyond cache-miss share and the long-context count.
+- - No bug was found in the index or report code by this check, so no code changed for it.
+- Real app (2026-10-10): a test instance drove Settings > Usage over CDP on the real data, in dark, light and a project theme, at 1470 px and 760 px. The figures agree with the cross-check. At 760 px the Report grid is one column (`grid-cols-1`) and `scrollWidth == clientWidth`; only the Models table scrolls, in its own wrapper. The filters (7d, 30d, pi-gna, all pi, one project, cleared) match the displayed turn totals. Chart tooltips show on pointer hover and on arrow keys after focus. A pi-gna chat opened from Sessions shows its transcript. Phone: `node scripts/remote-e2e/run.mjs mobile-usage` passes on the harness's seeded data, not on a device.
+
+### Open items and risks
+
+- **pi-gna chat or terminal**: a pi-gna chat with every pi-gna feature off has no marker and counts as terminal. A marker
+  written by pi-gna's extension would settle it; that is a later change, not v1.
+- **ATP orchestrator**: settled. Its system addendum says `You are the orchestrator of an ATP plan in pi-gna` (a worker's
+  says `You are an ATP worker in pi-gna`), and both are atp-worker in v1 since the orchestrator is not a surface. Its first prompt
+  is the user's, so only the root tells it apart.
+- **Subagent pigna**: settled. After each run and each `refreshFile`, the index calls `classifySession` again for every
+  subagent with its parent's `pigna` (the parent is `<dir of tasks>.jsonl`). A subagent whose parent is not indexed stays false.
+- **Tool durations** are upper bounds for parallel calls (see Per-file facts).
+- **Tier edges**: the real table has tiers at 100,000, 200,000 and 272,000 (Cost model). The facts keep tokens only above
+  272,000, so a turn between 100k and 272k is priced at base rates. Measured on this Mac: 9 of the 166 `claude-haiku-5-5`
+  turns sit in (100k, 272k], an input and output understatement of $0.03. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps
+  `USAGE_FACTS_VERSION` and changes `UsageBucket`. Still open.
+- **Long-context count is whole-file.** The `long-context` insight takes its share from the range's buckets, but its count
+  comes from the whole-file context histogram. At 14 days the count is 30 turns above the exact in-range count (0.4%). The
+  buckets carry no turns-over-edge count, so an exact count needs `tierTurns` on `UsageBucket` and a `USAGE_FACTS_VERSION`
+  bump. Not changed here; decide with the tier-edge fix above.
+- **Insight shares on the last run.** `expensive-subagents` 90.2% (268.55 USD of subagent cost on 4,489 turns, on models whose
+  list output rate is at least 15 USD/M; Opus is 20). `cache-misses` 2.4% of input, below the 10% gate, so it is not shown.
+  `reasoning` 42.1% of output.
+- **Cache-write rate**: the 5-minute rate is assumed for every write (see Cost model).
+- **Heuristics**: surfaces and the insight thresholds are first guesses. The real-data checks (the cross-check and the real-app run) compare the numbers; they do not test whether a threshold is right.
+- **Live-refresh latency is not timed.** The 10 s target was not measured: the Usage page was closed when the chat settled, so the update was seen only on reopening. The design bound is about 11 s: the 1 s settle debounce plus the 10 s announce throttle (`usage-service.ts`). Measuring it needs the section open during a settle.
+- **Layout gaps**: blank space under Projects beside Sessions (about 240 px), and Insights alone beside Health and Windows. Not decided.
+- **Project picker** lists full paths (for example `/private/tmp/...`) while the Projects panel shows short labels.
+- **Stall reading not reproduced**: one run of the main-thread probe reported a 53.6 ms maximum, in a window that included first-run setup. Three later runs with the probe showed no gap over 25 ms; the cause of the first reading is not known.
+- **Not walked**: the real Tab order through the controls, and the Tokens tile's hover panel (CSS-driven).
 
 ## Setup
 

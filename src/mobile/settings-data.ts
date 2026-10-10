@@ -5,9 +5,10 @@
 import type { UpdateState } from "../shared/ipc";
 import type { Feature, Task } from "../shared/settings";
 import { SETTINGS_SECTIONS } from "../shared/settings";
+import type { UsageProgress, UsageRange, UsageSource } from "../shared/usage";
 
 /** The Settings sections of the desktop page the phone has, plus Updates, which the desktop shows inside General. */
-export const MOBILE_SECTIONS = ["general", "appearance", "providers", "models", "agent", "features", "computer", "remote", "updates"] as const;
+export const MOBILE_SECTIONS = ["general", "appearance", "providers", "models", "agent", "features", "computer", "remote", "usage", "updates"] as const;
 export type MobileSection = (typeof MOBILE_SECTIONS)[number];
 
 export const SECTION_LABELS: Readonly<Record<MobileSection, string>> = {
@@ -19,8 +20,19 @@ export const SECTION_LABELS: Readonly<Record<MobileSection, string>> = {
   features: "Features",
   computer: "Computer use",
   remote: "Remote access",
+  usage: "Usage",
   updates: "Updates",
 };
+
+export const USAGE_RANGE_LABELS: Record<UsageRange, string> = { "7d": "7d", "14d": "14d", "30d": "30d", "90d": "90d", all: "All" };
+export const USAGE_SOURCE_LABELS: Record<UsageSource, string> = { pigna: "pi-gna", all: "All pi" };
+
+/** What the phone's Usage section says while the Mac reads its session files. */
+export function usageProgressText(progress: UsageProgress | undefined): string {
+  if (progress?.phase === "scan") return "Listing session files…";
+  if (progress?.phase === "index") return `${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} files`;
+  return "Preparing the report…";
+}
 
 /** Desktop sections the phone leaves out on purpose. */
 export const HOST_ONLY_SECTIONS = SETTINGS_SECTIONS.filter((section) => !(MOBILE_SECTIONS as readonly string[]).includes(section));
