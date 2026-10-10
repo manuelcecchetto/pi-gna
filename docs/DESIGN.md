@@ -1349,7 +1349,8 @@ night-blue tile with stars and three gold sparkles, Pigna peeking over a dark le
 The sky, sparkles and ledge are vector; Pigna is an embedded lossless WebP (generated and cleaned like the site's
 mascot art, `site/tools/mascot/`) cut along the ledge top except where the hands are, so the hands sit over the
 ledge. `pnpm icon` rasterizes it to `resources/icon.png` (dev Dock icon) and `build/icon.icns`, then
-`pnpm icon:mobile` resizes that into the phone's icons. The SVG is about 480 KB, so `electron-builder.yml` leaves it
+`pnpm icon:mobile` renders the tile full bleed (square, opaque) into the phone's icons, since iOS and Android
+round them and iOS fills transparency. The SVG is about 480 KB, so `electron-builder.yml` leaves it
 out of the app, which uses only the rasters.
 
 Icons: pi-gna draws its own set, `components/icons.tsx` (renderer and mobile import it; no icon library). One

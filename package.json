@@ -34,7 +34,7 @@
     "build:computer-use": "node scripts/build-computer-use.mjs",
     "icon": "electron scripts/make-icon.mjs",
     "dmg-background": "electron scripts/make-dmg-background.mjs",
-    "icon:mobile": "node scripts/make-mobile-icons.mjs",
+    "icon:mobile": "electron scripts/make-mobile-icons.mjs",
     "dev:mobile": "vite build --watch -c vite.mobile.config.ts",
     "release": "node scripts/release.mjs",
     "verify:responsive": "node scripts/verify-responsive-browser.mjs",
