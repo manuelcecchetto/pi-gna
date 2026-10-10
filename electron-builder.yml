@@ -21,6 +21,7 @@ files:
   - src/shared/chat-title.ts
   - src/shared/file-mentions.ts
   - "!resources/icon.png"
+  - "!resources/icon.svg"
   - "!resources/pigna-flag.ts"
 # pi reads these from disk (`pi -e`, `--append-system-prompt`), so every src/shared file the extensions import
 # must be listed here and under files: (scripts/packaging.test.mjs checks both).

@@ -30,5 +30,10 @@ smoothed paths for brows, mouth and tongue) and prints `src/data/hero-face.json`
 over `hero-base` in colors sampled from the art. Vector stays sharp at any size, has no load-order flash, and lets the face
 blink and squint into `^^` without more art. Rerun it if the hero layers change.
 
+The app icon (`resources/icon.svg`, see docs/DESIGN.md, Brand) reuses this pipeline: an icon-style peek pose
+(prompted for very thick outlines, three fills, the head about 75% of the height, eyes at the middle, only two
+finger strokes) came back from `gpt-image-2.5-sunburst` with `peek.webp` and `hero-full.webp` as references, then
+went through `clean.py`. Full-figure poses do not survive icon sizes: by 32 px only the face and its colors read.
+
 Rejected along the way: a detective pose whose chin hand grew extra fingers and stray lines (regenerated with the
 magnifier held out and "avoid: hand on chin, extra fingers").

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- A new app icon: Pigna, the mascot, peeking over a ledge into a night sky with gold sparkles. The phone's Home Screen icon changes with it (add pi-gna to the Home Screen again to pick it up).
+
 ## 0.11.2 - 2026-10-10
 
 - Laments: a Worst first / Newest first switch on top of the Laments page, on the Mac and the phone. Resolved laments now sort worst first too, as the page said.
