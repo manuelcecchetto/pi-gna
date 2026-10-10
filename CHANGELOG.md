@@ -8,8 +8,7 @@ moves those lines under the new version, and they become its GitHub release note
 - Settings > Import chats brings the chats you had with Codex and Claude Code on this Mac into pi-gna, by project. Each chat lands in its project with its own dates, so today's chats stay on top, and goes on like any chat with any model. Subagents, scripted runs and the Claude Code sessions pi itself runs (claude-bridge) are left out; importing again brings in only what changed and never touches a chat you continued.
 
 - Updates refresh the app's icon in Finder and the Dock, which kept showing the old one after an update changed it.
-
-- The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
+- Phone: pinching no longer zooms the whole page in the installed iPhone app; images, the browser view and the ATP graph still pinch-zoom as before. Safari tabs keep page zoom.
 
 ## 0.11.4 - 2026-10-10
 
