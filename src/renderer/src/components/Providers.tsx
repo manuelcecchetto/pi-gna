@@ -4,7 +4,7 @@
 // Claude plans sign in with Claude Code's own login (claude-bridge, installed by that sign-in if missing), not pi's.
 import { Check, Copy, ExternalLink, LoaderCircle, Search, TriangleAlert, X } from "./icons";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, searchProviders, splitProviders, type StatusTone } from "../../../shared/auth";
+import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, claudeFromEnvironment, searchProviders, splitProviders, type StatusTone } from "../../../shared/auth";
 import { tildify } from "../lib/format";
 import { accountLabel, answered, type LoginView, startLogin, updateLogin } from "../lib/login";
 import { modelsChanged, remoteError, toast } from "../state/app";
@@ -203,6 +203,7 @@ function useAuthState(): { state?: AuthState; reload: () => void } {
 
 function AccountCard({ provider, active, busy, onSignIn, onSignOut }: { provider: AuthProvider; active: boolean; busy: boolean; onSignIn: () => void; onSignOut: () => void }) {
   const status = authStatus(provider, "oauth");
+  const blocked = claudeFromEnvironment(provider);
   return (
     <div className={`flex items-center gap-3 rounded-xl border p-3 transition-colors ${active ? "border-line-strong bg-raised/50" : "border-line"}`}>
       <ProviderLogo id={provider.id} name={provider.name} size={36} />
@@ -210,8 +211,9 @@ function AccountCard({ provider, active, busy, onSignIn, onSignOut }: { provider
         <div className="truncate text-[13px] font-medium text-fg">{provider.name}</div>
         <div className="truncate text-[12px] text-faint">{provider.account ?? accountLabel(provider)}</div>
         {status.tone !== "off" && <Status text={status.text} tone={status.tone} />}
+        {blocked && <p className="mt-1 text-[12px] leading-snug text-muted">{blocked}</p>}
       </div>
-      {provider.stored === "oauth" ? (
+      {blocked ? null : provider.stored === "oauth" ? (
         <ConfirmButton
           label="Sign out"
           confirm="Sign out?"

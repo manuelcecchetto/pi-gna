@@ -153,6 +153,9 @@ interface ClaudeStatus {
   authMethod?: string;
   email?: string;
   subscriptionType?: string;
+  /** Where an API key comes from: "/login managed key" for Claude Code's own login, else ANTHROPIC_API_KEY or
+   * apiKeyHelper, which `claude auth logout` leaves in place. */
+  apiKeySource?: string;
 }
 
 /** pi-claude-bridge's folder, when pi's user settings install it. */
@@ -202,17 +205,23 @@ async function claudeProvider(sdk: Sdk): Promise<AuthProvider | undefined> {
     };
   }
   const status = await claudeStatus(claudeExecutable(sdk, bridge));
-  const signedIn: AuthStatus | undefined = status?.loggedIn
-    ? status.authMethod === "claude.ai"
-      ? { method: "oauth", source: "claude_code", label: status.subscriptionType }
-      : { method: "api_key", source: "claude_code", label: status.authMethod }
-    : undefined;
+  // Claude Code prefers a key or token from the environment (or an apiKeyHelper) to its own login, and `claude auth
+  // logout` cannot remove those: only its own login is something to sign out of.
+  const own = status?.loggedIn && (status.authMethod === "claude.ai" || status.apiKeySource === "/login managed key");
+  const signedIn: AuthStatus | undefined = !status?.loggedIn
+    ? undefined
+    : !own
+      ? { method: status.authMethod === "oauth_token" ? "oauth" : "api_key", source: "environment", label: status.apiKeySource ?? (status.authMethod === "oauth_token" ? "CLAUDE_CODE_OAUTH_TOKEN" : status.authMethod) }
+      : status.authMethod === "claude.ai"
+        ? { method: "oauth", source: "claude_code", label: status.subscriptionType }
+        : { method: "api_key", source: "claude_code", label: status.authMethod };
   return {
     id: CLAUDE_BRIDGE,
     name: "Claude Code",
     oauth: { name: "Claude Code (Claude subscription)", label: "Sign in with Claude Code's own login, which claude-bridge runs on", subscription: true },
-    ...(signedIn && { status: signedIn, stored: "oauth" as const }),
-    ...(signedIn && status?.email && { account: status.email }),
+    ...(signedIn && { status: signedIn }),
+    ...(own && { stored: "oauth" as const }),
+    ...(own && status?.email && { account: status.email }),
   };
 }
 

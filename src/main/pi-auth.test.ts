@@ -89,6 +89,10 @@ const FAKE_CLAUDE = `#!/usr/bin/env node
 const { existsSync, rmSync, writeFileSync } = require("node:fs");
 const state = process.env.FAKE_CLAUDE_STATE;
 const command = process.argv[3];
+if (command === "status" && process.env.FAKE_CLAUDE_ENV_KEY) {
+  process.stdout.write(JSON.stringify({ loggedIn: true, authMethod: "api_key", apiKeySource: "ANTHROPIC_API_KEY" }));
+  process.exit(0);
+}
 if (command === "status") {
   const signedIn = existsSync(state);
   process.stdout.write(JSON.stringify(signedIn ? { loggedIn: true, authMethod: "claude.ai", email: "me@example.com", subscriptionType: "max" } : { loggedIn: false, authMethod: "none" }));
@@ -283,6 +287,15 @@ describe("PiAuth", () => {
 
     await target.signOut("claude-bridge");
     expect((await bridge())?.status).toBeUndefined();
+  });
+
+  it("offers no sign-out when Claude Code uses a key from the environment, which `claude auth logout` keeps", async () => {
+    const claude = installBridge();
+    writeFileSync(join(dir, "agent", "claude-bridge.json"), JSON.stringify({ provider: { pathToClaudeCodeExecutable: claude } }));
+    vi.stubEnv("FAKE_CLAUDE_ENV_KEY", "1");
+    const bridge = (await start().list()).providers.find((provider) => provider.id === "claude-bridge");
+    expect(bridge?.status).toEqual({ method: "api_key", source: "environment", label: "ANTHROPIC_API_KEY" });
+    expect(bridge?.stored).toBeUndefined();
   });
 
   it("uses the Agent SDK's Claude Code, and withdraws the paste prompt when the browser finishes", async () => {

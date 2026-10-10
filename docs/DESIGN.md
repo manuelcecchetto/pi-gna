@@ -1002,7 +1002,11 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   signed out), `claude auth login --claudeai` and `claude auth logout`. The login opens its page itself (it calls back
   to a local port), so its `auth_url` is marked `opened` and main does not open it again; the printed link (an OSC 8
   hyperlink) is the fallback, whose page shows a `code#state` that the paste prompt writes to Claude Code's stdin
-  ("Invalid code" on stderr asks again). Sign out signs Claude Code out on the whole Mac, the terminal included.
+  ("Invalid code" on stderr asks again). Sign out signs Claude Code out on the whole Mac, the terminal included Only Claude Code's own
+  login (`authMethod: "claude.ai"` or `apiKeySource: "/login managed key"`) gets Sign out: a key or token from the
+  environment (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`) or an `apiKeyHelper` wins over that login and survives
+  `claude auth logout`, so the card shows "From ANTHROPIC_API_KEY" and says to remove it and restart pi-gna (which
+  reads the shell's environment once, at start) instead of offering a sign-in or sign-out that changes nothing.
 - **Import chats** (desktop only, `src/main/chat-import/`, `ImportChats.tsx`): another agent's chats become pi session
   files in pi's own folder for their cwd (`--<cwd>--/<created>_<id>.jsonl`), so the sidebar lists them in their
   projects and pi continues them. Sources: Codex rollouts (`$CODEX_HOME/sessions/**/rollout-*.jsonl`; the first line's

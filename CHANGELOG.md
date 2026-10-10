@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > Providers: when Claude Code uses an `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN` or an `apiKeyHelper`) instead of its own login, the Claude Code card says so and how to fix it: remove the key from your shell profile, then quit and reopen pi-gna. It used to offer Sign out, which reported success and left you signed in, since `claude auth logout` cannot remove such a key.
+
 ## 0.15.0 - 2026-10-10
 
 - Experimental, off by default: Settings > Agent > Beta > Keep chats running on restart lets ordinary chats opened after enabling it survive an update’s Restart now on macOS. The new app reconnects to the same pi processes and their replies in progress. Normal Quit still stops them. ATP and card-task runs are not handed over, and app-provided tools or approval dialogs in progress can be interrupted during restart.

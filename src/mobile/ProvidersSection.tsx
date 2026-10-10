@@ -6,7 +6,7 @@ import { CodeText } from "../renderer/src/components/CodeText";
 import { Check, ExternalLink, LoaderCircle, Search, TriangleAlert } from "../renderer/src/components/icons";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { accountLabel, answered, type LoginView, startLogin, updateLogin } from "../renderer/src/lib/login";
-import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, searchProviders, splitProviders } from "../shared/auth";
+import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, claudeFromEnvironment, searchProviders, splitProviders } from "../shared/auth";
 import type { HostClient } from "./client/host-client";
 import { isWebUrl, loginGuide, pageHost } from "./login-view";
 import { Sheet } from "./Sheets";
@@ -116,9 +116,10 @@ export function ProvidersSection({ client }: { client: HostClient }) {
       <Group title="Accounts">
         {accounts.map((provider) => {
           const status = authStatus(provider, "oauth");
+          const blocked = claudeFromEnvironment(provider);
           return (
-            <ProviderRow key={provider.id} id={provider.id} title={provider.name} about={provider.account ?? accountLabel(provider)} status={status.tone === "off" ? undefined : status.text}>
-              {provider.stored === "oauth" ? (
+            <ProviderRow key={provider.id} id={provider.id} title={provider.name} about={provider.account ?? accountLabel(provider)} status={status.tone === "off" ? undefined : status.text} note={blocked}>
+              {blocked ? null : provider.stored === "oauth" ? (
                 <button type="button" className={button} onClick={() => setSignOut(provider)} data-testid={`signout-${provider.id}`}>
                   Sign out
                 </button>
@@ -203,7 +204,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function ProviderRow({ id, title, about, status, children }: { id: string; title: string; about?: string; status?: string; children: ReactNode }) {
+function ProviderRow({ id, title, about, status, note, children }: { id: string; title: string; about?: string; status?: string; note?: string; children: ReactNode }) {
   return (
     <div className="flex min-h-14 items-center gap-3 px-3.5 py-2.5" data-testid={`provider-${id}`}>
       <div className="min-w-0 flex-1">
@@ -214,6 +215,7 @@ function ProviderRow({ id, title, about, status, children }: { id: string; title
             {status}
           </div>
         )}
+        {note && <p className="mt-1 text-[12px] leading-snug text-muted">{note}</p>}
       </div>
       {children}
     </div>

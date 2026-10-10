@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type AuthProvider, authStatus, searchProviders, splitProviders } from "./auth";
+import { type AuthProvider, authStatus, claudeFromEnvironment, searchProviders, splitProviders } from "./auth";
 
 const provider = (id: string, extra: Partial<AuthProvider> = {}): AuthProvider => ({ id, name: id[0]?.toUpperCase() + id.slice(1), ...extra });
 
@@ -23,6 +23,14 @@ describe("authStatus", () => {
     expect(authStatus(provider("claude-bridge", { status: { method: "oauth", source: "claude_code", label: "max" } }), "oauth")).toEqual({ text: "Signed in · Claude Max", tone: "on" });
     expect(authStatus(provider("claude-bridge", { status: { method: "oauth", source: "claude_code" } }), "oauth")).toEqual({ text: "Signed in", tone: "on" });
     expect(authStatus(provider("claude-bridge", { status: { method: "api_key", source: "claude_code", label: "api_key" } }), "oauth")).toEqual({ text: "Claude Code uses an API key", tone: "other" });
+  });
+});
+
+describe("claudeFromEnvironment", () => {
+  it("explains a Claude Code key from the environment, which no sign-in or sign-out changes", () => {
+    expect(claudeFromEnvironment(provider("claude-bridge", { status: { method: "api_key", source: "environment", label: "ANTHROPIC_API_KEY" } }))).toContain("ANTHROPIC_API_KEY");
+    expect(claudeFromEnvironment(provider("claude-bridge", { status: { method: "oauth", source: "claude_code" } }))).toBeUndefined();
+    expect(claudeFromEnvironment(provider("anthropic", { status: { method: "api_key", source: "environment", label: "ANTHROPIC_API_KEY" } }))).toBeUndefined();
   });
 });
 

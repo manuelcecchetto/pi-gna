@@ -98,6 +98,13 @@ export function authStatus(provider: AuthProvider, method: AuthMethod): { text: 
   return { text: status.method === "oauth" ? "Signed in with an account" : status.source === "stored" ? "Uses an API key" : text, tone: "other" };
 }
 
+/** Why the Claude Code card can neither sign in nor out: Claude Code uses a key or token from the environment (or an
+ * apiKeyHelper), which wins over its own login. pi-gna reads the shell's environment once, at start. */
+export function claudeFromEnvironment(provider: AuthProvider): string | undefined {
+  if (provider.id !== CLAUDE_BRIDGE || provider.status?.source !== "environment") return undefined;
+  return `Claude Code uses ${provider.status.label ?? "a key from the environment"} instead of its own login. Remove it from your shell profile (or Claude Code's settings), then quit and reopen pi-gna to sign in with your plan.`;
+}
+
 /** Account sign-ins first (subscriptions before the rest), then every provider that takes an API key. pi's own
  * Anthropic account login never gets a card, bridge or not: a Claude plan signs in through Claude Code (claude-bridge),
  * the safer way. `piClaude` is that login while pi still has one saved, to sign out of. */
