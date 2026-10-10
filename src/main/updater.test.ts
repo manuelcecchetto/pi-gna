@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { app, net } from "electron";
@@ -122,6 +122,7 @@ describe("SWAP_SCRIPT", () => {
     dir = mkdtempSync(join(tmpdir(), "pigna-swap-"));
     bundle(join(dir, "Applications", "pi-gna.app"), "old");
     bundle(join(dir, "update", "pi-gna.app"), "new");
+    utimesSync(join(dir, "update", "pi-gna.app"), new Date(2020, 0, 1), new Date(2020, 0, 1));
     const app = spawn("sleep", ["0.6"]);
     const { target, staged, failed, done } = swap(app.pid ?? 0, "pi-gna");
 
@@ -129,6 +130,7 @@ describe("SWAP_SCRIPT", () => {
     expect(readFileSync(join(target, "marker"), "utf8")).toBe("old");
     expect(await done).toMatch(/ info  updater +installed .*pi-gna\.app\n$/);
     expect(readFileSync(join(target, "marker"), "utf8")).toBe("new");
+    expect(statSync(target).mtime.getFullYear()).toBeGreaterThan(2020); // touched, so Finder and the Dock reload its icon
     expect(existsSync(staged)).toBe(false);
     expect(existsSync(join(dir, "update", "previous.app"))).toBe(false);
     expect(existsSync(failed)).toBe(false);

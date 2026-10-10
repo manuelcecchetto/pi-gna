@@ -73,7 +73,7 @@ export function installBlocker(bundle: string | undefined, packaged: boolean, wr
 /**
  * Runs detached as pi-gna quits: waits for its pid to exit, moves the old app aside, moves the staged one into
  * its place (putting the old one back if that fails), and with an executable name starts the app at the
- * target. A failure goes to the `failed` file for the next launch to report. The profile and /Applications
+ * target, touched and re-registered with Launch Services so Finder and the Dock show its icon. A failure goes to the `failed` file for the next launch to report. The profile and /Applications
  * share the Data volume, so the swap is two renames. Arguments: pid target staged backup failed [executable].
  * Its output is appended to main.log in the log's file format.
  */
@@ -89,6 +89,9 @@ elif ! out=$(mv "$staged" "$target" 2>&1); then
   printf 'could not move the new version to %s: %s' "$target" "$out" > "$failed"
 else
   rm -rf "$backup"
+  # Finder and the Dock cache an app's icon by path; a fresh date and re-registering make them read the new one.
+  touch "$target"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
 fi
 if [ -s "$failed" ]; then say error "$(cat "$failed")"; else say info "installed $target"; fi
 if [ -n "$exe" ]; then "$target/Contents/MacOS/$exe" >/dev/null 2>&1 & fi

@@ -5,6 +5,10 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Updates refresh the app's icon in Finder and the Dock, which kept showing the old one after an update changed it.
+
+- The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
+
 ## 0.11.4 - 2026-10-10
 
 - Phone: the Home Screen icon fills its square, without the light ring iOS drew around it (add pi-gna to the Home Screen again to pick it up).
