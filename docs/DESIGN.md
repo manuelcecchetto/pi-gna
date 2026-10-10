@@ -1018,7 +1018,7 @@ Files (the node that builds each one is in brackets; the shapes are in `src/shar
 - `src/main/usage-pricing.ts`: the price table from pi's installed pi-ai data and the user's `models.json`, cached until either changes [T03].
 - `src/shared/usage-prices.ts`: the price index, the lookup order and `costOf` (pure) [T03].
 - `src/main/usage-extract.ts`: one session file to `FileUsageFacts`, streamed line by line [T02].
-- `src/main/usage-classify.ts`: root, surface, `pigna` flag and project key [T04].
+- `src/shared/usage-classify.ts`: the surface, `pigna` flag, project key, card and project labels of a session, pure [T04].
 - `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
 - `src/shared/usage-report.ts`: `buildReport(facts, query, prices, now)`, a pure function with no I/O [T06, T07].
 - Host: `usage.get` in `src/shared/host-api.ts` [T08]. Renderer: `UsagePage.tsx` (lazy chunk), `UsageCharts.tsx` (SVG
@@ -1041,7 +1041,7 @@ Surface, first match wins:
 1. **subagent**: the path has `/tasks/` and the header has `parentSession`. All 435 point at an existing parent file. Its
    `pigna` flag is the parent's.
 2. **atp-worker**: root `atp`, or the first user message starts with `### Runtime Context (Injected by pi-gna's ATP runner)`.
-   The ATP orchestrator is not separated yet (open item).
+   The ATP orchestrator is counted here too (open item).
 3. **ci**: `cwd` contains `/actions-runners/` (the CASUS review runners; 54 chats and 133 subagents in the last 14 days).
 4. **card**: `cwd` under `~/.pi-gna/worktrees/<6-char id>/` (Kanban card chats).
 5. **pigna-chat**: the system message names a tool only pi-gna loads: `kanban_`, `threads_`, `lament` or `pigna-visual-prompt`.
@@ -1053,8 +1053,13 @@ Surface, first match wins:
 filter `pigna` is exactly that set.
 
 Project: `projectOf(cwd)` from `src/shared/board.ts`, which folds `~/.pi-gna/worktrees/<id>/<abs path>` into `<abs path>`
-(a card's or an ATP worker's worktree counts as its project). CI sessions get `ci:<repo>`, where `<repo>` is the segment
-after `/_work/` (`casus-review`), so the runners form one project.
+(a card's or an ATP worker's worktree counts as its project; the card id is kept as `SessionMeta.card`). CI sessions get
+`ci:<repo>`, where `<repo>` is the segment after `/_work/` (`casus-review`), so the runners form one project. A project's
+label is its last folder names, as many as keep the labels unique (`projectLabels`); a CI project reads `CI runners (casus-review)`.
+
+Measured over the last 30 days (1,377 files in the window, 10 Oct 2026): 302 pigna-chat, 133 card, 237 atp-worker (15 of them
+orchestrators), 447 subagents (99 of a pi-gna parent), 54 ci, 204 terminal. 29 of the terminal sessions have no system message
+at all (28 under `casus-review`, 1 under `torntools_extension`): no evidence either way, so the report counts them as unclassified.
 
 ### Dedupe and attribution
 
@@ -1097,6 +1102,12 @@ prompt) is skipped on a substring test. Each field's rule:
 - **Compactions and edits**: `compaction` entries (their `tokensBefore` summed) and `context_edit` entries.
 - **Subagent runs**: `subagents:record` counted by `status`. Other custom records (`web-search-results`,
   `pi-context-gc-checkpoint`, `codemode-store`, ...) are not read.
+
+- **Markers** (`SessionMarkers`): `systemMessage` when a `"message":{"role":"system"` record is in the file (in its first 512 bytes);
+  `pignaTools` when that record names one of `PIGNA_MARKERS` (`kanban_`, `threads_`, `lament`, `pigna-visual-prompt`; in the
+  measured files the first three sit in the system message's `rules`, the last in `project_context`); `atpRuntime` when the first prompt starts with the
+  ATP claim packet prefix. The surface, `pigna`, `project` and `card` of `session` come from `classifySession` in `finish`.
+  A subagent's `pigna` is provisional there (false) until the index passes its parent's flag (open item).
 
 - **Resume**: `consumedBytes` is the offset through the last complete record. A last line without LF counts only once it
   parses, so a record pi is still writing is read on the next pass. A grown file is read from `consumedBytes` with
@@ -1242,7 +1253,11 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
 
 - **pi-gna chat or terminal**: a pi-gna chat with every pi-gna feature off has no marker and counts as terminal. A marker
   written by pi-gna's extension would settle it; that is a later change, not v1.
-- **ATP orchestrator**: its first message is not known yet; T04 checks it before the surface is claimed.
+- **ATP orchestrator**: settled by T04. Its system addendum says `You are the orchestrator of an ATP plan in pi-gna` (a worker's
+  says `You are an ATP worker in pi-gna`), and both are atp-worker in v1 since the orchestrator is not a surface. Its first prompt
+  is the user's, so only the root tells it apart.
+- **Subagent pigna** (T05): `classifySession` takes the parent's flag; the index must call it again for each subagent with
+  the parent's `pigna` (the parent is the file `<dir of tasks>.jsonl`, found for all 435 subagents). Until then it is false.
 - **Tool durations** are upper bounds for parallel calls (see Per-file facts).
 - **Tier edges**: the real table has tiers at 100,000, 200,000 and 272,000 (Cost model). The facts keep tokens only above
   272,000, so a turn between 100k and 272k is priced wrong. Fix: the facts keep tokens per `CONTEXT_EDGES` bin, which bumps

@@ -2,7 +2,7 @@
 // page renders. Types and constants only; docs/DESIGN.md "Usage" is the source of truth for what each one means.
 
 /** Bump when FileUsageFacts or the way it is derived changes: cache entries of another version are read again. */
-export const USAGE_FACTS_VERSION = 1;
+export const USAGE_FACTS_VERSION = 2;
 
 /** pi-ai's only pricing tier edge: a turn whose input (input + cacheRead + cacheWrite) exceeds it is priced at the tier's rates. */
 export const CONTEXT_TIER_EDGE = 272_000;
@@ -97,6 +97,8 @@ export interface SessionMeta {
   pigna: boolean;
   cwd: string;
   project: string;
+  /** The Kanban card whose worktree the session ran in (its six-character id). */
+  card?: string;
   /** The parent session's id for a subagent (the header's parentSession). */
   parentId?: string;
   /** The name pi gave the session (session_info); untrusted text, shown as plain text only. */
@@ -129,6 +131,16 @@ export interface UsageResume {
   open?: OpenPrompt;
 }
 
+/** What a session file says about pi-gna, read from its system message and its first prompt. */
+export interface SessionMarkers {
+  /** Older pi sessions have no system message: their surface is unknown, not terminal. */
+  systemMessage: boolean;
+  /** The system message names one of pi-gna's tools or prompts (usage-classify.ts PIGNA_MARKERS). */
+  pignaTools: boolean;
+  /** The first prompt is the ATP runner's claim packet. */
+  atpRuntime: boolean;
+}
+
 /** Everything the report needs from one session file, compact enough to keep in a cache for thousands of files. */
 export interface FileUsageFacts {
   version: number;
@@ -138,6 +150,8 @@ export interface FileUsageFacts {
   /** Bytes read through the last complete record; a torn last line stays unread until its end arrives. */
   consumedBytes: number;
   session: SessionMeta;
+  /** What the file says about pi-gna; `session`'s surface, pigna flag and project are classified from it. */
+  markers: SessionMarkers;
   buckets: UsageBucket[];
   tools: Record<string, ToolStat>;
   stops: Partial<Record<StopReason, number>>;

@@ -13,8 +13,8 @@ describe("usage constants", () => {
     expect(CONTEXT_EDGES).toContain(CONTEXT_TIER_EDGE);
   });
 
-  it("caps idle gaps at a positive window and starts facts at version 1", () => {
+  it("caps idle gaps at a positive window and starts facts at version 2", () => {
     expect(ACTIVE_GAP_CAP_MS).toBeGreaterThan(0);
-    expect(USAGE_FACTS_VERSION).toBe(1);
+    expect(USAGE_FACTS_VERSION).toBe(2);
   });
 });

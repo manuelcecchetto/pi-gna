@@ -1,7 +1,6 @@
 // One pi session file to FileUsageFacts: streams bytes and parses only the records that can change the facts.
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { projectOf } from "../shared/board";
 import type { AssistantMessage, SessionEntry, SessionHeader, ToolResultMessage } from "../shared/protocol";
 import {
   ACTIVE_GAP_CAP_MS,
@@ -22,6 +21,7 @@ import {
   type UsageResume,
   USAGE_FACTS_VERSION,
 } from "../shared/usage";
+import { classifySession, namesPignaTools, startsAtpRuntime } from "../shared/usage-classify";
 
 export interface ExtractTarget {
   root: SourceRoot;
@@ -59,6 +59,13 @@ const ENTRY_TIMESTAMP = /"timestamp":"([^"]*)"/;
 /** Only these message roles change the facts; the others (system, bashExecution, custom, branchSummary) are skipped unparsed. */
 function hasRelevantRole(line: Buffer): boolean {
   return line.includes('"role":"user"') || line.includes('"role":"assistant"') || line.includes('"role":"toolResult"');
+}
+
+/** The first text of a message's content: where the ATP runner's claim packet begins. */
+function firstText(content: unknown): string {
+  if (typeof content === "string") return content;
+  const block = Array.isArray(content) ? content.find((part) => part?.type === "text" && typeof part.text === "string") : undefined;
+  return typeof block?.text === "string" ? block.text : "";
 }
 
 const ERROR_RULES: [RegExp, ErrorCategory][] = [
@@ -150,6 +157,7 @@ class Extraction {
     const end = lineEnd(line);
     if (isBlank(line, end)) return;
     const head = line.toString("utf8", 0, Math.min(end, HEAD_BYTES));
+    if (head.includes('"message":{"role":"system"')) this.systemMessage(line);
     if (TYPE_PREFIX.exec(head)?.[1] === "message" && !hasRelevantRole(line)) {
       const at = headTimestamp(head);
       if (at !== undefined) {
@@ -181,6 +189,8 @@ class Extraction {
     facts.size = source.size;
     facts.mtimeMs = source.mtimeMs;
     facts.consumedBytes = source.consumedBytes;
+    const placed = classifySession({ root: facts.session.root, path: facts.session.path, cwd: facts.session.cwd, parentId: facts.session.parentId, markers: facts.markers });
+    Object.assign(facts.session, { project: placed.project, surface: placed.surface, pigna: placed.isPigna, card: placed.card });
     return facts;
   }
 
@@ -201,6 +211,9 @@ class Extraction {
     const entry = record as SessionEntry;
     const at = Date.parse(entry.timestamp);
     if (entry.type === "message" && entry.message?.role === "user") {
+      if (this.facts.resume.open === undefined && this.facts.resume.closed.count === 0) {
+        this.facts.markers.atpRuntime = startsAtpRuntime(firstText(entry.message.content));
+      }
       this.closePrompt();
       this.tick(at);
       this.openPrompt();
@@ -234,12 +247,17 @@ class Extraction {
     }
   }
 
+  private systemMessage(line: Buffer): void {
+    const { markers } = this.facts;
+    markers.systemMessage = true;
+    if (!markers.pignaTools) markers.pignaTools = namesPignaTools(line);
+  }
+
   private header(header: SessionHeader): void {
     const session = this.facts.session;
     if (session.id) return;
     session.id = header.id;
     session.cwd = typeof header.cwd === "string" ? header.cwd : "";
-    session.project = projectOf(session.cwd);
     session.parentId = typeof header.parentSession === "string" ? header.parentSession : undefined;
     this.tick(Date.parse(header.timestamp));
   }
@@ -379,7 +397,6 @@ function emptyFacts(target: ExtractTarget): FileUsageFacts {
       id: "",
       root: target.root,
       path: target.path,
-      // usage-classify.ts (T04) sets the surface, the pigna flag and the project from the session's markers.
       surface: "terminal",
       pigna: false,
       cwd: "",
@@ -388,6 +405,7 @@ function emptyFacts(target: ExtractTarget): FileUsageFacts {
       lastAt: 0,
       activeMs: 0,
     },
+    markers: { systemMessage: false, pignaTools: false, atpRuntime: false },
     buckets: [],
     tools: {},
     stops: {},

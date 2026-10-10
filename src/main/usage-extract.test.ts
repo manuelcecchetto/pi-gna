@@ -282,6 +282,32 @@ describe("extractFileUsage", () => {
   });
 });
 
+describe("session markers and surface", () => {
+  const systemMessage = (rules: string) => entry("message", T0, { message: { role: "system", content: "", sections: { rules } } });
+  const claim = (time: number) => userMsg(time, "### Runtime Context (Injected by pi-gna's ATP runner)\n- project_root: /Users/me/Code/app");
+
+  it("reads pi-gna's tool names from the system message and classifies a card worktree chat", async () => {
+    const worktree = "/Users/me/.pi-gna/worktrees/0aux49/Users/me/Code/personal/pi-gna";
+    const facts = await read("pigna-card.jsonl", [{ ...header(), cwd: worktree }, systemMessage("call kanban_update"), userMsg(T0 + 1000)]);
+    expect(facts.markers).toEqual({ systemMessage: true, pignaTools: true, atpRuntime: false });
+    expect(facts.session).toMatchObject({ surface: "card", pigna: true, project: "/Users/me/Code/personal/pi-gna", card: "0aux49" });
+  });
+
+  it("reads the ATP claim packet from the first prompt only", async () => {
+    const first = await read("claim-first.jsonl", [header(), claim(T0)]);
+    expect(first.markers.atpRuntime).toBe(true);
+    expect(first.session.surface).toBe("atp-worker");
+    const later = await read("claim-later.jsonl", [header(), userMsg(T0), claim(T0 + 1000)]);
+    expect(later.markers.atpRuntime).toBe(false);
+  });
+
+  it("reports a file with no system message as having no pi-gna marker", async () => {
+    const facts = await read("no-system.jsonl", [header(), userMsg(T0)]);
+    expect(facts.markers).toEqual({ systemMessage: false, pignaTools: false, atpRuntime: false });
+    expect(facts.session.surface).toBe("terminal");
+  });
+});
+
 function withoutFileStat(facts: FileUsageFacts | undefined): FileUsageFacts {
   if (!facts) throw new Error("no facts");
   return { ...facts, size: 0, mtimeMs: 0 };

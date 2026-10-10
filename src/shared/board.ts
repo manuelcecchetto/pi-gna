@@ -170,6 +170,11 @@ export function projectOf(cwd: string): string {
   return cwd;
 }
 
+/** The card whose worktree (worktreeCwd) `cwd` lies in, or undefined outside one. */
+export function cardOfWorktree(cwd: string): string | undefined {
+  return IN_WORKTREE.exec(cwd)?.[1];
+}
+
 /** Where work on `path` (a plan, a file) runs for `project`: the project's folder in the worktree `path` lies in, else the project. */
 export function checkoutOf(path: string, project: string): string {
   const match = IN_WORKTREE.exec(path);
