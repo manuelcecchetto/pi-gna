@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { worktreeCwd } from "../../../shared/board";
 import type { ProjectGroup, SessionSummary } from "../../../shared/ipc";
-import { chatGlance, projectViews as viewsOfChats } from "./projects";
+import { chatGlance, projectViews as viewsOfChats, recentRows } from "./projects";
 import { shallow } from "./store";
 import { createSession, type SessionState } from "../../../shared/session-state";
 import { openChat } from "../state/app";
@@ -16,10 +16,11 @@ const summary = (cwd: string, name: string, modifiedAt: number): SessionSummary 
   named: false,
   createdAt: modifiedAt,
   modifiedAt,
+  promptedAt: modifiedAt,
 });
 const project = (cwd: string, ...sessions: SessionSummary[]): ProjectGroup => ({
   cwd,
-  modifiedAt: Math.max(...sessions.map((s) => s.modifiedAt)),
+  promptedAt: Math.max(...sessions.map((s) => s.promptedAt)),
   sessions: [...sessions].sort((a, b) => b.modifiedAt - a.modifiedAt),
 });
 const user = (text: string, timestamp: number) => ({ kind: "user" as const, key: text, message: { role: "user" as const, content: text, timestamp } });
@@ -102,6 +103,23 @@ describe("projectViews", () => {
     expect(order(views)).toEqual(["/a", "/b", "/e", "/c"]);
     expect(views[0]?.rows.map((r) => r.key)).toEqual(["n1", "/a/a1.jsonl", "/a/a2.jsonl"]);
     expect(views[1]?.rows.map((r) => r.key)).toEqual(["n2", "/b/b1.jsonl"]);
+  });
+});
+
+describe("chat times", () => {
+  it("come from the last user message, not the file's last write", () => {
+    const busy = { ...summary("/c", "c2", 90), modifiedAt: 999 };
+    const views = projectViews([...projects.slice(0, 2), project("/c", summary("/c", "c1", 100), busy)], [], []);
+    expect(order(views)).toEqual(["/a", "/b", "/c"]);
+    expect(views[2]?.rows.map((r) => [r.summary?.id, r.time])).toEqual([["c1", 100], ["c2", 90]]);
+  });
+});
+
+describe("recentRows", () => {
+  it("lists every listed project's chats in one list, newest first, new chats on top, hidden projects left out", () => {
+    const fresh: SessionState = { ...createSession("n1", "/c"), prompted: true };
+    const rows = recentRows(projectViews(projects, [fresh], ["/c"], ["/b"]));
+    expect(rows.map((r) => r.key)).toEqual(["n1", "/a/a1.jsonl", "/a/a2.jsonl", "/c/c1.jsonl", "/c/c2.jsonl"]);
   });
 });
 

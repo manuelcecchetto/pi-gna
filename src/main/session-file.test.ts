@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activeBranch, cutUserTitle, parseRecords, summarizeSessionFile, textOf } from "./session-file";
+import { activeBranch, cutUserTitle, lastPromptAt, parseRecords, summarizeSessionFile, textOf } from "./session-file";
 
 const header = { type: "session", version: 3, id: "sid", timestamp: "2026-10-01T10:00:00.000Z", cwd: "/repo" };
 const msg = (id: string, parentId: string | null, role: string, content: unknown) => ({
@@ -157,5 +157,27 @@ describe("textOf (titles from session files)", () => {
   it("leaves out the blocks pi-gna adds to a prompt", () => {
     expect(textOf("<kanban-card>\nCard aaaaaa: Fix it\n</kanban-card>\n\nWhy does it fail?")).toBe("Why does it fail?");
     expect(textOf([{ type: "text", text: "Look at this\n\n<browser-comments>\n1. here\n</browser-comments>" }])).toBe("Look at this");
+  });
+});
+
+describe("lastPromptAt", () => {
+  const at = (record: ReturnType<typeof msg>, timestamp: string) => ({ ...record, timestamp });
+
+  it("is the last user message's time, not the agent's writes after it, across chunk boundaries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-gna-prompt-"));
+    const path = join(dir, "chat.jsonl");
+    const tool = (id: string) => at(msg(id, null, "toolResult", "x".repeat(100_000)), "2026-10-01T12:00:00.000Z");
+    const text = jsonl([
+      header,
+      at(msg("u1", null, "user", "first"), "2026-10-01T10:00:00.000Z"),
+      at(msg("u2", "u1", "user", "second"), "2026-10-01T11:00:00.000Z"),
+      ...Array.from({ length: 8 }, (_, index) => tool(`t${index}`)),
+    ]);
+    await writeFile(path, text);
+    const size = Buffer.byteLength(text);
+    expect(await lastPromptAt(path, size)).toBe(Date.parse("2026-10-01T11:00:00.000Z"));
+    // Searched only past `from`, as the index does for a file that grew.
+    expect(await lastPromptAt(path, size, text.indexOf('"id":"t0"'))).toBeUndefined();
+    expect(await lastPromptAt(path, 0)).toBeUndefined();
   });
 });

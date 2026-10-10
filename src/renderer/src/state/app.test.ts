@@ -110,7 +110,7 @@ describe("answering a dialog", () => {
 });
 
 describe("opening a chat from the sidebar", () => {
-  const summary: SessionSummary = { path: "/s/a.jsonl", id: "a", cwd: "/repo", title: "Fix the flash", named: false, createdAt: 0, modifiedAt: 0 };
+  const summary: SessionSummary = { path: "/s/a.jsonl", id: "a", cwd: "/repo", title: "Fix the flash", named: false, createdAt: 0, modifiedAt: 0, promptedAt: 0 };
   const user = (n: number, text = `q${n}`): Item => ({ kind: "user", key: `i${n}`, message: { role: "user", content: text, timestamp: n } });
   const answer = (n: number): Item => ({ kind: "assistant", key: `a${n}`, streaming: false, message: { role: "assistant", content: [{ type: "text", text: `answer ${n}` }], stopReason: "stop", timestamp: n } as never });
   /** The host's state with turns `from`..`to` (exclusive). */

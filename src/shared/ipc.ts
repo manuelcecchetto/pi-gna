@@ -491,12 +491,16 @@ export interface SessionSummary {
   title: string;
   named: boolean;
   createdAt: number;
+  /** The file's mtime: any write, tool calls and answers included. */
   modifiedAt: number;
+  /** When the last user message was sent; what the chat lists sort by and show as the chat's time. */
+  promptedAt: number;
 }
 
 export interface ProjectGroup {
   cwd: string;
-  modifiedAt: number;
+  /** Its chats' latest promptedAt. */
+  promptedAt: number;
   sessions: SessionSummary[];
 }
 

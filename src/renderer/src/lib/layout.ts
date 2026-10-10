@@ -11,9 +11,13 @@ const MAIN_MIN = 520;
 export const CHAT_BESIDE_BROWSER = { minWidth: "min(400px, 100% - 280px)" } as const;
 export const BROWSER_MIN = 280;
 
+/** What the sidebar lists: chats grouped by project, or every project's chats in one list, newest first. */
+export type SidebarView = "projects" | "recent";
+
 export interface SidebarLayout {
   width: number;
   collapsed: boolean;
+  view: SidebarView;
 }
 
 export function clampSidebarWidth(width: number, windowWidth: number): number {
@@ -35,9 +39,13 @@ const KEY = "pigna:sidebar";
 export function loadSidebar(): SidebarLayout {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<SidebarLayout> | null;
-    return { width: typeof saved?.width === "number" ? saved.width : SIDEBAR_DEFAULT, collapsed: saved?.collapsed === true };
+    return {
+      width: typeof saved?.width === "number" ? saved.width : SIDEBAR_DEFAULT,
+      collapsed: saved?.collapsed === true,
+      view: saved?.view === "recent" ? "recent" : "projects",
+    };
   } catch {
-    return { width: SIDEBAR_DEFAULT, collapsed: false };
+    return { width: SIDEBAR_DEFAULT, collapsed: false, view: "projects" };
   }
 }
 

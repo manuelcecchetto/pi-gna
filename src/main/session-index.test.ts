@@ -95,4 +95,21 @@ describe("indexSettled", () => {
     expect(await indexSettled(join(root, "loose.jsonl"))).toBeUndefined();
     expect(await indexSettled(join(tmpdir(), "elsewhere", "--repo--", "chat.jsonl"))).toBeUndefined();
   });
+
+  it("times a chat by its last user message: the agent's writes after it keep the time, a new prompt moves it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-gna-index-"));
+    const dir = join(root, "--repo--");
+    await mkdir(dir);
+    const chat = join(dir, "chat.jsonl");
+    const prompt = (id: string, timestamp: string) => ({ ...user(id, "go"), timestamp });
+    await writeFile(chat, jsonl([header, prompt("u1", "2026-10-01T10:05:00.000Z")]));
+    vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", root);
+    expect(await indexSettled(chat)).toMatchObject({ promptedAt: Date.parse("2026-10-01T10:05:00.000Z") });
+
+    const answer = { type: "message", id: "a1", parentId: "u1", timestamp: "2026-10-01T10:30:00.000Z", message: { role: "assistant", content: [], timestamp: 0 } };
+    await appendFile(chat, jsonl([answer]));
+    expect(await indexSettled(chat)).toMatchObject({ promptedAt: Date.parse("2026-10-01T10:05:00.000Z") });
+    await appendFile(chat, jsonl([prompt("u2", "2026-10-01T11:00:00.000Z"), answer]));
+    expect(await indexSettled(chat)).toMatchObject({ promptedAt: Date.parse("2026-10-01T11:00:00.000Z") });
+  });
 });

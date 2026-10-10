@@ -221,16 +221,16 @@ describe("stream", () => {
 
   it("patches the chat list with a settled run's re-indexed file", async () => {
     const path = "/s/--p--/a.jsonl";
-    const row = (title: string, modifiedAt: number) => ({ path, id: "a", cwd: "/p", title, named: false, createdAt: 0, modifiedAt });
+    const row = (title: string, modifiedAt: number) => ({ path, id: "a", cwd: "/p", title, named: false, createdAt: 0, modifiedAt, promptedAt: modifiedAt });
     const read = reads();
-    const t = setup((call) => (call.path === "chat.list" ? ok([{ cwd: "/p", modifiedAt: 1, sessions: [row("Old", 1)] }]) : read(call)));
+    const t = setup((call) => (call.path === "chat.list" ? ok([{ cwd: "/p", promptedAt: 1, sessions: [row("Old", 1)] }]) : read(call)));
     t.client.start();
     t.src().hello();
     await flush();
     t.src().emit("resync", { reason: "no_id" });
     await flush();
     t.src().host(1, "global", { kind: "session.indexed", path, summary: row("Settled", 5) });
-    expect(t.client.store.get().global.projects).toEqual([{ cwd: "/p", modifiedAt: 5, sessions: [row("Settled", 5)] }]);
+    expect(t.client.store.get().global.projects).toEqual([{ cwd: "/p", promptedAt: 5, sessions: [row("Settled", 5)] }]);
     t.src().host(2, "global", { kind: "session.indexed", path, summary: null });
     expect(t.client.store.get().global.projects).toEqual([]);
   });

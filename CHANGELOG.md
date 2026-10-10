@@ -6,6 +6,8 @@ moves those lines under the new version, and they become its GitHub release note
 ## Unreleased
 
 - Pin models: the pin on a row of the composer's model menu (desktop and phone) keeps that model at the top of the list, on every device. The Settings model pickers list pinned models first too. A pin for a model pi does not list now (a signed-out provider) stays saved and comes back with it.
+- The sidebar has a Recent view beside Projects: every project's chats in one list, newest first, each with its project's name. Your choice is remembered.
+- A chat's time in the sidebar (and its place in the list) now moves only when you send a message, not while the agent runs tools or answers.
 
 ## 0.15.1 - 2026-10-10
 

@@ -121,6 +121,35 @@ async function latestNameInTail(path: string, size: number): Promise<string | un
   }
 }
 
+const PROMPT = /"timestamp":"([^"]+)","message":\{"role":"user"/g;
+const PROMPT_CHUNK = 256 * 1024;
+
+/**
+ * When the last user message in the file was sent, searching back from the end and stopping at byte `from`; undefined
+ * when there is none past it. pi writes an entry's own timestamp right before its message, so the marker needs no parse.
+ */
+export async function lastPromptAt(path: string, size: number, from = 0): Promise<number | undefined> {
+  const handle = await open(path, "r");
+  try {
+    // Chunks overlap by the marker's length, so one cut in two is still found.
+    const overlap = 128;
+    let end = size;
+    while (end > from) {
+      const start = Math.max(from, end - PROMPT_CHUNK);
+      const buffer = Buffer.alloc(Math.min(end + overlap, size) - start);
+      await handle.read(buffer, 0, buffer.length, start);
+      let last: string | undefined;
+      for (const match of buffer.toString("latin1").matchAll(PROMPT)) last = match[1];
+      const time = last === undefined ? Number.NaN : Date.parse(last);
+      if (!Number.isNaN(time)) return time;
+      end = start;
+    }
+    return undefined;
+  } finally {
+    await handle.close();
+  }
+}
+
 const USER_CONTENT = '"role":"user","content":';
 const TEXT_BLOCK = '{"type":"text","text":';
 

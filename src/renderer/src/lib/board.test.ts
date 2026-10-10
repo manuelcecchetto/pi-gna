@@ -41,7 +41,7 @@ describe("Kanban view", () => {
 
   it("names a card's chat after the open chat, else the session index, else its label on the card", () => {
     const labelled = applyOp(board, { type: "attach", id: "aaaaaa", chat: { path: "/s/a1.jsonl", cwd: "/repo", label: "On the card" } }, 11).cards.find((c) => c.id === "aaaaaa")!;
-    const projects = [{ cwd: "/repo", modifiedAt: 0, sessions: [{ path: "/s/a1.jsonl", id: "a1", cwd: "/repo", title: "Indexed", named: false, createdAt: 0, modifiedAt: 0 }] }] as ProjectGroup[];
+    const projects = [{ cwd: "/repo", promptedAt: 0, sessions: [{ path: "/s/a1.jsonl", id: "a1", cwd: "/repo", title: "Indexed", named: false, createdAt: 0, modifiedAt: 0, promptedAt: 0 }] }] as ProjectGroup[];
     const chats = [live("/s/a1.jsonl", { name: "Open now" })].map(openChat);
     expect(chatTitle("/s/a1.jsonl", labelled, projects, chats)).toBe("Open now");
     expect(chatTitle("/s/a1.jsonl", labelled, projects, [])).toBe("Indexed");
@@ -58,7 +58,7 @@ describe("Kanban view", () => {
   });
 
   it("lists the sidebar's projects and any other project with cards, with open cards", () => {
-    const projects = [{ cwd: "/repo", modifiedAt: 0, sessions: [{ path: "/s/b1.jsonl", id: "b1", cwd: "/repo", title: "Dark mode", named: false, createdAt: 0, modifiedAt: 0 }] }] as ProjectGroup[];
+    const projects = [{ cwd: "/repo", promptedAt: 0, sessions: [{ path: "/s/b1.jsonl", id: "b1", cwd: "/repo", title: "Dark mode", named: false, createdAt: 0, modifiedAt: 0, promptedAt: 0 }] }] as ProjectGroup[];
     expect(boardProjects(board, projects, "/new")).toEqual([
       { cwd: "/new", open: 0 },
       { cwd: "/repo", open: 2 },

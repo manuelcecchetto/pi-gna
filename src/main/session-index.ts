@@ -7,7 +7,7 @@ import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import type { ProjectGroup, SessionSummary } from "../shared/ipc";
 import { groupSessions } from "../shared/session-list";
 import { log } from "./log";
-import { summarizeSessionFile } from "./session-file";
+import { lastPromptAt, summarizeSessionFile } from "./session-file";
 
 export function sessionsDir(): string {
   if (process.env.PI_CODING_AGENT_SESSION_DIR) return process.env.PI_CODING_AGENT_SESSION_DIR;
@@ -28,7 +28,7 @@ let dirty = false;
 let saving: Promise<void> = Promise.resolve();
 
 /** Bump when SessionSummary or the way it is derived changes: an older file is then ignored. */
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 
 interface CacheFile {
   version: number;
@@ -120,14 +120,19 @@ async function indexSession(path: string): Promise<SessionSummary | undefined> {
 
     const file = await summarizeSessionFile(path, info.size);
     // Sessions without a user message or name are empty starts; hide them. A first message without text (an image) counts.
+    const createdAt = file ? Date.parse(file.header.timestamp) || info.birthtimeMs : 0;
+    // pi only appends, so a grown file is searched only past its last indexed size for a newer prompt.
+    const grown = cached && cached.size <= info.size ? cached : undefined;
+    const prompted = file && (await lastPromptAt(path, info.size, Math.max(0, (grown?.size ?? 0) - 128)));
     const summary: SessionSummary | undefined = file && (file.title !== undefined || file.name) ? {
       path,
       id: file.header.id,
       cwd: file.header.cwd,
       title: file.name || file.title || "New chat",
       named: Boolean(file.name),
-      createdAt: Date.parse(file.header.timestamp) || info.birthtimeMs,
+      createdAt,
       modifiedAt: info.mtimeMs,
+      promptedAt: prompted ?? grown?.summary?.promptedAt ?? createdAt,
     } : undefined;
     cache.set(path, { mtimeMs: info.mtimeMs, size: info.size, summary });
     dirty = true;

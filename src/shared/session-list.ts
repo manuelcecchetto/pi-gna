@@ -1,5 +1,5 @@
 // The chat list's shape: session summaries grouped by project (projectOf their cwd: a card's worktree counts as its
-// project), chats and projects newest first. The host builds it from a listing of the sessions folder (listSessions);
+// project), chats and projects by their latest user message, newest first. The host builds it from a listing of the sessions folder (listSessions);
 // after a run settles it re-indexes only that chat's file and every client patches its list with it
 // (`session.indexed`, patchProjects).
 import { projectOf } from "./board";
@@ -10,13 +10,13 @@ export function groupSessions(summaries: Iterable<SessionSummary | undefined>): 
   for (const summary of summaries) {
     if (!summary) continue;
     const cwd = projectOf(summary.cwd);
-    const group = groups.get(cwd) ?? { cwd, modifiedAt: 0, sessions: [] };
+    const group = groups.get(cwd) ?? { cwd, promptedAt: 0, sessions: [] };
     group.sessions.push(summary);
-    group.modifiedAt = Math.max(group.modifiedAt, summary.modifiedAt);
+    group.promptedAt = Math.max(group.promptedAt, summary.promptedAt);
     groups.set(cwd, group);
   }
-  for (const group of groups.values()) group.sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
-  return [...groups.values()].sort((a, b) => b.modifiedAt - a.modifiedAt);
+  for (const group of groups.values()) group.sessions.sort((a, b) => b.promptedAt - a.promptedAt);
+  return [...groups.values()].sort((a, b) => b.promptedAt - a.promptedAt);
 }
 
 /**
@@ -31,5 +31,5 @@ export function patchProjects(projects: ProjectGroup[], path: string, summary: S
 }
 
 function sameSummary(a: SessionSummary, b: SessionSummary): boolean {
-  return a.id === b.id && a.cwd === b.cwd && a.title === b.title && a.named === b.named && a.createdAt === b.createdAt && a.modifiedAt === b.modifiedAt;
+  return a.id === b.id && a.cwd === b.cwd && a.title === b.title && a.named === b.named && a.createdAt === b.createdAt && a.modifiedAt === b.modifiedAt && a.promptedAt === b.promptedAt;
 }

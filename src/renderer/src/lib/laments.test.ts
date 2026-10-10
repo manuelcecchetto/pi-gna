@@ -11,7 +11,7 @@ const ops: LamentOp[] = [
 ];
 const laments = ops.reduce((current, op, index) => applyLamentOp(current, op, 1000 + index), emptyLaments());
 const projects: ProjectGroup[] = [
-  { cwd: "/sidebar", modifiedAt: 1, sessions: [{ path: "/s/a.jsonl", id: "a", cwd: "/repo", title: "Record a demo", named: true, createdAt: 1, modifiedAt: 1 }] },
+  { cwd: "/sidebar", promptedAt: 1, sessions: [{ path: "/s/a.jsonl", id: "a", cwd: "/repo", title: "Record a demo", named: true, createdAt: 1, modifiedAt: 1, promptedAt: 1 }] },
 ];
 
 describe("laments view", () => {

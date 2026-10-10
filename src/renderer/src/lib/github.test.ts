@@ -36,7 +36,7 @@ const item: GithubItem = {
 
 describe("GitHub view", () => {
   it("offers the current project, then the sidebar's", () => {
-    const projects = [{ cwd: "/repo", modifiedAt: 1, sessions: [] }, { cwd: "/new", modifiedAt: 1, sessions: [] }] as ProjectGroup[];
+    const projects = [{ cwd: "/repo", promptedAt: 1, sessions: [] }, { cwd: "/new", promptedAt: 1, sessions: [] }] as ProjectGroup[];
     expect(githubProjects(projects, "/new")).toEqual([
       { cwd: "/new", open: 0 },
       { cwd: "/repo", open: 0 },
