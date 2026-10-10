@@ -17,12 +17,15 @@ import { PluginsSection } from "./Plugins";
 import { ProvidersSection } from "./Providers";
 import { openSetup } from "./Setup";
 import { RemoteSection } from "./Remote";
+import { deferred } from "../lib/deferred";
 import { ThemeEditor } from "./ThemeSettings";
 import { Button, Card, Choice, ModelChoice, NumberField, Row, Segmented } from "./SettingsControls";
 import { SECTIONS, type SectionInfo } from "./SettingsNav";
 import { COLLAPSED_INSET } from "./Sidebar";
 
 // ── The page ─────────────────────────────────────────────────────────────────
+
+const UsageSection = deferred(() => import("./Usage").then((m) => m.UsageSection));
 
 export function SettingsPage({ page }: { page: PageState }) {
   const inset = useApp((state) => state.sidebar.collapsed);
@@ -38,7 +41,7 @@ export function SettingsPage({ page }: { page: PageState }) {
         <span className="text-[13.5px] font-medium text-fg">{section.label}</span>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-6 pb-12 [scrollbar-gutter:stable]">
-        <div key={section.id} className="mx-auto flex max-w-2xl flex-col gap-7">
+        <div key={section.id} className={`mx-auto flex flex-col gap-7 ${section.wide ? "max-w-5xl" : "max-w-2xl"}`}>
           <div>
             <h1 className="text-[18px] font-semibold tracking-tight text-fg">{section.label}</h1>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{section.about}</p>
@@ -61,6 +64,8 @@ export function SettingsPage({ page }: { page: PageState }) {
             <FeaturesSection />
           ) : section.id === "remote" ? (
             <RemoteSection />
+          ) : section.id === "usage" ? (
+            <UsageSection />
           ) : section.id === "about" ? (
             <AboutSection />
           ) : (

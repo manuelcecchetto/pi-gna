@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseAnsi, sameStyle, stripAnsi, styleAfter } from "./ansi";
-import { formatCompact, formatStamp, formatTokens } from "./format";
+import { formatBytes, formatCompact, formatStamp, formatTokens } from "./format";
 import { type LexedMarkdown, lexMarkdown, markdownBlockLines, markdownBlockToHtml, markdownToHtml, VISUAL_MAX_BYTES } from "./markdown";
 import { applyQueueOp } from "../../../shared/queue";
 import { ATP_DETAIL, clampPanel, clampSidebarWidth, sidebarDrag } from "./layout";
@@ -335,6 +335,10 @@ describe("context meter", () => {
     expect(cacheHitRate({ input: 0, cacheRead: 0, cacheWrite: 0 })).toBeNull();
     expect(cacheHitRate({ input: 1000, cacheRead: 0, cacheWrite: 0 })).toBe(0);
     expect([formatTokens(684), formatTokens(569_362), formatTokens(1_000_000), formatTokens(124_707_648)]).toEqual(["684", "569k", "1M", "124.7M"]);
+  });
+
+  it("formats byte counts", () => {
+    expect([0, 512, 1500, 142_000_000, 2.68e9].map(formatBytes)).toEqual(["0 B", "512 B", "1.5 KB", "142 MB", "2.7 GB"]);
   });
 
   it("formats chart numbers compactly", () => {

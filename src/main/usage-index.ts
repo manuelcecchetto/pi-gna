@@ -23,6 +23,7 @@ export interface IndexProgress {
   total: number;
   /** Bytes of the files done so far, unchanged ones included. */
   bytes: number;
+  totalBytes: number;
 }
 
 export interface UsageIndexOptions {
@@ -138,10 +139,11 @@ export class UsageIndex {
 
     let done = 0;
     let bytes = 0;
+    const totalBytes = found.reduce((sum, file) => sum + file.size, 0);
     const finish = (file: Found) => {
       done++;
       bytes += file.size;
-      onProgress?.({ done, total: found.length, bytes });
+      onProgress?.({ done, total: found.length, bytes, totalBytes });
     };
     const stale: Found[] = [];
     for (const file of found) {

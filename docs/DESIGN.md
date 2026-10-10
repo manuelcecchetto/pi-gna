@@ -1022,8 +1022,9 @@ Files (the node that builds each one is in brackets; the shapes are in `src/shar
 - `src/main/usage-index.ts` and `usage-worker.ts`: scan, cache, incremental rebuild in a worker thread, `usage.progress` [T05].
 - `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, from T07, the rest; pure, no I/O [T06, T07].
 - `scripts/usage-crosscheck.mjs` (naive reader and diff) and `scripts/usage-crosscheck-real.test.mjs` (the real index and report over the same snapshot; skipped unless `USAGE_CROSSCHECK_WORK` is set): the independent cross-check [T09].
-- Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check) [T08]. Renderer: `UsagePage.tsx` (lazy chunk), `UsageCharts.tsx` (SVG
-  primitives), panels [T10 to T14]. Phone: a compact section [T16].
+- Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check) [T08]. Renderer: `Usage.tsx` (the section: filters, report, states; a lazy chunk
+  from Settings), `UsageOverview.tsx` ... `UsageInsights.tsx` (one file per panel), `Charts.tsx` (SVG primitives) [T10 to T14].
+  Phone: a compact section [T16].
 
 ### Sources and surfaces
 
@@ -1172,7 +1173,7 @@ above 272k; zai `glm-5.2` 1.4 / 4.4 / 0.26 / 0.
   1,685 files, 4 workers): cold scan 2.5 s; warm 30-day pigna report 76 ms and 28.6 KB; all-time report 64 ms and 52 KB.
 - `meta.files` is the session files found on disk (both roots); `meta.indexedFiles` is the ones the report's source covers, so
   for `pigna` it is lower than `files` even when everything is indexed.
-- `usage.progress` event (`UsageProgress`): `scan` while listing, `index` with done/total, `done`. At most every 250 ms.
+- `usage.progress` event (`UsageProgress`): `scan` while listing, `index` with done/total and bytes/totalBytes, `done`. At most every 250 ms.
 - Ranges: `7d`, `14d`, `30d`, `90d` are the last N local days from the start of that day; `all` is from the first bucket;
   `{ from, to }` in epoch ms for anything else.
 - Local time is applied at query time: each hour bucket becomes a day, weekday and hour in `timeZone` (`Intl.DateTimeFormat`,
@@ -1207,6 +1208,11 @@ Charts (`components/Charts.tsx`, pure scales in `chart-scale.ts`) are hand-writt
 `--chart-1` to `--chart-8` in styles.css derive from the palette's accent, ok, warn, secondary and bad, so a project theme recolours them.
 `colorScale(keys)` gives the keys of one chart distinct colours and keeps each key's colour while its chart keeps its neighbours. Interactive charts
 (stacked bars, heat grids, split bar) show a tooltip on pointer hover and on keyboard focus (arrow keys).
+
+The page (T11): the section uses a wider column than the other Settings sections (`SectionInfo.wide`). Its filters (range,
+source, project) are kept per window in localStorage (`pigna:usage-filters`, `lib/usage-filters.ts`), as the ATP panels are,
+not in the host's ui-state, which every client shares. The project picker reads an unfiltered report, since a scoped one
+lists only its own project; a picked project stays listed even when the range leaves it out.
 
 Definitions:
 
@@ -1253,7 +1259,7 @@ as its own surface; full charts on the phone (T16 shows a compact summary).
 - Cache file: at most 4 MB for the whole history (estimate ~1.5 MB).
 - Incremental: a file is re-read only when its size or mtime changed (as `session-index.ts` does). A chat that settles is
   re-indexed at once (`indexSettled`), so a live chat shows up without a rebuild.
-- Renderer: `UsagePage` is a lazy chunk like the other pages (see Architecture); no chart library.
+- Renderer: `Usage.tsx` is a lazy chunk, loaded when Settings > Usage first renders (see Architecture); no chart library.
 
 ### Verification
 

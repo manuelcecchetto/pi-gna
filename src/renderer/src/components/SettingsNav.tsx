@@ -1,6 +1,6 @@
 // The Settings sections, and the sidebar's list of them while Settings is open (SettingsNav). Apart from the page, so
 // the sidebar and the command palette do not pull the Settings page into the startup bundle (it loads on first use).
-import { ArrowLeft, Blocks, Info, Bot, Cpu, KeyRound, Keyboard, type IconComponent, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight } from "./icons";
+import { ArrowLeft, Blocks, Info, Bot, Cpu, KeyRound, Keyboard, Layers, type IconComponent, Monitor, Palette, Search, Settings2, Smartphone, ToggleRight } from "./icons";
 import { useMemo, useState } from "react";
 import type { SettingsSection } from "../../../shared/settings";
 import { closeSettings, openSettings } from "../state/app";
@@ -16,12 +16,23 @@ export interface SectionInfo {
   about: string;
   /** What the search finds it by, besides its label. */
   keywords: string;
+  /** Wider than the other sections' column, for charts and tables. */
+  wide?: boolean;
 }
 
 export const SECTIONS: SectionInfo[] = [
   { id: "general", label: "General", icon: Settings2, group: "pi-gna", about: "pi-gna's version, and where pi keeps the settings this page changes.", keywords: "version update settings.json file folder setup onboarding install pi welcome first run" },
   { id: "appearance", label: "Appearance", icon: Palette, group: "pi-gna", about: "How pi-gna looks.", keywords: "theme dark light system mode color colour palette primary secondary accent font typeface size wallpaper background backdrop empty state image logo project custom loop cycle rotate shuffle" },
   { id: "shortcuts", label: "Keyboard shortcuts", icon: Keyboard, group: "pi-gna", about: "Hold ⌘ anywhere to see ⌘1–⌘9 on the chats in the sidebar.", keywords: "keys hotkeys keyboard command" },
+  {
+    id: "usage",
+    label: "Usage",
+    icon: Layers,
+    group: "pi-gna",
+    about: "How pi and pi-gna were used on this Mac: tokens, estimated cost, models, projects, tools and agent health. Read from pi's session files; nothing leaves this Mac.",
+    keywords: "tokens cost usage analytics stats models spend",
+    wide: true,
+  },
   { id: "about", label: "About", icon: Info, group: "pi-gna", about: "Which pi-gna this is, where it comes from, and where to report a problem.", keywords: "version build electron chromium node license mit credits author github source code issues bug report release notes changelog twemoji" },
   {
     id: "providers",

@@ -60,6 +60,19 @@ export function baseName(path: string): string {
   return path.split("/").filter(Boolean).at(-1) ?? path;
 }
 
+/** "512 B", "1.5 KB", "142 MB", "2.7 GB": decimal units, two significant digits below 10. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1000) return `${Math.round(bytes)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1000;
+  let unit = 0;
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  return `${digits(value)} ${units[unit]}`;
+}
+
 /** Codex-style stamps: "5:22 PM" today, "Yesterday 5:22 PM", "Thursday 5:23 PM" this week, else "Sep 12, 5:22 PM". */
 export function formatStamp(timestamp: number, now = Date.now()): string {
   const date = new Date(timestamp);

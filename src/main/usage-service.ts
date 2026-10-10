@@ -66,7 +66,9 @@ export class UsageService {
     this.publish({ phase: "scan", done: 0, total: 0 }, true);
     try {
       await this.options.piDirs;
-      await this.index.ensureIndexed((progress) => this.publish({ phase: "index", done: progress.done, total: progress.total }));
+      await this.index.ensureIndexed((progress) =>
+        this.publish({ phase: "index", done: progress.done, total: progress.total, bytes: progress.bytes, totalBytes: progress.totalBytes }),
+      );
     } finally {
       const total = this.index.discovered();
       this.publish({ phase: "done", done: total, total }, true);

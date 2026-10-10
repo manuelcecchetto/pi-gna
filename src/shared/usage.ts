@@ -446,4 +446,7 @@ export interface UsageProgress {
   phase: "scan" | "index" | "done";
   done: number;
   total: number;
+  /** The "index" phase only: bytes of the files done so far, and of every file found. */
+  bytes?: number;
+  totalBytes?: number;
 }
