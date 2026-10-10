@@ -17,6 +17,16 @@ body,
   overscroll-behavior: none;
 }
 
+/* Disable page pinch only in the installed iOS app. Custom pinch surfaces keep
+   touch-action: none and handle their own pointer gestures. */
+@media (display-mode: standalone) {
+  html.ios,
+  html.ios body,
+  html.ios #root {
+    touch-action: pan-x pan-y;
+  }
+}
+
 /* In the base layer so utilities (px-6) on the same element still win over the insets' shorthand. */
 @layer base {
   .safe-area {
