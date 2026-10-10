@@ -75,6 +75,9 @@ export interface Settings {
   /** Yolo: every chat's approvals (browser origins, Computer Use apps, extensions' confirms) are allowed without a
    * card, for this run only. Read at each approval, so live chats follow it. Only the desktop may change it. */
   yolo: boolean;
+  /** Beta: chats started while it is on keep running through a restart (Restart now after an update) and the next
+   * pi-gna takes them over. Read when a chat starts (macOS and Linux). */
+  keepChatsOnRestart: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
   remote: RemoteSettings;
@@ -91,6 +94,7 @@ export type SettingsOp =
   | { type: "wallpaperLoop"; loop: boolean }
   | { type: "visuals"; on: boolean }
   | { type: "yolo"; on: boolean }
+  | { type: "keepChatsOnRestart"; on: boolean }
   | { type: "remoteEnabled"; on: boolean }
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
@@ -115,6 +119,7 @@ export const emptySettings = (): Settings => ({
   wallpaperLoop: false,
   visuals: false,
   yolo: false,
+  keepChatsOnRestart: false,
   models: {},
   remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
   openAtLogin: false,
@@ -184,6 +189,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn yolo ${String(op.on)}`);
       return settings.yolo === op.on ? settings : { ...settings, yolo: op.on };
     }
+    case "keepChatsOnRestart": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn keeping chats on restart ${String(op.on)}`);
+      return settings.keepChatsOnRestart === op.on ? settings : { ...settings, keepChatsOnRestart: op.on };
+    }
     case "remoteEnabled": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
       return settings.remote.enabled === op.on ? settings : { ...settings, remote: { ...settings.remote, enabled: op.on } };
@@ -248,6 +257,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.visuals !== undefined) dropped++;
   if (typeof file.yolo === "boolean") settings.yolo = file.yolo;
   else if (file.yolo !== undefined) dropped++;
+  if (typeof file.keepChatsOnRestart === "boolean") settings.keepChatsOnRestart = file.keepChatsOnRestart;
+  else if (file.keepChatsOnRestart !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
   if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;

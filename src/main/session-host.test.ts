@@ -5,7 +5,9 @@ vi.mock("electron", () => ({ app: { getAppPath: () => "/app" } }));
 const fake = vi.hoisted(() => ({
   send: (async (_command: unknown, _pi: unknown) => undefined) as (command: unknown, pi: unknown) => Promise<unknown>,
   responded: [] as unknown[],
-  pis: [] as { opts: { sessionPath?: string }; handlers: { onRecords(r: unknown[]): void; onExit(e: unknown): void }; closed: boolean; close(): Promise<void> }[],
+  pis: [] as { opts: { sessionPath?: string }; handlers: { onRecords(r: unknown[]): void; onExit(e: unknown): void }; closed: boolean; close(): Promise<void>; io?: unknown }[],
+  /** Whether a handed-over pi is still alive for `attach`. */
+  alive: true,
 }));
 vi.mock("./pi-process", () => ({
   PiProcess: class {
@@ -18,6 +20,16 @@ vi.mock("./pi-process", () => ({
     async close() {
       this.closed = true;
       this.handlers.onExit({ code: 0, signal: null, stderrTail: "" });
+    }
+    async detach() {
+      if (!(this.opts as { detachable?: boolean }).detachable) return undefined;
+      return { dir: `/io/${fake.pis.indexOf(this)}`, pid: 100 + fake.pis.indexOf(this), partial: "" };
+    }
+    static attach(io: unknown, opts: { sessionPath?: string }, handlers: { onRecords(r: unknown[]): void; onExit(e: unknown): void }) {
+      if (!fake.alive) return undefined;
+      const pi = new this(opts, handlers);
+      Object.assign(pi, { io });
+      return pi;
     }
   },
 }));
@@ -33,8 +45,8 @@ import type { Item, SessionState } from "../shared/session-state";
 import type { AgentBridge } from "./bridge";
 import { type SessionFeatures, SessionHost } from "./session-host";
 
-const bridge = { url: "http://x", start: async () => {}, register: vi.fn((_handle: string) => "token"), unregister: () => {}, rename: vi.fn() };
-const base: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false };
+const bridge = { url: "http://x", start: async () => {}, register: vi.fn((_handle: string) => "token"), unregister: () => {}, rename: vi.fn(), tokenOf: () => "token", adopt: vi.fn() };
+const base: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false, keepOnRestart: false };
 const argsFor = (features: SessionFeatures, atp?: Parameters<SessionHost["piArgs"]>[2]) =>
   new SessionHost(() => {}, bridge as unknown as AgentBridge, "/atp").piArgs("abcdef", undefined, atp, features).args;
 
@@ -911,6 +923,78 @@ describe("session registry", () => {
 });
 
 // ── Command semantics ────────────────────────────────────────────────────────
+
+describe("restart handover", () => {
+  const rec = (type: string, extra: object = {}) => ({ type, ...extra });
+  const A = { clientId: "a", actor: "desktop" } as const;
+  const host = (keepOnRestart = true) => new SessionHost(() => 1, bridge as unknown as AgentBridge, "/atp", async () => ({ ...base, keepOnRestart }));
+  const confirm = rec("extension_ui_request", { id: "d1", method: "confirm", title: "Run rm?", timeout: 60_000 });
+
+  it("hands a running chat over with its state, and the next host takes it over mid-turn", async () => {
+    fake.pis.length = 0;
+    fake.alive = true;
+    const before = host();
+    const { handle } = await before.open({ cwd: "/tmp", sessionPath: "/tmp/run.jsonl" }, { client: A });
+    fake.pis[0]!.handlers.onRecords([
+      rec("agent_start"),
+      rec("message_end", { message: { role: "user", content: "go", timestamp: 1 } }),
+      rec("message_start", { message: { role: "assistant", content: [], timestamp: 2 } }),
+      confirm,
+    ]);
+    const chats = await before.handOff();
+    expect(chats).toHaveLength(1);
+    expect(chats[0]).toMatchObject({ handle, cwd: "/tmp", token: "token", io: { dir: "/io/0", pid: 100 } });
+    expect(fake.pis[0]!.closed).toBe(false);
+    expect(fake.pis[0]!.opts).toMatchObject({ detachable: true });
+
+    const after = host();
+    expect(after.restore(JSON.parse(JSON.stringify(chats)))).toEqual([handle]);
+    expect(bridge.adopt).toHaveBeenCalledWith("token", handle);
+    expect(after.running).toBe(1);
+    const state = after.stateOf(handle)!;
+    expect(state).toMatchObject({ running: true, sessionPath: "/tmp/run.jsonl" });
+    expect(state.dialogs.map((dialog) => dialog.id)).toEqual(["d1"]);
+    // Opening its file joins the chat that came back, not a second pi.
+    expect(await after.open({ cwd: "/tmp", sessionPath: "/tmp/run.jsonl" }, { client: A })).toEqual({ handle, reused: true });
+    expect(fake.pis).toHaveLength(2);
+    // The turn goes on where the last host stopped reading.
+    after.respondDialog(handle, { type: "extension_ui_response", id: "d1", confirmed: true });
+    fake.pis[1]!.handlers.onRecords([
+      rec("message_end", { message: { role: "assistant", content: [{ type: "text", text: "done" }], stopReason: "stop", timestamp: 2 } }),
+      rec("agent_end", { messages: [] }),
+      rec("agent_settled"),
+    ]);
+    expect(after.running).toBe(0);
+    expect(after.stateOf(handle)!.items.map((item) => item.kind)).toEqual(["user", "assistant"]);
+    expect(fake.responded).toContainEqual({ type: "extension_ui_response", id: "d1", confirmed: true });
+  });
+
+  it("stops a chat a host-side owner keeps, and leaves out a pi that ended during the restart", async () => {
+    fake.pis.length = 0;
+    const before = host();
+    await before.open({ cwd: "/tmp", sessionPath: "/tmp/task.jsonl" }, { hold: "task:1" });
+    const { handle } = await before.open({ cwd: "/tmp", sessionPath: "/tmp/mine.jsonl" }, { client: A });
+    const chats = await before.handOff();
+    expect(chats.map((chat) => chat.handle)).toEqual([handle]);
+    expect(fake.pis.map((pi) => pi.closed)).toEqual([true, false]);
+    fake.alive = false;
+    try {
+      const after = host();
+      expect(after.restore(chats)).toEqual([]);
+      expect(after.stateOf(handle)).toBeUndefined();
+    } finally {
+      fake.alive = true;
+    }
+  });
+
+  it("stops the chats started with the Beta setting off, as on quit", async () => {
+    fake.pis.length = 0;
+    const before = host(false);
+    await before.open({ cwd: "/tmp", sessionPath: "/tmp/off.jsonl" }, { client: A });
+    expect(await before.handOff()).toEqual([]);
+    expect(fake.pis[0]!.closed).toBe(true);
+  });
+});
 
 describe("command semantics", () => {
   const request = { cwd: "/tmp", sessionPath: "/tmp/c.jsonl" };

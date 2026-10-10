@@ -812,6 +812,22 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   setting. Stopping is a `chat.close` by the host, so clients leave the chat and the sidebar row opens it again from
   its session file; the composer's unsent text is kept by session file too, and the phone's chat screen reopens the
   file when its handle is gone (Reopen, or a re-attach after a reconnect).
+- **A restart keeps the chats running** (Agent > Beta > Keep chats running on restart, `keepChatsOnRestart`, off by
+  default; read when a chat starts, so it reaches `SessionFeatures.keepOnRestart` and `PiProcess`'s `detachable`). Off,
+  pi is a stdio child as before and a restart stops it. On, on macOS and Linux each pi talks through two FIFOs in its
+  own folder under `<userData>/pi-io/` (`PiProcess`), opened read-write by pi itself, so its stdin never ends and its stdout never breaks
+  when pi-gna goes away; it is spawned detached. An ordinary quit stops every pi (SIGTERM: a FIFO never reaches EOF).
+  Restart (Restart now after an update, `host.relaunch`) with the setting on hands the chats over instead (`SessionHost.handOff`): each pi
+  is cut at a record boundary (`PiProcess.detach` drains what was read and keeps the bytes of a half-read line), and
+  the host's state for the chat, its FIFO folder, pid and bridge token go to `<userData>/handoff.json`
+  (`pi-handoff.ts`). The next launch takes them over before the window opens (`SessionHost.restore`,
+  `PiProcess.attach`) and reads on where the last one stopped, so a running turn goes on and nothing repeats; the
+  bridge listens on its old port, since pi keeps calling it there. Chats a host-side owner holds (an ATP run, a card's
+  task) and the spare stop as on quit, and main's own approval cards end (their bridge request dies with the app).
+  A taken-over pi is not pi-gna's child: its exit is seen by polling its pid (macOS reports no EOF on a FIFO), and
+  stderr is a file read every second. At launch, FIFO folders nobody took over (a crash) have their pi stopped.
+  A handover written by another `HANDOFF_VERSION` is not read: bump it when `SessionState` or `PiIo` change shape.
+  Chats started while the setting was off stop as on quit. Windows has no FIFOs: the row is hidden there.
 - **A spare pi for the next New chat.** pi takes about a second to boot, so 2 s after a chat a client opened is ready
   (not a host-held or ATP chat), `SessionHost.spawnSpare` starts one more pi in that chat's folder, unless the 1-minute
   load average is at the core count or the idle chats fill the 8 above (the spare counts as one, and goes first). There
@@ -953,6 +969,8 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
 - **Inline visuals** (Agent > Beta, `visuals`, off by default): read when a chat starts, like the features. It loads
   `resources/visual-extension.ts` into that chat (`SessionFeatures.visuals`), which adds `resources/pigna-visual-prompt.md`
   to the prompt's project context beside the AGENTS.md files; the renderer reads the same setting live, so flipping it renders or hides visuals in existing transcripts at once. See Visuals.
+- **Keep chats running on restart** (Agent > Beta, `keepChatsOnRestart`, off by default, hidden on Windows): read when a
+  chat starts (`SessionFeatures.keepOnRestart`). See "A restart keeps the chats running".
 - **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global
   `settings.json` (`$PI_CODING_AGENT_DIR`, else `~/.pi/agent`). `writePiSettings` changes only those keys, refuses a
   file that is not a JSON object, takes pi's own proper-lockfile lock (a `<file>.lock` folder) and writes through a

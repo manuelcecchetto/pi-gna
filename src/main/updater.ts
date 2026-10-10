@@ -302,8 +302,12 @@ export class Updater {
     return { app: staged, exe };
   }
 
+  /** Set by `restart`: the quit under way starts pi-gna again, so the chats are handed over, not stopped. */
+  restarting = false;
+
   /** Quit and start again: with a staged update, as the new version; otherwise the build on disk. */
   restart(): void {
+    this.restarting = true;
     if (this.staged) this.relaunch = true;
     else app.relaunch();
     app.quit();

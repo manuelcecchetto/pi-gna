@@ -19,7 +19,7 @@ import { COALESCE_MS, coalesce, isDelta } from "./coalesce";
 import { KeyedMutex } from "./command-layer";
 import { log } from "./log";
 import { evictPayloads, PayloadFiles, restorePayloads } from "./payloads";
-import { type PiExit, PiProcess, type PiProcessHandlers } from "./pi-process";
+import { type PiExit, type PiIo, PiProcess, type PiProcessHandlers } from "./pi-process";
 import { piInputs, projectTrust } from "./pi-settings";
 import { onDisk } from "./resources";
 import { MIN_INLINE_CHARS } from "./remote-images";
@@ -48,8 +48,26 @@ const SPARE_KEPT_MS = 10 * 60_000;
 const EXCLUDED_TOOLS = process.env.PIGNA_EXCLUDE_TOOLS ?? "run,snapshot,screenshot";
 
 /** What is on when a chat starts: the Settings page's features, and Computer Use. */
-export type SessionFeatures = Record<Feature | "computer" | "visuals", boolean>;
-const NONE: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false };
+export type SessionFeatures = Record<Feature | "computer" | "visuals" | "keepOnRestart", boolean>;
+const NONE: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false, keepOnRestart: false };
+
+/**
+ * A chat the last pi-gna handed over at its restart (`handOff`), for this one to take over (`restore`): its pi and the
+ * state the host had built, as it was after the last record read. The state crosses versions: a change to
+ * `SessionState` that an older pi-gna's state would not satisfy bumps HANDOFF_VERSION (`pi-handoff.ts`).
+ */
+export interface HandedOffChat {
+  handle: string;
+  cwd: string;
+  /** Its pi's bridge token, which pi keeps sending. */
+  token?: string;
+  io: PiIo;
+  state: SessionState;
+  settled?: Live["settled"];
+  /** Its session files, oldest first (`PayloadFiles`). */
+  payloads: string[];
+  evictedTo: number;
+}
 
 /** Events for one chat, as they go to the event hub (which stamps them with a `seq`). */
 export interface ChatBatch {
@@ -305,31 +323,14 @@ export class SessionHost {
     if (raced && this.live.has(raced)) return this.join(raced, lease, page);
     // pi boots (seconds) while the session file is read below; a failed read stops it without a trace.
     let abandoned = false;
-    const handlers: PiProcessHandlers = {
-      onRecords: (records) => {
-        if (abandoned) return;
-        const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi, tag, record)) : records;
-        this.push(handle, shown.map((record) => ({ kind: "rpc", record: leanRecord(record) })));
-        if (records.some((record) => record.type === "agent_start")) this.started(handle);
-        if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
-      },
-      onExit: (exit) => {
-        if (abandoned) return;
-        const loading = this.live.get(handle)?.loading;
-        if (loading) {
-          loading.exit = () => this.exited(handle, exit);
-          return;
-        }
-        this.exited(handle, exit);
-      },
-    };
+    const handlers = this.rpcHandlers(handle, tag, () => pi, () => abandoned);
     // A New chat takes the spare pi, booted already, when it was started as this chat's would be.
     const spare = sessionPath || atp ? undefined : await this.takeSpare(cwd, trust, features);
     if (spare) {
       this.bridge.rename(spare.handle, handle);
       log.info(spare.tag, `adopted by ${tag}, warm for ${Math.round((Date.now() - spare.since) / 1000)} s`);
     }
-    const pi = spare?.pi ?? new PiProcess({ cwd, sessionPath, tag, ...this.piArgs(handle, trust, atp, features) }, handlers);
+    const pi = spare?.pi ?? new PiProcess({ cwd, sessionPath, tag, detachable: features.keepOnRestart, ...this.piArgs(handle, trust, atp, features) }, handlers);
     const entries = sessionPath ? readActiveBranch(sessionPath) : Promise.resolve([]);
     const chat: Live = {
       pi,
@@ -391,6 +392,28 @@ export class SessionHost {
   private async trustOf(cwd: string): Promise<boolean | undefined> {
     const project = projectOf(cwd);
     return project === cwd ? undefined : await projectTrust(project);
+  }
+
+  /** What a chat's pi says goes to its state and clients; its exit ends the chat (after its history, while loading). */
+  private rpcHandlers(handle: string, tag: string, pi: () => PiProcess, abandoned = () => false): PiProcessHandlers {
+    return {
+      onRecords: (records) => {
+        if (abandoned()) return;
+        const shown = this.yolo() ? records.filter((record) => !this.autoApprove(pi(), tag, record)) : records;
+        this.push(handle, shown.map((record) => ({ kind: "rpc", record: leanRecord(record) })));
+        if (records.some((record) => record.type === "agent_start")) this.started(handle);
+        if (records.some((record) => record.type === "agent_end" && !record.willRetry)) this.ended(handle);
+      },
+      onExit: (exit) => {
+        if (abandoned()) return;
+        const loading = this.live.get(handle)?.loading;
+        if (loading) {
+          loading.exit = () => this.exited(handle, exit);
+          return;
+        }
+        this.exited(handle, exit);
+      },
+    };
   }
 
   /** Join the chat that has the file open, once its history is in; the file is not read again. */
@@ -757,7 +780,7 @@ export class SessionHost {
     const relay = new Relay((exit) => {
       if (this.spare?.relay === relay) void this.retireSpare(`pi exited (${exit.error ?? exit.signal ?? `code ${exit.code}`})`);
     });
-    const pi = new PiProcess({ cwd, tag, ...this.piArgs(handle, trust, undefined, features) }, relay);
+    const pi = new PiProcess({ cwd, tag, detachable: features.keepOnRestart, ...this.piArgs(handle, trust, undefined, features) }, relay);
     const timer = setTimeout(() => this.spare?.pi === pi && void this.retireSpare(`unused for ${SPARE_KEPT_MS / 60_000} min`), SPARE_KEPT_MS);
     timer.unref?.();
     this.spare = { handle, tag, cwd, trust, features: JSON.stringify(features), inputs, pi, relay, since: Date.now(), timer };
@@ -960,6 +983,84 @@ export class SessionHost {
     this.closing = true;
     clearTimeout(this.spareTimer);
     await Promise.all([this.retireSpare("quit"), ...[...this.live.values()].map((chat) => chat.pi.close())]);
+  }
+
+  /**
+   * pi-gna restarts (an update, Restart): instead of stopping, the chats' pis go on, a running turn too, and the next
+   * pi-gna takes them over (`restore`). A chat a host-side owner keeps (an ATP run, a card's task) stops as on quit:
+   * that owner does not come back. So does one whose pi cannot outlive pi-gna (started with the Beta setting off, or
+   * on Windows), and the spare.
+   */
+  async handOff(): Promise<HandedOffChat[]> {
+    clearInterval(this.idleCheck);
+    this.closing = true;
+    clearTimeout(this.spareTimer);
+    const [, ...chats] = await Promise.all([this.retireSpare("restart"), ...[...this.live].map(([handle, chat]) => this.handOver(handle, chat))]);
+    return chats.filter((chat) => chat !== undefined);
+  }
+
+  private async handOver(handle: string, chat: Live): Promise<HandedOffChat | undefined> {
+    if (chat.loading || chat.holds.size || chat.state.atp || chat.state.phase === "exited") return void (await chat.pi.close());
+    // Main's own choices wait on a bridge request to this pi-gna, which ends with it.
+    for (const [id, choice] of [...this.choices]) {
+      if (choice.handle !== handle) continue;
+      choice.resolve(undefined);
+      this.settleDialog(handle, id, "desktop", "exit");
+    }
+    const token = this.bridge.tokenOf(handle);
+    const io = await chat.pi.detach();
+    if (!io) return void (await chat.pi.close());
+    // The deltas waiting for a frame go into the state that is handed over.
+    this.push(handle, []);
+    for (const timer of chat.dialogs.values()) clearTimeout(timer);
+    const { cwd, state, settled, evictedTo } = chat;
+    return { handle, cwd, token, io, state, settled, payloads: chat.payloads.paths, evictedTo };
+  }
+
+  /**
+   * Take over the chats the last pi-gna handed over (`handOff`), before any client opens a chat: one whose session
+   * file is live must be joined, never opened by a second pi. Returns the handles that came back; a pi that ended
+   * during the restart is left out (its chat opens again from its session file).
+   */
+  restore(chats: HandedOffChat[]): string[] {
+    const back: string[] = [];
+    for (const saved of chats) {
+      const { handle, cwd, state } = saved;
+      if (!HANDLE.test(handle) || this.live.has(handle) || (state.sessionPath && this.byFile.has(state.sessionPath))) continue;
+      const tag = `pi·${handle.slice(0, 4)}`;
+      let pi: PiProcess | undefined;
+      pi = PiProcess.attach(saved.io, { cwd, tag }, this.rpcHandlers(handle, tag, () => pi!));
+      if (!pi) {
+        log.info(tag, `pi ${saved.io.pid} ended during the restart`);
+        continue;
+      }
+      const chat: Live = {
+        pi,
+        cwd,
+        state,
+        seq: 0,
+        clients: new Map(),
+        holds: new Set(),
+        dialogs: new Map(),
+        resolved: new Set(),
+        waiting: [],
+        active: Date.now(),
+        payloads: new PayloadFiles(),
+        evictedTo: saved.evictedTo,
+        ...(saved.settled && { settled: saved.settled }),
+      };
+      for (const path of saved.payloads) chat.payloads.use(path);
+      this.live.set(handle, chat);
+      if (state.sessionPath) this.byFile.set(state.sessionPath, handle);
+      if (saved.token) this.bridge.adopt(saved.token, handle);
+      // pi's dialogs still wait for an answer; their cards time out as pi's own do.
+      for (const dialog of state.dialogs) this.trackDialog(handle, chat, { kind: "rpc", record: dialog });
+      if (state.running) this.started(handle);
+      this.publishGlobal({ kind: "chat.opened", handle, cwd, sessionPath: state.sessionPath });
+      this.touch(handle);
+      back.push(handle);
+    }
+    return back;
   }
 }
 

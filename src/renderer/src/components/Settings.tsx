@@ -383,6 +383,7 @@ function AgentSection({ pi }: { pi: Pi }) {
   const reset = (...keys: PiKey[]) => (keys.some((key) => pi.isSet(key)) ? () => pi.set(Object.fromEntries(keys.map((key) => [key, null]))) : undefined);
   const visuals = useApp((state) => state.settings.visuals);
   const yolo = useApp((state) => state.settings.yolo);
+  const keepChats = useApp((state) => state.settings.keepChatsOnRestart);
   const toggle = (key: PiKey) => <Switch on={pi.value(key) === true} onChange={(on) => pi.set({ [key]: on })} />;
   const choice = (key: PiKey, labels: Record<string, string>) => {
     const setting = PI_SETTINGS[key];
@@ -407,6 +408,15 @@ function AgentSection({ pi }: { pi: Pi }) {
         <Row title="Inline visuals" about="Agents may add small interactive HTML visuals (diagrams, comparisons, timelines) to replies. Renders sandboxed, offline. Applies to chats you open afterwards.">
           <Switch on={visuals} onChange={(on) => void applySettings({ type: "visuals", on })} />
         </Row>
+        {/* pi talks through FIFOs to outlive pi-gna: none on Windows. */}
+        {!navigator.userAgent.includes("Windows") && (
+          <Row
+            title="Keep chats running on restart"
+            about="Restart now (after an update) hands running chats to the new pi-gna instead of stopping them: a reply in progress goes on. Quitting still stops them. Applies to chats you open afterwards."
+          >
+            <Switch on={keepChats} onChange={(on) => void applySettings({ type: "keepChatsOnRestart", on })} />
+          </Row>
+        )}
       </Card>
       <Card title="Messages while pi works">
         <Row title="Steering" about="Messages you send while pi works, delivered after its current step." onReset={reset("steeringMode")}>

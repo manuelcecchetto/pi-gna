@@ -34,6 +34,9 @@ describe("applySettingsOp", () => {
     expect(applySettingsOp(start, { type: "yolo", on: false })).toBe(start);
     expect(applySettingsOp(start, { type: "yolo", on: true }).yolo).toBe(true);
     expect(() => applySettingsOp(start, { type: "yolo", on: "yes" } as never)).toThrow(SettingsError);
+    expect(start.keepChatsOnRestart).toBe(false);
+    expect(applySettingsOp(start, { type: "keepChatsOnRestart", on: true }).keepChatsOnRestart).toBe(true);
+    expect(parseSettings({ version: 1, keepChatsOnRestart: true }).settings.keepChatsOnRestart).toBe(true);
   });
 
   it("picks the option yolo allows with: one-time grants before lasting ones, none without an allowing option", () => {

@@ -69,6 +69,8 @@ import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
 import { atMostEvery } from "./store";
+import { type Handoff, sweepPiIo, takeHandoff, writeHandoff } from "./pi-handoff";
+import { CAN_DETACH, piIo } from "./pi-process";
 import { Updater } from "./updater";
 import { initialWindowState, readWindowState, trackWindowState } from "./window-state";
 
@@ -89,6 +91,9 @@ if (process.platform === "darwin") app.commandLine.appendSwitch("use-mock-keycha
 const background = process.env.PIGNA_BACKGROUND === "1";
 if (background && process.platform === "darwin") app.dock?.hide();
 const logFile = join(app.getPath("logs"), "main.log");
+// The pis' FIFO folders, and the chats a restart hands over to the next launch (pi-handoff.ts): per profile.
+piIo.root = join(app.getPath("userData"), "pi-io");
+const handoffFile = join(app.getPath("userData"), "handoff.json");
 mkdirSync(app.getPath("logs"), { recursive: true });
 logToFile(logFile);
 
@@ -206,6 +211,7 @@ const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`,
   // The Computer Use helper is a macOS app.
   computer: process.platform === "darwin" && (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
+  keepOnRestart: (await settings.get()).keepChatsOnRestart,
 }), () => current.yolo);
 host.onGlobal(publish);
 // A settled run changed its session file (its time, maybe its title): re-index that one file and upsert it into every
@@ -689,6 +695,13 @@ function init(): void {
   // Set before ready so Electron never builds its default menu (performance checklist).
   buildMenu();
   const shellEnv = app.isPackaged && !fromTerminal ? loadShellEnv(join(app.getPath("userData"), "shell-dirs.json")) : LAUNCH_ENV;
+  // The chats a restart handed over, before any client opens one; the pis nobody takes over stop.
+  const handoff: Handoff | undefined = CAN_DETACH ? takeHandoff(handoffFile) : undefined;
+  const restored = new Set(handoff ? host.restore(handoff.chats) : []);
+  if (handoff) log.info("pigna", `took ${restored.size} of ${handoff.chats.length} handed-over chat(s) over`);
+  sweepPiIo(piIo.root, new Set(handoff?.chats.flatMap((chat) => (restored.has(chat.handle) ? [chat.io.dir] : []))));
+  // Their pis call the bridge where it was.
+  if (handoff) bridge.prefer(handoff.bridgePort);
   // Listens while Electron gets ready; nothing waits for it but the first pi spawn (SessionHost).
   bridge.start().catch((error: Error) => log.error("bridge", `could not start the agent bridge: ${error.message}`));
 
@@ -701,10 +714,14 @@ function init(): void {
 
   let forced = false;
   app.on("before-quit", (event) => {
-    if (!quitting && !forced && !confirmQuit()) {
+    // A restart keeps the chats running (`handOff`): nothing is cut off to ask about.
+    // Beta: only its chats can be (each says so itself); the rest stop as on quit.
+    const handingOff = CAN_DETACH && current.keepChatsOnRestart && updater?.restarting === true;
+    if (!quitting && !forced && !handingOff && !confirmQuit()) {
       event.preventDefault();
       return;
     }
+    const bridgePort = bridge.port;
     bridge.stop();
     auth.close();
     plugins.close();
@@ -712,10 +729,11 @@ function init(): void {
     event.preventDefault();
     quitting = true;
     if (keepAwakeId !== undefined) powerSaveBlocker.stop(keepAwakeId);
-    if (host.size) log.info("pigna", `stopping ${host.size} pi session(s)`);
+    if (host.size) log.info("pigna", `${handingOff ? "handing over" : "stopping"} ${host.size} pi session(s)`);
+    const pis = handingOff ? host.handOff().then((chats) => writeHandoff(handoffFile, chats, bridgePort)) : host.closeAll();
     // Phones learn the Mac is quitting (best effort, bounded) while the network is still up.
     const quitPush = push && current.remote.enabled ? Promise.race([push.notifyQuit(), new Promise((resolve) => setTimeout(resolve, 3000))]) : undefined;
-    void Promise.allSettled([quitPush, remoteHost?.stop(), host.closeAll(), devices.flushed(), board.flushed(), laments.flushed(), themes.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    void Promise.allSettled([quitPush, remoteHost?.stop(), pis, devices.flushed(), board.flushed(), laments.flushed(), themes.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => {
     if (!hidesOnClose(current)) app.quit();
