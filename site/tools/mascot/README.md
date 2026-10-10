@@ -35,5 +35,12 @@ The app icon (`resources/icon.svg`, see docs/DESIGN.md, Brand) reuses this pipel
 finger strokes) came back from `gpt-image-2.5-sunburst` with `peek.webp` and `hero-full.webp` as references, then
 went through `clean.py`. Full-figure poses do not survive icon sizes: by 32 px only the face and its colors read.
 
+The DMG window background (`build/dmg-art.webp`) came the same way, at 1088x768 with a layout guide as the first
+reference: flat boxes over the two Finder icon slots and their labels (kept empty), the space between them (the
+arrow) and a bottom band (the lettered "Drag pi-gna into Applications"), with "never draw the boxes" in the prompt.
+A first round of busy, many-Pigna scenes ignored the empty zones; capping it at 2 to 4 Pignas, asking for calm
+negative space and measuring each slot's luminance spread (about 1 when it is empty) fixed that. Check the
+lettering's spelling and its legibility at 1x.
+
 Rejected along the way: a detective pose whose chin hand grew extra fingers and stray lines (regenerated with the
 magnifier held out and "avoid: hand on chin, extra fingers").

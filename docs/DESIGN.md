@@ -1377,7 +1377,7 @@ logo in its coral/blue/yellow: they show pi working.
 Brand: **pi-gna** (Italian *pigna*, the 🤌 "mano a pigna" gesture). The logo is 🤌i: Twemoji's pinched fingers
 (CC-BY 4.0, credited in the README and About panel) mirrored and turned 90° (`matrix(0 -1 -1 0 36 36)` in its
 36-unit box) so the hand reads as a P, then a white "i". Written out it is always `pi-gna` (package, bundle,
-repo, docs); the 🤌i mark is visual only (sidebar header, website, DMG background). `assets/pigna-hand.svg` is
+repo, docs); the 🤌i mark is visual only (sidebar header, website). `assets/pigna-hand.svg` is
 its hand cropped for the UI. The app icon is Pigna, the mascot, not the mark: `resources/icon.svg` is its source, a
 night-blue tile with stars and three gold sparkles, Pigna peeking over a dark ledge with the hands gripping it.
 The sky, sparkles and ledge are vector; Pigna is an embedded lossless WebP (generated and cleaned like the site's
@@ -1385,7 +1385,9 @@ mascot art, `site/tools/mascot/`) cut along the ledge top except where the hands
 ledge. `pnpm icon` rasterizes it to `resources/icon.png` (dev Dock icon) and `build/icon.icns`, then
 `pnpm icon:mobile` renders the tile full bleed (square, opaque) into the phone's icons, since iOS and Android
 round them and iOS fills transparency. The SVG is about 480 KB, so `electron-builder.yml` leaves it
-out of the app, which uses only the rasters.
+out of the app, which uses only the rasters. The DMG window background is Pigna too: `build/dmg-art.webp` (two
+Pignas, an arrow between the icon slots, the lettered instruction), which `pnpm dmg-background` renders to
+`build/dmg-background.png` and @2x.
 
 Icons: pi-gna draws its own set, `components/icons.tsx` (renderer and mobile import it; no icon library). One
 style: 24-unit grid, 2px round strokes and joins, 3-4 unit corner radii, the fewest strokes that still read at
