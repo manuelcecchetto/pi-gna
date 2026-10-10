@@ -50,6 +50,8 @@ resources/browser-extension.ts   pi extension loaded with `-e` into every pi-gna
 resources/computer-extension.ts  the same for the computer_* tools, only while Computer Use is enabled
 resources/kanban-extension.ts    the same for the kanban_* tools
 resources/lament-extension.ts    the same for the lament tool
+resources/fast-extension.ts      the same for /fast: OpenAI priority processing (`service_tier`) on GPT models, per chat; the
+                                 composers' zap reads its `fast` status and sends the command by the name pi gave it (src/shared/fast.ts)
 resources/atp-extension.ts       ATP orchestrator chats only: atp_pause, atp_resume
 resources/atp/                   the ATP roles' system prompts and the vendored ATP skills (architects, librarian CLI)
 resources/pi-auth.mts            login helper run by the PATH `node` with pi's SDK (see Settings, Providers)

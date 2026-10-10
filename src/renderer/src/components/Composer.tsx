@@ -1,4 +1,4 @@
-import { ArrowUp, Brain, ChevronDown, Cpu, FileText, Folder, MessageSquare, Plus, Square, SquareKanban, X } from "./icons";
+import { ArrowUp, Brain, Check, ChevronDown, Cpu, FileText, Folder, MessageSquare, Plus, Square, SquareKanban, X, Zap } from "./icons";
 import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Card, COLUMN_LABELS } from "../../../shared/board";
 import type { Model, SlashCommand, ThinkingLevel } from "../../../shared/protocol";
@@ -8,6 +8,7 @@ import { lastCacheHit } from "../lib/context";
 import { fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
 import { desktopLinks, previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
+import { fastApplies, isFast, modelChipLabel, sharedNames } from "../../../shared/fast";
 import type { SessionState } from "../../../shared/session-state";
 import {
   attachFiles,
@@ -21,6 +22,7 @@ import {
   removeComposerCard,
   type SendMode,
   send,
+  setFast,
   setModel,
   setThinking,
   showBoard,
@@ -32,7 +34,8 @@ import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QueueCard } from "./QueueCard";
 import { TokenRate } from "./TokenRate";
-import { Popover } from "./primitives";
+import { Popover, Switch } from "./primitives";
+import { LazyProviderLogo } from "./LazyProviderLogo";
 import { Widget } from "./Widget";
 
 /** Unsent text by chat, and by session file too: a chat that opens again (its pi stopped while idle) gets it back. */
@@ -81,13 +84,13 @@ export type ComposerSession = Pick<
   | "thinkingLevel"
   | "stats"
   | "autoCompaction"
-> & { cacheHit: number | null };
+> & { cacheHit: number | null; fast: boolean };
 
 /** @internal The composer's slice of a session: a new object each call, compared field by field (useAppShallow). */
 export function composerFields(session: SessionState | undefined): ComposerSession | undefined {
   if (!session) return undefined;
   const { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction } = session;
-  return { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction, cacheHit: lastCacheHit(session.items) };
+  return { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction, cacheHit: lastCacheHit(session.items), fast: isFast(session.statuses) };
 }
 
 /**
@@ -365,8 +368,7 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
 
         <div className="flex items-center gap-1 px-2 pb-2">
           <AttachButton handle={handle} disabled={exited} />
-          <ModelPicker session={session} />
-          <ThinkingPicker session={session} />
+          <ModelMenu session={session} />
           <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
             <SessionTokenRate handle={handle} running={session.running} />
             <ContextMeter session={session} cacheHit={session.cacheHit} compaction={compaction} onCompact={onCompact} />
@@ -410,39 +412,43 @@ function SessionTokenRate({ handle, running }: { handle: string; running: boolea
   return items ? <TokenRate items={items} running={running} /> : null;
 }
 
-function PickerButton({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex max-w-full min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
-    >
-      {icon}
-      <span className="max-w-48 min-w-0 truncate">{label}</span>
-      <ChevronDown size={11} className="shrink-0 text-faint" />
-    </button>
-  );
-}
-
-function ModelPicker({ session }: { session: Pick<SessionState, "handle" | "phase" | "model" | "modelRef"> }) {
+/**
+ * Model, thinking level and fast mode in one menu, as in Codex: the chip reads "model · level" with a zap while fast
+ * mode is on; the menu searches models, slides the level and switches fast mode (GPT models only).
+ */
+function ModelMenu({ session }: { session: Pick<ComposerSession, "handle" | "phase" | "model" | "modelRef" | "thinkingLevel" | "fast"> }) {
   const models = useApp((state) => state.models);
+  const levels = useApp((state) => state.levels[session.handle]);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const close = useCallback(() => setOpen(false), []);
-  const label = session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model");
+  const name = session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model");
+  const provider = session.model?.provider ?? session.modelRef?.provider;
+  const gpt = fastApplies(provider);
+  const zap = session.fast && gpt;
   const filtered = open ? fuzzyFilter(models, query, (m: Model) => `${m.provider}/${m.id} ${m.name}`, 200) : [];
+  const shared = useMemo(() => sharedNames(models), [models]);
   const choose = (model: Model) => {
-    setOpen(false);
     setQuery("");
     void setModel(session.handle, model);
   };
   return (
-    // On a narrow composer the model name truncates so the status group on the right keeps its line;
+    // On a narrow composer the label truncates so the status group on the right keeps its line;
     // min-w-13 keeps room for the icon, the chevron and the padding.
     <div className="relative min-w-13">
-      <PickerButton icon={<Cpu size={13} className="shrink-0" />} label={label} disabled={session.phase !== "ready"} onClick={() => setOpen(!open)} />
-      <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 w-80 p-1">
+      <button
+        type="button"
+        disabled={session.phase !== "ready"}
+        onClick={() => setOpen(!open)}
+        title={zap ? "Model, thinking and fast mode (on)" : "Model, thinking and fast mode"}
+        className="flex max-w-full min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 text-[12px] text-muted enabled:hover:bg-raised enabled:hover:text-fg disabled:opacity-50"
+      >
+        {provider ? <LazyProviderLogo id={provider} size={14} fallback={<Cpu size={13} className="shrink-0" />} /> : <Cpu size={13} className="shrink-0" />}
+        <span className="max-w-44 min-w-0 truncate">{modelChipLabel(name, session.thinkingLevel, levels)}</span>
+        {zap && <Zap size={12} className="shrink-0 text-warn" fill="currentColor" aria-label="Fast mode on" />}
+        <ChevronDown size={11} className="shrink-0 text-faint" />
+      </button>
+      <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 flex w-72 flex-col p-1">
         <input
           autoFocus
           value={query}
@@ -453,50 +459,71 @@ function ModelPicker({ session }: { session: Pick<SessionState, "handle" | "phas
           placeholder="Search models"
           className="mb-1 w-full rounded-lg bg-sunken px-2.5 py-1.5 text-[12.5px] outline-none placeholder:text-faint"
         />
-        <div className="max-h-80 overflow-y-auto">
+        <div className="max-h-64 overflow-y-auto">
           {filtered.map((model) => {
             const active = model.id === session.model?.id && model.provider === session.model?.provider;
             return (
               <button
                 key={`${model.provider}/${model.id}`}
                 type="button"
+                ref={active && !query ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
                 onClick={() => choose(model)}
-                className={`flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left hover:bg-raised ${active ? "text-accent" : "text-fg"}`}
+                title={`${model.provider}/${model.id}`}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-raised ${active ? "text-accent" : "text-fg"}`}
               >
-                <span className="truncate text-[12.5px]">{model.name}</span>
-                <span className="shrink-0 font-mono text-[10.5px] text-faint">{model.provider}</span>
+                <LazyProviderLogo id={model.provider} size={16} />
+                <span className="min-w-0 flex-1 truncate text-[12.5px]">{model.name}</span>
+                {shared.has(model.name) && <span className="shrink-0 font-mono text-[10.5px] text-faint">{model.provider}</span>}
+                {active && <Check size={13} className="shrink-0" />}
               </button>
             );
           })}
         </div>
+        {levels && !(levels.length === 1 && levels[0] === "off") && (
+          <ThinkingSlider levels={levels} level={session.thinkingLevel} onChange={(level) => void setThinking(session.handle, level)} />
+        )}
+        {gpt && (
+          <div className="flex items-center gap-2.5 border-t border-line px-2.5 pt-2.5 pb-1.5">
+            <Zap size={14} className={`shrink-0 ${session.fast ? "text-warn" : "text-faint"}`} fill={session.fast ? "currentColor" : "none"} />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] text-fg">Fast</div>
+              <div className="truncate text-[11px] text-faint">Priority processing, 2x price</div>
+            </div>
+            <Switch on={session.fast} onChange={(on) => void setFast(session.handle, on)} title={session.fast ? "Turn fast mode off" : "Turn fast mode on"} />
+          </div>
+        )}
       </Popover>
     </div>
   );
 }
 
-function ThinkingPicker({ session }: { session: Pick<SessionState, "handle" | "phase" | "thinkingLevel"> }) {
-  const levels = useApp((state) => state.levels[session.handle]);
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  if (!levels || (levels.length === 1 && levels[0] === "off")) return null;
+/** The thinking level as a stepped slider over the levels the model offers. */
+function ThinkingSlider({ levels, level, onChange }: { levels: ThinkingLevel[]; level: ThinkingLevel | undefined; onChange: (level: ThinkingLevel) => void }) {
+  const index = Math.max(0, level ? levels.indexOf(level) : 0);
+  const last = levels.length - 1;
   return (
-    <div className="relative">
-      <PickerButton icon={<Brain size={13} className="shrink-0" />} label={session.thinkingLevel ?? "thinking"} disabled={session.phase !== "ready"} onClick={() => setOpen(!open)} />
-      <Popover open={open} onClose={close} className="bottom-full left-0 mb-2 w-40 p-1">
-        {levels.map((level: ThinkingLevel) => (
-          <button
-            key={level}
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              void setThinking(session.handle, level);
-            }}
-            className={`block w-full rounded-lg px-2.5 py-1.5 text-left font-mono text-[12px] hover:bg-raised ${level === session.thinkingLevel ? "text-accent" : "text-fg"}`}
-          >
-            {level}
-          </button>
-        ))}
-      </Popover>
+    <div className="mt-1 border-t border-line px-2.5 pt-2.5 pb-2">
+      <div className="mb-2 flex items-center justify-between text-[12px]">
+        <span className="flex items-center gap-1.5 text-fg">
+          <Brain size={13} className="text-faint" />
+          Thinking
+        </span>
+        <span className="font-mono text-muted">{levels[index]}</span>
+      </div>
+      <input
+        type="range"
+        aria-label="Thinking level"
+        min={0}
+        max={last}
+        step={1}
+        value={index}
+        onChange={(event) => {
+          const next = levels[Number(event.currentTarget.value)];
+          if (next && next !== level) onChange(next);
+        }}
+        style={{ "--progress": `${last ? (index / last) * 100 : 0}%` } as React.CSSProperties}
+        className="level-slider"
+      />
     </div>
   );
 }

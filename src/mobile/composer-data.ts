@@ -3,6 +3,7 @@
 // file list for @ mentions (`chat.files`). The reads are plain async functions so a fake call can test them.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CompactionSettings } from "../shared/compaction";
+import { fastCommand } from "../shared/fast";
 import type { Model, RpcCommand, RpcResponse, RpcSessionState, SessionStats, SlashCommand, ThinkingLevel } from "../shared/protocol";
 import type { SessionState } from "../shared/session-state";
 import type { HostClient } from "./client/host-client";
@@ -62,6 +63,8 @@ export interface ComposerData {
   compaction: CompactionSettings;
   pickModel(model: Model): Promise<void>;
   pickThinking(level: ThinkingLevel): Promise<void>;
+  /** Fast mode through the /fast extension command; its status (`fast`) updates the session. */
+  setFast(on: boolean): Promise<void>;
   compactNow(): Promise<void>;
 }
 
@@ -161,6 +164,15 @@ export function useComposerData(client: HostClient, session: SessionState): Comp
     }
   };
 
+  const setFast = async (on: boolean) => {
+    try {
+      const response = await call({ type: "prompt", message: fastCommand(on, commands) });
+      if (!response.success) fail("Could not switch fast mode", response.error ?? "pi refused");
+    } catch (error) {
+      fail("Could not switch fast mode", error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const compactNow = async () => {
     try {
       const response = await call({ type: "compact" });
@@ -171,5 +183,5 @@ export function useComposerData(client: HostClient, session: SessionState): Comp
   };
 
   const shown: SessionState = { ...session, stats: stats ?? session.stats, model: chosen.model ?? session.model, thinkingLevel: chosen.thinkingLevel ?? session.thinkingLevel };
-  return { commands, levels, models: modelList, session: shown, compaction, pickModel, pickThinking, compactNow };
+  return { commands, levels, models: modelList, session: shown, compaction, pickModel, pickThinking, setFast, compactNow };
 }

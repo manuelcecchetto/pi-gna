@@ -20,6 +20,7 @@ files:
   - src/shared/viewport.ts
   - src/shared/chat-title.ts
   - src/shared/file-mentions.ts
+  - src/shared/fast.ts
   - "!resources/icon.png"
   - "!resources/icon.svg"
   - "!resources/pigna-flag.ts"
@@ -38,6 +39,7 @@ asarUnpack:
   - src/shared/viewport.ts
   - src/shared/chat-title.ts
   - src/shared/file-mentions.ts
+  - src/shared/fast.ts
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:
@@ -73,7 +75,7 @@ dmg:
   # are the asset names the updater looks for (src/main/updater.ts).
   artifactName: ${name}-${arch}.${ext}
   format: ULFO
-  # build/dmg-background.png (+ @2x) is drawn by `pnpm dmg-background`: the pigna hand mid-drag between the two icons.
+  # build/dmg-background.png (+ @2x) is drawn by `pnpm dmg-background` from build/dmg-art.webp: Pignas, an arrow, the text.
   # Window and icon positions must match scripts/make-dmg-background.mjs (it is 540x380, icons at x 140 and 400, y 140).
   background: build/dmg-background.png
   iconSize: 100

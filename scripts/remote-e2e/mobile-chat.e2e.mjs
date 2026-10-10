@@ -186,21 +186,53 @@ async function composerChecks({ phone, A, handle, shot, text, tap, exists, prese
 
   // Model and thinking sheets, calling chat.command on the host.
   await until("the model chip", () => exists('[data-testid="model-chip"]'));
-  check((await label("model-chip")).trim().startsWith("Fake"), "the model chip names the model", await label("model-chip"));
-  check(!(await exists('[data-testid="thinking-chip"]')), "no thinking chip for a model without reasoning");
+  check((await label("model-chip")).includes("Fake"), "the model chip names the model", await label("model-chip"));
   await click("model-chip");
   await until("the model sheet", () => exists('[data-testid="model-option"]'));
+  check(!(await exists('[data-testid="thinking-option"]')), "no thinking levels for a model without reasoning");
+  check(!(await exists('[data-testid="fast-row"]')), "no fast mode for a model that is not GPT");
   await shot("8-model-sheet");
   check(await clickText("model-option", "Fake Large"), "the sheet lists Fake Large and the phone taps it");
   await until("the new model", async () => (await label("model-chip")).includes("Fake Large"));
   check((await state()).model.id === "fake-large", "the host runs the chosen model");
-  await until("the thinking chip", () => exists('[data-testid="thinking-chip"]'));
-  await click("thinking-chip");
-  await until("the thinking sheet", () => exists('[data-testid="thinking-option"]'));
+  // The sheet stays open after a pick: the levels the new model offers show under its list.
+  await until("the thinking levels", () => exists('[data-testid="thinking-option"]'));
   await shot("9-thinking-sheet");
   check(await clickText("thinking-option", "high"), "the phone picks the thinking level high");
-  await until("the level on the chip", async () => (await label("thinking-chip")).includes("high"));
+  await until("the level on the chip", async () => (await label("model-chip")).includes("high"));
   check((await state()).thinkingLevel === "high", "the host runs the chosen thinking level");
+  // Fast mode: a GPT model offers it; the switch sends /fast and the extension's status lights the zap on the chip.
+  check(await clickText("model-option", "Fake GPT"), "the phone taps a GPT model");
+  await until("the fast row", () => exists('[data-testid="fast-row"]'));
+  await phone.eval(`document.querySelector('[data-testid="fast-row"] [role="switch"]').click()`);
+  await until("the zap on the chip", () => exists('[data-testid="fast-zap"]'));
+  check(await phone.eval(`document.querySelector('[data-testid="fast-row"] [role="switch"]').getAttribute('aria-checked') === 'true'`), "the switch reads on");
+  await shot("9b-fast");
+  await phone.eval(`document.querySelector('[data-testid="fast-row"] [role="switch"]').click()`);
+  await until("the zap to go", async () => !(await exists('[data-testid="fast-zap"]')));
+  check(await clickText("model-option", "Fake Large"), "back to the model the rest of the scenario uses");
+  await until("Fake Large again", async () => (await state()).model.id === "fake-large");
+  // The sheet drags by its grabber, as on iOS: a short pull springs back, a long one dismisses it.
+  // Pointer events as a finger makes them (the ATP graph's test does the same): down on the grabber, moves on the window.
+  const pull = (dy) => phone.eval(`(async () => {
+    const grab = document.querySelector('[data-testid="model-sheet"] [data-testid="sheet-grabber"]');
+    const r = grab.getBoundingClientRect(), x = r.left + r.width / 3, y = r.top + 8;
+    const fire = (target, type, at) => target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 9, pointerType: "touch", clientX: x, clientY: y + at }));
+    fire(grab, "pointerdown", 0);
+    // At a finger's pace (a frame apart): all at once reads as a flick, which dismisses whatever the distance.
+    for (let i = 1; i <= 10; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 16));
+      fire(window, "pointermove", (${dy} * i) / 10);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    fire(window, "pointerup", ${dy});
+    return true;
+  })()`);
+  await pull(40);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  check(await exists('[data-testid="model-sheet"]'), "a short pull springs the sheet back");
+  await pull(240);
+  await until("the sheet to close", async () => !(await exists('[data-testid="model-sheet"]')));
 
   // Slash commands and @ mentions as touch lists.
   await type("/");

@@ -3,12 +3,13 @@
 // pasted code, an API key) is answered in a panel under the card or row that started it. Leaving the section cancels.
 // Claude plans sign in with Claude Code's own login (claude-bridge, installed by that sign-in if missing), not pi's.
 import { Check, Copy, ExternalLink, LoaderCircle, Search, TriangleAlert, X } from "./icons";
-import { Fragment, useCallback, useEffect, useId, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { type AuthMethod, type AuthPrompt, type AuthProvider, type AuthState, authStatus, CLAUDE_BRIDGE, searchProviders, splitProviders, type StatusTone } from "../../../shared/auth";
 import { tildify } from "../lib/format";
-import { accountLabel, answered, type LoginView, logoFor, startLogin, updateLogin } from "../lib/login";
+import { accountLabel, answered, type LoginView, startLogin, updateLogin } from "../lib/login";
 import { modelsChanged, remoteError, toast } from "../state/app";
 import { CodeText } from "./CodeText";
+import { ProviderLogo } from "./ProviderLogo";
 import { Button, ConfirmButton } from "./SettingsControls";
 
 /** `simple`: without the notes about pi's files and the environment (Setup, for the non-technical). */
@@ -256,27 +257,6 @@ function Status({ text, tone, className = "" }: { text: string; tone: StatusTone
     <span className={`flex min-w-0 items-center gap-1.5 text-[12px] ${tone === "off" ? "text-faint" : "text-muted"} ${className}`} title={text}>
       <span className={`size-1.5 shrink-0 rounded-full ${TONES[tone]}`} />
       <span className="truncate">{text}</span>
-    </span>
-  );
-}
-
-/** The provider's mark on its brand tile (src/renderer/src/lib/provider-logos.ts), or its initial. */
-export function ProviderLogo({ id, name, size }: { id: string; name: string; size: number }) {
-  const prefix = useId().replace(/[^\w-]/g, "");
-  const logo = logoFor(id);
-  const box = { width: size, height: size, borderRadius: Math.round(size * 0.26) };
-  if (!logo) {
-    return (
-      <span aria-hidden="true" style={{ ...box, fontSize: Math.round(size * 0.45) }} className="flex shrink-0 items-center justify-center bg-raised font-semibold text-muted ring-1 ring-line ring-inset">
-        {name.slice(0, 1).toUpperCase()}
-      </span>
-    );
-  }
-  const mark = Math.round(size * logo.scale);
-  return (
-    <span aria-hidden="true" style={{ ...box, background: logo.background, color: logo.color }} className="flex shrink-0 items-center justify-center ring-1 ring-black/10 ring-inset dark:ring-white/10">
-      {/* The markup is generated from vendored SVG files, never from input. */}
-      <svg viewBox={logo.viewBox} width={mark} height={mark} dangerouslySetInnerHTML={{ __html: logo.body.replaceAll("{id}", prefix) }} />
     </span>
   );
 }

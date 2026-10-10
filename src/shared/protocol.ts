@@ -171,6 +171,8 @@ export interface SlashCommand {
   name: string;
   description?: string;
   source: "extension" | "prompt" | "skill";
+  /** The file that registered it. */
+  sourceInfo?: { path?: string };
 }
 
 // ── Commands (stdin) ────────────────────────────────────────────────────────

@@ -55,6 +55,7 @@ import type { EarlierTurns } from "../components/Transcript";
 import type { OpenChat } from "../lib/projects";
 import { pagePreview } from "../lib/rail";
 import { createStore, shallow, useStore, useStoreShallow } from "../lib/store";
+import { fastCommand } from "../../../shared/fast";
 
 export interface Toast {
   id: number;
@@ -849,6 +850,11 @@ export async function setModel(handle: string, model: Model): Promise<void> {
 export async function setThinking(handle: string, level: ThinkingLevel): Promise<void> {
   const response = await command(handle, { type: "set_thinking_level", level });
   if (response.success) patchSession(handle, (s) => ({ ...s, thinkingLevel: level }));
+}
+
+/** Fast mode is the /fast extension command's (resources/fast-extension.ts); its status turns the zap on or off. */
+export async function setFast(handle: string, on: boolean): Promise<void> {
+  await command(handle, { type: "prompt", message: fastCommand(on, store.get().commands[handle]) });
 }
 
 /** Answer a dialog. The card goes when the host took the answer, or says it was settled elsewhere first (dialog_resolved does the same). */

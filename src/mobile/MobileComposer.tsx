@@ -4,7 +4,7 @@
 // thinking sheets, tok/s, the context meter, the queue card, retry callouts and extension widgets.
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
 import { useStore } from "../renderer/src/lib/store";
-import { ArrowUp, Brain, ChevronDown, ListEnd, Plus, RotateCw, Square } from "../renderer/src/components/icons";
+import { ArrowUp, ChevronDown, ListEnd, Plus, RotateCw, Square, Zap } from "../renderer/src/components/icons";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";
@@ -19,7 +19,9 @@ import type { HostClient } from "./client/host-client";
 import { hasLevels, projectFiles, useComposerData } from "./composer-data";
 import { addHostPath, type Attached, nextKey, readyRefs, refusal, uploading } from "./attach-state";
 import { AttachmentChips, AttachSheet, HostFilesSheet } from "./Attachments";
-import { ModelSheet, ThinkingSheet } from "./Sheets";
+import { ModelSheet } from "./Sheets";
+import { LazyProviderLogo } from "../renderer/src/components/LazyProviderLogo";
+import { fastApplies, isFast, modelChipLabel } from "../shared/fast";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 import { toast } from "./toasts";
 import { annotations as phoneAnnotations, useAnnotations } from "./annotations";
@@ -44,9 +46,11 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
   const cardTitle = card ? board?.cards.find((other) => other.id === card)?.title : undefined;
   const data = useComposerData(client, reduced);
   const session = data.session;
+  const provider = session.model?.provider ?? session.modelRef?.provider;
+  const gpt = fastApplies(provider);
   const [menu, setMenu] = useState<MenuState>();
   const [files, setFiles] = useState<string[]>([]);
-  const [sheet, setSheet] = useState<"model" | "thinking" | "attach" | "host">();
+  const [sheet, setSheet] = useState<"model" | "attach" | "host">();
   const [attached, setAttached] = useState<Attached[]>([]);
   const key = draftKey(reduced);
   const [text, setText] = useState(() => loadDraft(key) || initialText);
@@ -231,16 +235,13 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
       {/* Session settings ride above the field, quiet; the field row holds only what a thumb needs. */}
       <div className="flex h-9 items-center gap-0.5" data-testid="status-row">
         <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("model")} data-testid="model-chip" className="flex h-9 min-w-0 items-center gap-1 rounded-full px-2 text-[12.5px] text-muted active:bg-raised disabled:opacity-50">
-          <span className="max-w-40 truncate">{session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model")}</span>
+          {provider && <LazyProviderLogo id={provider} size={16} />}
+          <span className="max-w-52 truncate">
+            {modelChipLabel(session.model?.name ?? session.modelRef?.modelId ?? (session.phase === "starting" ? "Starting…" : "No model"), session.thinkingLevel, data.levels)}
+          </span>
+          {gpt && isFast(session.statuses) && <Zap size={12} className="shrink-0 text-warn" fill="currentColor" aria-label="Fast mode on" data-testid="fast-zap" />}
           <ChevronDown size={12} className="shrink-0 text-faint" />
         </button>
-        {hasLevels(data.levels) && (
-          <button type="button" disabled={session.phase !== "ready"} onClick={() => setSheet("thinking")} data-testid="thinking-chip" className="flex h-9 shrink-0 items-center gap-1 rounded-full px-2 text-[12.5px] text-muted active:bg-raised disabled:opacity-50">
-            <Brain size={13} className="shrink-0 text-faint" />
-            {session.thinkingLevel ?? "thinking"}
-            <ChevronDown size={12} className="shrink-0 text-faint" />
-          </button>
-        )}
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {running && <TokenRate items={session.items} running={session.running} />}
           <ContextMeter touch session={session} cacheHit={lastCacheHit(session.items)} compaction={data.compaction} onCompact={() => void data.compactNow()} />
@@ -332,22 +333,13 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
         <ModelSheet
           models={data.models}
           current={session.model}
+          levels={hasLevels(data.levels) ? data.levels : undefined}
+          level={session.thinkingLevel}
+          fast={gpt ? isFast(session.statuses) : undefined}
           onClose={() => setSheet(undefined)}
-          onPick={(model) => {
-            setSheet(undefined);
-            void data.pickModel(model);
-          }}
-        />
-      )}
-      {sheet === "thinking" && hasLevels(data.levels) && (
-        <ThinkingSheet
-          levels={data.levels}
-          current={session.thinkingLevel}
-          onClose={() => setSheet(undefined)}
-          onPick={(level) => {
-            setSheet(undefined);
-            void data.pickThinking(level);
-          }}
+          onPick={(model) => void data.pickModel(model)}
+          onLevel={(level) => void data.pickThinking(level)}
+          onFast={(on) => void data.setFast(on)}
         />
       )}
       {Object.entries(session.widgets).filter(([, w]) => w.placement === "belowEditor").map(([key, widget]) => (

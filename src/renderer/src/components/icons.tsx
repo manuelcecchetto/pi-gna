@@ -151,6 +151,7 @@ export const Sparkles = icon(
   "sparkles",
   <>{sparkle}<path d="M18 2.5q.4 2.1 2.5 2.5-2.1.4-2.5 2.5-.4-2.1-2.5-2.5 2.1-.4 2.5-2.5z" /></>,
 );
+export const Zap = icon("zap", <path d="M13 3L5 13.5h6L10 21l8-10.5h-6z" />);
 export const Brain = icon(
   "brain",
   <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.1 1 1.9v.2h5v-.2c0-.8.4-1.4 1-1.9A6 6 0 0 0 12 3z" />,

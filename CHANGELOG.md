@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Fast mode for GPT models, as in Codex: a Fast switch in the model menu (or `/fast`) asks OpenAI and ChatGPT models for priority processing, which answers faster at about twice the price. It is per chat, kept when the chat reopens, and a zap on the model chip shows it is on.
+- The model, thinking level and fast mode are one menu now, on the Mac and the phone: the chip reads "GPT-6.1 Sol · medium" with the provider's logo, the menu lists models with their logos, and the thinking level is a slider (buttons on the phone). The phone's sheets drag down to close, as on iOS.
 - The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
 - Hovering the tok/s readout shows a chart of the output speed of every response in the chat over time, red when slow, orange, green when fast, with the average. It covers earlier responses too, also in chats reopened from disk, where tok/s used to show nothing.
 

@@ -160,6 +160,31 @@ body,
   border-top: 1px dashed var(--line-strong);
 }
 
+/* The model menu's thinking slider (Composer, the phone's model sheet): a thin track filled up to the thumb
+   (`--progress`), steps at the levels the model offers. */
+.level-slider {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+  border-radius: 999px;
+  outline: none;
+  background: linear-gradient(to right, var(--accent) var(--progress, 0%), var(--line-strong) var(--progress, 0%));
+}
+.level-slider:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.level-slider::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  appearance: none;
+  border-radius: 999px;
+  background: var(--fg);
+  box-shadow: 0 0 0 3px var(--panel);
+}
+
 /* Shimmer label for live states (Shimmer in primitives.tsx): muted text with a bright band sweeping through it. The
    band is a copy of the text in fg, in a window that slides across while the copy inside slides back by as much, so
    the text stays put. Both move by transform, which the compositor runs: animating the background of

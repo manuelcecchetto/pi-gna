@@ -38,6 +38,8 @@ const DELAY = Number(process.env.FAKE_DELAY || 120);
 const directive = (text, name, fallback) => Number(text.match(new RegExp(`\\[${name}=(\\d+)\\]`))?.[1] ?? fallback);
 let current = model;
 let thinkingLevel = "off";
+// "openai" makes Fake GPT a GPT model to the composers, which then offer fast mode (src/shared/fast.ts).
+const models = [model, { ...model, id: "fake-large", name: "Fake Large", reasoning: true }, { ...model, id: "fake", provider: "other-fake" }, { ...model, id: "fake-gpt", name: "Fake GPT", provider: "openai", reasoning: true }];
 let compactions = 0;
 const commandsList = [
   { name: "compact", description: "Summarize older messages now", source: "extension" },
@@ -59,7 +61,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "get_state":
       return reply({ model: current, thinkingLevel, isStreaming: streaming, isCompacting: false, steeringMode: "all", followUpMode: "all", sessionId: "fake", sessionFile, autoCompactionEnabled: true, messageCount: 0, pendingMessageCount: 0 });
     case "get_available_models":
-      return reply({ models: [model, { ...model, id: "fake-large", name: "Fake Large", reasoning: true }, { ...model, id: "fake", provider: "other-fake" }] });
+      return reply({ models: models });
     case "get_session_stats":
       return reply({
         sessionId: "fake", userMessages: 0, assistantMessages: 0, toolCalls: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0,
@@ -70,7 +72,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     case "get_available_thinking_levels":
       return reply({ levels: current.reasoning ? ["off", "low", "medium", "high"] : ["off"] });
     case "set_model": {
-      const found = [model, { ...model, id: "fake-large", name: "Fake Large", reasoning: true }, { ...model, id: "fake", provider: "other-fake" }].find((m) => m.id === command.modelId && m.provider === command.provider);
+      const found = models.find((m) => m.id === command.modelId && m.provider === command.provider);
       if (!found) return out({ type: "response", id: command.id, command: command.type, success: false, error: "Unknown model" });
       current = found;
       if (!found.reasoning) thinkingLevel = "off";
@@ -86,7 +88,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
         out({ type: "compaction_end", reason: "manual", aborted: false, willRetry: false });
         reply(undefined);
       }, 300);
-    case "prompt":
+    case "prompt": {
+      // `/fast on|off` as resources/fast-extension.ts answers it: handled at once, the state as the `fast` status.
+      const fast = /^\/fast (on|off)$/.exec(command.message);
+      if (fast) {
+        out({ type: "extension_ui_request", id: `status-${process.pid}-${Date.now()}`, method: "setStatus", statusKey: "fast", statusText: fast[1] === "on" ? "on" : undefined });
+        return reply({ disposition: "handled" });
+      }
       reply(undefined);
       if (streaming) {
         queues[command.streamingBehavior === "followUp" ? "followUp" : "steering"].push(command.message);
@@ -94,6 +102,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       }
       // A prompt containing "echo-attach" is echoed back with the number of images it carried (attachment checks).
       return void run(command.message.includes("echo-attach") ? `${command.message}\n[images=${command.images?.length ?? 0}]` : command.message);
+    }
     case "steer":
     case "follow_up":
       queues[command.type === "steer" ? "steering" : "followUp"].push(command.message);
