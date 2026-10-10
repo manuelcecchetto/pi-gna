@@ -327,7 +327,7 @@ function HeatGrid({ cols, rows, colLabels, rowLabels, fill, tip, start, square, 
       onPointerMove={onPointerMove}
     >
       <div className="overflow-x-auto">
-        <svg width={labelW + cols * pitchX - GAP} height={labelH + rows * pitchY - GAP} aria-hidden className="block">
+        <svg width={labelW + cols * pitchX - GAP} height={labelH + rows * pitchY - GAP} aria-hidden overflow="visible" className="block">
           {colLabels.map((label, col) =>
             label ? (
               <text key={`c${col}`} x={labelW + col * pitchX} y={LABEL_H - 4} style={labelStyle}>

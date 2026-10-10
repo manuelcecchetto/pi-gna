@@ -1209,6 +1209,8 @@ Charts (`components/Charts.tsx`, pure scales in `chart-scale.ts`) are hand-writt
 `colorScale(keys)` gives the keys of one chart distinct colours and keeps each key's colour while its chart keeps its neighbours. Interactive charts
 (stacked bars, heat grids, split bar) show a tooltip on pointer hover and on keyboard focus (arrow keys).
 
+Overview and Activity (T12): `UsageDay.models` carries tokens and estimated cost per model, not turns, so the Turns view of the per-day bars is one series. The per-day bars keep the 7 largest models and fold the rest into "Other models"; the calendar shows the last 26 weeks of the range; the weekday by hour matrix offers turns, tokens or cost. The view mapping lives in `lib/usage-view.ts`, not in the components.
+
 The page (T11): the section uses a wider column than the other Settings sections (`SectionInfo.wide`). Its filters (range,
 source, project) are kept per window in localStorage (`pigna:usage-filters`, `lib/usage-filters.ts`), as the ATP panels are,
 not in the host's ui-state, which every client shares. The project picker reads an unfiltered report, since a scoped one
