@@ -406,6 +406,29 @@ try {
   check("markdown preview: a link to a docx follows in the tab", !!followed, followed ? followed.preview.name : "no docx");
   tabs["index.md"] = index;
 
+  // 1e. the agent reads its own copy of a preview: the user's zoom is not in it, and its size is fixed, not the pane's
+  try {
+    const pic = tabs["pic.png"];
+    const ZOOM = `document.querySelector(".footer span:last-child")?.textContent ?? ""`;
+    await evaluate(pic, `window.__agentCopy = true; 1`);
+    const agentBefore = await evaluate(pic, ZOOM);
+    const size = await evaluate(pic, `innerWidth + "x" + innerHeight`);
+    // The user's view of the same file: the page of that file the agent did not mark. Zoom it in, as the + key does.
+    const user = await main(`(async () => {
+      const { webContents } = process.mainModule.require("electron");
+      for (const wc of webContents.getAllWebContents()) {
+        if (!wc.getURL().includes("/pic.png") || (await wc.executeJavaScript("window.__agentCopy === true"))) continue;
+        return wc.executeJavaScript(\`(() => { const stage = document.querySelector("img.checker").parentElement; for (let i = 0; i < 3; i++) stage.dispatchEvent(new KeyboardEvent("keydown", { key: "+", bubbles: true, cancelable: true })); return document.querySelector(".footer span:last-child").textContent; })()\`);
+      }
+      return "no user view";
+    })()`);
+    const agentAfter = await evaluate(pic, ZOOM);
+    check("agent copy: the user's zoom does not reach the agent's page", /%$/.test(user) && user !== agentBefore && agentAfter === agentBefore, `user ${user}, agent ${agentBefore} -> ${agentAfter}`);
+    check("agent copy: laid out at 1280x800, not the pane", size === "1280x800", size);
+  } catch (error) {
+    check("agent copy", false, error.message);
+  }
+
   // 2. confinement from a web tab
   await call({ action: "open", url: base, newTab: true });
   const web = { tab: (await state()).activeId };
@@ -491,7 +514,7 @@ try {
   if (picture) {
     const before = (await state()).tabs.length;
     await appWindow(`document.querySelector(".chat-image img").click()`);
-    const zoomed = await until("the lightbox", () => appWindow(`(() => { const i = document.querySelector("button.fixed img"); return i?.src.startsWith("data:image/png") ? "open" : ""; })()`), 4000).catch(() => "");
+    const zoomed = await until("the lightbox", () => appWindow(`(() => { const i = document.querySelector('[role="dialog"][aria-label="Image"] img'); return i?.src.startsWith("data:image/png") ? "open" : ""; })()`), 4000).catch(() => "");
     check("chat: clicking the image opens the lightbox, not a preview", zoomed === "open" && (await state()).tabs.length === before, `${zoomed} tabs ${before}->${(await state()).tabs.length}`);
   }
 } catch (error) {

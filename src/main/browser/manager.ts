@@ -21,7 +21,7 @@ import { IconCache, tabFavicon, type TabIcon } from "./favicon";
 import { previewContext, type SourceHint } from "./annotation-source";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 import { previews } from "./preview-protocol";
-import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, watchFile } from "./preview-tabs";
+import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, samePreviewPage, watchFile } from "./preview-tabs";
 
 export const PARTITION = "persist:pigna-browser";
 const CONSOLE_LIMIT = 300;
@@ -72,6 +72,10 @@ export interface Tab {
   agentAt?: number;
   /** Set while the tab shows a local file; web tabs have none. */
   preview?: PreviewState;
+  /** The agent's own copy of a preview tab, made on its first use (see `agentPage`). */
+  agentView?: WebContentsView;
+  /** The size the agent asked for its copy of a preview; AGENT_PREVIEW_SIZE without one. */
+  agentViewport?: ViewportSpec;
   /** The page's icon, and the origin it belongs to (a navigation elsewhere drops it). */
   favicon?: TabIcon & { origin: string };
   /** Bumped per favicon request, so a slow one for an earlier page cannot win. */
@@ -96,6 +100,19 @@ const originOf = (url: string): string => {
 
 /** Size a viewer-held tab without a viewport is laid out at while parked. */
 const PARK_SIZE = { width: 1280, height: 800 };
+/** Size of the agent's copy of a file preview unless it asked for another. */
+export const AGENT_PREVIEW_SIZE = { width: 1280, height: 800 };
+
+/** The page an agent action reads and drives, with what input on it needs (see `BrowserManager.agentPage`). */
+export interface AgentPage {
+  wc: WebContents;
+  /** Scale the page is drawn at: input takes view pixels. */
+  scale: number;
+  touch: boolean;
+  viewport?: ViewportSpec;
+  /** The agent's own copy of a preview, not the page the user sees. */
+  copy: boolean;
+}
 
 export interface BrowserEvents {
   state(state: BrowserState): void;
@@ -216,10 +233,7 @@ export class BrowserManager {
   // ── Tabs ───────────────────────────────────────────────────────────────────
 
   private makeTab(agent?: string): Tab {
-    const view = new WebContentsView({
-      webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
-    });
-    view.setBackgroundColor("#ffffff");
+    const view = pageView();
     const tab: Tab = { id: randomUUID().slice(0, 8), view, console: [], agent: agent ?? this.chat, surface: "pane", holds: 0 };
     this.tabs.set(tab.id, tab);
     this.order.push(tab.id);
@@ -270,7 +284,12 @@ export class BrowserManager {
       if (details.message.startsWith("Electron Security Warning")) return;
       this.pushConsole(tab, details.level, details.message, `${details.sourceId.split("/").at(-1) ?? ""}:${details.lineNumber}`);
     });
-    // Popups and target=_blank links open as tabs in the same pane.
+    this.guard(wc, tab);
+    attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url, tab.agent) });
+  }
+
+  /** Popups and target=_blank links open as tabs in the same pane. */
+  private guard(wc: WebContents, tab: Tab): void {
     // A web page must never reach local files through pigna-file: only a preview tab may open links on that scheme.
     const previewGate = (url: string): boolean => url.startsWith(`${PREVIEW_SCHEME}:`) && !wc.getURL().startsWith(`${PREVIEW_SCHEME}:`);
     wc.setWindowOpenHandler(({ url }) => {
@@ -281,7 +300,6 @@ export class BrowserManager {
     wc.on("will-navigate", (event, url) => {
       if (previewGate(url) || !/^(https?|file|about|data|blob|pigna-file):/i.test(url)) event.preventDefault();
     });
-    attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url, tab.agent) });
   }
 
   private async loadFavicon(tab: Tab, favicons: string[]): Promise<void> {
@@ -321,6 +339,7 @@ export class BrowserManager {
     this.hintHeaders.delete(tab.view.webContents.id);
     if (tab.preview) this.dropPreview(tab.preview);
     tab.preview = undefined;
+    this.dropAgentView(tab);
     if (this.attached === tab.view) this.detach();
     this.unpark(tab);
     // The tab is already gone, so the window's "closed" handler finds nothing to do.
@@ -383,12 +402,7 @@ export class BrowserManager {
       tab.start = undefined;
       this.emitState();
     }
-    try {
-      await tab.view.webContents.loadURL(url);
-    } catch (error) {
-      const message = (error as Error).message;
-      if (!message.includes("ERR_ABORTED")) throw error;
-    }
+    await loadPage(tab.view.webContents, url);
   }
 
   // ── Previews ────────────────────────────────────────────────────────────────
@@ -463,20 +477,31 @@ export class BrowserManager {
     const old = tab.preview;
     const relative = relativeTo(root, file);
     const token = previews.mint(root, relative);
-    const wc = tab.view.webContents;
     tab.preview = {
       info: { ...previewFor(file), mode },
       token,
       root,
       relative,
-      stop: watchFile(file, () => {
-        if (!wc.isDestroyed()) void stat(file).then(() => wc.reload(), () => undefined);
-      }),
+      stop: this.watchPreview(tab, file),
     };
     if (old) this.dropPreview(old);
     const hash = line && Number.isInteger(line) && line > 0 ? `#L${line}` : "";
     void this.load(tab, previewUrl(token, relative, mode === "raw" ? "raw" : undefined) + hash);
     this.emitState();
+  }
+
+  /** Reload the tab, the agent's copy of it and the phone's drawing of it when the file changes on disk. */
+  private watchPreview(tab: Tab, file: string): () => void {
+    return watchFile(file, () => {
+      void stat(file).then(
+        () => {
+          for (const view of [tab.view, tab.agentView]) if (view && !view.webContents.isDestroyed()) view.webContents.reload();
+          if (tab.preview) tab.preview.info.rev = (tab.preview.info.rev ?? 0) + 1;
+          this.emitState();
+        },
+        () => undefined,
+      );
+    });
   }
 
   /** Stop watching, and revoke the token once no other tab uses it. */
@@ -493,6 +518,8 @@ export class BrowserManager {
     if (!parsed || parsed.token !== state.token) {
       tab.preview = undefined;
       this.dropPreview(state);
+      // A web page is shared again: the agent acts on the page the user sees.
+      this.dropAgentView(tab);
       return;
     }
     const file = join(state.root, parsed.relative);
@@ -504,14 +531,11 @@ export class BrowserManager {
       return;
     }
     state.stop();
-    const wc = tab.view.webContents;
     tab.preview = {
       ...state,
       relative: parsed.relative,
       info: { ...next, mode },
-      stop: watchFile(file, () => {
-        if (!wc.isDestroyed()) void stat(file).then(() => wc.reload(), () => undefined);
-      }),
+      stop: this.watchPreview(tab, file),
     };
   }
 
@@ -879,10 +903,13 @@ export class BrowserManager {
     if (this.keeper && !this.keeper.isDestroyed() && this.keeper.contentView.children.includes(tab.view)) this.keeper.contentView.removeChildView(tab.view);
     // Back in the pane or a window the fit is recomputed there.
     tab.emulatedScale = undefined;
-    if (!this.parked.size) {
-      this.keeper?.destroy();
-      this.keeper = undefined;
-    }
+    this.dropKeeperIfIdle();
+  }
+
+  private dropKeeperIfIdle(): void {
+    if (this.parked.size || [...this.tabs.values()].some((tab) => tab.agentView)) return;
+    this.keeper?.destroy();
+    this.keeper = undefined;
   }
 
   private keeperWindow(size: { width: number; height: number }): BrowserWindow {
@@ -910,9 +937,107 @@ export class BrowserManager {
     keeper.on("closed", () => {
       if (this.keeper === keeper) this.keeper = undefined;
       this.parked.clear();
+      for (const tab of this.tabs.values()) this.dropAgentView(tab);
     });
     this.keeper = keeper;
     return keeper;
+  }
+
+  // ── The agent's copies of previews ─────────────────────────────────────────
+
+  /**
+   * The page an agent action reads and drives. A web page is shared: the agent acts on the page the user sees, so the
+   * user can step in (a login) and watch. A file preview is not: the user's zoom, scroll and pane size are theirs, so the
+   * agent gets its own copy of the file in the keeper at a fixed size (AGENT_PREVIEW_SIZE, or the size it asked for), and
+   * the pane can be closed, scrolled or resized without touching it. The copy follows the file and view the tab shows;
+   * `line` loads it at that line. A navigation the agent makes in its copy (a link to another file, back) is carried to
+   * the tab, so the user sees which file the agent went to.
+   */
+  async agentPage(tab: Tab, line?: number): Promise<AgentPage> {
+    const state = tab.preview;
+    if (!state) return { wc: tab.view.webContents, scale: tab.emulatedScale ?? 1, touch: !!tab.viewport?.touch, viewport: tab.viewport, copy: false };
+    const fresh = !tab.agentView;
+    const view = tab.agentView ?? this.makeAgentView(tab);
+    const wc = view.webContents;
+    const want = shownUrl(state);
+    const hash = line && Number.isInteger(line) && line > 0 ? `#L${line}` : "";
+    if (hash || !samePreviewPage(wc.getURL(), want)) await loadPage(wc, want + hash);
+    // Device metrics need a page that navigated (see `emulate`).
+    if (fresh && tab.agentViewport) await this.emulateAgentView(tab);
+    return { wc, scale: 1, touch: false, viewport: tab.agentViewport, copy: true };
+  }
+
+  /** The size of the agent's copy of a preview tab: AGENT_PREVIEW_SIZE unless `request`; reset with undefined. */
+  async setAgentViewport(tab: Tab, request: ViewportRequest | undefined): Promise<ViewportSpec | undefined> {
+    tab.agentViewport = request ? resolveViewport(request) : undefined;
+    await this.emulateAgentView(tab);
+    return tab.agentViewport;
+  }
+
+  /** The viewport the agent sees on a tab: its copy's for a preview, the tab's for a web page. */
+  agentViewport(tab: Tab): ViewportSpec | undefined {
+    return tab.preview ? tab.agentViewport : tab.viewport;
+  }
+
+  private makeAgentView(tab: Tab): WebContentsView {
+    const view = pageView();
+    tab.agentView = view;
+    const size = tab.agentViewport ?? AGENT_PREVIEW_SIZE;
+    this.keeperWindow(size).contentView.addChildView(view);
+    view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+    const wc = view.webContents;
+    this.guard(wc, tab);
+    wc.on("console-message", (details) => {
+      if (details.message.startsWith("Electron Security Warning")) return;
+      this.pushConsole(tab, details.level, details.message, `${details.sourceId.split("/").at(-1) ?? ""}:${details.lineNumber}`);
+    });
+    // Another file or view: compared with what the tab is set to show, not its URL, which lags while the tab loads.
+    wc.on("did-navigate", (_event, url) => {
+      if (tab.agentView !== view || !tab.preview || !parsePreviewUrl(url)) return;
+      if (!samePreviewPage(url, shownUrl(tab.preview))) void this.load(tab, url);
+    });
+    // A web page is shared, so the copy never leaves the file: the tab goes there, and the agent acts on it from then on.
+    wc.on("will-navigate", (event, url) => {
+      if (event.defaultPrevented || parsePreviewUrl(url)) return;
+      event.preventDefault();
+      if (/^(https?|file|about|data|blob):/i.test(url)) void this.load(tab, url);
+    });
+    return view;
+  }
+
+  /** Size the agent's copy to its viewport and emulate its density; a size it asked for is not scaled to fit anything. */
+  private async emulateAgentView(tab: Tab): Promise<void> {
+    const view = tab.agentView;
+    if (!view) return;
+    const spec = tab.agentViewport;
+    const size = spec ?? AGENT_PREVIEW_SIZE;
+    this.keeperWindow(size);
+    view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+    const wc = view.webContents;
+    if (!wc.getURL()) return;
+    if (!spec) {
+      if (wc.debugger.isAttached()) await cdp(wc, "Emulation.clearDeviceMetricsOverride");
+      return;
+    }
+    await cdp(wc, "Emulation.setDeviceMetricsOverride", {
+      width: spec.width,
+      height: spec.height,
+      deviceScaleFactor: spec.dpr,
+      mobile: spec.mobile,
+      screenWidth: spec.width,
+      screenHeight: spec.height,
+      scale: 1,
+      dontSetVisibleSize: true,
+    });
+  }
+
+  private dropAgentView(tab: Tab): void {
+    const view = tab.agentView;
+    if (!view) return;
+    tab.agentView = undefined;
+    if (this.keeper && !this.keeper.isDestroyed() && this.keeper.contentView.children.includes(view)) this.keeper.contentView.removeChildView(view);
+    if (!view.webContents.isDestroyed()) view.webContents.close();
+    this.dropKeeperIfIdle();
   }
 
   /** Make sure a tab is drawn before the agent screenshots or clicks it. */
@@ -993,6 +1118,30 @@ export class BrowserManager {
 
   destroy(): void {
     for (const id of [...this.order]) this.closeTab(id);
+  }
+}
+
+/** The page a preview tab is set to show: its file in its view. */
+function shownUrl(state: PreviewState): string {
+  return previewUrl(state.token, state.relative, state.info.mode === "raw" ? "raw" : undefined);
+}
+
+/** A page's view in the browser profile: a tab, or the agent's copy of a preview. */
+function pageView(): WebContentsView {
+  const view = new WebContentsView({
+    webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+  });
+  view.setBackgroundColor("#ffffff");
+  return view;
+}
+
+/** Load a URL; resolves when the main frame finished or failed. A load replaced by another is not an error. */
+async function loadPage(wc: WebContents, url: string): Promise<void> {
+  try {
+    await wc.loadURL(url);
+  } catch (error) {
+    const message = (error as Error).message;
+    if (!message.includes("ERR_ABORTED")) throw error;
   }
 }
 

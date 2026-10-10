@@ -2,7 +2,7 @@
 // The phone's Browser screen driving a local dev page in the host's browser (taps, typing, keys, scroll, pinch, comments that ride
 // with a prompt or Send now), then chat links: a Markdown file drawn on the phone, an HTML file streaming the Mac's preview, the board
 // and the browser.
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { dirname, join } from "node:path";
 import { sleep, log, check, until, png, project, openPhone, scenario } from "./harness.mjs";
@@ -280,6 +280,21 @@ async function linkChecks({ phone, A, shot, text, exists }) {
     await until("the preview frame", () => phone.eval(`(() => { const i = document.querySelector('[data-testid="frame"]'); return !!i && i.complete && i.naturalWidth > 0; })()`), 30_000, 200);
     check(true, "the phone streams the Mac's preview");
     await shot("links-2-preview");
+    // A Markdown preview tab the Mac has open (the agent's browser_open, Open file) is drawn on the phone, not streamed,
+    // and drawn again when the file changes.
+    const notes = join(project, "docs", "notes.md");
+    const original = readFileSync(notes, "utf8");
+    const { id: notesTab } = await A.ok("chat.openFile", { handle: tabs[0].agent, path: notes });
+    await until("the notes tab on the phone", () => phone.eval(`[...document.querySelectorAll('[data-testid="browser-tab"]')].some((t) => t.textContent.includes("notes.md"))`), 10_000, 200);
+    await phone.eval(`[...document.querySelectorAll('[data-testid="browser-tab"]')].find((t) => t.textContent.includes("notes.md")).querySelector("button").click()`);
+    await until("the preview tab drawn on the phone", () => exists('[data-testid="drawn-preview"] [data-testid="file-markdown"] h1'), 20_000, 200);
+    check(!(await exists('[data-testid="frame"]')), "a Markdown preview tab is drawn on the phone, not streamed");
+    await shot("links-2-preview-drawn");
+    writeFileSync(notes, "# Notes, edited on the Mac\n");
+    await until("the edited file drawn", async () => (await text()).includes("Notes, edited on the Mac"), 15_000, 200);
+    check(true, "a drawn preview tab is drawn again when the file changes");
+    writeFileSync(notes, original);
+    await A.ok("browser.closeTab", { id: notesTab });
     await tapBack();
     await until("the file again", () => exists('[data-testid="file-markdown"]'), 20_000, 200);
     await tapBack();

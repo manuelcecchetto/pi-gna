@@ -8,6 +8,8 @@ moves those lines under the new version, and they become its GitHub release note
 - Pin models: the pin on a row of the composer's model menu (desktop and phone) keeps that model at the top of the list, on every device. The Settings model pickers list pinned models first too. A pin for a model pi does not list now (a signed-out provider) stays saved and comes back with it.
 - The sidebar has a Recent view beside Projects: every project's chats in one list, newest first, each with its project's name. Your choice is remembered.
 - A chat's time in the sidebar (and its place in the list) now moves only when you send a message, not while the agent runs tools or answers.
+- The agent no longer sees how you zoom, scroll or size a file preview. For an image, PDF, Markdown or other file tab it reads and screenshots its own copy of the file at a fixed 1280×800, so closing or resizing the browser pane does not get in its way. Web pages stay shared, so you can still watch and finish a login for it.
+- On the phone, a browser tab showing a Markdown, code, text or image file is drawn on the phone instead of streamed from the Mac: it is sharp, scrolls and zooms on its own, has its own Rendered/Raw, and reloads when the file changes. Files outside the chat's folders, PDFs and Office files still stream.
 
 ## 0.15.1 - 2026-10-10
 

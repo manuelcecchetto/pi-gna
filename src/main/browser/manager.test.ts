@@ -1,10 +1,14 @@
 import { EventEmitter } from "node:events";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Just enough of Electron for tabs that load, report their icon and are captured: no real pages.
 const electron = vi.hoisted(() => {
   const shots = { count: 0, empty: false };
-  return { shots };
+  const keepers: { destroyed: boolean; contentView: { children: unknown[] } }[] = [];
+  return { shots, keepers };
 });
 
 vi.mock("electron", async () => {
@@ -27,9 +31,15 @@ vi.mock("electron", async () => {
     isDestroyed = () => false;
     isCrashed = () => false;
     setWindowOpenHandler = () => undefined;
-    close = () => undefined;
+    loads: string[] = [];
+    closed = false;
+    reload = vi.fn();
+    close = () => {
+      this.closed = true;
+    };
     focus = () => undefined;
     async loadURL(url: string) {
+      this.loads.push(url);
       this.url = url;
       this.emit("did-navigate", {}, url);
     }
@@ -47,7 +57,33 @@ vi.mock("electron", async () => {
   }
   return {
     app: { getPath: () => "/nonexistent-pigna-test" },
-    BrowserWindow: class {},
+    // The keeper: an invisible window that holds views.
+    BrowserWindow: class {
+      static made = 0;
+      destroyed = false;
+      size = [0, 0];
+      contentView = {
+        children: [] as unknown[],
+        addChildView: (view: unknown) => this.contentView.children.push(view),
+        removeChildView: (view: unknown) => this.contentView.children.splice(this.contentView.children.indexOf(view), 1),
+      };
+      constructor(options: { width: number; height: number }) {
+        electron.keepers.push(this);
+        this.size = [options.width, options.height];
+      }
+      setOpacity = () => undefined;
+      setIgnoreMouseEvents = () => undefined;
+      showInactive = () => undefined;
+      on = () => undefined;
+      isDestroyed = () => this.destroyed;
+      getContentSize = () => this.size;
+      setContentSize = (width: number, height: number) => {
+        this.size = [width, height];
+      };
+      destroy = () => {
+        this.destroyed = true;
+      };
+    },
     nativeImage: { createFromBuffer: (bytes: Buffer) => ({ isEmpty: () => false, getSize: () => ({ width: 16 }), toDataURL: () => `data:image/png;base64,${bytes.toString("base64")}` }) },
     session: { fromPartition: () => ({ setPermissionRequestHandler: () => undefined, webRequest: { onBeforeSendHeaders: () => undefined } }) },
     shell: {},
@@ -74,6 +110,7 @@ function setup() {
 const contents = (manager: Manager, id: string) => manager.tabs.get(id)!.view.webContents as unknown as EventEmitter & { url: string; title: string; capturePage: ReturnType<typeof vi.fn>; session: { fetch: ReturnType<typeof vi.fn> } };
 
 afterEach(() => {
+  electron.keepers.length = 0;
   electron.shots.count = 0;
   electron.shots.empty = false;
   vi.restoreAllMocks();
@@ -204,5 +241,108 @@ describe("BrowserManager stills", () => {
     electron.shots.empty = false;
     expect(await manager.still()).toMatch(/^data:image\/jpeg;base64,/);
     expect(wc.capturePage).toHaveBeenCalledTimes(2);
+  });
+});
+
+type Fake = EventEmitter & { url: string; loads: string[]; closed: boolean; reload: ReturnType<typeof vi.fn>; loadURL(url: string): Promise<void> };
+
+describe("BrowserManager agent copies of previews", () => {
+  async function previewed() {
+    const { manager, states } = setup();
+    const dir = mkdtempSync(join(tmpdir(), "pigna-agent-copy-"));
+    const file = join(dir, "notes.md");
+    writeFileSync(file, "# Notes\n");
+    writeFileSync(join(dir, "other.md"), "# Other\n");
+    const tab = await manager.openPreview(file, { agent: "chat1", root: dir });
+    const user = tab.view.webContents as unknown as Fake;
+    return { manager, states, tab, user, file };
+  }
+
+  it("gives the agent its own page of a preview in the keeper, loaded once per file and view", async () => {
+    const { manager, tab, user } = await previewed();
+    const page = await manager.agentPage(tab);
+    const copy = page.wc as unknown as Fake;
+    expect(page).toMatchObject({ copy: true, scale: 1, touch: false });
+    expect(copy).not.toBe(user);
+    expect(copy.url).toBe(user.url);
+    expect(electron.keepers[0]?.contentView.children).toContain(tab.agentView);
+    const userLoads = user.loads.length;
+
+    await manager.agentPage(tab);
+    expect(copy.loads).toHaveLength(1);
+    // A line loads the copy there; the user's tab is not touched.
+    await manager.agentPage(tab, 12);
+    expect(copy.loads.at(-1)).toBe(`${user.url}#L12`);
+    manager.setPreviewMode(tab.id, "raw");
+    await manager.agentPage(tab);
+    expect(copy.loads.at(-1)).toMatch(/\?view=raw$/);
+    expect(user.loads.length).toBe(userLoads + 1);
+  });
+
+  it("acts on the page the user sees for a web tab", async () => {
+    const { manager } = setup();
+    const tab = manager.createTab("https://site.test/");
+    const page = await manager.agentPage(tab);
+    expect(page.wc).toBe(tab.view.webContents);
+    expect(page.copy).toBe(false);
+    expect(tab.agentView).toBeUndefined();
+    expect(electron.keepers).toHaveLength(0);
+  });
+
+  it("carries the agent's move to another file to the tab, and a web link takes the tab off the copy", async () => {
+    const { manager, tab, user } = await previewed();
+    const copy = (await manager.agentPage(tab)).wc as unknown as Fake;
+    const other = user.url.replace("notes.md", "other.md");
+    await copy.loadURL(other);
+    expect(user.url).toBe(other);
+    expect(tab.preview?.info.name).toBe("other.md");
+    const loads = user.loads.length;
+    // The copy then follows the tab without carrying anything back.
+    await manager.agentPage(tab);
+    expect(user.loads).toHaveLength(loads);
+
+    const event = { defaultPrevented: false, preventDefault() {
+      this.defaultPrevented = true;
+    } };
+    copy.emit("will-navigate", event, "https://site.test/");
+    expect(event.defaultPrevented).toBe(true);
+    await settle();
+    expect(user.url).toBe("https://site.test/");
+    expect(tab.preview).toBeUndefined();
+    expect(tab.agentView).toBeUndefined();
+    expect(copy.closed).toBe(true);
+    expect(electron.keepers[0]?.destroyed).toBe(true);
+    expect((await manager.agentPage(tab)).wc).toBe(tab.view.webContents);
+  });
+
+  it("sizes the copy to the agent's viewport, not the pane", async () => {
+    const { manager, tab } = await previewed();
+    await manager.agentPage(tab);
+    const bounds = () => (tab.agentView as unknown as { bounds: { width: number; height: number } }).bounds;
+    expect(bounds()).toMatchObject({ width: 1280, height: 800 });
+    manager.setLayout(pane(400));
+    expect(bounds()).toMatchObject({ width: 1280, height: 800 });
+    const sent: string[] = [];
+    Object.assign(tab.agentView!.webContents.debugger, { attach: () => undefined, sendCommand: async (method: string) => sent.push(method) });
+    const spec = await manager.setAgentViewport(tab, { width: 390, height: 844, source: "agent" });
+    expect(bounds()).toMatchObject({ width: 390, height: 844 });
+    expect(sent).toEqual(["Emulation.setDeviceMetricsOverride"]);
+    expect(manager.agentViewport(tab)).toBe(spec);
+    expect(tab.viewport).toBeUndefined();
+  });
+
+  it("reloads the copy and bumps the revision when the file changes, and closes the copy with the tab", async () => {
+    const { manager, tab, user, file } = await previewed();
+    const copy = (await manager.agentPage(tab)).wc as unknown as Fake;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    writeFileSync(file, "# Notes, edited\n");
+    await vi.waitFor(() => expect(copy.reload).toHaveBeenCalled(), { timeout: 3000 });
+    expect(user.reload).toHaveBeenCalled();
+    expect(tab.preview?.info.rev).toBeGreaterThan(0);
+    await settle();
+    expect(manager.snapshot().tabs[0]?.preview?.rev).toBe(tab.preview?.info.rev);
+    manager.closeTab(tab.id);
+    expect(copy.closed).toBe(true);
+    expect(electron.keepers[0]?.destroyed).toBe(true);
   });
 });

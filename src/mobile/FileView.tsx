@@ -1,5 +1,6 @@
 // The File screen: a chat's text file or image drawn on the phone (docs/FILE_PREVIEW.md, Phone), instead of a stream of
-// the Mac's preview tab, which lags and letterboxes on a phone. Markdown renders with the transcript's own component (its
+// the Mac's preview tab, which lags and letterboxes on a phone. The Browser screen draws a preview tab of such a file the
+// same way (`useFile` and `FileContent`), with the phone's own scroll and zoom. Markdown renders with the transcript's own component (its
 // links resolve from the file's folder), code, text and JSON as highlighted lines with a gutter, CSV as a table, and an
 // image opens the lightbox. The host reads at most PREVIEW_LIMITS.text bytes; a binary file offers the Mac's stream.
 import { Copy, Monitor } from "../renderer/src/components/icons";
@@ -19,13 +20,16 @@ import { blockForLine, linesBefore, prettyJson } from "./file-data";
 import type { Route } from "./nav";
 import { copy, Header } from "./Screens";
 
-type Loaded = { type: "text"; file: PreviewText } | { type: "image"; src: string } | { type: "error"; message: string };
+export type Loaded = { type: "text"; file: PreviewText } | { type: "image"; src: string } | { type: "error"; message: string };
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const dirOf = (path: string) => path.slice(0, path.lastIndexOf("/")) || "/";
 
-export function FileScreen({ client, handle, path, line, push, back }: { client: HostClient; handle: string; path: string; line?: number; push: (route: Route) => void; back: () => void }) {
-  const ui = useChatUiHandle();
+/**
+ * A chat's file read for the phone to draw: undefined while the first read runs. `rev` reads it again (the file changed
+ * on disk), keeping the last result on screen meanwhile.
+ */
+export function useFile(client: HostClient, handle: string, path: string, rev?: number): Loaded | undefined {
   const kind = kindFor(path);
   const [loaded, setLoaded] = useState<Loaded>();
   useEffect(() => {
@@ -41,19 +45,17 @@ export function FileScreen({ client, handle, path, line, push, back }: { client:
     return () => {
       live = false;
     };
-  }, [client, handle, path, kind]);
+  }, [client, handle, path, kind, rev]);
+  return loaded;
+}
 
+/** Whether the phone can draw what was read: otherwise the Browser screen streams the Mac's tab. */
+export const drawable = (loaded: Loaded): boolean => loaded.type !== "error" && (loaded.type === "image" || loaded.file.text !== undefined);
+
+export function FileScreen({ client, handle, path, line, push, back }: { client: HostClient; handle: string; path: string; line?: number; push: (route: Route) => void; back: () => void }) {
+  const ui = useChatUiHandle();
+  const loaded = useFile(client, handle, path);
   const file = loaded?.type === "text" ? loaded.file : undefined;
-  // An unknown extension that reads as text is "text" (the host decides); an image has one view here.
-  const modes: PreviewMode[] = kind === "image" ? ["rendered"] : modesFor(path, file?.kind ?? kind);
-  const [mode, setMode] = useState<PreviewMode>(modes[0] as PreviewMode);
-  const [wrap, setWrap] = useState(true);
-  const lines = useMemo(() => (file?.text !== undefined ? splitLines(file.text) : []), [file]);
-  const codeView = file?.text !== undefined && (mode === "raw" || file.kind === "code" || file.kind === "text" || file.kind === "json");
-
-  const notes = file?.text !== undefined ? [`${lines.length.toLocaleString("en-US")} line${lines.length === 1 ? "" : "s"}`, formatBytes(file.size)] : [];
-  if (file?.truncated) notes.push(`showing the first ${formatBytes(PREVIEW_LIMITS.text)}`);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="file-screen">
       <Header
@@ -68,6 +70,28 @@ export function FileScreen({ client, handle, path, line, push, back }: { client:
           )
         }
       />
+      <FileContent client={client} handle={handle} path={path} line={line} push={push} loaded={loaded} />
+    </div>
+  );
+}
+
+/** The mode bar and the drawn file, scrolled by the phone. */
+export function FileContent({ client, handle, path, line, push, loaded }: { client: HostClient; handle: string; path: string; line?: number; push: (route: Route) => void; loaded: Loaded | undefined }) {
+  const ui = useChatUiHandle();
+  const kind = kindFor(path);
+  const file = loaded?.type === "text" ? loaded.file : undefined;
+  // An unknown extension that reads as text is "text" (the host decides); an image has one view here.
+  const modes: PreviewMode[] = kind === "image" ? ["rendered"] : modesFor(path, file?.kind ?? kind);
+  const [mode, setMode] = useState<PreviewMode>(modes[0] as PreviewMode);
+  const [wrap, setWrap] = useState(true);
+  const lines = useMemo(() => (file?.text !== undefined ? splitLines(file.text) : []), [file]);
+  const codeView = file?.text !== undefined && (mode === "raw" || file.kind === "code" || file.kind === "text" || file.kind === "json");
+
+  const notes = file?.text !== undefined ? [`${lines.length.toLocaleString("en-US")} line${lines.length === 1 ? "" : "s"}`, formatBytes(file.size)] : [];
+  if (file?.truncated) notes.push(`showing the first ${formatBytes(PREVIEW_LIMITS.text)}`);
+
+  return (
+    <>
       {file?.text !== undefined && (
         <div className="flex shrink-0 items-center gap-1.5 border-b border-line px-3 py-1.5">
           {modes.length > 1 &&
@@ -112,7 +136,7 @@ export function FileScreen({ client, handle, path, line, push, back }: { client:
           <MarkdownFile ui={ui} client={client} push={push} handle={handle} path={path} text={loaded.file.text} line={line} />
         )}
       </div>
-    </div>
+    </>
   );
 }
 

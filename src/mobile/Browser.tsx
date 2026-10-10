@@ -2,6 +2,8 @@
 // stream) and driven with `browser.input`. The page runs on the Mac, with the window hidden or the pane closed. A tap is a
 // click, a drag scrolls the page, two fingers zoom the picture locally (the page does not change), a long press is a right
 // click. Comment mode turns a tap into an annotation that rides with this phone's next prompt (`chat.send`).
+// A preview tab of a file the phone draws itself (Markdown, code, text, images: `drawnPreview`) is not streamed: the phone
+// reads the file and draws it with the File screen's view, scrolled and zoomed here, not on the Mac.
 import { AppWindow, ArrowLeft, ArrowRight, Bot, File, Keyboard, MessageSquarePlus, Plus, RotateCw, Smartphone, X, ZoomOut } from "../renderer/src/components/icons";
 import { useEffect, useRef, useState } from "react";
 import { useWakeAt } from "../renderer/src/components/primitives";
@@ -14,6 +16,9 @@ import { annotations, sendAnnotations, useAnnotations } from "./annotations";
 import { agentActive, agentLapse, type Box, classify, isWindowTab, KEYS, LONG_PRESS_MS, pageSize, suggestions, tabAddress, tabTitle, toPagePoint, viewportLabel, wheelDelta } from "./browser-data";
 import type { HostClient } from "./client/host-client";
 import { clampView, distance, FIT, midpoint, type View, zoomAt } from "./pinch";
+import { drawnPreview, type DrawnPreview } from "./file-data";
+import { drawable, FileContent, useFile } from "./FileView";
+import type { Route } from "./nav";
 import { Header } from "./Screens";
 import { Sheet } from "./Sheets";
 import { toast } from "./toasts";
@@ -42,7 +47,7 @@ export function AnnotationChips({ onRemove }: { onRemove?: (id: string) => void 
   );
 }
 
-export function BrowserScreen({ client, handle, initialTab, back }: { client: HostClient; handle?: string; initialTab?: string; back: () => void }) {
+export function BrowserScreen({ client, handle, initialTab, push, back }: { client: HostClient; handle?: string; initialTab?: string; push: (route: Route) => void; back: () => void }) {
   const state = useStore(client.store, (s) => s.global.browser);
   const [all, setAll] = useState(!handle);
   const allTabs = state?.tabs ?? [];
@@ -55,6 +60,11 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
   const tab = tabs.find((t) => t.id === picked) ?? tabs.find((t) => t.id === state?.activeId) ?? tabs.find((t) => agentActive(t, now)) ?? tabs[0];
   const [commenting, setCommenting] = useState(false);
   const [sheet, setSheet] = useState<"viewport" | "keys">();
+  // Previews the phone read but cannot draw (outside the chat's folders, binary, too large) stream instead.
+  const [streamed, setStreamed] = useState<ReadonlySet<string>>(new Set());
+  const candidate = tab && drawnPreview(tab, handle);
+  const drawnKey = tab && candidate ? `${tab.id}:${candidate.path}` : "";
+  const drawn = candidate && !streamed.has(drawnKey) ? candidate : undefined;
 
   const call: Call = (method, args) => (client.call as (m: string, a: unknown) => Promise<unknown>)(method, args).catch((e) => toast(failure(e), "error"));
 
@@ -71,10 +81,10 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
                 All tabs
               </button>
             )}
-            <button type="button" aria-label="Comment mode" aria-pressed={commenting} data-testid="comment-mode" disabled={!tab} onClick={() => setCommenting((on) => !on)} className={`grid h-11 w-11 shrink-0 place-items-center disabled:opacity-40 ${commenting ? "text-accent" : "text-muted"}`}>
+            <button type="button" aria-label="Comment mode" aria-pressed={commenting} data-testid="comment-mode" disabled={!tab || !!drawn} onClick={() => setCommenting((on) => !on)} className={`grid h-11 w-11 shrink-0 place-items-center disabled:opacity-40 ${commenting ? "text-accent" : "text-muted"}`}>
               <MessageSquarePlus size={20} />
             </button>
-            <button type="button" aria-label="Viewport" data-testid="viewport-open" disabled={!tab} onClick={() => setSheet("viewport")} className="grid h-11 w-11 shrink-0 place-items-center text-muted disabled:opacity-40">
+            <button type="button" aria-label="Viewport" data-testid="viewport-open" disabled={!tab || !!drawn} onClick={() => setSheet("viewport")} className="grid h-11 w-11 shrink-0 place-items-center text-muted disabled:opacity-40">
               <Smartphone size={20} />
             </button>
           </>
@@ -120,10 +130,14 @@ export function BrowserScreen({ client, handle, initialTab, back }: { client: Ho
         </button>
       </div>
       {tab ? <>
-          <AddressBar key={tab.id} client={client} tab={tab} call={call} />
-          <Frame key={`frame:${tab.id}`} client={client} tab={tab} chat={handle ?? tab.agent} commenting={commenting} />
+          <AddressBar key={tab.id} client={client} tab={tab} call={call} drawn={!!drawn} />
+          {drawn ? (
+            <DrawnFile key={drawnKey} client={client} drawn={drawn} push={push} onStream={() => setStreamed((keys) => new Set(keys).add(drawnKey))} />
+          ) : (
+            <Frame key={`frame:${tab.id}`} client={client} tab={tab} chat={handle ?? tab.agent} commenting={commenting} />
+          )}
         </> : <div className="p-6 text-center text-[13.5px] text-faint">No tabs open. Tap + for a new one.</div>}
-      {tab && (
+      {tab && !drawn && (
         <div className="shrink-0 border-t border-line pb-[env(safe-area-inset-bottom)]">
           <AnnotationChips />
           <TextBar client={client} tab={tab} onKeys={() => setSheet("keys")} />
@@ -199,7 +213,29 @@ function TextBar({ client, tab, onKeys }: { client: HostClient; tab: BrowserTab;
   );
 }
 
-function AddressBar({ client, tab, call }: { client: HostClient; tab: BrowserTab; call: Call }) {
+/**
+ * A preview tab of a file the phone draws itself: read from the chat's folders and drawn with the File screen's view, so
+ * its scroll, zoom and Rendered/Raw are the phone's own, not the Mac tab's. A changed file (`rev`) is read again; the
+ * tab's line is jumped to once. What cannot be read or drawn here streams the Mac's tab (`onStream`).
+ */
+function DrawnFile({ client, drawn, push, onStream }: { client: HostClient; drawn: DrawnPreview; push: (route: Route) => void; onStream: () => void }) {
+  const loaded = useFile(client, drawn.chat, drawn.path, drawn.rev);
+  const [firstRev] = useState(drawn.rev);
+  const unusable = !!loaded && !drawable(loaded);
+  useEffect(() => {
+    if (unusable) onStream();
+    // `onStream` is a new function each render; only the read's outcome matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unusable]);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="drawn-preview">
+      <FileContent client={client} handle={drawn.chat} path={drawn.path} line={drawn.rev === firstRev ? drawn.line : undefined} push={push} loaded={loaded} />
+    </div>
+  );
+}
+
+/** `drawn`: the phone draws the file itself and has its own Rendered/Raw. */
+function AddressBar({ client, tab, call, drawn }: { client: HostClient; tab: BrowserTab; call: Call; drawn: boolean }) {
   const preview = tab.preview;
   const [value, setValue] = useState(tabAddress(tab));
   const [focused, setFocused] = useState(false);
@@ -246,7 +282,7 @@ function AddressBar({ client, tab, call }: { client: HostClient; tab: BrowserTab
           className="selectable min-h-10 min-w-0 flex-1 rounded-xl bg-sunken px-3 text-[15px] text-fg outline-none"
         />
       </form>
-      {preview && preview.modes.length > 1 && (
+      {preview && !drawn && preview.modes.length > 1 && (
         <div className="flex gap-1 px-2 pt-1" role="group" aria-label="Preview mode" data-testid="preview-modes">
           {preview.modes.map((mode) => (
             <button key={mode} type="button" aria-pressed={mode === preview.mode} onClick={() => void call("browser.previewMode", { id: tab.id, mode })} className={`min-h-9 rounded-lg border px-3 text-[13px] capitalize ${mode === preview.mode ? "border-accent/60 text-fg" : "border-line text-muted"}`}>
