@@ -49,6 +49,12 @@ export async function enablePush(client: HostClient): Promise<void> {
   await client.call("push.subscribe", { endpoint: subscription.endpoint, p256dh: b64url(subscription.getKey("p256dh")), auth: b64url(subscription.getKey("auth")) });
 }
 
+/** Whether this phone still holds a push subscription: iOS can end one without telling the host. */
+export async function hasLocalSubscription(): Promise<boolean> {
+  const registration = await navigator.serviceWorker.ready;
+  return (await registration.pushManager.getSubscription()) !== null;
+}
+
 export async function disablePush(client: HostClient): Promise<void> {
   await client.call("push.unsubscribe", {});
   const registration = await navigator.serviceWorker.ready;

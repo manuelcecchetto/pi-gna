@@ -17,6 +17,8 @@ function worker(routes: Record<string, string>) {
   let offline = false;
   /** Whether the worker asked to take over at once, and how many shell caches existed then. */
   let skipped: number | undefined;
+  /** The notifications shown, as title and body. */
+  const shown: string[] = [];
   const fetchFake = async (input: Request | string, init?: { headers?: Record<string, string> }) => {
     const url = new URL(typeof input === "string" ? input : input.url, ORIGIN);
     network.push(url.pathname);
@@ -60,7 +62,9 @@ function worker(routes: Record<string, string>) {
     location: { origin: ORIGIN },
     addEventListener: (type: string, listener: (event: unknown) => void) => void (listeners[type] = listener),
     skipWaiting: async () => void (skipped = stores.size),
-    clients: { claim: async () => undefined },
+    // A window of the app is open and visible: pushes still show a notification.
+    clients: { claim: async () => undefined, matchAll: async () => [{ visibilityState: "visible" }] },
+    registration: { showNotification: async (title: string, options: { body: string }) => void shown.push(`${title}: ${options.body}`) },
   };
   new Function("self", "caches", "fetch", serviceWorkerSource("b1", SHELL))(self, caches, fetchFake);
 
@@ -73,6 +77,7 @@ function worker(routes: Record<string, string>) {
     network,
     revalidated,
     skipped: () => skipped,
+    shown,
     goOffline: () => void (offline = true),
     install: async () => {
       const event = extendable();
@@ -82,6 +87,11 @@ function worker(routes: Record<string, string>) {
     activate: async () => {
       const event = extendable();
       listeners.activate!(event);
+      await Promise.all(event.pending);
+    },
+    receive: async (data: unknown) => {
+      const event = { ...extendable(), data: { json: () => data } };
+      listeners.push!(event);
       await Promise.all(event.pending);
     },
     /** The worker's answer, or undefined when it leaves the request to the browser. */
@@ -150,6 +160,13 @@ describe("sw.js", () => {
     expect([...fresh.keys()].length).toBe(SHELL.length);
     await sw.activate();
     expect([...sw.stores.keys()]).toEqual(["pigna-shell-b1"]);
+  });
+
+  it("shows every push, even while the app is visible (iOS ends a subscription whose pushes show nothing)", async () => {
+    const sw = worker(routes);
+    await sw.receive({ v: 1, kind: "done", chat: "c1", t: 1, title: "Fix login" });
+    await sw.receive({ v: 1, kind: "host_quit", t: 2 });
+    expect(sw.shown).toEqual(["Fix login: Run finished", "pi-gna: pi-gna is quitting"]);
   });
 
   it("keeps nothing from an install that failed", async () => {

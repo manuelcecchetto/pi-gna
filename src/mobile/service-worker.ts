@@ -57,8 +57,8 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Web Push (REMOTE.md 13a): the payload is {kind, chat, t} plus the chat title and a reply excerpt; the status text comes from here. iOS revokes a subscription whose pushes
-// show nothing, so a notification is always shown unless the app is visibly open (then the app already shows the state).
+// Web Push (REMOTE.md 13a): the payload is {kind, chat, t} plus the chat title and a reply excerpt; the status text comes from here. Every push shows a
+// notification, even while the app is open: iOS silently ends a subscription after about three pushes that show nothing, and Apple keeps answering 201.
 const PUSH_TEXT = ${JSON.stringify(PUSH_TEXT)};
 self.addEventListener("push", (event) => {
   let data = {};
@@ -66,8 +66,6 @@ self.addEventListener("push", (event) => {
   const kind = typeof data.kind === "string" && PUSH_TEXT[data.kind] ? data.kind : "approval";
   const chat = typeof data.chat === "string" ? data.chat : "";
   event.waitUntil((async () => {
-    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-    if (windows.some((client) => client.visibilityState === "visible")) return;
     const title = typeof data.title === "string" && data.title ? data.title : "pi-gna";
     const preview = typeof data.preview === "string" && data.preview ? data.preview : "";
     await self.registration.showNotification(title, { body: preview ? PUSH_TEXT[kind] + ": " + preview : PUSH_TEXT[kind], tag: kind + ":" + chat, data: { chat } });

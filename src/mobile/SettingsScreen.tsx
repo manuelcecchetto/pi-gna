@@ -29,7 +29,7 @@ import type { HostClient } from "./client/host-client";
 import { snapshotOf } from "./client/host-client";
 import { loadModels } from "./composer-data";
 import type { Route } from "./nav";
-import { disablePush, enablePush, browserPushEnv, pushAvailability, type PushAvailability } from "./push";
+import { disablePush, enablePush, browserPushEnv, hasLocalSubscription, pushAvailability, type PushAvailability } from "./push";
 import { Header } from "./Screens";
 import { canDownload, changeError, isMobileSection, MOBILE_SECTIONS, type MobileSection, SECTION_LABELS, TASK_INFO, updateSummary } from "./settings-data";
 import { ModelSheet, Sheet } from "./Sheets";
@@ -563,15 +563,20 @@ function NotificationsCard({ client }: { client: HostClient }) {
   const [availability] = useState(() => pushAvailability(browserPushEnv()));
   const [state, setState] = useState<{ subscribed: boolean; prefs: PushPrefs }>();
   const [busy, setBusy] = useState(false);
+  // "On" needs the phone's own subscription too, so one iOS ended shows as Off and turning it on subscribes again.
+  const load = useCallback(async () => {
+    const host = await client.call("push.state", {});
+    return { ...host, subscribed: host.subscribed && availability === "ready" && (await hasLocalSubscription()) };
+  }, [client, availability]);
   useEffect(() => {
-    void client.call("push.state", {}).then(setState, () => undefined);
-  }, [client]);
+    void load().then(setState, () => undefined);
+  }, [load]);
   const fail = (error: unknown) => toast(error instanceof Error ? error.message : changeError(error).text, "error");
   const toggle = (on: boolean) => {
     setBusy(true);
     // Permission must be requested inside this tap, so the call starts synchronously.
     (on ? enablePush(client) : disablePush(client))
-      .then(() => client.call("push.state", {}))
+      .then(load)
       .then(setState, fail)
       .finally(() => setBusy(false));
   };
