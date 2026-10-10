@@ -1023,7 +1023,7 @@ Files (the node that builds each one is in brackets; the shapes are in `src/shar
 - `src/shared/usage-report.ts`: `buildCoreReport(facts, query, prices, now, files)` (headline, days, weekday-hour, models, projects, sessions) and, from T07, the rest; pure, no I/O [T06, T07].
 - `scripts/usage-crosscheck.mjs` (naive reader and diff) and `scripts/usage-crosscheck-real.test.mjs` (the real index and report over the same snapshot; skipped unless `USAGE_CROSSCHECK_WORK` is set): the independent cross-check [T09].
 - Host: `usage.get` and `usage.refresh` in `src/shared/host-api.ts`; `src/main/usage-service.ts` (the index and price table of a launch, the query check) [T08]. Renderer: `Usage.tsx` (the section: filters, report, states; a lazy chunk
-  from Settings), `UsageOverview.tsx` ... `UsageInsights.tsx` (one file per panel), `Charts.tsx` (SVG primitives) [T10 to T14].
+  from Settings), `UsageOverview.tsx` ... `UsageInsights.tsx` (one file per panel, plus `UsageSurfaces.tsx` and `UsageWindows.tsx`, which T14 added beyond the eight slots), `Charts.tsx` (SVG primitives) [T10 to T14].
   Phone: a compact section [T16].
 
 ### Sources and surfaces
@@ -1210,6 +1210,8 @@ Charts (`components/Charts.tsx`, pure scales in `chart-scale.ts`) are hand-writt
 (stacked bars, heat grids, split bar) show a tooltip on pointer hover and on keyboard focus (arrow keys).
 
 Overview and Activity (T12): `UsageDay.models` carries tokens and estimated cost per model, not turns, so the Turns view of the per-day bars is one series. The per-day bars keep the 7 largest models and fold the rest into "Other models"; the calendar shows the last 26 weeks of the range; the weekday by hour matrix offers turns, tokens or cost. The view mapping lives in `lib/usage-view.ts`, not in the components.
+
+Surfaces, Tools, Health, Windows and Insights (T14): the surface split (`SplitBar`, tokens or estimated cost) and its table; tool bars of calls with failure rate and mean duration, and the most failing tools. The report keeps the first 50 tool rows, the bars show 12, and the note gives the calls of the rest from the total. Mean only: the facts keep summed durations, so there is no median or p90. Health gives range totals (stop reasons and error categories as bars, prompts by steps and turns by input size as `Histogram`s, which keep their bin order where `HBars` sorts by value), compactions per session, and steps, tool calls and aborts per prompt. Windows show the busiest five and the one running now. Insights shows one card per rule that fires, with its value, threshold and tip, and nothing when none fires. The figures' labels and bin labels are in `lib/usage-view.ts`, with the tests in `usage-view.test.ts`.
 
 The page (T11): the section uses a wider column than the other Settings sections (`SectionInfo.wide`). Its filters (range,
 source, project) are kept per window in localStorage (`pigna:usage-filters`, `lib/usage-filters.ts`), as the ATP panels are,

@@ -14,7 +14,9 @@ import { ModelsPanel } from "./UsageModels";
 import { OverviewPanel } from "./UsageOverview";
 import { ProjectsPanel } from "./UsageProjects";
 import { SessionsPanel } from "./UsageSessions";
+import { SurfacesPanel } from "./UsageSurfaces";
 import { ToolsPanel } from "./UsageTools";
+import { WindowsPanel } from "./UsageWindows";
 
 const RANGE_LABELS: Record<UsageRange, string> = { "7d": "7d", "14d": "14d", "30d": "30d", "90d": "90d", all: "All" };
 const SOURCE_LABELS: Record<UsageSource, string> = { pigna: "pi-gna", all: "All pi sessions" };
@@ -176,12 +178,18 @@ function Report({ report, pending }: { report: UsageReport; pending: boolean }) 
       <div className="md:col-span-2">
         <ActivityPanel report={report} />
       </div>
+      <div className="md:col-span-2">
+        <SurfacesPanel report={report} />
+      </div>
       <ModelsPanel report={report} />
       <ProjectsPanel report={report} />
       <SessionsPanel report={report} />
       <ToolsPanel report={report} />
       <HealthPanel report={report} />
       <InsightsPanel report={report} />
+      <div className="md:col-span-2">
+        <WindowsPanel report={report} />
+      </div>
     </div>
   );
 }

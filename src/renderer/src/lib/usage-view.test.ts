@@ -1,6 +1,44 @@
 import { describe, expect, it } from "vitest";
-import type { UsageDay, WeekHour } from "../../../shared/usage";
-import { billedTokens, CALENDAR_DAYS, calendarValues, HOUR_LABELS, hoursOf, MODEL_SERIES_MAX, modelDayBars, percentOf, turnDayBars, usd, weekHourRows } from "./usage-view";
+import {
+  CONTEXT_EDGES,
+  ERROR_CATEGORIES,
+  INSIGHT_IDS,
+  type Insight,
+  STEP_EDGES,
+  STOP_REASONS,
+  SURFACES,
+  type Surface,
+  type SurfaceRow,
+  type ToolRow,
+  type UsageDay,
+  type WeekHour,
+} from "../../../shared/usage";
+import {
+  billedTokens,
+  CALENDAR_DAYS,
+  calendarValues,
+  CONTEXT_BIN_LABELS,
+  ERROR_LABELS,
+  HOUR_LABELS,
+  hoursOf,
+  INSIGHT_LABELS,
+  insightFigures,
+  labelledCounts,
+  MODEL_SERIES_MAX,
+  modelDayBars,
+  percentOf,
+  STEP_BIN_LABELS,
+  STOP_LABELS,
+  SURFACE_LABELS,
+  surfaceParts,
+  TOOL_BARS_MAX,
+  toolBars,
+  toolSummary,
+  plural,
+  turnDayBars,
+  usd,
+  weekHourRows,
+} from "./usage-view";
 
 const day = (date: string, models: [string, number, number][], turns = 0): UsageDay => ({
   day: date,
@@ -73,5 +111,76 @@ describe("usage view", () => {
     expect(weekHourRows(week, "cost")[1]![0]).toBe(2024);
     expect(HOUR_LABELS).toHaveLength(24);
     expect(HOUR_LABELS[7]).toBe("07");
+  });
+});
+
+const tool = (name: string, calls: number, errors: number, avgMs: number | null): ToolRow => ({
+  name,
+  calls,
+  errors,
+  errorRate: calls === 0 ? 0 : errors / calls,
+  avgMs,
+  nestedCalls: 0,
+});
+
+describe("usage panels", () => {
+  it("labels every surface, stop reason, error category and insight rule", () => {
+    expect(Object.keys(SURFACE_LABELS).sort()).toEqual([...SURFACES].sort());
+    expect(Object.keys(STOP_LABELS).sort()).toEqual([...STOP_REASONS].sort());
+    expect(Object.keys(ERROR_LABELS).sort()).toEqual([...ERROR_CATEGORIES].sort());
+    expect(Object.keys(INSIGHT_LABELS).sort()).toEqual([...INSIGHT_IDS].sort());
+  });
+
+  it("has one histogram label per bin binOf makes", () => {
+    expect(STEP_BIN_LABELS).toHaveLength(STEP_EDGES.length + 1);
+    expect(CONTEXT_BIN_LABELS).toHaveLength(CONTEXT_EDGES.length + 1);
+  });
+
+  it("splits the surfaces that have usage, by tokens or by cost", () => {
+    const row = (surface: Surface, tokens: number, estimated: number): SurfaceRow => ({
+      surface,
+      sessions: 0,
+      turns: 0,
+      tokens,
+      estimated,
+      subagentTokens: 0,
+      subagentEstimated: 0,
+    });
+    const rows = [row("pigna-chat", 10, 0), row("card", 0, 0), row("ci", 0, 1.5)];
+    expect(surfaceParts(rows, "tokens").map((part) => part.key)).toEqual(["pigna-chat"]);
+    expect(surfaceParts(rows, "cost")).toEqual([{ key: "ci", label: "CI runners", value: 1.5 }]);
+  });
+
+  it("lists counted categories in label order and leaves out zeros", () => {
+    expect(labelledCounts({ error: 2, toolUse: 0, stop: 5 }, STOP_LABELS)).toEqual([
+      { key: "stop", label: "Finished", value: 5 },
+      { key: "error", label: "Error", value: 2 },
+    ]);
+  });
+
+  it("gives each tool's failure rate and mean duration, or none when untimed", () => {
+    expect(toolSummary(tool("bash", 100, 2, 9300))).toBe("2.0% failed · 9.3s avg");
+    expect(toolSummary(tool("read", 4, 0, null))).toBe("0.0% failed · no timing");
+  });
+
+  it("singularises a count of one", () => {
+    expect(plural(1, "turn")).toBe("1 turn");
+    expect(plural(2, "turn")).toBe("2 turns");
+  });
+
+  it("gives bars to the most called tools only", () => {
+    const rows = Array.from({ length: TOOL_BARS_MAX + 2 }, (_, index) => tool(`t${index}`, 100 - index, 0, null));
+    expect(toolBars(rows)).toHaveLength(TOOL_BARS_MAX);
+    expect(toolBars(rows)[0]).toEqual({ key: "t0", label: "t0", value: 100 });
+  });
+
+  it("states a compaction rule as prompts per compaction against its ceiling", () => {
+    const insight: Insight = { id: "compactions", share: 0.25, count: 4, base: 40, value: 10, threshold: 10, tip: "" };
+    expect(insightFigures(insight)).toEqual({ value: "10.0 prompts per compaction", threshold: "10 prompts or fewer", detail: "4 compactions in 40 prompts" });
+  });
+
+  it("states a share rule as a percentage of its base", () => {
+    const insight: Insight = { id: "errors", share: 0.25, count: 30, base: 120, value: 0.25, threshold: 0.1, tip: "" };
+    expect(insightFigures(insight)).toEqual({ value: "25.0% of turns", threshold: "10.0%", detail: "30 of 120 turns" });
   });
 });

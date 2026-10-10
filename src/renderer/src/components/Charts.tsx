@@ -442,14 +442,18 @@ export function MatrixHeatmap({
 }
 
 /** Ranked by value, each bar against the top one; the share is of the whole list. */
-export function HBars({ rows, format, summary }: { rows: Amount[]; format: (value: number) => string; summary: string }) {
+export function HBars({ rows, format, summary, aside }: { rows: Amount[]; format: (value: number) => string; summary: string; aside?: (row: Amount) => ReactNode }) {
   const ranked = [...rows].sort((a, b) => b.value - a.value);
   const total = sum(ranked.map((row) => row.value));
   const top = ranked[0]?.value ?? 0;
   const color = colorScale(ranked.map((row) => row.key));
   if (top <= 0) return <Empty summary={summary} height={40} />;
   return (
-    <div role="img" aria-label={summary} className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 text-[12px]">
+    <div
+      role="img"
+      aria-label={summary}
+      className={`grid items-center gap-x-3 gap-y-2 text-[12px] ${aside ? "grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto_auto]" : "grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto]"}`}
+    >
       {ranked.map((row) => (
         <div key={row.key} className="contents">
           <span className="truncate text-fg" title={row.label}>
@@ -461,6 +465,7 @@ export function HBars({ rows, format, summary }: { rows: Amount[]; format: (valu
           <span className="whitespace-nowrap text-right font-mono tabular-nums text-fg">
             {format(row.value)} <span className="text-muted">{formatShare(total > 0 ? row.value / total : 0)}</span>
           </span>
+          {aside && <span className="whitespace-nowrap text-right text-muted">{aside(row)}</span>}
         </div>
       ))}
     </div>
@@ -539,5 +544,35 @@ export function Sparkline({ values, summary, color = "var(--chart-1)" }: { value
       <path d={`${line}L${W} ${H}L0 ${H}Z`} style={{ fill: color, fillOpacity: 0.14 }} />
       <path d={line} fill="none" strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ stroke: color }} />
     </svg>
+  );
+}
+
+/** A headline number with its caption above and an optional hint below. */
+export function Figure({ label, value, hint }: { label: ReactNode; value: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="text-[12px] leading-4 text-muted">{label}</span>
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-[20px] leading-tight font-medium tabular-nums text-fg">{value}</span>
+      {hint && <span className="text-[12px] text-faint">{hint}</span>}
+    </div>
+  );
+}
+
+/** Counts per bin in the given order, on one scale; each column's title gives its exact count. */
+export function Histogram({ bins, format, summary }: { bins: { label: string; value: number }[]; format: (value: number) => string; summary: string }) {
+  const top = Math.max(0, ...bins.map((bin) => bin.value));
+  if (top <= 0) return <Empty summary={summary} height={144} />;
+  return (
+    <div role="img" aria-label={summary} className="flex h-36 gap-1.5">
+      {bins.map((bin) => (
+        <div key={bin.label} title={`${bin.label}: ${format(bin.value)}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <span className="h-4 truncate text-[11px] tabular-nums text-muted">{bin.value > 0 ? formatCompact(bin.value) : ""}</span>
+          <div className="flex min-h-0 w-full flex-1 items-end">
+            <div className="w-full rounded-t-sm" style={{ height: `${(bin.value / top) * 100}%`, minHeight: bin.value > 0 ? 2 : 0, background: "var(--chart-1)" }} />
+          </div>
+          <span className="h-4 truncate text-[11px] text-faint">{bin.label}</span>
+        </div>
+      ))}
+    </div>
   );
 }
