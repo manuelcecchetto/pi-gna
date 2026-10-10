@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.11.4 - 2026-10-10
+
 - Phone: the Home Screen icon fills its square, without the light ring iOS drew around it (add pi-gna to the Home Screen again to pick it up).
 
 ## 0.11.3 - 2026-10-10
