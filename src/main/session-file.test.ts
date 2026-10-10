@@ -76,6 +76,23 @@ describe("summarizeSessionFile", () => {
     expect((await summarizeSessionFile(path, Buffer.byteLength(text)))?.name).toBe("Named early");
   });
 
+  it("keeps a title given during the first turn once the file outgrows the tail", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pi-gna-"));
+    const path = join(dir, "s.jsonl");
+    const text = jsonl([
+      header,
+      msg("u1", null, "user", "we need to rethink this"),
+      msg("a1", "u1", "assistant", "y".repeat(5_000)),
+      { type: "session_info", id: "n1", parentId: "a1", timestamp: "", name: "Rethink the orchestrator" },
+      msg("u2", "n1", "user", "and also this"),
+      ...Array.from({ length: 20 }, (_, i) => msg(`f${i}`, "u2", "assistant", "y".repeat(5_000))),
+    ]);
+    await writeFile(path, text);
+    const summary = await summarizeSessionFile(path, Buffer.byteLength(text));
+    expect(summary?.title).toBe("we need to rethink this");
+    expect(summary?.name).toBe("Rethink the orchestrator");
+  });
+
   it("never parses the system prompt, even one that quotes a header", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pi-gna-"));
     const path = join(dir, "s.jsonl");

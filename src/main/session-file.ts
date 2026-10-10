@@ -63,9 +63,10 @@ const TAIL_BYTES = 64 * 1024;
 
 /**
  * Header, first user message and latest name, without reading whole (often multi-MB) files.
- * The first user message follows a ~100 KB system message, so the head is streamed until found. Only the lines that
- * can be the header, a name or a user message are parsed: pi writes compact JSON and escapes quotes inside strings,
- * so these markers match a record's own keys, never the system prompt's text.
+ * The first user message follows a ~100 KB system message. The head is streamed whole, because the title extension
+ * names a chat during its first turn, after that message; past the head, only the tail is read for a later rename.
+ * Only the lines that can be the header, a name or the first user message are parsed: pi writes compact JSON and
+ * escapes quotes inside strings, so these markers match a record's own keys, never the system prompt's text.
  */
 export async function summarizeSessionFile(path: string, size: number): Promise<SessionFileSummary | undefined> {
   let header: SessionHeader | undefined;
@@ -75,17 +76,14 @@ export async function summarizeSessionFile(path: string, size: number): Promise<
   const stream = createReadStream(path, { end: HEAD_LIMIT - 1 });
   const splitter = new JsonlSplitter();
   try {
-    outer: for await (const chunk of stream) {
+    for await (const chunk of stream) {
       for (const line of splitter.push(chunk as Buffer)) {
-        if (!line.includes('"type":"session') && !line.includes('"role":"user"')) continue;
+        if (!line.includes('"type":"session') && (title !== undefined || !line.includes('"role":"user"'))) continue;
         const record = safeParse(line);
         if (!record) continue;
         if (record.type === "session") header = record;
         else if (record.type === "session_info") name = record.name;
-        else if (record.type === "message" && record.message.role === "user") {
-          title = textOf(record.message.content);
-          break outer;
-        }
+        else if (record.type === "message" && record.message.role === "user") title ??= textOf(record.message.content);
       }
     }
   } finally {
@@ -95,7 +93,7 @@ export async function summarizeSessionFile(path: string, size: number): Promise<
   // A first prompt with large images runs past HEAD_LIMIT: its text comes before the images, so read it from the cut line.
   title ??= cutUserTitle(splitter.partial);
 
-  if (size > HEAD_LIMIT || title !== undefined) {
+  if (size > HEAD_LIMIT) {
     const tailName = await latestNameInTail(path, size);
     if (tailName !== undefined) name = tailName || undefined;
   }

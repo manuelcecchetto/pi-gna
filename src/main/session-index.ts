@@ -28,7 +28,7 @@ let dirty = false;
 let saving: Promise<void> = Promise.resolve();
 
 /** Bump when SessionSummary or the way it is derived changes: an older file is then ignored. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 interface CacheFile {
   version: number;
