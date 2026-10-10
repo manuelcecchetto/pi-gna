@@ -137,7 +137,8 @@
       "description": "Web search, page and PDF fetching, GitHub repos and YouTube videos as tools.",
       "homepage": "https://www.npmjs.com/package/pi-web-access",
       "icon": "globe",
-      "source": "npm:pi-web-access@0.35.0"
+      "source": "npm:pi-web-access@0.35.0",
+      "recommended": true
     },
     {
       "id": "pi-codex-image-gen",
@@ -147,7 +148,44 @@
       "description": "Generate and edit images with your ChatGPT Codex login.",
       "homepage": "https://www.npmjs.com/package/pi-codex-image-gen",
       "icon": "image",
-      "source": "npm:pi-codex-image-gen@0.1.13"
+      "source": "npm:pi-codex-image-gen@0.1.15",
+      "recommended": true
+    },
+    {
+      "id": "pi-fff",
+      "kind": "package",
+      "name": "Fast file search",
+      "publisher": "@ff-labs/pi-fff",
+      "description": "Fuzzy, frecency-ranked find and grep tools, so the model finds files and code in fewer calls.",
+      "homepage": "https://www.npmjs.com/package/@ff-labs/pi-fff",
+      "icon": "package",
+      "source": "npm:@ff-labs/pi-fff@0.11.0",
+      "recommended": true
+    },
+    {
+      "id": "pi-subagents",
+      "kind": "package",
+      "name": "Subagents",
+      "publisher": "@gotgenes/pi-subagents",
+      "description": "A subagent tool: the model hands parallel work or a large search to agents with their own context.",
+      "homepage": "https://www.npmjs.com/package/@gotgenes/pi-subagents",
+      "icon": "package",
+      "source": "npm:@gotgenes/pi-subagents@23.0.0",
+      "recommended": true
+    },
+    {
+      "id": "pi-claude-bridge",
+      "kind": "package",
+      "name": "Claude Code bridge",
+      "publisher": "pi-claude-bridge",
+      "description": "Use your Claude subscription in pi: Claude Code runs as a model provider. Needs Claude Code signed in on this Mac.",
+      "homepage": "https://www.npmjs.com/package/pi-claude-bridge",
+      "logo": {
+        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgY29sb3I9IiNEOTc3NTciIHN0eWxlPSJjb2xvcjojRDk3NzU3Ij48ZyBmaWxsPSIjRDk3NzU3IiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTIwLjk5OCAxMC45NDlIMjR2My4xMDJoLTN2My4wMjhoLTEuNDg3VjIwSDE4di0yLjkyMWgtMS40ODdWMjBIMTV2LTIuOTIxSDlWMjBINy40ODh2LTIuOTIxSDZWMjBINC40ODd2LTIuOTIxSDNWMTQuMDVIMFYxMC45NWgzVjVoMTcuOTk4djUuOTQ5ek02IDEwLjk0OWgxLjQ4OFY4LjEwMkg2djIuODQ3em0xMC41MSAwSDE4VjguMTAyaC0xLjQ5djIuODQ3eiI+PC9wYXRoPjwvZz48L3N2Zz4=",
+        "background": "#09090b",
+        "scale": 0.62
+      },
+      "source": "npm:pi-claude-bridge@0.9.2"
     }
   ]
 }

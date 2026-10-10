@@ -10,6 +10,7 @@ import {
   type Catalog,
   type CatalogConnection,
   type CatalogEntry,
+  type CatalogPackage,
   type CatalogState,
   emptyPluginsState,
   type McpLoginResult,
@@ -46,6 +47,8 @@ export interface PiPluginsOptions {
   cache: string;
   /** The catalog's latest version, fetched once per launch. */
   remote: string;
+  /** resources/recommended/AGENTS.md, the recommended setup's global AGENTS.md. */
+  guide: string;
   onLogin(update: McpLoginUpdate): void;
   sdk?: () => string | undefined;
   node?: string;
@@ -109,6 +112,14 @@ export class PiPlugins {
     const entry = await this.entry(id, "package");
     log.info("plugins", `installing ${entry.source}`);
     await this.change({ op: "install", source: entry.source }, 0);
+  }
+
+  /** The recommended setup: the catalog's recommended packages you lack, codemode on unless you chose, and the guide
+   * as your global AGENTS.md unless you have one. */
+  async recommend(): Promise<void> {
+    const sources = (await this.catalog()).catalog.entries.filter((entry): entry is CatalogPackage => entry.kind === "package" && entry.recommended === true).map((entry) => entry.source);
+    log.info("plugins", `applying the recommended setup (${sources.join(", ")})`);
+    await this.change({ op: "recommend", sources, guide: this.options.guide }, 0);
   }
 
   remove(cwd: string | undefined, source: string, scope: "user" | "project"): Promise<void> {

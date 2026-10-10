@@ -226,7 +226,7 @@ function SetupDialog() {
             about={
               persona === "nerd"
                 ? "pi packages (extensions, skills, prompts, themes) and mcp.json servers, the same state pi config and pi mcp edit."
-                : "Let pi read and update the apps you already use. Not sure? Skip it; it's always in Settings."
+                : "Give pi the works, and let it read and update the apps you already use. Not sure? Skip it; it's always in Settings."
             }
             persona={persona}
             status={status}

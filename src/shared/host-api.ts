@@ -619,6 +619,7 @@ export interface HostMethods {
   "plugins.toggle": { args: { cwd?: string; toggle: PluginToggle }; result: null };
   "plugins.togglePackage": { args: { cwd?: string; toggle: PackageToggle }; result: null };
   "plugins.install": { args: { id: string }; result: null };
+  "plugins.recommend": { args: Record<string, never>; result: null };
   "plugins.remove": { args: { cwd?: string; source: string; scope: "user" | "project" }; result: null };
   "plugins.connect": { args: { id: string; endpoint: string; token?: string }; result: null };
   "plugins.disconnect": { args: { cwd?: string; server: string; scope: "global" | "project" }; result: null };
@@ -714,6 +715,7 @@ export const DESKTOP_ONLY_METHODS = [
   "plugins.toggle",
   "plugins.togglePackage",
   "plugins.install",
+  "plugins.recommend",
   "plugins.remove",
   "plugins.connect",
   "plugins.disconnect",

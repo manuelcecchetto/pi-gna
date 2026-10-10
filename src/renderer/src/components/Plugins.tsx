@@ -2,7 +2,7 @@
 // turn pi's packages and resources on and off for you or for this project (Installed), and pi's built-in extensions
 // (Built-in). pi-gna keeps no plugin list: main writes pi's settings.json and mcp.json with pi's own code
 // (src/main/plugins.ts), so `pi config` in the terminal shows the same, and chats started afterwards load it.
-import { Blocks, Check, ChevronRight, ExternalLink, Globe, Image, LoaderCircle, type IconComponent, Package, Plug, RotateCcw, Search, TriangleAlert, X } from "./icons";
+import { Blocks, Check, ChevronRight, CircleDashed, ExternalLink, Globe, Image, LoaderCircle, type IconComponent, Package, Plug, RotateCcw, Search, TriangleAlert, X } from "./icons";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CodeText } from "./CodeText";
 import {
@@ -214,6 +214,7 @@ function Discover({ plugins, query, onManage, simple = false }: { plugins: Plugi
   if (!entries.length) return <p className="text-[12.5px] text-faint">Nothing in the catalog matches “{query}”.</p>;
   return (
     <>
+      {!query && <Recommended plugins={plugins} added={added} simple={simple} />}
       {connections.length > 0 && (
         <section>
           <h2 className="mb-1 text-[13px] font-medium text-fg">{simple ? "Apps" : "Connections"}</h2>
@@ -261,6 +262,66 @@ function Discover({ plugins, query, onManage, simple = false }: { plugins: Plugi
         </section>
       )}
     </>
+  );
+}
+
+/** The recommended setup, the one pi-gna is made with: the catalog's recommended packages, codemode on by default
+ * and a global AGENTS.md. One button applies what is missing; it never replaces a choice of yours. */
+function Recommended({ plugins, added, simple }: { plugins: Plugins; added: (entry: CatalogEntry) => boolean; simple: boolean }) {
+  const state = plugins.state as PluginsState;
+  const packages = (plugins.catalog?.catalog.entries ?? []).filter((entry): entry is CatalogPackage => entry.kind === "package" && entry.recommended === true);
+  const { codemode, guide } = state.defaults;
+  const items: { key: string; label: string; done: boolean; title: string }[] = [
+    ...packages.map((entry) => ({ key: entry.id, label: entry.name, done: added(entry), title: `${entry.description} (${entry.source})` })),
+    {
+      key: "codemode",
+      label: simple ? "Tool scripts" : "Codemode on",
+      done: codemode !== "unset",
+      title: codemode === "off" ? "Your settings turn codemode off; the setup leaves that alone." : "Adds +codemode to defaultTools: the model can write a script that calls several tools and only reads its output.",
+    },
+    {
+      key: "guide",
+      label: simple ? "Working habits" : "AGENTS.md",
+      done: guide,
+      title: guide ? "You have a global AGENTS.md; the setup leaves it alone." : "Writes pi-gna's working guidelines to ~/.pi/agent/AGENTS.md, which pi reads in every chat. Edit it freely.",
+    },
+  ];
+  const pending = items.filter((item) => !item.done).length;
+  const running = plugins.busy === "recommend";
+  return (
+    <section>
+      <div className="mb-1 flex items-center gap-3">
+        <h2 className="flex-1 text-[13px] font-medium text-fg">{simple ? "The works" : "Recommended setup"}</h2>
+        {pending === 0 ? (
+          <span className="flex shrink-0 items-center gap-1 px-1.5 py-1 text-[12px] text-muted">
+            <Check size={12} className="text-ok" /> All set
+          </span>
+        ) : (
+          <Button primary disabled={plugins.busy !== null} onClick={() => void plugins.run("recommend", () => window.studio.plugins.recommend(), "Recommended setup done. Chats you start now load it.")}>
+            {running ? (
+              <>
+                <LoaderCircle size={12} className="animate-spin" /> Setting up…
+              </>
+            ) : (
+              `Set up ${pending === items.length ? "all" : `the other ${pending}`}`
+            )}
+          </Button>
+        )}
+      </div>
+      <p className="mb-2.5 text-[12px] leading-relaxed text-faint">
+        {simple
+          ? "What pi-gna is made with: faster search, helpers that work side by side, the web, images, and good working habits."
+          : "The setup pi-gna is made with, in one go: what is missing gets installed or turned on, and nothing you already chose is changed."}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => (
+          <span key={item.key} title={item.title} className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] ${item.done ? "border-line text-muted" : "border-dashed border-line-strong text-fg"}`}>
+            {item.done ? <Check size={12} className="text-ok" /> : running ? <LoaderCircle size={12} className="animate-spin text-faint" /> : <CircleDashed size={12} className="text-faint" />}
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 

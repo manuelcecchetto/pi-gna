@@ -298,6 +298,7 @@ const plugins = new PiPlugins({
   bundled: onDisk("resources", "plugins", "catalog.json"),
   cache: join(app.getPath("userData"), "plugins-catalog.json"),
   remote: "https://raw.githubusercontent.com/manuelcecchetto/pi-gna/main/resources/plugins/catalog.json",
+  guide: onDisk("resources", "recommended", "AGENTS.md"),
   onLogin: (update) => send(IPC.pluginsLoginUpdate, update),
 });
 const setup = new PiSetup({ onLine: (line) => send(IPC.setupLine, line) });

@@ -125,6 +125,7 @@ export const IPC = {
   pluginsToggle: "plugins:toggle",
   pluginsTogglePackage: "plugins:toggle-package",
   pluginsInstall: "plugins:install",
+  pluginsRecommend: "plugins:recommend",
   pluginsRemove: "plugins:remove",
   pluginsConnect: "plugins:connect",
   pluginsDisconnect: "plugins:disconnect",
@@ -249,6 +250,8 @@ export interface PluginsApi {
   togglePackage(cwd: string | undefined, toggle: PackageToggle): Promise<void>;
   /** A catalog package by its id, into your personal settings. */
   install(id: string): Promise<void>;
+  /** The recommended setup's packages, codemode and global AGENTS.md (PiPlugins.recommend). */
+  recommend(): Promise<void>;
   remove(cwd: string | undefined, source: string, scope: "user" | "project"): Promise<void>;
   /** A catalog connection by its id, at one of its endpoints; `token` for one that signs in with a key. */
   connect(id: string, endpoint: string, token?: string): Promise<void>;

@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > Plugins and Setup's Superpowers step offer the recommended setup, the one pi-gna is made with, in one click: web access, image generation, fast fuzzy file search and subagents, codemode on, and a global AGENTS.md of good working habits. It only adds what is missing and never changes a choice you made. Subagents of a Claude chat run on Sonnet and those of an OpenAI chat on Luna, unless you pick a model. The Claude Code bridge is in the catalog too, to use a Claude subscription in pi.
 - The installer window is clearer and friendlier: two Pignas, a big arrow from pi-gna to the Applications folder, and "Drag pi-gna into Applications" written underneath.
 - Hovering the tok/s readout shows a chart of the output speed of every response in the chat over time, red when slow, orange, green when fast, with the average. It covers earlier responses too, also in chats reopened from disk, where tok/s used to show nothing.
 

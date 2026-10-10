@@ -28,6 +28,8 @@ interface CatalogBase {
   logo?: CatalogLogo;
   /** An icon (components/icons.tsx) the renderer draws when there is no logo. */
   icon?: CatalogIcon;
+  /** Part of the recommended setup (the setup pi-gna is made with), which installs it in one go. */
+  recommended?: boolean;
 }
 
 /** A remote MCP server, added to pi's global mcp.json under `server`. */
@@ -103,6 +105,7 @@ function parseEntry(raw: unknown, index: number): CatalogEntry {
     homepage: https(value.homepage, at("homepage")),
     ...(value.logo !== undefined && { logo: parseLogo(value.logo, at("logo")) }),
     ...(value.icon !== undefined && { icon: oneOf(value.icon, CATALOG_ICONS, at("icon")) }),
+    ...(value.recommended === true && { recommended: true }),
   };
   if (value.kind === "package") {
     const source = text(value.source, at("source"));
@@ -251,6 +254,8 @@ export interface PluginsState {
   mcpAdapter: boolean;
   /** pi's own MCP support (builtin:mcp) is loaded. */
   builtinMcp: boolean;
+  /** The settings of the recommended setup besides its packages. */
+  defaults: RecommendedDefaults;
   /** Set when pi's state cannot be read; the rest is then empty. */
   error?: string;
 }
@@ -264,8 +269,16 @@ export const emptyPluginsState = (error: string): PluginsState => ({
   servers: [],
   mcpAdapter: false,
   builtinMcp: false,
+  defaults: { codemode: "unset", guide: false },
   error,
 });
+
+/** codemode in your settings' `defaultTools`: added, removed, or not named (pi's default, off). guide: you have a
+ * global AGENTS.md, pi-gna's or your own. */
+export interface RecommendedDefaults {
+  codemode: "on" | "off" | "unset";
+  guide: boolean;
+}
 
 /** A server's state as `pi mcp list` reports it. */
 export type McpState = "connecting" | "connected" | "disconnected" | "needs-auth" | "failed" | "closed" | "disabled";
@@ -314,6 +327,9 @@ export type PluginsRequest =
   | { op: "togglePackage"; cwd?: string; toggle: PackageToggle }
   | { op: "install"; cwd?: string; source: string }
   | { op: "remove"; cwd?: string; source: string; scope: "user" | "project" }
+  /** Installs those of `sources` your settings lack, turns codemode on unless you named it, and copies `guide` to
+   * the global AGENTS.md when there is none. */
+  | { op: "recommend"; sources: string[]; guide: string }
   | { op: "mcpAdd"; name: string; url: string; headers?: Record<string, string> }
   | { op: "mcpRemove"; cwd?: string; name: string; scope: "global" | "project" }
   | { op: "mcpEnable"; cwd?: string; name: string; scope: "global" | "project"; enabled: boolean };
