@@ -3,12 +3,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const read = (name: string) => readFileSync(join(__dirname, "../../resources", name), "utf8");
+/** What agents are told about the kit: the always-on prompt and the inline-visuals skill it points to. */
+const docs = () => read("pigna-visual-prompt.md") + "\n" + read("skills/inline-visuals/SKILL.md");
 
 describe("visual kit vocabulary", () => {
-  it("defines every class the prompt lists", () => {
-    const prompt = read("pigna-visual-prompt.md");
-    const line = prompt.split("\n").find((l) => l.startsWith("- Classes:")) ?? "";
-    const listed = [...line.matchAll(/`([a-z][a-z-]*)`/g)].map((m) => m[1] ?? "");
+  it("defines every class the prompt and the skill list", () => {
+    const lines = docs()
+      .split("\n")
+      .filter((l) => l.startsWith("- Classes:") || l.startsWith("- Mock classes:"));
+    expect(lines).toHaveLength(2);
+    const listed = lines.flatMap((line) => [...line.matchAll(/`([a-z][a-z-]*)`/g)].map((m) => m[1] ?? ""));
     const modifiers = new Set(["ok", "bad", "warn", "accent"]);
     expect(listed.length).toBeGreaterThan(10);
     const css = read("visual/kit.css");
@@ -16,8 +20,8 @@ describe("visual kit vocabulary", () => {
     for (const name of modifiers) expect(css, name).toMatch(new RegExp(`\\.${name}(?![\\w-])`));
   });
 
-  it("defines every token and helper the prompt names, tokens for both themes", () => {
-    const prompt = read("pigna-visual-prompt.md");
+  it("defines every token and helper the prompt and the skill name, tokens for both themes", () => {
+    const prompt = docs();
     const css = read("visual/kit.css");
     const [dark = "", light = ""] = css.split("@media (prefers-color-scheme: light)");
     const tokens = new Set([...prompt.matchAll(/--([a-z][\w-]*)/g)].map((m) => m[1]));

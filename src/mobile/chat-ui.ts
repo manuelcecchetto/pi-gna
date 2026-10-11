@@ -125,7 +125,7 @@ export function createChatUi(client: HostClient, homeDir: string, push: (route: 
       homeDir,
       Sheet,
       // Frames come from the host's /visual path (sandboxed, opaque origin, the desktop's frame CSP).
-      visualFrames: { src: (frameId) => `/visual/${frameId}/doc`, tapToRender: true },
+      visualFrames: { src: (frameId) => `/visual/${frameId}/doc` },
       setExpanded: (key, open) => store.set((state) => ({ ...state, expanded: { ...state.expanded, [key]: open } })),
       openLightbox: (src, images) => lightbox.set(() => (src ? lightboxAt(src, images) : undefined)),
       openExternal(url) {

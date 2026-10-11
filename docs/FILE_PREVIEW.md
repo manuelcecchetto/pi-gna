@@ -553,7 +553,7 @@ chat link opens:
   project (`chatRoots` in `host-core.ts`, `within` in `resolve-targets.ts`, symlinks followed). A link outside them
   renders as muted text, like a missing file. Tested in `host-core.test.ts` ("a phone's chat links").
 - **Embedded images** load through `chat.linkImage`, under the same rule, with one exception: an image file that one
-  of the chat's own answers embeds (`![](path)` or `<img src>`, `embeddedImageTargets` in `shared/markdown-images.ts`)
+  of the chat's own answers embeds (`![](path)` or `<img src>`, and the `<img src>`/`<image href>` of a `visual` fence, `embeddedImageTargets` in `shared/markdown-images.ts`)
   resolves and loads wherever it is (`shownImages` in `host-core.ts`). Agents save screenshots to `/tmp` (the prompt's
   own example), and the phone showed them as grey chips while the Mac showed the image. Only the agent's answers
   count, not the user's messages, which a phone writes, nor code, links or a shown file's images; only image

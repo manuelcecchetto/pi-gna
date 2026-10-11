@@ -1,7 +1,8 @@
 import { type CSSProperties, memo, useCallback, useEffect, useRef, useState } from "react";
 import { useChatActions } from "../lib/chat-ui";
 import { watchNear } from "../lib/near";
-import { linkFrame, readTokens } from "../lib/visual-frames";
+import { visualImageTargets } from "../../../shared/markdown-images";
+import { linkFrame, readTokens, withVisualImages } from "../lib/visual-frames";
 import { CodeView } from "./Markdown";
 
 const MIN_H = 40;
@@ -13,14 +14,6 @@ function newFrameId(): string {
 
 /** Sandboxed iframe running one HTML fragment. Memoised by source so transcript re-renders keep the frame. */
 export const VisualFrame = memo(function VisualFrame({ source }: { source: string }) {
-  const { visualFrames } = useChatActions();
-  const [armed, setArmed] = useState(!visualFrames?.tapToRender);
-  if (!armed)
-    return (
-      <button type="button" onClick={() => setArmed(true)} className="visual-tap" data-testid="visual-tap">
-        Tap to render visual
-      </button>
-    );
   return <LiveFrame source={source} />;
 });
 
@@ -29,7 +22,9 @@ export const VisualFrame = memo(function VisualFrame({ source }: { source: strin
  * frame's last height holds its place and the frame, with its process, is gone. Coming back runs the visual again.
  */
 function LiveFrame({ source }: { source: string }) {
-  const { visualFrames } = useChatActions();
+  const { visualFrames, links } = useChatActions();
+  // What the frame runs: the source with its local images inlined, read once per box (undefined while they load).
+  const [html, setHtml] = useState(() => (visualImageTargets(source).length ? undefined : source));
   const placeRef = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   const [height, setHeight] = useState(MIN_H);
@@ -38,6 +33,15 @@ function LiveFrame({ source }: { source: string }) {
   const [showSource, setShowSource] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (html !== undefined) return;
+    let live = true;
+    void withVisualImages(source, links).then((inlined) => live && setHtml(inlined));
+    return () => {
+      live = false;
+    };
+  }, [html, source, links]);
 
   // Watched through its place in the transcript, which stays put while the box is expanded over the window.
   useEffect(() => (placeRef.current ? watchNear(placeRef.current, setNear) : undefined), []);
@@ -69,9 +73,9 @@ function LiveFrame({ source }: { source: string }) {
       {full && <div className="visual-backdrop" onClick={() => setFull(false)} />}
       <div className={full ? "visual-box full" : "visual-box"}>
         {error && <div className="visual-error">Visual error: {error}</div>}
-        {running ? (
+        {running && html !== undefined ? (
           <Frame
-            source={source}
+            source={html}
             failed={Boolean(error)}
             onHeight={setHeight}
             onError={setError}

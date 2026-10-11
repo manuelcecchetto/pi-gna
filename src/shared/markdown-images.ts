@@ -25,6 +25,8 @@ export function embeddedImageTargets(markdown: string): string[] {
   const targets: string[] = [];
   lexer.walkTokens(lexer.lexer(markdown), (token: Token) => {
     if (token.type === "image" && isLocalLinkHref(token.href)) targets.push(token.href);
+    // An inline visual shows its local images too (the chat inlines them into the frame: visualImageTargets).
+    if (token.type === "code" && token.lang === "visual") targets.push(...visualImageTargets(token.text));
     if (token.type !== "html") return;
     for (const [, body] of token.text.matchAll(IMG_TAG)) {
       const src = imgAttributes(body!).src ?? "";
@@ -32,4 +34,35 @@ export function embeddedImageTargets(markdown: string): string[] {
     }
   });
   return targets;
+}
+
+/** An image tag of a visual: HTML `<img>` or SVG `<image>`; group 1 is the name, group 2 what follows it. */
+const VISUAL_IMAGE_TAG = /<(img|image)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
+/** The attribute holding an image tag's source. */
+const sourceAttribute = (tag: string, name: string) => (tag.toLowerCase() === "img" ? name === "src" : name === "href" || name === "xlink:href");
+
+/**
+ * The local images a visual fragment shows, in order, as written: `<img src>` and SVG `<image href>` (or `xlink:href`).
+ * The frame itself loads nothing (its CSP allows only data: and blob: images), so the chat reads these the way it reads
+ * an answer's `![alt](path)` and inlines them (`inlineVisualImages`).
+ */
+export function visualImageTargets(html: string): string[] {
+  const targets: string[] = [];
+  for (const [, tag, body] of html.matchAll(VISUAL_IMAGE_TAG)) {
+    for (const [name, value] of Object.entries(imgAttributes(body!))) if (sourceAttribute(tag!, name) && isLocalLinkHref(value)) targets.push(value);
+  }
+  return targets;
+}
+
+/** `html` with each image source found in `sources` (target as written -> data URL) replaced; the rest stays as written. */
+export function inlineVisualImages(html: string, sources: ReadonlyMap<string, string>): string {
+  if (!sources.size) return html;
+  return html.replace(VISUAL_IMAGE_TAG, (whole, tag: string, body: string) => {
+    const rewritten = body.replace(ATTRIBUTE, (attribute, name: string) => {
+      if (!sourceAttribute(tag, name.toLowerCase())) return attribute;
+      const url = sources.get(imgAttributes(attribute)[name.toLowerCase()] ?? "");
+      return url ? `${name}="${url}"` : attribute;
+    });
+    return `<${tag}${rewritten}>`;
+  });
 }

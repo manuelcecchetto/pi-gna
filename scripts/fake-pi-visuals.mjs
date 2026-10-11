@@ -1,5 +1,6 @@
 // Fixtures for fake-pi's FAKE_FIXTURE: replies holding ```visual fences, good and hostile. See docs/DESIGN.md
 // ("Verifying inline visuals"). Hostile fragments call out to http://127.0.0.1:$FAKE_HOSTILE_PORT, which must see nothing.
+import { readFileSync } from "node:fs";
 const fence = (html) => "```visual\n" + html.trim() + "\n```\n\n";
 const port = process.env.FAKE_HOSTILE_PORT || "9";
 const host = `http://127.0.0.1:${port}`;
@@ -120,6 +121,53 @@ const hostile = [
   `<a id="ext" href="${host}/link">link out</a>`,
 ];
 
+// A technical illustration with local images: the chat inlines `<img src>` and SVG `<image href>` as data URLs.
+const localImage = process.env.FAKE_IMAGE || new URL("../resources/icon.png", import.meta.url).pathname;
+const illustration = fence(`
+<div class="stack">
+  <div class="head"><span>Thrust climbs from 8.1 to 79.3 kN as the nozzle opens</span><span class="tabs" id="thr"><button>IDLE</button><button class="on">PART</button><button>MIL</button><button>AB 1</button><button>AB 2</button></span></div>
+  <svg id="eng" viewBox="0 0 720 230" style="width:100%">
+    <defs>
+      <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><path d="M0 0V5" stroke="var(--line)" stroke-width="1.2"/></pattern>
+      <radialGradient id="flame" cx="0.25" cy="0.5" r="0.75"><stop offset="0" stop-color="#fff4c2"/><stop offset="0.35" stop-color="#ff9a3c"/><stop offset="1" stop-color="#ff5a1f" stop-opacity="0"/></radialGradient>
+    </defs>
+    <g fill="none" stroke="var(--fg)" stroke-width="1">
+      <path d="M40 200H700M60 200V214M680 200V214M180 200V170H200V200M520 200V170H540V200"/>
+      <path d="M70 52C90 70 100 90 110 96H520V84H612M70 168C90 150 100 130 110 124H520V136H612"/>
+      <path id="petals" d="M612 84L650 92M612 136L650 128"/>
+    </g>
+    <path d="M140 110C140 104 150 102 160 102H470L520 110L470 118H160C150 118 140 116 140 110Z" fill="url(#hatch)" stroke="var(--fg)"/>
+    <g stroke="var(--muted)">${Array.from({ length: 14 }, (_, i) => `<path d="M${170 + i * 9} ${100 - (14 - i)}V${120 + (14 - i)}"/>`).join("")}</g>
+    <g fill="#ff9a3c" opacity="0.8">${[300, 318, 336, 354].map((x) => `<rect x="${x}" y="96" width="10" height="4"/><rect x="${x}" y="120" width="10" height="4"/>`).join("")}</g>
+    <g stroke="var(--fg)">${[400, 412, 424].map((x) => `<path d="M${x} 98V122"/>`).join("")}</g>
+    <path d="M536 100L528 104L536 108M536 112L528 116L536 120" fill="none" stroke="var(--fg)"/>
+    <ellipse id="burn" cx="590" cy="110" rx="70" ry="18" fill="url(#flame)" opacity="0"/>
+    <g font-size="11" fill="var(--muted)" stroke="none">
+      <text x="72" y="36">Inlet</text><text x="190" y="24">Compressor</text><text x="320" y="36">Combustor</text><text x="400" y="24">Turbine</text><text x="510" y="36">V-gutters</text><text x="610" y="24">Nozzle petals</text>
+    </g>
+    <path d="M84 40V62M216 28V90M340 40V96M412 28V98M532 40V100M640 28V90" stroke="var(--line)"/>
+    <image href="${localImage}" x="44" y="150" width="28" height="28"/>
+  </svg>
+  <div class="row"><img src="${localImage}" width="48" height="48" alt="reference"><span class="hint">Load cell <b class="num" id="kn">16.2</b> kN · nozzle <span class="num" id="noz">78</span>%</span></div>
+  <script>
+    const states = { "IDLE": [8.1, 62, 0], "PART": [16.2, 78, 0], "MIL": [52.9, 70, 0], "AB 1": [66.0, 88, 0.6], "AB 2": [79.3, 100, 1] };
+    const show = (name) => {
+      const [kn, noz, burn] = states[name];
+      document.getElementById("kn").textContent = kn.toFixed(1);
+      document.getElementById("noz").textContent = noz;
+      const open = 92 - (noz - 60) / 40 * 12;
+      document.getElementById("petals").setAttribute("d", "M612 84L650 " + open + "M612 136L650 " + (220 - open));
+      document.getElementById("burn").setAttribute("opacity", burn);
+    };
+    document.getElementById("thr").addEventListener("tab", (e) => show(e.detail));
+    show("PART");
+  </script>
+</div>`);
+
+// The worked examples of the inline-visuals skill, exactly as agents read them: they must render.
+const skillExamples = () =>
+  [...readFileSync(new URL("../resources/skills/inline-visuals/SKILL.md", import.meta.url), "utf8").matchAll(/^```visual\n([\s\S]*?)^```$/gm)].map((m) => fence(m[1]));
+
 const loop = fence(`<div>loop</div><script>while (true) {}</script>`);
 
 const FIXTURES = {
@@ -132,6 +180,8 @@ const FIXTURES = {
   oversized: "Too big.\n\n" + fence(`<div>${"x".repeat(70 * 1024)}</div>`) + "After.\n",
   hostile: "Hostile fragments, one per fence.\n\n" + hostile.map(fence).join("") + "Done.\n",
   loop: "An infinite loop in a frame.\n\n" + loop + "Still responsive?\n",
+  skill: "The inline-visuals skill's examples.\n\n" + skillExamples().join("") + "Done.\n",
+  illustration: "A turbojet on a thrust stand, cut open.\n\n" + illustration + "Click a throttle setting.\n",
 };
 
 export const fixtureText = (name) => {

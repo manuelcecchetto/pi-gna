@@ -95,13 +95,10 @@ async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) 
   check(await phone.eval(`(() => { const a = [...document.querySelectorAll("a")].find((x) => x.href.startsWith("https://example.com/docs")); if (!a) return false; a.click(); return true; })()`), "a link in an answer is tapped");
   check((await phone.eval("window.__opened")).includes("https://example.com/docs"), "links open in the phone's browser", await phone.eval("window.__opened"));
 
-  // Visuals: tap to render, sandboxed frame from the host, watchdog.
+  // Visuals: rendered on their own, sandboxed frame from the host, watchdog.
   // The settings checks left Inline visuals however they found it: switch it on from the host; the phone follows live.
   const current = await A.ok("settings.get");
   if (!current.visuals) await A.ok("settings.apply", { op: { type: "visuals", on: true }, baseRev: current.rev });
-  await until("the visual placeholders", () => exists('[data-testid="visual-tap"]'));
-  check((await count("iframe")) === 0, "no visual runs before it is tapped");
-  check(await click("visual-tap"), "the first visual is tapped");
   await until("the visual frame", () => exists("iframe.visual-frame"));
   const frame = await phone.eval(`(() => { const f = document.querySelector("iframe.visual-frame"); return { sandbox: f.getAttribute("sandbox"), src: f.getAttribute("src") }; })()`);
   check(frame.sandbox === "allow-scripts", "the frame is sandboxed with scripts only (opaque origin)", frame.sandbox);
@@ -114,7 +111,6 @@ async function transcriptChecks({ phone, A, shot, text, tap, exists, present }) 
   const headers = await phone.eval(`fetch(${JSON.stringify(frame.src)}).then((r) => ({ status: r.status, csp: r.headers.get("content-security-policy") }))`);
   check(headers.status === 200 && /default-src 'none'/.test(headers.csp) && /connect-src 'none'/.test(headers.csp), "the frame document carries the visual CSP", headers);
   // The second visual stops its heartbeat: the watchdog removes the frame and shows the source.
-  check(await phone.eval(`(() => { const t = [...document.querySelectorAll('[data-testid="visual-tap"]')]; if (!t[0]) return false; t[0].click(); return true; })()`), "the second visual is tapped");
   await until("the watchdog to fire", present("Visual stopped responding"), 20_000, 500);
   check((await count("iframe.visual-frame")) === 1, "the stuck frame is removed (the healthy one stays)");
   check((await text()).includes("clearInterval"), "its source is shown instead");

@@ -17,8 +17,6 @@ export type ChatUiState = Pick<AppState, "expandAll" | "expanded" | "board" | "l
 export interface VisualFrames {
   /** Document URL of one frame (its kit files sit beside it). */
   src(frameId: string): string;
-  /** A frame draws only after a tap: a phone does not run every visual in a long transcript at once. */
-  tapToRender: boolean;
 }
 
 /** What a chat's links open (docs/FILE_PREVIEW.md, Chat links): file previews and cards. */

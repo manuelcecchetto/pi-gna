@@ -1871,6 +1871,13 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
 - An HTML **fragment** (no `<html>`/`<head>`/`<body>`, no external URLs). Inline `<script>`, `<style>` and `<svg>` are allowed;
   the frame CSP confines them, not sanitising.
 - The prose around the fence must answer the question alone; the visual only supplements it (the prompt says so).
+- **Local images**: `<img src="path">` and SVG `<image href="path">` (or `xlink:href`) with a local target show the file, but the
+  frame never loads it: `LiveFrame` reads each one through the chat's links (`links.image`, as `![alt](path)` loads:
+  image extensions, 20 MB) and runs the fragment with data URLs in their place (`withVisualImages`, `lib/visual-frames.ts`;
+  `visualImageTargets`/`inlineVisualImages`, `shared/markdown-images.ts`), once per box. The CSP stays `img-src data: blob:`,
+  so remote image URLs stay blocked and the 64 KB cap counts the path, not the image. Source and Copy keep the paths. On the
+  phone these count as images the answer shows (`embeddedImageTargets`), so they load wherever they are, like `![](path)`.
+  A path set from a script is not seen and stays blocked.
 - Cap **64 KB** (`VISUAL_MAX_BYTES`, `lib/markdown.ts`): larger blocks stay a code block with a "too large" note.
 - `markdown.ts` pulls a complete fence out before DOMPurify and leaves `<div class="visual" data-visual>` holding the source in
   a hidden `.visual-src`; `Markdown.tsx` hydrates it into `VisualFrame` once the message is complete, and the visual's box
@@ -1883,11 +1890,15 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
   One message listener, one 1 s watchdog and one theme listener (`linkFrame`, `lib/visual-frames.ts`) serve every running
   frame and exist only while one runs. A fling past ~10,000 px/s shows a visual blank for a few frames (P23).
 - The prompt (`resources/pigna-visual-prompt.md`) lists the kit classes, tokens and helpers, when exactly one visual is
-  warranted and when not, and SVG rules. It reaches the agent as a context file, not `--append-system-prompt`:
+  warranted and when not, and SVG rules. The craft for the ambitious ones (technical illustrations, `kit.player` animation, UI mocks, local
+  images: techniques, worked examples, a pre-send checklist) is the bundled skill `resources/skills/inline-visuals`, which
+  the chat gets with `--skill` while visuals are on (`piArgs`); the prompt tells the agent to read it first, so the
+  always-on prompt stays about 8 KB. `visual-kit.test.ts` checks both against the kit, and `FAKE_FIXTURE=skill` renders
+  the skill's examples exactly as written. It reaches the agent as a context file, not `--append-system-prompt`:
   `visual-extension.ts` pushes it onto `systemPromptOptions.contextFiles` in `before_agent_start`, so it renders as a
   `<project_instructions>` entry right after the AGENTS.md files pi found (verified with a probe extension reading
   `event.systemPrompt`). Nothing is written to disk, so a terminal `pi` never sees it. `src/main/visual-kit.test.ts` fails if
-  a class, token or `kit.*` helper it names is missing from the kit, and checks the extension. Prompt quality was tuned
+  a class, token or `kit.*` helper the prompt or the skill names is missing from the kit, and checks the extension. Prompt quality was tuned
   against real models with `docs/visual-evals.md`.
 
 ### Scheme, CSP and frame document
@@ -1899,7 +1910,8 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
 - The phone loads the same document from the remote server at `/visual/<frameId>/doc` (`visualRemoteAsset`,
   `RemoteServer.serveVisual`): same three files, same `VISUAL_CSP`, no credentials (a sandboxed frame has an opaque origin and
   sends no cookie) and `doc.html` links `kit.css`/`kit.js` relatively so both schemes resolve them. The iframe is
-  `sandbox="allow-scripts"`, tap to render (`ChatUiActions.visualFrames.tapToRender`); the same heartbeat watchdog, on error,
+  `sandbox="allow-scripts"`, rendered on its own like the desktop's (a tap to render was dropped on request: visuals should
+  just look right; `watchNear` already keeps a long transcript from running them all); the same heartbeat watchdog, on error,
   removes the iframe (a remote client cannot kill its process) and shows the source. A frame that blocks the page's thread
   outright cannot be caught by any watchdog in that page; the 64 KB cap and the CSP are what bound a hostile one.
 - `/doc` CSP: `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data:;
@@ -1976,7 +1988,8 @@ debugging port with the pi-gna you work in, and stop them by their PID, never wi
 `pkill -f bin/pi-gna.mjs`: the agent doing the testing may itself be running inside a pi-gna session, and a
 pattern kill takes down the user's app and the agent with it. The main process is the one listening on the debugging
 port (`lsof -nP -iTCP:<port> -sTCP:LISTEN -t`); `--user-data-dir` is only on its helpers, and a launch while it still
-runs just opens a chat in it (old build and all). Check that the port is free first: other agents run test instances
+runs just opens a chat in it (old build and all). After stopping one, check the port is free before the next launch: a test instance once outlived its
+SIGTERM and the relaunch silently became a chat in it, still on the old environment. Check that the port is free first: other agents run test instances
 too, and on a taken port Electron only logs "Cannot start http server for devtools" and runs without one, so
 `scripts/cdp.mjs` would drive the other agent's window. `PIGNA_PI_BIN` can point at a wrapper that adds
 `-e <extension>` (for example pi's `examples/extensions/rpc-demo.ts`) to exercise every extension UI method.
@@ -2063,7 +2076,7 @@ it and restore it afterwards.
 `FAKE_FIXTURE=<name>` makes `scripts/fake-pi.mjs` reply with a fixed text from `scripts/fake-pi-visuals.mjs`, `FAKE_CHUNK`
 characters per delta every `FAKE_DELAY` ms: `architecture`, `comparison`, `dashboard` (the richer kit: stats, tabs, a scripted
 treemap and heat grid with tooltips, bars, split, table; the tallest fixture), `slider`, `two` (two visuals), `stream` (use a small
-`FAKE_CHUNK`, 25, to watch the placeholder), `oversized` (70 KB, use `FAKE_CHUNK=2000`), `hostile` (nine fences: fetch, `<img>`,
+`FAKE_CHUNK`, 25, to watch the placeholder), `oversized` (70 KB, use `FAKE_CHUNK=2000`), `skill` (the inline-visuals skill's examples), `illustration` (an SVG cutaway driven by tabs, with a local `<img>` and SVG `<image>`: both must hold `data:` sources in the frame), `hostile` (nine fences: fetch, `<img>`,
 `top.location`, `window.open`, form submit, `alert`, `parent.studio`, a `javascript:` link, an http link; they point at
 `http://127.0.0.1:$FAKE_HOSTILE_PORT`) and `loop` (`while(true){}`). Start a test instance as above, with fresh
 `PIGNA_USER_DATA` containing `settings.json` `{"version":1,"visuals":true}`, `PIGNA_CWD`, `PIGNA_BACKGROUND=1`,

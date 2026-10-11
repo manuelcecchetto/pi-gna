@@ -68,10 +68,11 @@ describe("piArgs pr-review skill", () => {
 });
 
 describe("piArgs visuals prompt", () => {
-  it("loads the visual extension only when visuals is on", () => {
+  it("loads the visual extension and the inline-visuals skill only when visuals is on", () => {
     expect(argsFor(base).join(" ")).not.toContain("visual");
     const args = argsFor({ ...base, visuals: true });
     expect(args[args.indexOf(join("/app", "resources", "visual-extension.ts")) - 1]).toBe("-e");
+    expect(args[args.indexOf(join("/app", "resources", "skills", "inline-visuals")) - 1]).toBe("--skill");
   });
   it("also loads it for ATP chats", () => {
     const args = argsFor({ ...base, visuals: true }, { role: "worker", plan: "/p/x.atp.json" } as never);

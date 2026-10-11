@@ -9,7 +9,7 @@ node scripts/visual-eval.mjs <label> <provider/model> [thinking] [caseId...]   #
 node scripts/visual-eval-page.mjs <label>                                       # /tmp/vis-eval/<label>/page.html: every visual on the real kit.css
 ```
 
-Outputs land in `/tmp/vis-eval/<label>/` (one `.md` per case). The script scores mechanically: visual count, fragment KB, and flags for network/resource use, `<style>`, inline color/font styles, hardcoded colors and emoji. Use `claude-bridge/claude-sonnet-5-5` (the plain `anthropic/` provider is out of plan quota here) and `openai-codex/gpt-5.6-sol`, both at `medium`.
+Outputs land in `/tmp/vis-eval/<label>/` (one `.md` per case). The script scores mechanically: visual count, fragment KB, and flags for network/resource use, `<style>`, inline color/font styles, hardcoded colors (allowed in a `mock`, and in an illustration's SVG `fill`/`stroke`/`stop-color`) and emoji. pi runs with `--mode json` and the `inline-visuals` skill loaded, as in a pi-gna chat; `skillRead` records whether the agent opened the skill, and the cases marked `skill` (S6, S7, S8) report `miss` when it did not. Use `claude-bridge/claude-sonnet-5-5` (the plain `anthropic/` provider is out of plan quota here) and `openai-codex/gpt-5.6-sol`, both at `medium`.
 
 ## Cases
 
@@ -22,6 +22,7 @@ Outputs land in `/tmp/vis-eval/<label>/` (one `.md` per case). The script scores
 | S5 | visual | State machine of a chat's lifecycle |
 | S6 | visual | Three UI mocks of a context-window hint in the real composer (kit mock classes, `data-toggle`) |
 | S7 | visual | Animated walkthrough of an agent pipeline with a revise loop and parallel builders (`kit.player`) |
+| S8 | visual | Afterburning turbojet cut open, idle to full afterburner (a technical illustration with state tabs) |
 | N1 | none | One-line question (Vite port) |
 | N2 | none | Fix a typo |
 | N3 | none | `debounce` snippet |

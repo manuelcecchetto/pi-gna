@@ -1,5 +1,7 @@
 // What the running inline visuals share: one message listener, one watchdog and one theme listener for all their frames,
 // installed while at least one frame runs.
+import { inlineVisualImages, visualImageTargets } from "../../../shared/markdown-images";
+import type { ChatLinks } from "./chat-ui";
 import { THEME_EVENT } from "./theme";
 
 /** A frame that sent nothing, not even its heartbeat, for this long is hung. */
@@ -95,4 +97,21 @@ export function linkFrame(view: MessageEventSource, handlers: FrameHandlers): { 
       watchdog = undefined;
     },
   };
+}
+
+/**
+ * The fragment a frame runs: `source` with its local images (`<img src>`, SVG `<image href>`) read through the chat's
+ * links, like an answer's `![alt](path)`, and inlined as data URLs, since the frame loads nothing itself. An image that
+ * cannot be read stays as written and shows broken.
+ */
+export async function withVisualImages(source: string, links: ChatLinks | undefined): Promise<string> {
+  const targets = [...new Set(visualImageTargets(source))];
+  if (!targets.length || !links?.cwd()) return source;
+  const images = await Promise.all(targets.map((target) => links.image(target).catch(() => null)));
+  const sources = new Map<string, string>();
+  targets.forEach((target, index) => {
+    const image = images[index];
+    if (image) sources.set(target, `data:${image.mimeType};base64,${image.data}`);
+  });
+  return inlineVisualImages(source, sources);
 }

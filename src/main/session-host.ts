@@ -222,7 +222,7 @@ export class SessionHost {
   /** Tells the model its replies render as Markdown in pi-gna (pi-gna sessions only, not the terminal UI). */
   private readonly prompt = onDisk("resources", "pigna-prompt.md");
   /** Skills pi-gna bundles: pr-review, which the GitHub page's Review starts a chat with. */
-  private readonly skills = { prReview: onDisk("resources", "skills", "pr-review") };
+  private readonly skills = { prReview: onDisk("resources", "skills", "pr-review"), inlineVisuals: onDisk("resources", "skills", "inline-visuals") };
 
   constructor(
     /** Delivers a batch to the hub; returns the `seq` of its last event (0 if the sink does not number them). */
@@ -259,7 +259,7 @@ export class SessionHost {
   /** @internal exposed for tests */
   piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, features: SessionFeatures): { args: string[]; env: Record<string, string> } {
     const args = ["-e", this.extensions.browser, "-e", this.extensions.theme, "-e", this.extensions.threads, "-e", this.extensions.title, "-e", this.extensions.subagentModels, "-e", this.extensions.fast, "--append-system-prompt", this.prompt];
-    if (features.visuals) args.push("-e", onDisk("resources", "visual-extension.ts"));
+    if (features.visuals) args.push("-e", onDisk("resources", "visual-extension.ts"), "--skill", this.skills.inlineVisuals);
     if (features.kanban) args.push("-e", this.extensions.kanban);
     if (features.laments) args.push("-e", this.extensions.laments);
     if (features.github) args.push("--skill", this.skills.prReview);
