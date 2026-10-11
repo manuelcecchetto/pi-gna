@@ -1752,8 +1752,9 @@ Verified live (pi 1.0.0, Oct 2026):
   `deadline` is on the host's clock, and any touch (`chat.pauseDialog`: a click, a key, a mouse that moves 8 px over
   the card, not one resting where it appeared) stops it for good and every client freezes it (`dialog_paused`,
   `left`). The card (`QuestionsCard`) takes the composer box's place on desktop and phone; Esc twice there stops the
-  run as in the composer, Enter continues only from the free-text field, ↑/↓ move between a question's rows (the
-  free-text field last), Space/Enter on a row or 1-9 pick, ⌥↑/⌥↓ change question, Skip takes the default, × answers
+  run as in the composer, Enter continues from the free-text field or a multi-select row (never from the card itself,
+  where a key meant for the composer lands), ↑/↓ move between a question's rows (the free-text field last), Space
+  (or Enter on a single-choice row) or 1-9 pick, ⌥↑/⌥↓ change question, Skip takes the default, × answers
   "declined". The Send button and the chat's sidebar row fill with `--accent` as the countdown runs (`--ask-fill`, a
   CSS animation started part-way). A timed-out question without a default answers "(not answered)". The transcript
   row reads `Answered: start (default) · (not answered)`; the agent reads each question with its answer.

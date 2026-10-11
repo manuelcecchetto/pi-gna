@@ -196,9 +196,11 @@ export const QuestionsCard = memo(function QuestionsCard({ handle, dialog, onSto
           }
           return;
         }
-        // Enter continues from the free-text field only (option buttons click on Enter): a key meant for the composer
-        // as the card appeared must not send the defaults.
-        if (event.key !== "Enter" || event.shiftKey || !typing) return;
+        // Enter continues from the free-text field and from a multi-select row (Space toggles it, as on any checkbox);
+        // a single-choice row clicks on Enter. A key meant for the composer as the card appeared lands on the card
+        // itself, so it must not send the defaults.
+        const checkbox = (event.target as HTMLElement).getAttribute("role") === "checkbox";
+        if (event.key !== "Enter" || event.shiftKey || !(typing || checkbox)) return;
         event.preventDefault();
         if (answered(draft) && !sending) advance();
       }}

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Questions card: Enter now continues from a multiple-choice question (Space toggles an answer); before, Enter only toggled the focused answer, so the keyboard could not move on.
+
 ## 0.17.0 - 2026-10-11
 
 - The agent can stop and ask you questions (the new `ask_user` tool): single or multiple choice, with your own answer as an option, or free text only. The questions take the composer's place, one at a time, with the agent's default preselected. If you do not respond, the Send button fills up as a countdown (30 s unless the agent sets another) and the defaults are sent; touching the card stops the countdown. The chat's sidebar row fills along with it. Skip takes a question's default, × tells the agent you declined, and Esc twice stops the run. From the keyboard: ↑/↓ move between answers, Space or 1-9 pick, ⌥↑/⌥↓ change question. The transcript shows the answers in one line, marking those you did not choose.
