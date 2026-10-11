@@ -77,7 +77,8 @@ describe("confine", () => {
 
 describe("handlePreview", () => {
   const base = mkdtempSync(join(tmpdir(), "preview-"));
-  const root = realpathSync(base);
+  // Match fs.promises.realpath in production, including long-name expansion of a runner's RUNNER~1 temp path.
+  const root = realpathSync.native(base);
   const viewer = join(root, "viewer");
   mkdirSync(viewer);
   writeFileSync(join(viewer, "index.html"), '<script src="./a.js"></script>');

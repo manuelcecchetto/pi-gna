@@ -14,7 +14,9 @@ if (process.platform !== "win32" || process.env.GITHUB_ACTIONS !== "true" || pro
 const exec = promisify(execFile);
 const exists = async (file) => access(file).then(() => true, () => false);
 const powershell = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-const ps = (script, env = process.env) => exec(powershell, ["-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference = 'Stop'; ${script}`], { env, windowsHide: true, timeout: 30_000 });
+// A pwsh workflow exports PSModulePath for PowerShell 7; do not feed its modules to Windows PowerShell 5.
+const desktopEnv = (env) => Object.fromEntries(Object.entries(env).filter(([key]) => key.toLowerCase() !== "psmodulepath"));
+const ps = (script, env = process.env) => exec(powershell, ["-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference = 'Stop'; ${script}`], { env: desktopEnv(env), windowsHide: true, timeout: 30_000 });
 // Refuse existing registrations/state even on a runner. A custom install directory is not sufficient isolation.
 await ps(`$keys = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', 'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*');
   foreach ($key in $keys) { if (Get-ItemProperty $key -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'pi-gna' }) { throw 'Existing pi-gna registration; refusing install' } }

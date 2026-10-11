@@ -42,7 +42,7 @@ const P2 = { clientId: "p2", actor: "dev2", caller: { device: "dev2" } } as cons
 const as = (c: typeof P1 | typeof P2) => ({ caller: c.caller, clientId: c.clientId, bootId: "b" }) as const;
 // pi's own startup get_state is not a client command.
 const sent = () => fake.sent.filter((c) => c.type !== "get_state");
-const request = { cwd: "/tmp", sessionPath: "/tmp/m.jsonl" };
+const request = { cwd: tmpdir(), sessionPath: join(tmpdir(), "m.jsonl") };
 
 async function setup() {
   fake.pis.length = 0;
@@ -142,10 +142,10 @@ describe("leases and closing", () => {
     const globals: { kind: string; [key: string]: unknown }[] = [];
     const host = new SessionHost(() => undefined, bridge, "/atp");
     host.onGlobal((event) => globals.push(event as never));
-    const phone = await host.open({ cwd: "/tmp", sessionPath: "/tmp/phone.jsonl" }, { client: { clientId: "p1", actor: P1.actor } });
+    const phone = await host.open({ cwd: tmpdir(), sessionPath: join(tmpdir(), "phone.jsonl") }, { client: { clientId: "p1", actor: P1.actor } });
     expect(globals.find((e) => e.kind === "chat.opened")).toMatchObject({ handle: phone.handle, sessionPath: "/tmp/phone.jsonl" });
     expect(host.attentionAll().map((c) => c.handle)).toContain(phone.handle);
-    const desktop = await host.open({ cwd: "/tmp", sessionPath: "/tmp/phone.jsonl" }, { client: DESKTOP });
+    const desktop = await host.open({ cwd: tmpdir(), sessionPath: join(tmpdir(), "phone.jsonl") }, { client: DESKTOP });
     expect(desktop).toMatchObject({ handle: phone.handle, reused: true });
     expect(fake.pis).toHaveLength(1);
   });

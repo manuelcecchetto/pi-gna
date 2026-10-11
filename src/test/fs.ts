@@ -14,11 +14,12 @@ export async function assertPrivateFile(file: string): Promise<void> {
   const script = `
     $ErrorActionPreference = 'Stop'
     $allowed = @([System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value, 'S-1-5-18', 'S-1-5-32-544')
-    $acl = Get-Acl -LiteralPath $env:PIGNA_TEST_ACL_FILE
-    if ($acl.Access.Count -eq 0 -or $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $allowed) {
+    $acl = [System.IO.File]::GetAccessControl($env:PIGNA_TEST_ACL_FILE)
+    $rules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
+    if ($rules.Count -eq 0 -or $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -notin $allowed) {
       throw 'Private file has no access rules or an untrusted owner'
     }
-    foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+    foreach ($rule in $rules) {
       if ($rule.AccessControlType -eq 'Allow' -and ([int]$rule.FileSystemRights -band 7) -ne 0 -and $rule.IdentityReference.Value -notin $allowed) {
         throw 'Private file grants data access outside the current user, SYSTEM and Administrators'
       }

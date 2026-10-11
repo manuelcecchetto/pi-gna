@@ -12,9 +12,9 @@ it("checks actual private-file permissions and rejects public data access", asyn
   // Only this disposable fixture's DACL changes. No parent/profile/machine policy is changed.
   const changeAcl = (script: string) => promisify(execFile)(join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoProfile", "-NonInteractive", "-Command", `
     $ErrorActionPreference = 'Stop'
-    $acl = Get-Acl -LiteralPath $env:PIGNA_TEST_ACL_FILE
+    $acl = [System.IO.File]::GetAccessControl($env:PIGNA_TEST_ACL_FILE)
     ${script}
-    Set-Acl -LiteralPath $env:PIGNA_TEST_ACL_FILE -AclObject $acl
+    [System.IO.File]::SetAccessControl($env:PIGNA_TEST_ACL_FILE, $acl)
   `], { env: { ...process.env, PIGNA_TEST_ACL_FILE: file }, windowsHide: true, timeout: 10_000 });
   try {
     await writeFile(file, "disposable test marker, no credentials", { mode: 0o600 });

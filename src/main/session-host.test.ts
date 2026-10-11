@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -46,6 +47,8 @@ import type { Item, SessionState } from "../shared/session-state";
 import type { AgentBridge } from "./bridge";
 import { type SessionFeatures, SessionHost } from "./session-host";
 
+// SessionHost validates cwd against the real filesystem, even when pi/session I/O is mocked.
+const TMP = tmpdir();
 const bridge = { url: "http://x", start: async () => {}, register: vi.fn((_handle: string) => "token"), unregister: () => {}, rename: vi.fn(), tokenOf: () => "token", adopt: vi.fn() };
 const base: SessionFeatures = { kanban: false, laments: false, github: false, atp: false, computer: false, visuals: false, keepOnRestart: false };
 const argsFor = (features: SessionFeatures, atp?: Parameters<SessionHost["piArgs"]>[2]) =>
@@ -101,7 +104,7 @@ describe("session registry", () => {
   }
   const A = { clientId: "a", actor: "desktop" } as const;
   const B = { clientId: "b", actor: "dev1" } as const;
-  const request = { cwd: "/tmp", sessionPath: "/tmp/s.jsonl" };
+  const request = { cwd: TMP, sessionPath: "/tmp/s.jsonl" };
 
   it("returns the live handle for an already open file instead of a second pi", async () => {
     const { host } = await setup();
@@ -291,7 +294,7 @@ describe("session registry", () => {
     await Promise.resolve();
     expect(fake.pis[0]!.closed).toBe(true);
 
-    const kept = await host.open({ cwd: "/tmp", sessionPath: "/tmp/t.jsonl" }, { client: A });
+    const kept = await host.open({ cwd: TMP, sessionPath: "/tmp/t.jsonl" }, { client: A });
     await host.command(kept.handle, { type: "prompt", message: "hi" });
     host.detach(kept.handle, "a");
     await Promise.resolve();
@@ -482,7 +485,7 @@ describe("session registry", () => {
     vi.useFakeTimers();
     try {
       const { host, seen, globals } = await setup();
-      const { handle } = await host.open({ cwd: "/tmp" }, { client: A });
+      const { handle } = await host.open({ cwd: TMP }, { client: A });
       const pi = fake.pis[0]!;
       const delta = (text: string) => rec("message_update", { assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: text } });
       const text = () => (host.stateOf(handle)!.items.at(-1) as Extract<Item, { kind: "assistant" }>).message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
@@ -519,7 +522,7 @@ describe("session registry", () => {
   let files = 0;
   /** A chat that was prompted, ran and was read, then left on no screen: idle from now. */
   async function idleChat(host: SessionHost, lease: { client?: { clientId: string; actor: string }; hold?: string } = { client: A }, extra: object = {}) {
-    const { handle } = await host.open({ cwd: "/tmp", sessionPath: `/tmp/idle-${++files}.jsonl`, ...extra }, lease);
+    const { handle } = await host.open({ cwd: TMP, sessionPath: `/tmp/idle-${++files}.jsonl`, ...extra }, lease);
     await vi.waitFor(() => expect(host.stateOf(handle)!.phase).toBe("ready"));
     await host.command(handle, { type: "prompt", message: "hi" });
     const pi = fake.pis.at(-1)!;
@@ -547,7 +550,7 @@ describe("session registry", () => {
       expect(closedBy(seen, handle)).toBe("host");
       expect(globals).toContainEqual({ kind: "chat.closed", handle });
       expect(host.stateOf(handle)).toBeUndefined();
-      const again = await host.open({ cwd: "/tmp", sessionPath: pi.opts.sessionPath }, { client: A });
+      const again = await host.open({ cwd: TMP, sessionPath: pi.opts.sessionPath }, { client: A });
       expect(again.handle).not.toBe(handle);
       expect(again.reused).toBeUndefined();
       expect(fake.pis.at(-1)).not.toBe(pi);
@@ -654,7 +657,7 @@ describe("session registry", () => {
       const send = fake.send;
       fake.send = (command) => ((command as { type: string }).type === "get_state" ? new Promise(() => {}) : send(command, undefined));
       try {
-        const { handle } = await host.open({ cwd: "/tmp", sessionPath: "/tmp/booting.jsonl" }, { client: A });
+        const { handle } = await host.open({ cwd: TMP, sessionPath: "/tmp/booting.jsonl" }, { client: A });
         expect(host.stateOf(handle)!.phase).toBe("starting");
         host.stopIdle(Date.now() + 10 * 60 * MIN);
         expect(control.pi.closed).toBe(true);
@@ -712,13 +715,13 @@ describe("session registry", () => {
 
     it("is taken by a New chat in its folder: no second pi, its tools act for the chat, what it said comes along", async () => {
       const { host } = await spareHost();
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       expect(fake.pis).toHaveLength(1);
       const spare = fake.pis[0]!;
       expect(spare.opts.sessionPath).toBeUndefined();
       const spareHandle = bridge.register.mock.lastCall![0];
       spare.handlers.onRecords([status("booted")]);
-      const { handle } = await host.open({ cwd: "/tmp", handle: "newchat1" }, { client: A });
+      const { handle } = await host.open({ cwd: TMP, handle: "newchat1" }, { client: A });
       expect(handle).toBe("newchat1");
       expect(fake.pis).toHaveLength(1);
       expect(bridge.rename).toHaveBeenLastCalledWith(spareHandle, "newchat1");
@@ -738,8 +741,8 @@ describe("session registry", () => {
       fake.pis.length = 0;
       const host = new SessionHost(() => 0, late as unknown as AgentBridge, "/atp", async () => base);
       hosts.push(host);
-      const spare = host.spawnSpare("/tmp");
-      const opened = host.open({ cwd: "/tmp", sessionPath: "/tmp/s1.jsonl" }, { client: A });
+      const spare = host.spawnSpare(TMP);
+      const opened = host.open({ cwd: TMP, sessionPath: "/tmp/s1.jsonl" }, { client: A });
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(fake.pis).toHaveLength(0);
       listen();
@@ -750,28 +753,28 @@ describe("session registry", () => {
 
     it("is not taken by a session file, an ATP chat or a chat in another folder", async () => {
       const { host } = await spareHost(() => ({ ...base, atp: true }));
-      await host.spawnSpare("/tmp");
-      await host.open({ cwd: "/tmp", sessionPath: "/tmp/s1.jsonl" }, { client: A });
-      await host.open({ cwd: "/tmp", atp: { role: "orchestrator" } }, { client: A });
+      await host.spawnSpare(TMP);
+      await host.open({ cwd: TMP, sessionPath: "/tmp/s1.jsonl" }, { client: A });
+      await host.open({ cwd: TMP, atp: { role: "orchestrator" } }, { client: A });
       await host.open({ cwd: "/" }, { client: A });
       expect(fake.pis).toHaveLength(4);
       expect(fake.pis[0]!.closed).toBe(false);
-      await host.open({ cwd: "/tmp" }, { client: A });
+      await host.open({ cwd: TMP }, { client: A });
       expect(fake.pis).toHaveLength(4);
     });
 
     it("stops instead of being taken when it is stale: other features, or pi's files changed since", async () => {
       let features = base;
       const { host } = await spareHost(() => features);
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       features = { ...base, kanban: true };
-      await host.open({ cwd: "/tmp" }, { client: A });
+      await host.open({ cwd: TMP }, { client: A });
       expect(fake.pis).toHaveLength(2);
       expect(fake.pis[0]!.closed).toBe(true);
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       expect(fake.pis).toHaveLength(3);
       machine.inputs = "inputs-2";
-      await host.open({ cwd: "/tmp" }, { client: A });
+      await host.open({ cwd: TMP }, { client: A });
       expect(fake.pis).toHaveLength(4);
       expect(fake.pis[2]!.closed).toBe(true);
     });
@@ -779,25 +782,25 @@ describe("session registry", () => {
     it("is one at most, for the folder opened last, kept while current, and not started on a busy machine", async () => {
       const { host } = await spareHost();
       machine.load = 8;
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       expect(fake.pis).toHaveLength(0);
       machine.load = 7.9;
-      await host.spawnSpare("/tmp");
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
+      await host.spawnSpare(TMP);
       expect(fake.pis).toHaveLength(1);
       await host.spawnSpare("/");
       expect(fake.pis).toHaveLength(2);
       expect(fake.pis[0]!.closed).toBe(true);
-      await Promise.all([host.spawnSpare("/tmp"), host.spawnSpare("/tmp")]);
+      await Promise.all([host.spawnSpare(TMP), host.spawnSpare(TMP)]);
       expect(fake.pis).toHaveLength(3);
       expect(fake.pis[1]!.closed).toBe(true);
       // A settings change while a spawn reads pi's files cancels it.
       await host.retireSpare("settings changed");
-      const spawning = host.spawnSpare("/tmp");
+      const spawning = host.spawnSpare(TMP);
       void host.retireSpare("settings changed");
       await spawning;
       expect(fake.pis).toHaveLength(3);
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       machine.load = 8;
       host.stopIdle();
       expect(fake.pis[3]!.closed).toBe(true);
@@ -807,7 +810,7 @@ describe("session registry", () => {
       const { host } = await spareHost();
       const chats = [];
       for (let i = 0; i < 7; i++) chats.push(await idleChat(host));
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       const spare = fake.pis.at(-1)!;
       host.stopIdle();
       expect(spare.closed).toBe(false);
@@ -816,7 +819,7 @@ describe("session registry", () => {
       expect(spare.closed).toBe(true);
       expect(chats.some((chat) => chat.pi.closed)).toBe(false);
       const count = fake.pis.length;
-      await host.spawnSpare("/tmp");
+      await host.spawnSpare(TMP);
       expect(fake.pis).toHaveLength(count);
     });
 
@@ -824,21 +827,21 @@ describe("session registry", () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
       try {
         const { host } = await spareHost();
-        await host.spawnSpare("/tmp");
+        await host.spawnSpare(TMP);
         vi.advanceTimersByTime(9 * MIN);
         expect(fake.pis[0]!.closed).toBe(false);
         vi.advanceTimersByTime(MIN);
         expect(fake.pis[0]!.closed).toBe(true);
-        await host.spawnSpare("/tmp");
+        await host.spawnSpare(TMP);
         fake.pis[1]!.handlers.onExit({ code: 1, signal: null, stderrTail: "" });
-        await host.spawnSpare("/tmp");
+        await host.spawnSpare(TMP);
         expect(fake.pis).toHaveLength(3);
         await host.retireSpare("settings changed");
         expect(fake.pis[2]!.closed).toBe(true);
-        await host.spawnSpare("/tmp");
+        await host.spawnSpare(TMP);
         await host.closeAll();
         expect(fake.pis[3]!.closed).toBe(true);
-        await host.spawnSpare("/tmp");
+        await host.spawnSpare(TMP);
         expect(fake.pis).toHaveLength(4);
       } finally {
         vi.useRealTimers();
@@ -849,11 +852,11 @@ describe("session registry", () => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       try {
         const { host } = await spareHost(() => ({ ...base, atp: true }));
-        await host.open({ cwd: "/tmp", sessionPath: "/tmp/task.jsonl" }, { hold: "task:1" });
-        await host.open({ cwd: "/tmp", atp: { role: "orchestrator" } }, { client: A });
+        await host.open({ cwd: TMP, sessionPath: "/tmp/task.jsonl" }, { hold: "task:1" });
+        await host.open({ cwd: TMP, atp: { role: "orchestrator" } }, { client: A });
         await vi.advanceTimersByTimeAsync(5000);
         expect(fake.pis).toHaveLength(2);
-        await host.open({ cwd: "/tmp", sessionPath: "/tmp/s2.jsonl" }, { client: A });
+        await host.open({ cwd: TMP, sessionPath: "/tmp/s2.jsonl" }, { client: A });
         await vi.advanceTimersByTimeAsync(1900);
         expect(fake.pis).toHaveLength(3);
         await vi.advanceTimersByTimeAsync(200);
@@ -888,7 +891,7 @@ describe("session registry", () => {
       const textOf = (items: unknown[], n: number) => (resultOf(items, n)?.result?.content[0] as { text?: string } | undefined)?.text;
 
       const { host } = await setup();
-      const opened = await host.open({ cwd: "/tmp", sessionPath: path }, { client: A }, { turns: 100 });
+      const opened = await host.open({ cwd: TMP, sessionPath: path }, { client: A }, { turns: 100 });
       // The first page comes from the whole history read (not the file again); then the two oldest turns leave main's state.
       expect(textOf(opened.snapshot!.state.items as unknown[], 0)).toBe(big(0));
       writeFileSync(path, `${lines.join("\n")}\n`);
@@ -935,7 +938,7 @@ describe("restart handover", () => {
     fake.pis.length = 0;
     fake.alive = true;
     const before = host();
-    const { handle } = await before.open({ cwd: "/tmp", sessionPath: "/tmp/run.jsonl" }, { client: A });
+    const { handle } = await before.open({ cwd: TMP, sessionPath: "/tmp/run.jsonl" }, { client: A });
     fake.pis[0]!.handlers.onRecords([
       rec("agent_start"),
       rec("message_end", { message: { role: "user", content: "go", timestamp: 1 } }),
@@ -944,7 +947,7 @@ describe("restart handover", () => {
     ]);
     const chats = await before.handOff();
     expect(chats).toHaveLength(1);
-    expect(chats[0]).toMatchObject({ handle, cwd: "/tmp", token: "token", io: { dir: "/io/0", pid: 100 } });
+    expect(chats[0]).toMatchObject({ handle, cwd: TMP, token: "token", io: { dir: "/io/0", pid: 100 } });
     expect(fake.pis[0]!.closed).toBe(false);
     expect(fake.pis[0]!.opts).toMatchObject({ detachable: true });
 
@@ -956,7 +959,7 @@ describe("restart handover", () => {
     expect(state).toMatchObject({ running: true, sessionPath: "/tmp/run.jsonl" });
     expect(state.dialogs.map((dialog) => dialog.id)).toEqual(["d1"]);
     // Opening its file joins the chat that came back, not a second pi.
-    expect(await after.open({ cwd: "/tmp", sessionPath: "/tmp/run.jsonl" }, { client: A })).toEqual({ handle, reused: true });
+    expect(await after.open({ cwd: TMP, sessionPath: "/tmp/run.jsonl" }, { client: A })).toEqual({ handle, reused: true });
     expect(fake.pis).toHaveLength(2);
     // The turn goes on where the last host stopped reading.
     after.respondDialog(handle, { type: "extension_ui_response", id: "d1", confirmed: true });
@@ -973,8 +976,8 @@ describe("restart handover", () => {
   it("stops a chat a host-side owner keeps, and leaves out a pi that ended during the restart", async () => {
     fake.pis.length = 0;
     const before = host();
-    await before.open({ cwd: "/tmp", sessionPath: "/tmp/task.jsonl" }, { hold: "task:1" });
-    const { handle } = await before.open({ cwd: "/tmp", sessionPath: "/tmp/mine.jsonl" }, { client: A });
+    await before.open({ cwd: TMP, sessionPath: "/tmp/task.jsonl" }, { hold: "task:1" });
+    const { handle } = await before.open({ cwd: TMP, sessionPath: "/tmp/mine.jsonl" }, { client: A });
     const chats = await before.handOff();
     expect(chats.map((chat) => chat.handle)).toEqual([handle]);
     expect(fake.pis.map((pi) => pi.closed)).toEqual([true, false]);
@@ -991,14 +994,14 @@ describe("restart handover", () => {
   it("stops the chats started with the Beta setting off, as on quit", async () => {
     fake.pis.length = 0;
     const before = host(false);
-    await before.open({ cwd: "/tmp", sessionPath: "/tmp/off.jsonl" }, { client: A });
+    await before.open({ cwd: TMP, sessionPath: "/tmp/off.jsonl" }, { client: A });
     expect(await before.handOff()).toEqual([]);
     expect(fake.pis[0]!.closed).toBe(true);
   });
 });
 
 describe("command semantics", () => {
-  const request = { cwd: "/tmp", sessionPath: "/tmp/c.jsonl" };
+  const request = { cwd: TMP, sessionPath: "/tmp/c.jsonl" };
   const phone = { caller: { device: "dev1" }, clientId: "p", bootId: "b" } as const;
   const rec = (type: string, extra: object = {}) => ({ type, ...extra });
 
