@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.19.0 - 2026-10-11
+
 - Composer autocomplete (Settings > Agent > Beta, off by default): as you type, faint ghost text suggests how your message goes on; Tab takes it, ⌘Z / Ctrl+Z takes it back, Esc hides it. A small typeahead model (about 400 MB, downloaded once and checksum-verified) runs on your computer through llama.cpp, Metal on a Mac and Vulkan or CPU on Windows and Linux, and looks at your earlier messages in the project. Nothing leaves the computer.
 
 ## 0.18.0 - 2026-10-11
