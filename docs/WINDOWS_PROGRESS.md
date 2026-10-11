@@ -1,8 +1,8 @@
 # Windows port progress
 
-Source: `windows/v0.16-port`, based on v0.16.0. Release plan: append Windows preview assets to the existing latest
-release, preserving its original tag and Mac downloads. Publish only after the gated workflow passes; the Windows
-manifest must link the actual port source commit, not imply the old tag contains these fixes.
+Source: `windows/v0.16-port`, based on v0.16.0. **Windows preview assets are now appended to v0.16.0**, preserving
+its original tag and Mac downloads. Binary source: `6cf29cea868848ceaa88b425a74d37c6143d7134`. The manifest links this
+actual port commit, not the older tag. [Successful gated workflow](https://github.com/manuelcecchetto/pi-gna/actions/runs/38130628077).
 
 ## Live Kanban
 
@@ -15,7 +15,8 @@ than by hand-editing a board file. No installed files or original profile were c
 - Development logs: `C:\Users\cecch\Projects\pi-gna-windows-dev\dev.log`
 - Its pi agent directory is separate and unconfigured; startup RPC uses the installed pi, but no real provider call
   or login was made. The repeatable smoke test separately uses a fake pi.
-- All seven cards, statuses and reports survived a restart of **only this development instance** into the latest build.
+- The initial seven cards, statuses and reports survived a restart of **only this development instance**. Desktop
+  parity beyond the installer milestone is now tracked separately as `win008`.
 - The current porting chat still belongs to the installed instance: it is not falsely attached to these cards. Once
   working in a corrected instance/project, the normal `kanban_*` tools can own the cards again.
 - The local CDP debugging endpoint is only for this temporary development instance, never the installed app.
@@ -24,11 +25,12 @@ than by hand-editing a board file. No installed files or original profile were c
 | --- | --- | --- |
 | `win001` | In review | Preview and worktree bootstrap; 138 focused tests and Electron smoke passed |
 | `win002` | In review | Shared Windows paths, boards/laments/themes, ATP references and persistence; authenticated HTTP/project-isolation tests passed |
-| `win003` | In progress | Native suite now green: 1,790 passed / 0 failed / 25 skipped; remote CI still pending |
+| `win003` | In review | Local suite green; remote Windows 1,792 passed / 0 failed, macOS 1,797 passed / 0 failed |
 | `win004` | To do | Windows Computer Use via CUA; only discovery/read-only app listing probed, no input integration |
-| `win005` | In progress | Append-only release workflow prepared; NSIS packaging and packaged smoke passed, remote Mac/installer checks pending; broader desktop parity remains separate |
+| `win005` | In review | v0.16.0 Windows installer published after all gates; original tag/Mac downloads unchanged |
 | `win006` | In review | Native Claude Code executable discovery/auth/cancellation now passes with disposable .exe and npm-shim fixtures |
 | `win007` | In review | Private settings/VAPID files created with verified DACLs before writing; fail-closed and public-parent tests pass |
+| `win008` | To do | Native desktop parity: shortcuts, MCP credential retrieval, descendant shutdown, launcher/restart transport, updates and real-model/full-viewer acceptance |
 
 No card is Done: user review/confirmation is still pending.
 
@@ -57,9 +59,16 @@ No card is Done: user review/confirmation is still pending.
   parent/user-profile/machine ACLs were inspected or changed.
 - NSIS installer packaging passed. The unpacked packaged executable passed actual Electron RPC, Kanban and preview
   smoke, and did not expose the Computer Use extension. Authenticode status is `NotSigned`.
-- Release workflow now gates tests, macOS regression, packaged smoke and CI-only installer lifecycle. Publication is
-  explicit and append-only; tag/Mac assets remain untouched. Remote workflow results are still pending.
+- Remote workflow passed: **Windows 1,792 passed / 0 failed / 23 skipped; macOS 1,797 passed / 0 failed / 18 skipped**.
+  File-symlink security coverage is required on the hosted Windows runner. Fresh-runner per-user NSIS install,
+  packaged smoke, reinstall, uninstall and preservation of an existing profile marker all passed.
+- Published Windows assets on the existing v0.16.0 release. Verified same release ID, unchanged tag/main commit, and
+  unchanged Mac asset IDs/sizes/digests. Windows manifest/hash matches the GitHub asset digest. No local installer
+  was run and the user's installed application/profile remain untouched.
+- Initial hosted runs exposed literal `/tmp`, short-name/canonical-root and inherited PowerShell-module assumptions
+  in fixtures. Those are fixed without weakening confinement/DACL assertions. One seven-Python-process lifecycle
+  exceeded the 5-second test default on the cold runner; it now has a bounded 15-second test budget.
 
 Latest machine-local reports: `%TEMP%\pigna-windows-append-full.json`, `pigna-windows-append-typecheck.log`, and
-`pigna-windows-package.log`. See [WINDOWS.md](WINDOWS.md) for the implementation details, prerequisites, CUA design
+`pigna-windows-package.log`; final remote logs are in `pigna-windows-ci-passed.log`. See [WINDOWS.md](WINDOWS.md) for the implementation details, prerequisites, CUA design
 and remaining acceptance matrix.

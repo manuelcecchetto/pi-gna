@@ -1,6 +1,6 @@
 # pi-gna on Windows
 
-Status: **port in progress, not feature-complete**. The source baseline is v0.16.0 (`01eba2a`). Keep one upstream
+Status: **Windows x64 preview published on v0.16.0; port not feature-complete**. The source baseline is v0.16.0 (`01eba2a`). Keep one upstream
 codebase and the existing macOS helper; isolate Windows behavior behind platform boundaries, not a fork or a patched
 installed app. Never replace a user's working install while developing the port.
 
@@ -50,7 +50,10 @@ installation fixed that runtime failure without removing Unicode coverage or cha
 | Corrected development Kanban | Seven real cards created through renderer IPC in an isolated profile; not the installed app's board |
 | Real Electron Windows preview/RPC smoke | Passed twice consecutively after fixing a document-ready race in the harness; fake pi only |
 | CUA 0.34.1 private stdio probe | Initialize, tools/list (59 tools), read-only list_apps passed |
-| Installer/update, real-model streaming, native app actions, macOS regression run | Not verified in this session |
+| Gated macOS CI regression | 1,797 passed, 0 failed, 18 skipped |
+| Gated Windows CI suite | 1,792 passed, 0 failed, 23 skipped; file-symlink security coverage required |
+| Fresh hosted Windows install/reinstall/uninstall | Passed, including profile preservation and packaged smoke |
+| Real-model streaming, native Computer Use actions, Windows updates | Not verified/enabled by this milestone |
 
 The latest run used Python 3.14.2 and a private ripgrep 15.2.0 binary on the test PATH (official Windows archive,
 SHA-256 `71b2fef860abe467217a538ff31de02f5258807c0129f771846f87bd029aafc5`, checked against the release checksum).
@@ -212,10 +215,18 @@ release. Partial uploads require inspection instead of destructive automatic ret
 - `pi-gna-windows-x64.sha256`
 - `pi-gna-windows-x64-notes.md`
 
-Local packaging and packaged RPC/preview/Kanban smoke have passed. Remote macOS regression and fresh-runner installer
-lifecycle verification are still pending at this checkpoint. SmartScreen/signing policy, real-model acceptance, full
-viewer/UI coverage and Windows updates remain separate work. The updater is still macOS-only; no driver is bundled
-or native Computer Use extension exposed on Windows.
+**Published:** [v0.16.0 Windows installer](https://github.com/manuelcecchetto/pi-gna/releases/download/v0.16.0/pi-gna-setup-x64.exe).
+The [gated workflow](https://github.com/manuelcecchetto/pi-gna/actions/runs/38130628077) passed macOS regression,
+Windows tests, packaged smoke and fresh-runner install/reinstall/uninstall with profile preservation. The binary's
+source is `6cf29cea868848ceaa88b425a74d37c6143d7134`; the existing release tag and `main` remained at `01eba2a` when
+published. Original Mac asset IDs, sizes and SHA-256 digests were checked unchanged after publication.
+
+Windows installer SHA-256: `8329f95d2e31711fdadd769751cb36a8a4cbb86efd8bee4589335dbe2db128e5` (161,405,833 bytes).
+The GitHub asset digest matches its manifest and checksum file. The developer's installed application was not replaced.
+
+SmartScreen/reputation and signing policy, real-model acceptance, full viewer/UI coverage and Windows updates remain
+separate work. The updater is still macOS-only; no driver is bundled or Computer Use extension exposed on Windows.
+Use the installed preview to open the source checkout; continue development there, never inside the installation.
 
 CI should run platform-neutral tests on Linux, macOS and Windows, plus explicit platform-specific suites. Put runtime
 platform selection where the app wires modules up, or inject it in tests; a platform guard deep inside a shared
