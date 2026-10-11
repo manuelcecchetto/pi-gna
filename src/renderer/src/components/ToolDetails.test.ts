@@ -50,3 +50,72 @@ describe("bash output", () => {
     expect(shown).not.toContain("earlier lines");
   });
 });
+
+describe("ask_user", () => {
+  const questions = [
+    { id: "closed", prompt: "Renaming a closed chat: how?", options: [{ label: "Append session_info", description: "Same record pi writes" }, { label: "Open it first" }], default: "Open it first" },
+    { id: "order", prompt: "Sort order?", options: ["Newest", "Oldest"], multi: true, default: ["Newest"] },
+    { id: "note", prompt: "Anything else?" },
+  ];
+  const ask: ToolCall = { type: "toolCall", id: "a1", name: "ask_user", arguments: { questions } };
+  const renderAsk = (run?: ToolRun, toolCall = ask) => renderToStaticMarkup(createElement(ToolDetails, { call: toolCall, run }));
+  const normalized = [
+    { id: "closed", prompt: "Renaming a closed chat: how?", options: [{ label: "Append session_info", description: "Same record pi writes" }, { label: "Open it first" }], multi: false, allowOther: true, defaultPicks: [1] },
+    { id: "order", prompt: "Sort order?", options: [{ label: "Newest" }, { label: "Oldest" }], multi: true, allowOther: true, defaultPicks: [0] },
+    { id: "note", prompt: "Anything else?", options: [], multi: false, allowOther: true, defaultPicks: [] },
+  ];
+  const chosen = (markup: string) => [...markup.matchAll(/data-chosen="true"[^>]*>.*?<span class="text-fg">([^<]+)</g)].map((match) => match[1]);
+
+  it("shows each prompt with its options, the chosen ones filled, and no JSON", () => {
+    const details = {
+      questions: normalized,
+      answers: [
+        { id: "closed", values: ["Append session_info"], custom: false, source: "user" },
+        { id: "order", values: ["Newest", "by name"], custom: true, source: "user" },
+        { id: "note", values: [], custom: false, source: "skipped" },
+      ],
+      cancelled: false,
+    };
+    const markup = renderAsk({ status: "done", startedAt: 1, result: { content: [{ type: "text", text: "raw answer text" }], details } });
+    const shown = text(markup);
+    expect(shown).toContain("Renaming a closed chat: how?");
+    expect(shown).toContain("Same record pi writes");
+    expect(chosen(markup)).toEqual(["Append session_info", "Newest", "by name"]);
+    expect(shown).toContain("(not answered)");
+    expect(shown).not.toContain('"questions"');
+    expect(shown).not.toContain("raw answer text");
+    expect(shown).not.toContain("default");
+  });
+
+  it("says where an answer came from when the user did not choose it", () => {
+    const details = {
+      questions: normalized.slice(0, 2),
+      answers: [
+        { id: "closed", values: ["Open it first"], custom: false, source: "default" },
+        { id: "order", values: ["Newest"], custom: false, source: "skipped" },
+      ],
+      cancelled: false,
+    };
+    const shown = text(renderAsk({ status: "done", startedAt: 1, result: { content: [], details } }));
+    expect(shown).toContain("default: the countdown ran out");
+    expect(shown).toContain("skipped: took the default");
+  });
+
+  it("marks the defaults while the questions wait for an answer", () => {
+    const markup = renderAsk({ status: "running", startedAt: 1 });
+    expect(chosen(markup)).toEqual([]);
+    expect(text(markup).match(/default/g)).toHaveLength(2);
+    expect(text(markup)).toContain("Waiting for an answer");
+  });
+
+  it("says the user declined", () => {
+    const shown = text(renderAsk({ status: "done", startedAt: 1, result: { content: [], details: { questions: normalized, answers: [], cancelled: true } } }));
+    expect(shown).toContain("Declined to answer");
+    expect(shown).toContain("Sort order?");
+  });
+
+  it("falls back to the arguments as JSON when they are not questions", () => {
+    const shown = text(renderAsk(undefined, { ...ask, arguments: { questions: [] } }));
+    expect(shown).toContain('"questions": []');
+  });
+});

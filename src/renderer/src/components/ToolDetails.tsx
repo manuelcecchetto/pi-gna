@@ -7,6 +7,8 @@ import { Ansi } from "./primitives";
 import { CodeView } from "./Markdown";
 import { previewClick } from "../lib/preview";
 import { useChatActions } from "../lib/chat-ui";
+import { type AskAnswer, type AskParams, type AskQuestion, type AskResult, NOT_ANSWERED, normalizeAsk } from "../../../shared/ask";
+import { Check } from "./icons";
 
 const MAX_LINES = 400;
 
@@ -173,12 +175,78 @@ function PathBar({ path }: { path: string }) {
   );
 }
 
+const ASK_SOURCE: Record<AskAnswer["source"], string> = { user: "", default: "default: the countdown ran out", skipped: "skipped: took the default" };
+
+/** One option or free-text answer, marked as the card marked it: a filled radio or checkbox when chosen. */
+function AskRow({ label, description, multi, on, isDefault }: { label: string; description?: string; multi: boolean; on: boolean; isDefault?: boolean }) {
+  return (
+    <div className="flex items-start gap-2.5 py-0.5" data-chosen={on || undefined}>
+      <span className={`mt-[3px] grid size-3.5 shrink-0 place-items-center ${multi ? "rounded-[4px]" : "rounded-full"} ${on ? "bg-fg text-canvas" : "shadow-[inset_0_0_0_1.5px_var(--line-strong)]"}`}>
+        {on && (multi ? <Check size={10} strokeWidth={3} /> : <span className="size-1.5 rounded-full bg-canvas" />)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={on ? "text-fg" : "text-muted"}>{label}</span>
+        {isDefault && <span className="ml-2 rounded-full border border-line px-1.5 py-px align-[1px] text-[10.5px] text-faint">default</span>}
+        {description && <span className="block text-[11.5px] text-faint">{description}</span>}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * ask_user's questions and answers as the card showed them: each prompt, its options with the chosen ones filled and
+ * where an answer came from when the user did not choose it. Before the answer comes back, the defaults are marked.
+ */
+function AskDetails({ questions, result }: { questions: AskQuestion[]; result?: AskResult }) {
+  return (
+    <div className="selectable flex flex-col gap-4 px-3 py-2.5 text-[12.5px]">
+      {result?.cancelled && <div className="text-muted">Declined to answer</div>}
+      {questions.map((question, index) => {
+        const answer = result && !result.cancelled ? result.answers[index] : undefined;
+        const chosen = new Set(answer?.values.slice(0, answer.custom ? -1 : undefined));
+        const text = answer?.custom ? answer.values.at(-1) : !result ? question.defaultText : undefined;
+        return (
+          <div key={question.id}>
+            <div className="font-medium text-fg">{question.prompt}</div>
+            <div className="mt-1.5 flex flex-col">
+              {question.options.map((option, i) => (
+                <AskRow key={option.label} label={option.label} description={option.description} multi={question.multi} on={chosen.has(option.label)} isDefault={!answer?.values.length ? question.defaultPicks.includes(i) : undefined} />
+              ))}
+              {text !== undefined && <AskRow label={text} multi={question.multi} on={Boolean(answer)} isDefault={!result} />}
+            </div>
+            {answer && !answer.values.length && <div className="mt-1 text-faint">{NOT_ANSWERED}</div>}
+            {answer?.values.length && answer.source !== "user" ? <div className="mt-1 text-faint">{ASK_SOURCE[answer.source]}</div> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function askResult(details: Record<string, unknown>): AskResult | undefined {
+  return Array.isArray(details.questions) && Array.isArray(details.answers) ? (details as unknown as AskResult) : undefined;
+}
+
 export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
   const args = call.arguments;
   const result = run?.result ?? run?.partial;
   const text = resultText(result);
   const failed = run?.status === "error";
   const details = (run?.result?.details ?? {}) as Record<string, unknown>;
+
+  // The arguments as JSON and the result's text: any tool without its own view.
+  const raw = () => (
+    <>
+      <Section>
+        <CodeView code={JSON.stringify(args, null, 2)} lang="json" className="max-h-72 overflow-auto" />
+      </Section>
+      {result && (
+        <Section>
+          <Output text={text} error={failed} />
+        </Section>
+      )}
+    </>
+  );
 
   let body: React.ReactNode;
   switch (call.name) {
@@ -246,19 +314,31 @@ export function ToolDetails({ call, run }: { call: ToolCall; run?: ToolRun }) {
         </>
       );
       break;
+    case "ask_user": {
+      const answered = askResult(details);
+      const asked = answered ?? normalizeAsk(args as unknown as AskParams);
+      body =
+        "questions" in asked ? (
+          <>
+            <AskDetails questions={asked.questions} result={answered} />
+            {run?.status === "running" && (
+              <Section>
+                <div className="px-3 py-1.5 text-[11.5px] text-faint">Waiting for an answer</div>
+              </Section>
+            )}
+            {failed && text && (
+              <Section>
+                <Output text={text} error />
+              </Section>
+            )}
+          </>
+        ) : (
+          raw()
+        );
+      break;
+    }
     default:
-      body = (
-        <>
-          <Section>
-            <CodeView code={JSON.stringify(args, null, 2)} lang="json" className="max-h-72 overflow-auto" />
-          </Section>
-          {result && (
-            <Section>
-              <Output text={text} error={failed} />
-            </Section>
-          )}
-        </>
-      );
+      body = raw();
   }
   return <div className={`mt-1 mb-2 overflow-hidden rounded-xl border bg-sunken ${failed ? "border-bad/40" : "border-line"}`}>{body}</div>;
 }
