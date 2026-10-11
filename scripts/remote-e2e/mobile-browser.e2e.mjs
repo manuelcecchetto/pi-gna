@@ -193,6 +193,8 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
       await until("the saved sheet to close after Send fails", async () => !(await exists('[data-testid="comment-sheet"]')), 20_000, 100);
       // On the Browser screen's own strip: the chat beneath it (kept mounted, hidden) shows the same comment in its composer.
       check(await phone.eval(`document.querySelectorAll('[data-testid="browser-screen"] [data-testid="annotation-chip"]').length === 1`), "failed Send keeps exactly one comment without inviting another pick");
+      // The toast follows the sheet closing by a render; wait for it rather than read the page once.
+      await until("the recovery toast", async () => (await text()).includes("Comments kept for your next message."), 5_000, 100).catch(() => {});
       check((await text()).includes("Comments kept for your next message."), "failed Send explains how to recover");
       await shot("browser-5-send-failed");
     } finally {
