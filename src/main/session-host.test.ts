@@ -35,8 +35,12 @@ vi.mock("./pi-process", () => ({
     }
   },
 }));
-const file = vi.hoisted(() => ({ read: async (_path: string): Promise<unknown[]> => [] }));
-vi.mock("./session-file", () => ({ readActiveBranch: (path: string) => file.read(path) }));
+const file = vi.hoisted(() => ({ read: async (_path: string): Promise<unknown[]> => [], named: [] as [string, string][] }));
+vi.mock("./session-file", () => ({
+  readActiveBranch: (path: string) => file.read(path),
+  cleanSessionName: (name: string) => name.trim(),
+  appendSessionName: async (path: string, name: string) => void file.named.push([path, name]),
+}));
 // Busy by default, so that only the spare pi's tests start one (2 s after a chat a client opened is ready).
 const machine = vi.hoisted(() => ({ load: Number.POSITIVE_INFINITY, inputs: "inputs-1" }));
 vi.mock("node:os", async (original) => ({ ...(await original<typeof import("node:os")>()), loadavg: () => [machine.load, 0, 0], availableParallelism: () => 8 }));
@@ -46,6 +50,7 @@ vi.mock("./pi-settings", () => ({ projectTrust: async () => undefined, piInputs:
 import type { Item, SessionState } from "../shared/session-state";
 import type { AgentBridge } from "./bridge";
 import { type SessionFeatures, SessionHost } from "./session-host";
+import { sessionsDir } from "./session-index";
 
 // SessionHost validates cwd against the real filesystem, even when pi/session I/O is mocked.
 const TMP = tmpdir();
@@ -1041,6 +1046,31 @@ describe("command semantics", () => {
     pi.handlers.onRecords([{ type: "extension_ui_request", id: "c2", method: "confirm", title: "Run rm?" }]);
     expect(fake.responded).toHaveLength(2);
     expect(host.stateOf(handle)!.dialogs.map((dialog) => dialog.id)).toContain("c2");
+  });
+
+  it("renames a running chat through its pi, and a closed one in pi's sessions folder by its file", async () => {
+    const { host } = await setup();
+    const sent: unknown[] = [];
+    fake.send = async (command) => void sent.push(command);
+    const globals: { kind: string; path?: string }[] = [];
+    host.onGlobal((event) => globals.push(event));
+    file.named.length = 0;
+    await host.rename(request.sessionPath, "  Login fix ");
+    expect(sent).toEqual([{ type: "set_session_name", name: "Login fix" }]);
+    expect(file.named).toEqual([]);
+
+    const closed = join(sessionsDir(), "--repo--", "old.jsonl");
+    await host.rename(closed, "Old chat");
+    expect(file.named).toEqual([[closed, "Old chat"]]);
+    expect(sent).toHaveLength(1);
+    // The file does not exist here, so its row goes; a real one is re-read.
+    expect(globals).toContainEqual({ kind: "session.indexed", path: closed, summary: null });
+
+    await expect(host.rename("/elsewhere/x.jsonl", "x")).rejects.toMatchObject({ code: "bad_request" });
+    await expect(host.rename(closed, "   ")).rejects.toMatchObject({ code: "bad_request" });
+    fake.send = async () => ({ type: "response", success: false, error: "nope" });
+    await expect(host.rename(request.sessionPath, "y")).rejects.toMatchObject({ code: "conflict" });
+    expect(file.named).toHaveLength(1);
   });
 
   it("refuses commands outside the allowlist for remote callers, not the desktop", async () => {

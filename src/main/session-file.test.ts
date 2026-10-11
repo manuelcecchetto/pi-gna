@@ -1,8 +1,8 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activeBranch, cutUserTitle, lastPromptAt, parseRecords, summarizeSessionFile, textOf } from "./session-file";
+import { activeBranch, appendSessionName, cutUserTitle, lastPromptAt, parseRecords, summarizeSessionFile, textOf } from "./session-file";
 
 const header = { type: "session", version: 3, id: "sid", timestamp: "2026-10-01T10:00:00.000Z", cwd: "/repo" };
 const msg = (id: string, parentId: string | null, role: string, content: unknown) => ({
@@ -37,6 +37,29 @@ describe("activeBranch", () => {
     const text = jsonl([header, msg("a", "b", "user", "a"), msg("b", "a", "user", "b")]) + '{"type":"mess';
     expect(activeBranch(parseRecords(text)).map((entry) => entry.id)).toEqual(["a", "b"]);
     expect(activeBranch(parseRecords(jsonl([header])))).toEqual([]);
+  });
+});
+
+describe("appendSessionName", () => {
+  it("appends pi's session_info record on the leaf, which the summary then reads as the name", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), "pi-gna-")), "s.jsonl");
+    // No final newline, as a file cut off mid-write would leave it.
+    await writeFile(path, jsonl([header, msg("u1", null, "user", "fix the login"), msg("a1", "u1", "assistant", [])]).trimEnd());
+    await appendSessionName(path, "  Login\nfix  ");
+    const records = parseRecords(await readFile(path, "utf8"));
+    const info = records.at(-1) as { type: string; id: string; parentId: string; name: string; timestamp: string };
+    expect(info).toMatchObject({ type: "session_info", parentId: "a1", name: "Login fix" });
+    expect(info.id).toMatch(/^[0-9a-f]{8}$/);
+    expect(Number.isNaN(Date.parse(info.timestamp))).toBe(false);
+    expect(activeBranch(records).map((entry) => entry.id)).toEqual(["u1", "a1", info.id]);
+    expect((await summarizeSessionFile(path, (await stat(path)).size))?.name).toBe("Login fix");
+  });
+
+  it("refuses a file that is not a pi session", async () => {
+    const path = join(await mkdtemp(join(tmpdir(), "pi-gna-")), "s.jsonl");
+    await writeFile(path, '{"hello":1}\n');
+    await expect(appendSessionName(path, "x")).rejects.toThrow("not a pi session");
+    expect(await readFile(path, "utf8")).toBe('{"hello":1}\n');
   });
 });
 

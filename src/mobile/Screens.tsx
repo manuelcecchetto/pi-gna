@@ -194,7 +194,8 @@ export function Chats({ client, homeDir, cwd, push, back }: { client: HostClient
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState<ChatItem>();
   const [closing, setClosing] = useState<ChatItem>();
-  const all = projects ? chatItems(projects, pins ?? [], attention, cwd, seen) : undefined;
+  const pinnedChats = useStore(client.store, (s) => s.global.ui?.chats);
+  const all = projects ? chatItems(projects, pins ?? [], attention, cwd, seen, pinnedChats) : undefined;
   const items = all && searchChats(all, query);
 
   const open = (item: ChatItem) => {

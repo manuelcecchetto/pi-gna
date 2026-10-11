@@ -1,7 +1,8 @@
 // Read pi session files directly. RPC has no list_sessions command, and reading the file lets
 // a transcript render before its pi process finishes booting.
 import { createReadStream } from "node:fs";
-import { open, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { appendFile, open, readFile } from "node:fs/promises";
 import type { SessionEntry, SessionHeader } from "../shared/protocol";
 import { JsonlSplitter } from "./jsonl";
 
@@ -50,6 +51,26 @@ function isHidden(entry: SessionEntry): boolean {
 
 export async function readActiveBranch(path: string): Promise<SessionEntry[]> {
   return activeBranch(parseRecords(await readFile(path, "utf8")));
+}
+
+/** A chat name as pi keeps it (SessionManager.appendSessionInfo): one line, trimmed. */
+export const cleanSessionName = (name: string): string => name.replace(/[\r\n]+/g, " ").trim();
+
+/**
+ * Rename a chat no pi process has open: append the record pi's own rename writes (a session_info entry on the leaf),
+ * so pi and the index read it as the latest name. Only for a closed chat; a running pi appends its own.
+ */
+export async function appendSessionName(path: string, name: string): Promise<void> {
+  const text = await readFile(path, "utf8");
+  const records = parseRecords(text);
+  if (records[0]?.type !== "session") throw new Error("not a pi session file");
+  const entries = records.filter((record): record is SessionEntry => record.type !== "session" && "id" in record);
+  const ids = new Set(entries.map((entry) => entry.id));
+  let id: string;
+  do id = randomUUID().slice(0, 8);
+  while (ids.has(id));
+  const record = { type: "session_info", id, parentId: entries.at(-1)?.id ?? null, timestamp: new Date().toISOString(), name: cleanSessionName(name) };
+  await appendFile(path, `${text.endsWith("\n") ? "" : "\n"}${JSON.stringify(record)}\n`);
 }
 
 export interface SessionFileSummary {

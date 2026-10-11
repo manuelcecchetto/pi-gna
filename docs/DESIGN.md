@@ -1537,6 +1537,11 @@ Verified live (pi 1.0.0, Oct 2026):
   file times, raised by messages you send from pi-gna so a chat and its project move up right away instead of
   after the run. Opening or switching chats must never reorder projects or chats (opening leaves the file
   untouched, and an opened chat closes again when you leave it, so "open chats first" made projects jump around).
+- Chat rows' right-click menu: "Rename chat" edits the title in place (Enter or leaving keeps it, Esc drops it, empty
+  keeps the old one) through `chat.rename`: a running pi renames it itself (`set_session_name`); a closed chat gets the
+  `session_info` record pi's `appendSessionInfo` writes (on the leaf, so pi and the index read it as the latest name).
+  "Pin chat" (`UiState.chats`, by session file) puts it first in its project and in Recent, newest first among the
+  pins, with a pin on the row; a pinned chat never moves its project. A chat not saved yet has neither item.
 - Hidden projects ("Hide project" in a project's menu, `UiState.hidden`): left out of the sidebar and the phone's
   list, their chats untouched on disk and in the index. Hiding unpins. "Show N hidden projects" under the list reveals
   them, dimmed and last, with "Unhide project"; the phone finds them through search. Starting a new chat in one

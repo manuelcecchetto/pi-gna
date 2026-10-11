@@ -6,7 +6,7 @@ import { shallow } from "./store";
 import { createSession, type SessionState } from "../../../shared/session-state";
 import { openChat } from "../state/app";
 
-const projectViews = (projects: ProjectGroup[], open: SessionState[], pinned: string[], hidden?: string[]) => viewsOfChats(projects, open.map(openChat), pinned, hidden);
+const projectViews = (projects: ProjectGroup[], open: SessionState[], pinned: string[], hidden?: string[], chats?: string[]) => viewsOfChats(projects, open.map(openChat), pinned, hidden, chats);
 
 const summary = (cwd: string, name: string, modifiedAt: number): SessionSummary => ({
   path: `${cwd}/${name}.jsonl`,
@@ -103,6 +103,26 @@ describe("projectViews", () => {
     expect(order(views)).toEqual(["/a", "/b", "/e", "/c"]);
     expect(views[0]?.rows.map((r) => r.key)).toEqual(["n1", "/a/a1.jsonl", "/a/a2.jsonl"]);
     expect(views[1]?.rows.map((r) => r.key)).toEqual(["n2", "/b/b1.jsonl"]);
+  });
+});
+
+describe("pinned chats", () => {
+  it("go first in their project, newest first among them, and are flagged", () => {
+    const views = projectViews(projects, [], [], [], ["/c/c2.jsonl", "/a/a2.jsonl"]);
+    expect(order(views)).toEqual(["/a", "/b", "/c"]); // a pinned chat does not move its project
+    expect(views[0]?.rows.map((r) => [r.key, !!r.pinned])).toEqual([["/a/a2.jsonl", true], ["/a/a1.jsonl", false]]);
+    expect(views[2]?.rows.map((r) => r.key)).toEqual(["/c/c2.jsonl", "/c/c1.jsonl"]);
+  });
+
+  it("match an open chat by its session file", () => {
+    const c2 = projects[2]?.sessions[1] as SessionSummary;
+    const views = projectViews(projects, [opened("h1", c2)], [], [], [c2.path]);
+    expect(views[2]?.rows[0]).toMatchObject({ key: c2.path, pinned: true, live: { handle: "h1" } });
+  });
+
+  it("go first in Recent too", () => {
+    const rows = recentRows(projectViews(projects, [], [], [], ["/c/c2.jsonl"]));
+    expect(rows.map((r) => r.key)).toEqual(["/c/c2.jsonl", "/a/a1.jsonl", "/a/a2.jsonl", "/b/b1.jsonl", "/c/c1.jsonl"]);
   });
 });
 

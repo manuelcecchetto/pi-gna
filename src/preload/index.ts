@@ -33,6 +33,7 @@ const api: StudioApi = {
   onSessionIndexed: (listener) => subscribe(IPC.sessionIndexed, listener),
   openSession: (request) => ipcRenderer.invoke(IPC.openSession, request),
   closeSession: (handle) => ipcRenderer.invoke(IPC.closeSession, handle),
+  renameSession: (path, name) => ipcRenderer.invoke(IPC.renameSession, path, name),
   command: (handle, command) => ipcRenderer.invoke(IPC.command, handle, command),
   detachSession: (handle) => ipcRenderer.invoke(IPC.detachSession, handle),
   attachSession: (handle) => ipcRenderer.invoke(IPC.attachSession, handle),

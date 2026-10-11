@@ -85,9 +85,10 @@ export function projectItems(projects: ProjectGroup[], pins: string[], attention
   return items.map((item, index) => ({ item, index })).sort((a, b) => rank(a.item) - rank(b.item) || a.index - b.index).map(({ item }) => item);
 }
 
-export function chatItems(projects: ProjectGroup[], pins: string[], attention: Record<string, AttentionSummary>, cwd: string, seen?: SeenMarks): ChatItem[] {
+/** A project's chats as the sidebar lists them: pinned chats (`pinnedChats`, by session file) first, then newest first. */
+export function chatItems(projects: ProjectGroup[], pins: string[], attention: Record<string, AttentionSummary>, cwd: string, seen?: SeenMarks, pinnedChats: string[] = []): ChatItem[] {
   const live = bySessionPath(attention);
-  const view = projectViews(projects, [], pins).find((candidate) => candidate.cwd === cwd);
+  const view = projectViews(projects, [], pins, [], pinnedChats).find((candidate) => candidate.cwd === cwd);
   // Chats not in the index yet have no time and stay on top until it catches up, as on the desktop.
   const fresh = unindexed(projects, attention)
     .filter((summary) => projectOf(summary.cwd) === cwd)

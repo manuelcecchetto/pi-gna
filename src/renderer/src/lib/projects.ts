@@ -1,4 +1,5 @@
-// Sidebar projects: pinned folders first (in the order you pinned them), then the rest by latest activity.
+// Sidebar projects: pinned folders first (in the order you pinned them), then the rest by latest activity. Within a
+// project (and in Recent), pinned chats go first, then the rest; each newest first.
 // A chat's time is its last user message (SessionSummary.promptedAt), not the agent's writes: opening or switching
 // chats, tool calls and answers never reorder anything; only pinning and sending a message do. Hidden projects come
 // last, flagged, for the lists to leave out. Pins and hidden projects are app-only state kept by the host (lib/host-ui.ts).
@@ -49,7 +50,15 @@ export interface ProjectRow {
   time?: number;
   summary?: SessionSummary;
   live?: OpenChat;
+  pinned?: boolean;
 }
+
+/** A row's session file: the open chat's (pi can switch it), else the indexed one; none for a chat not saved yet. */
+export const rowSession = (row: ProjectRow): string | undefined => row.live?.sessionPath ?? row.summary?.path;
+
+/** Pinned rows first, then the rest; chats not in the index yet (just started) have no time and stay on top until it catches up. */
+const byPinThenTime = (a: ProjectRow, b: ProjectRow) =>
+  Number(!!b.pinned) - Number(!!a.pinned) || (b.time ?? Number.POSITIVE_INFINITY) - (a.time ?? Number.POSITIVE_INFINITY);
 
 export interface ProjectView {
   cwd: string;
@@ -62,7 +71,7 @@ export interface ProjectView {
  * Indexed projects plus open chats (matched by session file, grouped by projectOf), ordered for the sidebar; card
  * triage chats and ATP chats (reached from the ATP page) are left out.
  */
-export function projectViews(projects: ProjectGroup[], open: OpenChat[], pinned: string[], hidden: string[] = []): ProjectView[] {
+export function projectViews(projects: ProjectGroup[], open: OpenChat[], pinned: string[], hidden: string[] = [], pinnedChats: string[] = []): ProjectView[] {
   const groups = new Map<string, { cwd: string; activeAt: number; rows: ProjectRow[] }>();
   for (const project of projects) {
     const sessions = project.sessions.filter((summary) => !(summary.named && isTriage(summary.title)));
@@ -95,8 +104,7 @@ export function projectViews(projects: ProjectGroup[], open: OpenChat[], pinned:
       cwd,
       pinned: pinned.includes(cwd),
       hidden: hidden.includes(cwd),
-      // Chats not in the index yet (just started) have no time and stay on top until it catches up.
-      rows: rows.sort((a, b) => (b.time ?? Number.POSITIVE_INFINITY) - (a.time ?? Number.POSITIVE_INFINITY)),
+      rows: rows.map(pinRow(pinnedChats)).sort(byPinThenTime),
     }));
 }
 
@@ -105,7 +113,15 @@ export function recentRows(views: ProjectView[]): ProjectRow[] {
   return views
     .filter((view) => !view.hidden)
     .flatMap((view) => view.rows)
-    .sort((a, b) => (b.time ?? Number.POSITIVE_INFINITY) - (a.time ?? Number.POSITIVE_INFINITY));
+    .sort(byPinThenTime);
+}
+
+function pinRow(pinnedChats: string[]): (row: ProjectRow) => ProjectRow {
+  if (!pinnedChats.length) return (row) => row;
+  return (row) => {
+    const session = rowSession(row);
+    return session && pinnedChats.includes(session) ? { ...row, pinned: true } : row;
+  };
 }
 
 // ── Pins ─────────────────────────────────────────────────────────────────────
@@ -117,6 +133,14 @@ export function usePinnedProjects(): string[] {
 /** New pins go below the existing ones, so pinned projects keep their places. */
 export function togglePinnedProject(cwd: string): void {
   applyUi({ type: uiStore.get().pins.includes(cwd) ? "unpin" : "pin", cwd });
+}
+
+export function usePinnedChats(): string[] {
+  return useStore(uiStore, (state) => state.chats);
+}
+
+export function setChatPinned(session: string, pinned: boolean): void {
+  applyUi({ type: pinned ? "pinChat" : "unpinChat", session });
 }
 
 // ── Hidden ───────────────────────────────────────────────────────────────────

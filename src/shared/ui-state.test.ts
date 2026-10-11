@@ -38,6 +38,18 @@ describe("hidden projects", () => {
   });
 });
 
+describe("pinned chats", () => {
+  it("pins a session file once and unpins it", () => {
+    const state = run([{ type: "pinChat", session: "/s/a.jsonl" }, { type: "pinChat", session: "/s/b.jsonl" }, { type: "pinChat", session: "/s/a.jsonl" }]);
+    expect(state.chats).toEqual(["/s/a.jsonl", "/s/b.jsonl"]);
+    expect(applyUiOp(state, { type: "unpinChat", session: "/s/a.jsonl" }).chats).toEqual(["/s/b.jsonl"]);
+    expect(applyUiOp(state, { type: "unpinChat", session: "/zzz" })).toBe(state);
+  });
+  it("rejects a chat that is not a session file path", () => {
+    expect(() => applyUiOp(emptyUiState(), { type: "pinChat", session: "rel.jsonl" })).toThrow("session file");
+  });
+});
+
 describe("bookmarks", () => {
   it("adds per session by message time and removes the entry with its last turn", () => {
     let state = run([{ type: "bookmark", session: "/s.jsonl", at: 5 }, { type: "bookmark", session: "/s.jsonl", at: 9 }, { type: "bookmark", session: "/s.jsonl", at: 5 }]);
@@ -70,9 +82,9 @@ describe("pinned models", () => {
 
 describe("parseUiState", () => {
   it("keeps well-formed entries and counts the rest", () => {
-    const { value, dropped } = parseUiState({ pins: ["/a", "/a", 3, "rel"], bookmarks: { "/s": [1, "x", 1, 2], rel: [1], "/t": [] } });
-    expect(value).toEqual({ pins: ["/a"], hidden: [], bookmarks: { "/s": [1, 2] }, models: [] });
-    expect(dropped).toBe(5);
+    const { value, dropped } = parseUiState({ pins: ["/a", "/a", 3, "rel"], chats: ["/s/a.jsonl", "/s/a.jsonl", "rel"], bookmarks: { "/s": [1, "x", 1, 2], rel: [1], "/t": [] } });
+    expect(value).toEqual({ pins: ["/a"], hidden: [], chats: ["/s/a.jsonl"], bookmarks: { "/s": [1, 2] }, models: [] });
+    expect(dropped).toBe(7);
   });
   it("keeps pinned models keyed provider/id, and reads a file from before them", () => {
     const { value, dropped } = parseUiState({ models: ["openai/gpt-5.5", "openai/gpt-5.5", "openrouter/anthropic/claude-x", "gpt-5.5", "/x", 4] });

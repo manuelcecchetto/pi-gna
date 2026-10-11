@@ -224,12 +224,14 @@ export interface AtpPlanThreads {
   workers: Record<string, string[]>;
 }
 
-/** Pins, hidden projects and bookmarks, host-side (they were renderer localStorage); ops in src/shared/ui-state.ts. */
+/** Pins, hidden projects, pinned chats and bookmarks, host-side (they were renderer localStorage); ops in src/shared/ui-state.ts. */
 export interface UiState {
   /** Pinned project folders, in order. */
   pins: string[];
   /** Project folders left out of the project lists; their chats stay on disk and in the index. */
   hidden: string[];
+  /** Pinned chats by session file: they go first in their project's list and in Recent. */
+  chats: string[];
   /** Per session file: the timestamps of the bookmarked messages. */
   bookmarks: Record<string, number[]>;
   /** Pinned models as `provider/id`, in order: they sort to the top of the model menus (src/shared/model-pins.ts). */
@@ -504,6 +506,8 @@ export interface HostMethods {
   "chat.live": { args: Record<string, never>; result: AttentionSummary[] };
   "chat.detach": { args: { handle: string }; result: null };
   "chat.close": { args: { handle: string }; result: null };
+  /** Name a chat by its session file: a running pi renames it, a closed chat gets pi's session_info record; then `session.indexed`. */
+  "chat.rename": { args: { path: string; name: string }; result: null };
   /** `turns`: page size, 1 to 40 (default 40). */
   "chat.snapshot": { args: { handle: string; before?: number; offset?: number; turns?: number; bytes?: number }; result: Snapshot<ChatSnapshot> };
   "chat.send": {

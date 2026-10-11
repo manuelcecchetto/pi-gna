@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { availableParallelism, loadavg } from "node:os";
-import { basename, isAbsolute } from "node:path";
+import { basename, dirname, isAbsolute } from "node:path";
 import { type AtpSession, isPlanPath } from "../shared/atp";
 import { projectOf } from "../shared/board";
 import { jsonBytes } from "../shared/chat-page";
@@ -24,7 +24,8 @@ import { type PiExit, type PiIo, PiProcess, type PiProcessHandlers } from "./pi-
 import { piInputs, projectTrust } from "./pi-settings";
 import { onDisk } from "./resources";
 import { MIN_INLINE_CHARS } from "./remote-images";
-import { readActiveBranch } from "./session-file";
+import { appendSessionName, cleanSessionName, readActiveBranch } from "./session-file";
+import { indexSettled, sessionsDir } from "./session-index";
 
 /** How long an approval card waits for the user before it counts as a refusal. */
 const APPROVAL_TIMEOUT_MS = 10 * 60_000;
@@ -889,6 +890,27 @@ export class SessionHost {
         log.warn("pi", `run-end listener failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+
+  /**
+   * Rename a chat by its session file: a running pi renames it itself (set_session_name), a closed chat in the sessions
+   * folder gets the record pi would write. Its row is then re-indexed for every client's list.
+   */
+  async rename(sessionPath: string, raw: string): Promise<void> {
+    const name = cleanSessionName(raw);
+    if (!name) throw new HostError("bad_request", "a chat name cannot be empty");
+    const handle = this.byFile.get(sessionPath);
+    if (handle) {
+      const response = await this.command(handle, { type: "set_session_name", name });
+      if (!response.success) throw new HostError("conflict", response.error ?? "pi could not rename the chat");
+    } else {
+      if (!isAbsolute(sessionPath) || !sessionPath.endsWith(".jsonl") || dirname(dirname(sessionPath)) !== sessionsDir()) throw new HostError("bad_request", "not a chat in pi's sessions folder");
+      await appendSessionName(sessionPath, name).catch((error: NodeJS.ErrnoException) => {
+        throw error.code === "ENOENT" ? new HostError("not_found", "that chat is gone") : error;
+      });
+    }
+    const summary = await indexSettled(sessionPath);
+    if (summary !== undefined) this.publishGlobal({ kind: "session.indexed", path: sessionPath, summary });
   }
 
   /** The chat's name as the user sees it, for labels in other apps. */

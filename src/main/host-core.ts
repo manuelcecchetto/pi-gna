@@ -129,6 +129,9 @@ const method = <A>(scope: MethodScope, validate: (raw: any) => A, run: (ctx: Hos
 /** Arguments are used as sent, as the IPC handlers did before the table. */
 const any = <A>(scope: MethodScope, run: (ctx: HostContext, args: A) => unknown) => method<A>(scope, (raw) => raw as A, run);
 
+/** Longest chat name a client may set. */
+const CHAT_NAME_MAX = 200;
+
 /** Minimum gap between `computer.preview` calls of one client. */
 const PREVIEW_INTERVAL_MS = 1000;
 
@@ -302,6 +305,15 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
     ),
     "chat.close": any<{ handle: string }>("remote", (_ctx, { handle }) => host.close(handle)),
+    "chat.rename": method<{ path: string; name: string }>(
+      "remote",
+      (raw) => {
+        if (typeof raw.path !== "string" || !isAbsolute(raw.path) || raw.path.length > 4096) throw new Error("Invalid chat");
+        if (typeof raw.name !== "string" || raw.name.length > CHAT_NAME_MAX) throw new Error(`A chat name is at most ${CHAT_NAME_MAX} characters`);
+        return { path: raw.path, name: raw.name };
+      },
+      async (_ctx, { path, name }) => (await piDirs(), host.rename(path, name)),
+    ),
     "chat.command": any<{ handle: string; command: RpcCommand }>("remote", (_ctx, { handle, command }) => host.command(handle, command)),
     "chat.detach": any<{ handle: string }>("remote", (ctx, { handle }) => host.detach(handle, ctx.clientId)),
     "chat.attach": any<{ handle: string }>("remote", async (ctx, { handle }) => {
@@ -844,6 +856,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.listSessions, "chat.list"),
   route(IPC.openSession, "chat.open", (request) => ({ request })),
   route(IPC.closeSession, "chat.close", (handle) => ({ handle })),
+  route(IPC.renameSession, "chat.rename", (path, name) => ({ path, name })),
   route(IPC.command, "chat.command", (handle, command) => ({ handle, command })),
   route(IPC.detachSession, "chat.detach", (handle) => ({ handle })),
   route(IPC.attachSession, "chat.attach", (handle) => ({ handle })),

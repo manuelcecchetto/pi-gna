@@ -207,6 +207,15 @@ export async function command<T = unknown>(handle: string, cmd: RpcCommand, quie
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 
+/** Name a chat by its session file, open or closed; the host renames it and re-indexes its row for every client. */
+export async function renameChat(path: string, name: string): Promise<void> {
+  try {
+    await studio().renameSession(path, name);
+  } catch (error) {
+    toast(`Rename: ${error instanceof Error ? error.message : String(error)}`, "error");
+  }
+}
+
 let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 export function refreshProjects(delay = 0): void {
   clearTimeout(refreshTimer);

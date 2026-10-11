@@ -32,6 +32,7 @@ export const IPC = {
   listSessions: "studio:list-sessions",
   openSession: "studio:open-session",
   closeSession: "studio:close-session",
+  renameSession: "studio:rename-session",
   detachSession: "studio:detach-session",
   attachSession: "studio:attach-session",
   pageSession: "studio:page-session",
@@ -571,6 +572,8 @@ export interface StudioApi {
   openSession(request: OpenSessionRequest): Promise<OpenSessionResult>;
   /** Stop the chat's pi (explicit "Close chat"; also tells other clients). */
   closeSession(handle: string): Promise<void>;
+  /** Name a chat by its session file, open or closed (SessionHost.rename). */
+  renameSession(path: string, name: string): Promise<void>;
   /** Leave a chat without stopping it: pi stops only if nobody else holds it and it is disposable. */
   detachSession(handle: string): Promise<void>;
   /** Join a live chat (one another client started, or one this window had before a reload); null when it ended. */

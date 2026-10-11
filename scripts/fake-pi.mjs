@@ -117,6 +117,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     // A prompt containing "ask-confirm" raises a confirm dialog; the answer is appended to FAKE_RESPONSES (default in the temp folder).
     case "extension_ui_response":
       return void appendFileSync(process.env.FAKE_RESPONSES || join(tmpdir(), "fake-pi-responses.log"), `${JSON.stringify(command)}\n`);
+    // Like pi: the name is kept (not written here) and announced, so the chat's title follows.
+    case "set_session_name":
+      reply(undefined);
+      return out({ type: "session_info_changed", name: command.name.trim() });
     case "abort":
       aborted = streaming;
       return reply(undefined);

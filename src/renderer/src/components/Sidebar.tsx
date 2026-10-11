@@ -1,14 +1,14 @@
-import { Angry, Copy, Eye, EyeOff, Folder, FolderOpen, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "./icons";
+import { Angry, Copy, Eye, EyeOff, Folder, FolderOpen, GitPullRequest, MessagesSquare, Network, PanelLeftClose, PanelLeftOpen, Pencil, Pin, PinOff, Plus, Settings, SquareKanban, SquarePen, X } from "./icons";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { cardOfChat, projectOf } from "../../../shared/board";
 import { projectLaments, SEVERITY } from "../../../shared/laments";
 import type { Feature } from "../../../shared/settings";
 import { baseName, relativeTime, tildify } from "../lib/format";
 import { type Attention, strongestLevel } from "../../../shared/session-state";
-import { shallow } from "../lib/store";
+import { createStore, shallow, useStore } from "../lib/store";
 import { worstSeverity } from "../lib/laments";
 import { clampSidebarWidth, SIDEBAR_DEFAULT, sidebarDrag } from "../lib/layout";
-import { type ProjectRow, type ProjectView, projectViews, recentRows, setProjectHidden, togglePinnedProject, useHiddenProjects, usePinnedProjects } from "../lib/projects";
+import { type ProjectRow, type ProjectView, projectViews, recentRows, rowSession, setChatPinned, setProjectHidden, togglePinnedProject, useHiddenProjects, usePinnedChats, usePinnedProjects } from "../lib/projects";
 import {
   activate,
   addChatToBoard,
@@ -17,6 +17,7 @@ import {
   newSession,
   openSession,
   openSettings,
+  renameChat,
   setSidebar,
   showBoard,
   showPage,
@@ -62,6 +63,7 @@ export function Sidebar() {
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
   const hidden = useHiddenProjects();
+  const pinnedChats = usePinnedChats();
   const [showHidden, setShowHidden] = useState(false);
   const [dragging, setDragging] = useState(false);
   const { open: openMenu, menu } = useContextMenu();
@@ -71,7 +73,7 @@ export function Sidebar() {
   const activeCwd = activeChat && projectOf(activeChat.cwd);
   const inDraft = Boolean(activeChat?.draft);
 
-  const all = useMemo(() => projectViews(projects, chats, pinned, hidden), [projects, chats, pinned, hidden]);
+  const all = useMemo(() => projectViews(projects, chats, pinned, hidden, pinnedChats), [projects, chats, pinned, hidden, pinnedChats]);
   // Hidden projects come last and only show while you ask for them.
   const hiddenCount = all.filter((group) => group.hidden).length;
   // Once nothing is hidden, the next project you hide leaves the list again.
@@ -486,7 +488,7 @@ function projectMenu(group: ProjectView, features: Record<Feature, boolean>): Me
 
 function sessionMenu(row: ProjectRow, open: () => void, active: boolean, kanban: boolean): MenuItem[][] {
   const live = row.live;
-  const path = live?.sessionPath ?? row.summary?.path;
+  const path = rowSession(row);
   const card = path ? cardOfChat(store.get().board, path) : undefined;
   // As the chat header's card chip: an exited chat or an empty draft has nothing to put on the board.
   const addable = live && !card && live.sessionPath && !live.draft && !live.exited ? live : undefined;
@@ -499,9 +501,21 @@ function sessionMenu(row: ProjectRow, open: () => void, active: boolean, kanban:
         : addable
           ? [{ label: "Add to the Kanban board", icon: <SquareKanban size={13} />, onSelect: () => void addChatToBoard(addable.handle) }]
           : [],
+    // A chat not saved yet has no file to name or pin.
+    path
+      ? [
+          { label: "Rename chat", icon: <Pencil size={13} />, onSelect: () => renaming.set(() => row.key) },
+          row.pinned
+            ? { label: "Unpin chat", icon: <PinOff size={13} />, onSelect: () => setChatPinned(path, false) }
+            : { label: "Pin chat", icon: <Pin size={13} />, hint: "First in its project", onSelect: () => setChatPinned(path, true) },
+        ]
+      : [],
     live ? [{ label: "Close chat", icon: <X size={13} />, hint: "Stops its pi process", onSelect: () => void closeSession(live.handle) }] : [],
   ];
 }
+
+/** The row whose title is being edited (its key), from its menu's "Rename chat". */
+const renaming = createStore<string | undefined>(undefined);
 
 /** Open a sidebar row's chat: switch to it while it runs, else load it from its session file. */
 function openRow(row: ProjectRow): void {
@@ -531,20 +545,63 @@ function SessionRowView({
   const title = live ? live.title : (row.summary?.title ?? "New chat");
   const level = live?.attention;
   const needsYou = level === "waiting" || level === "failed" || level === "unread";
+  const editing = useStore(renaming, (key) => key === row.key);
   const onClick = () => openRow(row);
+  const tone = active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg";
+  if (editing) {
+    const path = rowSession(row);
+    return (
+      <div className={`flex items-center gap-2.5 rounded-lg py-[3px] pr-1.5 pl-3 ${tone}`}>
+        <span className="w-4 shrink-0" />
+        <RenameField title={title} onDone={(name) => {
+          renaming.set(() => undefined);
+          if (path && name && name !== title) void renameChat(path, name);
+        }} />
+      </div>
+    );
+  }
   return (
     <button
       type="button"
       onClick={onClick}
       onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active, kanban))}
-      className={`group relative isolate flex items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
+      className={`group relative isolate flex items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${tone}`}
     >
       {live?.askTimeout && <AskFill timeout={live.askTimeout} deadline={live.askDeadline} left={live.askLeft} />}
       <span className="grid w-4 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
       <span className={`min-w-0 flex-1 truncate text-[14px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
       {project && <span className="max-w-[35%] shrink truncate text-[11.5px] text-faint">{project}</span>}
+      {row.pinned && <Pin size={11} aria-label="Pinned" className="shrink-0 text-faint" />}
       {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <RowTime time={row.time} />}
     </button>
+  );
+}
+
+/** The title, editable in place: Enter or leaving the field keeps it, Escape drops it. An empty name keeps the old one. */
+function RenameField({ title, onDone }: { title: string; onDone: (name: string | undefined) => void }) {
+  const done = useRef(false);
+  const finish = (name: string | undefined) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(name?.replace(/\s+/g, " ").trim() || undefined);
+  };
+  return (
+    <input
+      aria-label="Chat name"
+      defaultValue={title}
+      maxLength={200}
+      autoFocus
+      onFocus={(event) => event.currentTarget.select()}
+      onBlur={(event) => finish(event.currentTarget.value)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") finish(event.currentTarget.value);
+        else if (event.key === "Escape") finish(undefined);
+        else return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      className="min-w-0 flex-1 rounded-md border border-line bg-sunken px-1.5 py-[1px] text-[14px] text-fg outline-none focus:border-line-strong"
+    />
   );
 }
 

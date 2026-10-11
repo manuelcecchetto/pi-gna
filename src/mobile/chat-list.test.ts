@@ -18,6 +18,10 @@ describe("project and chat lists", () => {
     expect(projectItems(projects, ["/c"], {}).map((p) => [p.cwd, p.pinned])).toEqual([["/c", true], ["/b", false], ["/a", false]]);
   });
 
+  it("lists a project's pinned chats first, as the sidebar does", () => {
+    expect(chatItems(projects, [], {}, "/a", undefined, ["/a/1.jsonl"]).map((c) => c.path)).toEqual(["/a/1.jsonl", "/a/2.jsonl"]);
+  });
+
   it("leaves hidden projects out of the list but finds them in a search", () => {
     const items = projectItems(projects, [], {}, undefined, ["/b"]);
     expect(searchProjects(items, "").map((p) => p.cwd)).toEqual(["/a", "/c"]);
