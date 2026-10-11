@@ -6,7 +6,7 @@
 import { execFile } from "node:child_process";
 import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { sep } from "node:path";
+import { relative, sep } from "node:path";
 import { worktreeCwd } from "../shared/board";
 import type { CardWorktree } from "../shared/ipc";
 
@@ -94,7 +94,8 @@ async function worktreeBranch(dir: string): Promise<string | null> {
   if (!(await stat(dir).catch(() => undefined))?.isDirectory()) return null;
   const [out, real] = await Promise.all([git(dir, ["rev-parse", "--show-toplevel", "--abbrev-ref", "HEAD"]).catch(() => ""), realpath(dir)]);
   const [top, branch] = out.split("\n");
-  return top && branch && top === real ? branch : null;
+  // Git for Windows prints forward slashes; realpath uses backslashes. Compare native paths, not spellings.
+  return top && branch && relative(top, real) === "" ? branch : null;
 }
 
 function git(cwd: string, args: string[], env: Record<string, string> = {}): Promise<string> {

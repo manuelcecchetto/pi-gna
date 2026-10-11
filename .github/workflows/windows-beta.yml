@@ -1,22 +1,30 @@
-# Windows beta (docs/WINDOWS.md): run by hand from the Actions tab. Builds the unsigned NSIS installer on Windows and
-# publishes it as a GitHub prerelease tagged windows-beta-<version>-<n>. Prereleases are not releases/latest, so the
-# macOS updater never sees them, and the tag does not match release.yml's v* trigger.
-name: Windows beta
+# Manual, append-only Windows assets for the EXISTING latest release. No new tag/release, no Mac asset replacement.
+# Keep this workflow's filename so it remains dispatchable on the Windows port branch before merging that branch.
+name: Windows release asset
 
 on:
   workflow_dispatch:
     inputs:
-      beta:
-        description: Beta number for this version
+      release_tag:
+        description: Existing latest tag (blank means v + package.json version)
+        required: false
+        default: ""
+      publish:
+        description: Append the verified unsigned Windows preview to that release
+        type: boolean
         required: true
-        default: "1"
+        default: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: windows-release-asset-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  mac-regression:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -25,26 +33,56 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: brew install ripgrep
       - run: pnpm typecheck
-      # The suite has never run on Windows: its failures are the to-do list, not a gate (yet).
       - run: pnpm test
-        continue-on-error: true
-      - run: pnpm dist:win
-      - name: Publish prerelease
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BETA: ${{ inputs.beta }}
-        run: |
-          [[ "$BETA" =~ ^[0-9]+$ ]] || { echo "::error::beta must be a number"; exit 1; }
-          version="$(node -p 'require("./package.json").version')"
-          tag="windows-beta-$version-$BETA"
-          cat > "$RUNNER_TEMP/notes.md" <<NOTES
-          **Experimental Windows build of pi-gna $version.** Expect rough edges; please file issues.
 
-          - Unsigned: Windows SmartScreen warns on first run (More info → Run anyway).
-          - Installs per user, no admin rights. No in-app updates yet: download the next beta by hand.
-          - Needs Node and pi (\`npm install -g @earendil-works/pi-coding-agent\`); Setup in the app can install pi.
-          - Not there yet: Computer Use, Ctrl shortcuts (some still expect ⌘), Windows paths in file links.
-          NOTES
-          gh release create "$tag" dist/pi-gna-setup-x64.exe --prerelease --target "$GITHUB_SHA" --title "Windows beta ($version-$BETA)" --notes-file "$RUNNER_TEMP/notes.md"
+  windows:
+    needs: mac-regression
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WINDOWS_RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: choco install ripgrep --no-progress -y
+      - run: pnpm install --frozen-lockfile
+      - name: Verify existing release and published source
+        run: node scripts/windows-release.mjs check
+      - run: pnpm typecheck
+      # Never publish a tolerated-red suite. Platform-specific skips have explicit native counterparts.
+      - run: pnpm test
+      - run: pnpm dist:win
+      - name: Packaged application smoke (isolated fake pi)
+        run: node scripts/verify-windows-preview.mjs dist/win-unpacked/pi-gna.exe
+      - name: Fresh install, reinstall, uninstall and profile preservation
+        run: node scripts/verify-windows-installer.mjs
+      - name: Prepare source provenance and checksums
+        run: node scripts/windows-release.mjs prepare
+      - name: Keep the verified artifacts for review
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-x64-${{ github.sha }}
+          path: |
+            dist/pi-gna-setup-x64.exe
+            dist/pi-gna-windows-x64-build.json
+            dist/pi-gna-windows-x64.sha256
+            dist/pi-gna-windows-x64-notes.md
+          if-no-files-found: error
+      - name: Append Windows only (no clobber, no retag)
+        if: ${{ inputs.publish }}
+        env:
+          WINDOWS_PUBLISH_VERIFIED: "1"
+        run: node scripts/windows-release.mjs publish

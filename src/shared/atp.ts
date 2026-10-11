@@ -3,6 +3,8 @@
 // completes, fails or decomposes it itself, commit, repeat. Plans are only ever changed through the bundled
 // librarian CLI (resources/atp/skills/atp-local-librarian), never by writing the file.
 
+import { isAbsoluteHostPath } from "./paths";
+
 export const NODE_STATUSES = ["LOCKED", "READY", "CLAIMED", "COMPLETED", "FAILED"] as const;
 export type AtpNodeStatus = (typeof NODE_STATUSES)[number];
 export const PROJECT_STATUSES = ["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"] as const;
@@ -73,7 +75,7 @@ export function parsePlan(path: string, raw: unknown): AtpPlan {
 }
 
 /** "auth-upgrade" for /repo/plans/auth-upgrade.atp.json. */
-export const planName = (path: string): string => (path.split("/").at(-1) ?? path).replace(/\.atp\.json$/, "");
+export const planName = (path: string): string => (path.split(path.startsWith("/") ? "/" : /[/\\]/).at(-1) ?? path).replace(/\.atp\.json$/, "");
 
 export interface AtpProgress {
   /** Nodes a worker runs: not scopes (they close themselves) and not closed by replanning. */
@@ -148,7 +150,7 @@ export function draftTitle(text: string): string {
   return line.length > 80 ? `${line.slice(0, 79)}…` : line;
 }
 
-export const isPlanPath = (path: unknown): path is string => typeof path === "string" && path.startsWith("/") && path.endsWith(".atp.json") && !path.includes("\0");
+export const isPlanPath = (path: unknown): path is string => isAbsoluteHostPath(path) && path.endsWith(".atp.json");
 
 /** The project's plans as main found them; a plan that cannot be read has an error instead. */
 export interface AtpPlanFile {
@@ -181,12 +183,14 @@ export function workerMessage(runtime: {
   plan: string;
   branch: string;
   librarian: string;
+  /** Host-selected interpreter command: python3 on POSIX; py -3 or python on Windows. */
+  python?: string;
   claim: Extract<AtpClaim, { kind: "assigned" }>;
   /** The node was claimed by an earlier run that stopped before finishing it. */
   resumed?: boolean;
 }): string {
   const { claim } = runtime;
-  const cli = `python3 '${runtime.librarian}'`;
+  const cli = `${runtime.python ?? "python3"} '${runtime.librarian}'`;
   return [
     "### Runtime Context (Injected by pi-gna's ATP runner)",
     `- project_root: ${runtime.project}`,

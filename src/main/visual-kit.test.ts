@@ -49,7 +49,7 @@ describe("visual extension", () => {
     handler?.(event);
     expect(contextFiles).toHaveLength(2);
     expect(contextFiles[0]?.path).toBe("/repo/AGENTS.md");
-    expect(contextFiles[1]?.path).toMatch(/resources\/pigna-visual-prompt\.md$/);
+    expect(contextFiles[1]?.path).toMatch(/resources[/\\]pigna-visual-prompt\.md$/);
     expect(contextFiles[1]?.content).toBe(read("pigna-visual-prompt.md"));
   });
 });

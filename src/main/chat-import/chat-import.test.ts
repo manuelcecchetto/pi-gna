@@ -266,7 +266,7 @@ describe("ChatImporter", () => {
 
     const scan = await importer.scan();
     expect(scan.sources[0]).toMatchObject({ source: "codex", chats: 2, skipped: 0 });
-    expect(scan.projects.map((p) => [p.cwd.replace(root, "~"), p.scratch, p.fresh])).toEqual(
+    expect(scan.projects.map((p) => [p.cwd.replace(root, "~").replaceAll("\\", "/"), p.scratch, p.fresh])).toEqual(
       expect.arrayContaining([
         ["/work/app", false, 1],
         ["~/home/Documents/Codex/2026-06-02/scratch", true, 1],
@@ -277,7 +277,8 @@ describe("ChatImporter", () => {
     expect(await importer.run(["/work/app"], (p) => progress.push(p.done))).toMatchObject({ imported: 1, updated: 0, unchanged: 0, failed: [] });
     expect(progress).toEqual([0, 1]);
     const folder = sessionFolder(sessions, "/work/app");
-    expect(folder).toBe(join(sessions, "--work-app--"));
+    // Like pi, a root-relative /work/app resolves against the current drive on Windows.
+    expect(folder).toBe(join(sessions, process.platform === "win32" ? `--${process.cwd()[0]}--work-app--` : "--work-app--"));
     const path = join(folder, `2026-06-01T10-00-00-000Z_${importedSessionId({ source: "codex", id: "t1" })}.jsonl`);
     const records = (await readFile(path, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
     expect(records[0]).toEqual({ type: "session", version: 3, id: importedSessionId({ source: "codex", id: "t1" }), timestamp: at(0), cwd: "/work/app" });

@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { existsSync, type FSWatcher, watch } from "node:fs";
 import { appendFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import {
   type AtpBridgeRequest,
   type AtpClaim,
@@ -24,6 +24,7 @@ import { emptyBoard, freshId, isCardId, worktreeCwd } from "../shared/board";
 import { bridgeError, type Route } from "./bridge";
 import { log } from "./log";
 import { onDisk } from "./resources";
+import { pythonForHost } from "./python";
 import { ATP_BRANCHES, atpWorktree } from "./worktree";
 
 const SKILLS = () => onDisk("resources", "atp", "skills");
@@ -190,7 +191,7 @@ export class Atp {
         return "";
       },
     );
-    return stdout.split("\n").filter(isPlanPath).sort();
+    return stdout.split(/\r?\n/).filter(isPlanPath).sort();
   }
 
   // ── New plans' worktrees ───────────────────────────────────────────────────
@@ -214,7 +215,7 @@ export class Atp {
     if (!head) return cwd;
     const { plans, roots } = await this.collect(cwd);
     for (const root of roots.slice(1)) {
-      if (taken.has(root) || plans.plans.some((file) => file.path.startsWith(`${root}/`))) continue;
+      if (taken.has(root) || plans.plans.some((file) => file.path.startsWith(root.endsWith(sep) ? root : root + sep))) continue;
       const clean = (await this.exec("git", ["-C", root, "status", "--porcelain"]).catch(() => "?")).trim() === "";
       if (clean && (await this.exec("git", ["-C", root, "merge", "--ff-only", "-q", head]).then(() => true, () => false))) return this.made(cwd, root);
     }
@@ -256,7 +257,8 @@ export class Atp {
   // ── The runner ─────────────────────────────────────────────────────────────
 
   private librarian(command: string, plan: string, args: string[] = []): Promise<string> {
-    return this.exec("python3", [librarianPath(), command, "--plan-path", checkPlan(plan), ...args]).then((out) => out.trim());
+    const python = pythonForHost();
+    return this.exec(python.file, [...python.args, librarianPath(), command, "--plan-path", checkPlan(plan), ...args]).then((out) => out.trim());
   }
 
   /** DRAFT or PAUSED -> ACTIVE (Start on the page); a plan that is already active stays so. */

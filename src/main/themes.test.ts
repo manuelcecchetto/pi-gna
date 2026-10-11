@@ -15,8 +15,10 @@ async function setup() {
   const project = join(dir, "repo");
   await mkdir(join(project, "assets"), { recursive: true });
   await writeFile(join(project, "assets", "logo.svg"), '<svg xmlns="http://www.w3.org/2000/svg"/>');
-  await writeFile(join(dir, "outside.png"), "png");
-  await symlink(join(dir, "outside.png"), join(project, "assets", "escape.png"));
+  await mkdir(join(dir, "outside"));
+  await writeFile(join(dir, "outside", "image.png"), "png");
+  // A directory junction needs no elevation on Windows and still exercises realpath confinement.
+  await symlink(join(dir, "outside"), join(project, "assets", "escape"), process.platform === "win32" ? "junction" : "dir");
   const pushed: unknown[] = [];
   const store = new ThemeStore(join(dir, "themes.json"), (themes) => pushed.push(themes));
   const settings = new SettingsStore(join(dir, "settings.json"), () => undefined);
@@ -59,14 +61,14 @@ describe("POST /theme", () => {
     const { project, route, chatIn } = await setup();
     chatIn(worktreeCwd("/Users/me", "abc123", project));
     await route("h", { base: "light" });
-    expect(text(await route("h", {}))).toContain(`"project": "${project}"`);
+    expect(text(await route("h", {}))).toContain(`"project": ${JSON.stringify(project)}`);
     expect(text(await route("h", {}))).toContain('"base": "light"');
   });
 
   it("refuses images that are missing, outside the project or too far, and changes nothing", async () => {
     const { store, route } = await setup();
     await expect(route("h", { base: "dark", logo: { path: "assets/missing.png" } })).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/no assets\/missing\.png.*Nothing was changed/) });
-    await expect(route("h", { logo: { path: "assets/escape.png" } })).rejects.toMatchObject({ message: expect.stringMatching(/leaves the project/) });
+    await expect(route("h", { logo: { path: "assets/escape/image.png" } })).rejects.toMatchObject({ message: expect.stringMatching(/leaves the project/) });
     await expect(route("h", { wallpaper: { path: "../outside.png" } })).rejects.toMatchObject({ message: expect.stringMatching(/leaves the project/) });
     await expect(route("h", { colors: { light: { primary: "red;}" } } })).rejects.toMatchObject({ message: expect.stringMatching(/not a color/) });
     expect((await store.get()).projects).toEqual({});

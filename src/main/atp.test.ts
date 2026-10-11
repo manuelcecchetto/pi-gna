@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AtpPlanFile } from "../shared/atp";
+import { cardOfWorktree, worktreeCwd } from "../shared/board";
 import { Atp } from "./atp";
 import { ATP_BRANCHES } from "./worktree";
 
@@ -133,7 +134,8 @@ describe("Atp", () => {
     );
     await atp.watch(repo);
     const folder = await atp.newPlanCwd(repo);
-    expect(folder).toMatch(new RegExp(`^${home}/\\.pi-gna/worktrees/[a-z0-9]{6}${repo}$`));
+    expect(cardOfWorktree(folder)).toMatch(/^[a-z0-9]{6}$/);
+    expect(folder).toBe(worktreeCwd(home, cardOfWorktree(folder)!, repo));
     expect(git(folder, "rev-parse", "--abbrev-ref", "HEAD")).toMatch(new RegExp(`^${ATP_BRANCHES}[a-z0-9]{6}$`));
     // Nothing written yet: the worktree's committed copy of plans/tiny.atp.json is the project's plan, shown once.
     expect((await atp.scan(repo)).plans.map((file) => file.path)).toEqual([join(repo, "broken.atp.json"), path]);
@@ -172,6 +174,15 @@ describe("Atp", () => {
     expect((await atp.read(path)).nodes.find((node) => node.id === "T1")?.status).toBe("READY");
     await expect(atp.release(path, "T1", "pigna-w1", "again")).rejects.toThrow(/not CLAIMED/);
   });
+
+  it("serializes concurrent librarian processes so only one worker can claim the ready node", async () => {
+    await atp.activate(path);
+    const claims = await Promise.all([0, 1, 2].map((i) => atp.claim(path, `concurrent-${i}`)));
+    expect(claims.filter((claim) => claim.kind === "assigned")).toHaveLength(1);
+    expect(claims.filter((claim) => claim.kind === "none")).toHaveLength(2);
+    const node = (await atp.read(path)).nodes.find((node) => node.id === "T1");
+    expect(node).toMatchObject({ status: "CLAIMED", worker: `concurrent-${claims.findIndex((claim) => claim.kind === "assigned")}` });
+  }, 10_000);
 
   it("keeps the librarian's lock file out of git, in the repository's local excludes", async () => {
     await atp.activate(path);

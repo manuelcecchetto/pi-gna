@@ -90,9 +90,10 @@ export class ConfigSelectorComponent {
 
 const FAKE_MCP = `
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 const read = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : { mcpServers: {} });
 export function loadMcpConfig({ agentDir }) {
-  const path = agentDir + "/mcp.json";
+  const path = join(agentDir, "mcp.json");
   return { servers: Object.entries(read(path).mcpServers).map(([name, config]) => ({ name, config, source: path, scope: "global" })), errors: [] };
 }
 export function addMcpServerConfig(path, name, config) {

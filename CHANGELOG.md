@@ -5,6 +5,10 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Windows source builds: file links and attachments now accept drive/UNC paths and Windows file URLs, previews handle drive roots and refuse NTFS streams/device paths, and Resolve reuses existing Git worktrees. Added a real Electron preview/RPC smoke test and an updated Windows port roadmap; native Computer Use and updates are not enabled yet.
+- Windows core: Kanban, Laments, project themes and ATP references accept Windows paths and survive reloads. ATP selects a native Python 3 interpreter and preserves nonempty worktrees; setup reports unsupported npm shims cleanly, and device revocation waits for its write. Added native Windows shim, named-pipe, junction and DACL regression coverage. Claude Code auth now resolves Windows executables/shims; settings and VAPID files receive private DACLs before writing, and graceful quit flushes the session cache. This is not a feature-complete Windows release.
+- Windows delivery: prepare an append-only installer asset for the existing latest release, with source-commit provenance and SHA-256 checksums. Mac assets and the existing tag stay unchanged; publication requires native tests, packaged smoke and fresh-runner installer checks. Computer Use remains disabled on Windows.
+
 ## 0.16.0 - 2026-10-11
 
 - Pin models: the pin on a row of the composer's model menu (desktop and phone) keeps that model at the top of the list, on every device. The Settings model pickers list pinned models first too. A pin for a model pi does not list now (a signed-out provider) stays saved and comes back with it.

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ComputerError, ComputerErrorCode } from "../../shared/computer";
 import { ComputerService, type ComputerServiceDeps } from "./service";
+import { connectFakeHelper, fakeSocketPath } from "./fixtures/transport";
 
 vi.mock("../log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -51,7 +52,7 @@ function fakeLauncher(opts: { silentMethods?: string[]; notifyOnPing?: boolean }
         }
       });
     });
-    await new Promise<void>((resolve) => helper.server.listen(path, resolve));
+    await new Promise<void>((resolve, reject) => { helper.server.once("error", reject); helper.server.listen(fakeSocketPath(path), resolve); });
     helpers.push(helper);
   };
   return { launch, helpers };
@@ -86,6 +87,7 @@ async function setup(opts: Parameters<typeof fakeLauncher>[0] = {}, deps: Partia
     resetGrants: async () => void resets.push(installs.length),
     connectTimeoutMs: 1000,
     callTimeoutMs: 1000,
+    connect: process.platform === "win32" ? connectFakeHelper : undefined,
     ...deps,
   });
   return { service, fake, versions, installs, requirements, resets };
@@ -133,8 +135,9 @@ describe("ComputerService", () => {
   });
 
   it("rejects a helper that refuses the token", async () => {
-    const { service } = await setup({}, { launch: async (_a, argv) => fakeLauncher().launch("", argv.map((a, i) => (argv[i - 1] === "--token" ? "wrong" : a))) });
-    servers.push([]);
+    const wrong = fakeLauncher();
+    servers.push(wrong.helpers);
+    const { service } = await setup({}, { launch: async (_a, argv) => wrong.launch("", argv.map((a, i) => (argv[i - 1] === "--token" ? "wrong" : a))) });
     await expect(service.info()).rejects.toMatchObject({ code: ComputerErrorCode.unauthorized });
   });
 

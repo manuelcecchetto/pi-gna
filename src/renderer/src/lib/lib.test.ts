@@ -123,8 +123,10 @@ describe("formatStamp", () => {
     const at = (day: number, hour: number) => new Date(2026, 9, day, hour, 22).getTime();
     expect(formatStamp(at(2, 9), now)).not.toMatch(/Yesterday|day/);
     expect(formatStamp(at(1, 17), now)).toMatch(/^Yesterday /);
-    expect(formatStamp(new Date(2026, 8, 29, 17, 22).getTime(), now)).toMatch(/^Tuesday /); // 3 days back
-    expect(formatStamp(new Date(2026, 8, 12, 17, 22).getTime(), now)).toMatch(/Sep 12, /);
+    const tuesday = new Date(2026, 8, 29, 17, 22); // 3 days back; the UI uses the user's locale.
+    expect(formatStamp(tuesday.getTime(), now).startsWith(tuesday.toLocaleDateString(undefined, { weekday: "long" }) + " ")).toBe(true);
+    const earlier = new Date(2026, 8, 12, 17, 22);
+    expect(formatStamp(earlier.getTime(), now).startsWith(earlier.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + ", ")).toBe(true);
     expect(formatStamp(new Date(2025, 8, 12, 17, 22).getTime(), now)).toMatch(/2025/);
   });
 });

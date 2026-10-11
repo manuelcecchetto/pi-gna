@@ -240,11 +240,14 @@ export class DeviceStore {
 
   async revoke(id: string): Promise<DeviceInfo[]> {
     await this.store.apply({ type: "remove", id });
+    // saveMs: 0 starts the atomic write immediately; wait for it before acknowledging revocation.
+    await this.store.flushed();
     return this.list();
   }
 
   async revokeAll(): Promise<DeviceInfo[]> {
     await this.store.apply({ type: "removeAll" });
+    await this.store.flushed();
     return [];
   }
 }

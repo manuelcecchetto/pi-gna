@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import source from "./styles.css?raw";
 
-const css = source.replace(/\/\*[\s\S]*?\*\//g, "");
+const css = source.replace(/\r\n/g, "\n").replace(/\/\*[\s\S]*?\*\//g, "");
 
 /** Top-level blocks of a stylesheet (or of a block's body): [prelude, body], nested blocks kept whole in the body. */
 function blocks(source: string): [string, string][] {

@@ -2,6 +2,8 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2024"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["node", "electron-vite/node"]
   },
   "include": ["electron.vite.config.ts", "vite.mobile.config.ts", "vite.preview.config.ts", "vite.chunks.ts", "vite.chunks.test.ts", "vite.preview.test.ts", "vitest.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*", "resources/pi-auth.mts", "resources/pi-plugins.mts"]

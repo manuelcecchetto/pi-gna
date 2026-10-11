@@ -175,7 +175,9 @@ not stop a web page from loading img/script/iframe or navigating to the scheme.*
 
 ### Not spiked / explicitly unverified
 
-PDF search; HTML `<base>`; `Content-Disposition`; very large file memory behavior beyond the stream design; Windows/Linux.
+HTML `<base>`; `Content-Disposition`; very large file memory behavior beyond the stream design; the full viewer matrix on Windows/Linux.
+Windows path parsing, token confinement (including a junction escape) and a real Electron Markdown/RPC smoke are now
+covered (`pnpm verify:windows-preview`, after `pnpm build`; see docs/WINDOWS.md). PDF search is covered below.
 
 ## docx library **(spiked; superseded by "Office formats")**
 
@@ -476,8 +478,10 @@ Limits are constants in `src/shared/preview.ts`, enforced in the viewer (it know
 1. **Transcript**: absolute and cwd-relative file paths in tool details (`ToolDetails.tsx`, `lib/tools.ts`) and in
    prose (`Markdown.tsx` click handling) open a preview in the browser pane (existing `setPane`); middle/right click keeps
    the context menu: Reveal in Finder.
-2. **Address bar**: `normalizeAddress` recognises absolute paths (`/…`, `~/…`) and `file://` URLs and turns them into a
-   preview request instead of a search; `BrowserPane` shows the real path (`file` on the tab).
+2. **Address bar**: `parseLocalTarget` recognises absolute paths (`/…`, `C:\\…`, `C:/…`, explicit UNC), `~/…` / `~\\…`
+   and local `file://` URLs and turns them into a preview request instead of a search; `BrowserPane` shows the real path.
+   Windows paths are parsed by their syntax, not the client's OS. Protocol-relative `//host` links and remote
+   `file://host` authorities remain web/unsupported inputs, not implicit network-share access.
 3. **Open file...** in the pane's start page and the app menu (native `dialog.showOpenDialog`).
 4. **Drag and drop** of a file onto the pane (renderer reads the path with `webUtils.getPathForFile`).
 5. **Agent**: `browser_open` accepts an absolute path (the extension passes it as is; main mints the token). The
@@ -500,7 +504,7 @@ as `<tbody>` give no line). Code, JSON, PDF, Office and media previews have no c
 
 The agent cites files as Markdown links (`resources/pigna-prompt.md` asks for it); the transcript renders them as file chips and a click previews the file, like the Codex app.
 
-- **Local targets** (`isLocalLinkHref`, `src/shared/preview.ts`): absolute paths, `~/`, `./`, `../`, bare relative paths (`src/a.ts`) and `file://` URLs, each with an optional `:line[:col]` or `#L<n>[-L<m>]` / `#L<n>C<c>` suffix (`parseLocalTarget` reads both; the first line wins). Percent-escapes decode (`<docs/A b.md>` and `docs/A%20b.md` both work). Everything else (`http(s)`, `mailto`, other schemes, `//host`, `#anchor`) keeps the old behavior: `openExternal`.
+- **Local targets** (`isLocalLinkHref`, `src/shared/preview.ts`): POSIX and Windows drive/explicit UNC absolute paths, `~/`, `./`, `../` (Windows separators too), bare relative paths (`src/a.ts`) and `file://` URLs, each with an optional `:line[:col]` or `#L<n>[-L<m>]` / `#L<n>C<c>` suffix (`parseLocalTarget` reads both; the first line wins). Percent-escapes decode (`<docs/A b.md>` and `docs/A%20b.md` both work). Everything else (`http(s)`, `mailto`, other schemes, `//host`, `#anchor`) keeps the old behavior: `openExternal`.
 - **Rendering** (`lib/markdown.ts`): a local link becomes `<span class="file-link" data-file="<raw target>" data-kind="<kind>">` with no `href`, so nothing can navigate; `javascript:` and friends are still ordinary links that DOMPurify strips. The icon comes from `data-kind` (CSS mask).
 - **Existence** (`resolvePreviewTargets(cwd, targets[]) -> (path | null)[]`, `main/browser/resolve-targets.ts`, 5 s cache; IPC `browser:resolve-targets`, host method `browser.resolveTargets`, desktop only): `Markdown.tsx` resolves once the message is complete (not while streaming) against the chat's cwd. Missing files lose `data-file` and render as muted text with a "File not found" tooltip. Before resolution (streaming) chips are clickable; a click on a missing file toasts the open error.
 - **Images** (`![alt](target)` with a local target, or a raw `<img src="target">`, whose plain `width`/`height` carry over as `data-width`/`data-height`): `lib/markdown.ts` renders a `span.chat-image[data-image][data-file]` chip showing the alt text; once the message is complete and the target resolved, `loadChatImages` (`lib/preview.ts`) fetches the bytes (`readPreviewImage`, `main/browser/resolve-targets.ts`: image extensions only, 20 MB cap; IPC `browser:read-image`, host method `browser.readImage`, desktop only) and swaps in an `<img>` (data URL). An image alone in its block shows large (640 px wide, 26rem tall at most); images that share a paragraph or list item sit side by side as thumbnails, and a table holding images is a borderless grid of equal columns with captions in its cells, as GitHub and T3 Code render agents' screenshot galleries (`styles.css`, `:has()` rules, no render-time marking). A click opens the full-screen lightbox like tool-result images, not the preview, and ←/→ (arrow buttons; a sideways swipe at fit size on the phone) page through all of the answer's images (`lib/lightbox.ts`; a message's attachments and a tool's result images page the same way); a plain link to an image (`[label](shot.png)`) stays a file link and opens the preview. Only the chat turns these on (`localImages`); the Markdown file viewer shares `renderMarkdown` and resolves its own relative images. A missing file is muted text; one that cannot be read stays a file link. A non-image local target renders as a file link; web images stay blocked by CSP. Tool-result images are not repeated above the answer: they stay on their tool rows in the work accordion, and the agent embeds what it wants to show (`browser_screenshot`'s `save` argument writes a JPEG it can embed). Phone: shown inside the chat's folders, and wherever the chat's own answers embed them (see Phone below).

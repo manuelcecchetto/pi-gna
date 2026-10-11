@@ -1,7 +1,9 @@
 // Web Push delivery (docs/REMOTE.md section 13a): the VAPID key and the per-device subscriptions in one 0600 file,
 // the triggers from attention summaries, dialogs and the ATP runner, suppression while a client views the chat, and the
 // send with rate limits. What leaves the host is `{v, kind, chat, t}` plus, for chat pushes, the chat title and a response excerpt.
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { writePrivateFileSync } from "./private-file";
 import { dirname } from "node:path";
 import { admitPush, APPROVAL_GRACE_MS, attentionTrigger, clipText, deliveryOf, newLedger, parsePrefs, PUSH_TITLE_MAX, type PushKind, type PushLedger, type PushPayload, type PushPrefs, DEFAULT_PUSH_PREFS } from "../shared/push-rules";
 import type { AttentionSummary, GlobalEvent } from "../shared/host-api";
@@ -70,16 +72,26 @@ export class PushService {
 
   private save(): void {
     mkdirSync(dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data), { mode: 0o600 });
-    renameSync(tmp, this.file);
+    const tmp = `${this.file}.${randomUUID()}.tmp`;
+    writePrivateFileSync(tmp, JSON.stringify(this.data));
+    try {
+      renameSync(tmp, this.file);
+    } finally {
+      rmSync(tmp, { force: true });
+    }
   }
 
   /** The key a phone subscribes with; made on first use. The private half is never returned. */
   vapidKey(): string {
     if (!this.data.vapid) {
       this.data.vapid = generateVapidKeys();
-      this.save();
+      try {
+        this.save();
+      } catch (error) {
+        // A second request must not return a key whose protected save failed.
+        this.data.vapid = undefined;
+        throw error;
+      }
     }
     return this.data.vapid.publicKey;
   }

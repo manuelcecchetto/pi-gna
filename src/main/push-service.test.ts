@@ -1,10 +1,11 @@
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createECDH, randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { AttentionSummary } from "../shared/host-api";
 import { PushService } from "./push-service";
+import { assertPrivateFile } from "../test/fs";
 import type { PushRequest } from "./web-push";
 
 const chat = (over: Partial<AttentionSummary> = {}): AttentionSummary => ({ handle: "h1", cwd: "/p", title: "secret title", listed: true, attention: "running", running: true, dialogs: 0, ...over });
@@ -40,10 +41,10 @@ function setup(options: { viewing?: boolean; status?: number } = {}) {
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("PushService", () => {
-  it("keeps the VAPID private key in a 0600 file and never returns it", () => {
+  it("keeps the VAPID key private (0600 on POSIX, private DACL on Windows) and never returns it", async () => {
     const { service, dir } = setup();
     const file = join(dir, "push.json");
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    await assertPrivateFile(file);
     expect(JSON.stringify(service.vapidKey())).not.toContain(JSON.parse(readFileSync(file, "utf8")).vapid.privateJwk.d);
     expect(new PushService(file, { viewing: () => false }).vapidKey()).toBe(service.vapidKey());
   });

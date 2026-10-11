@@ -1,7 +1,8 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoginUpdate } from "../shared/auth";
 import { findPiSdk, PiAuth } from "./pi-auth";
 
@@ -124,9 +125,20 @@ process.stdin.on("data", (chunk) => {
 
 let dir: string;
 let auth: PiAuth | undefined;
+let nativeFixture: string | undefined;
+
+beforeAll(() => {
+  if (process.platform !== "win32") return;
+  nativeFixture = mkdtempSync(join(tmpdir(), "pigna-native-auth-"));
+  execFileSync(join(process.env.SystemRoot ?? "C:\\Windows", "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"), [
+    "/nologo", `/out:${join(nativeFixture, "claude.exe")}`, resolve("src/test/fixtures/fake-claude.cs"),
+  ], { windowsHide: true, timeout: 30_000 });
+}, 35_000);
+
+afterAll(() => { if (nativeFixture) rmSync(nativeFixture, { recursive: true, force: true }); });
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), "pigna-auth-"));
+  dir = mkdtempSync(join(tmpdir(), "pigna auth & 中文-"));
   mkdirSync(join(dir, "pkg", "dist", "bundle"), { recursive: true });
   writeFileSync(join(dir, "pkg", "package.json"), JSON.stringify({ name: "@earendil-works/pi-coding-agent", type: "module" }));
   writeFileSync(join(dir, "pkg", "dist", "index.js"), FAKE_SDK);
@@ -149,9 +161,17 @@ afterEach(() => {
 function installBridge(binDir = "bin", bridge = join(dir, "agent", "npm", "node_modules", "pi-claude-bridge")): string {
   mkdirSync(join(bridge, binDir), { recursive: true });
   writeFileSync(join(bridge, "package.json"), JSON.stringify({ name: "pi-claude-bridge" }));
-  const claude = join(bridge, binDir, "claude");
-  writeFileSync(claude, FAKE_CLAUDE);
-  chmodSync(claude, 0o755);
+  const win = process.platform === "win32";
+  const native = win && binDir !== "bin";
+  const claude = join(bridge, binDir, native ? "claude.exe" : win ? "claude.cmd" : "claude");
+  if (native) copyFileSync(join(nativeFixture!, "claude.exe"), claude);
+  else if (win) {
+    writeFileSync(join(bridge, binDir, "cli.cjs"), FAKE_CLAUDE);
+    writeFileSync(claude, '@"node" "%~dp0\\cli.cjs" %*\r\n');
+  } else {
+    writeFileSync(claude, FAKE_CLAUDE);
+    chmodSync(claude, 0o755);
+  }
   vi.stubEnv("FAKE_CLAUDE_STATE", join(dir, "claude-signed-in"));
   return claude;
 }
@@ -175,7 +195,7 @@ function responder(target: PiAuth, answers: Record<string, string>, cancelOn?: s
 }
 
 describe("findPiSdk", () => {
-  it("follows `pi` on the PATH to the package it belongs to", () => {
+  it.skipIf(process.platform === "win32")("follows a POSIX `pi` symlink on PATH to its package (Windows uses the shim test below)", () => {
     mkdirSync(join(dir, "bin"));
     symlinkSync(join(dir, "pkg", "dist", "bundle", "cli.js"), join(dir, "bin", "pi"));
     expect(findPiSdk("pi", `/nowhere:${join(dir, "bin")}`)).toBe(realpathSync(join(dir, "pkg")));
@@ -329,6 +349,24 @@ describe("PiAuth", () => {
     expect(readFileSync(join(dir, "pi.log"), "utf8")).toBe("install npm:pi-claude-bridge\n");
     expect((await target.list()).providers.find((provider) => provider.id === "claude-bridge")).toMatchObject({ status: { source: "claude_code", label: "max" } });
     expect(JSON.parse(readFileSync(join(dir, "agent", "claude-bridge.json"), "utf8"))).toEqual({ startupNoticeShown: "2026-10-01", provider: { strictMcpConfig: false, plan: "max" } });
+  });
+
+  it.runIf(process.platform === "win32")("finds an npm Claude shim on PATH without running a shell", async () => {
+    const claude = installBridge();
+    vi.stubEnv("PATH", `${join(claude, "..")}\u003b${process.env.PATH}`);
+    vi.stubEnv("FAKE_CLAUDE_CALLBACK", "1");
+    const target = start();
+    expect(await target.signIn("claude-bridge", "oauth", () => undefined)).toEqual({ ok: true });
+    expect((await target.list()).providers.find((p) => p.id === "claude-bridge")?.status?.source).toBe("claude_code");
+    await target.signOut("claude-bridge");
+    expect((await target.list()).providers.find((p) => p.id === "claude-bridge")?.status).toBeUndefined();
+  });
+
+  it.runIf(process.platform === "win32")("refuses an unsupported batch file rather than shell-executing it", async () => {
+    const claude = installBridge();
+    writeFileSync(claude, "@echo never run arbitrary batch content\r\n");
+    writeFileSync(join(dir, "agent", "claude-bridge.json"), JSON.stringify({ provider: { pathToClaudeCodeExecutable: claude } }));
+    expect(await start().signIn("claude-bridge", "oauth", () => undefined)).toMatchObject({ ok: false });
   });
 
   it("reports a failed install of pi-claude-bridge", async () => {

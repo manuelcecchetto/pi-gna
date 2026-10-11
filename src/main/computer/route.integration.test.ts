@@ -9,6 +9,7 @@ import { type AppStateResult, applyComputerOp, type ComputerOp, type ComputerSet
 import { AgentBridge } from "../bridge";
 import { ComputerAgent, type ComputerHost, computerRoute } from "./agent";
 import { ComputerService, HELPER_APP } from "./service";
+import { connectFakeHelper, fakeSocketPath } from "./fixtures/transport";
 
 vi.mock("../log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -57,11 +58,13 @@ beforeEach(async () => {
     readRequirement: async () => undefined,
     resetGrants: async () => undefined,
     launch: async (_app, args) => {
-      const child = spawn(process.execPath, [FAKE, ...args, "--log", join(dir, "calls.jsonl")], { stdio: "ignore" });
+      const transportArgs = args.map((arg, i) => args[i - 1] === "--socket" ? fakeSocketPath(arg) : arg);
+      const child = spawn(process.execPath, [FAKE, ...transportArgs, "--log", join(dir, "calls.jsonl")], { stdio: "ignore" });
       children.push(child);
     },
     connectTimeoutMs: 5000,
     callTimeoutMs: 5000,
+    connect: process.platform === "win32" ? connectFakeHelper : undefined,
   });
   const host: ComputerHost = {
     choose: async (_handle, title) => {

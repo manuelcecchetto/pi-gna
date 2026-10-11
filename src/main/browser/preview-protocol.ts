@@ -80,9 +80,17 @@ export function confine(root: string, relative: string, allowed: ReadonlySet<str
   const segments = relative.split("/").filter(Boolean);
   if (segments.some((segment) => segment === "..")) return undefined;
   const clean = segments.filter((segment) => segment !== ".");
+  // URL segments are filenames, never drive selectors, NTFS streams, device names or Win32 aliases.
+  if (process.platform === "win32" && clean.some((segment) => /[<>:"|?*]|[. ]$/.test(segment) || /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(segment))) return undefined;
   if (!allowed.has(clean.join("/")) && clean.some((segment) => segment.startsWith("."))) return undefined;
   const file = resolve(root, ...clean);
-  return file === root || file.startsWith(root + sep) ? file : undefined;
+  return inside(root, file) ? file : undefined;
+}
+
+/** Roots may already end in a separator (C:\\ or /). Keep case after realpath: Windows can have case-sensitive folders. */
+function inside(root: string, file: string): boolean {
+  const base = resolve(root);
+  return file === base || file.startsWith(base.endsWith(sep) ? base : base + sep);
 }
 
 interface Entry {
@@ -165,7 +173,7 @@ export async function handlePreview(registry: PreviewRegistry, viewerDir: string
     if (!target) return notFound();
     // The symlink check: the real file must still live under the (realpathed) root.
     const file = await realpath(target);
-    if (!file.startsWith(entry.root + sep)) return notFound();
+    if (!inside(entry.root, file)) return notFound();
     const info = await stat(file);
     if (!info.isFile()) return notFound();
     const kind: PreviewKind = kindFor(file);

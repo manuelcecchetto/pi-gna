@@ -9,6 +9,8 @@ directories:
 files:
   - out/**
   - resources/**
+  - src/main/command.ts
+  - src/shared/paths.ts
   - src/shared/browser.ts
   - src/shared/preview.ts
   - src/shared/board.ts
@@ -24,10 +26,12 @@ files:
   - "!resources/icon.png"
   - "!resources/icon.svg"
   - "!resources/pigna-flag.ts"
-# pi reads these from disk (`pi -e`, `--append-system-prompt`), so every src/shared file the extensions import
+# pi and the Node helpers read these from disk, so every source file the extensions/helpers import
 # must be listed here and under files: (scripts/packaging.test.mjs checks both).
 asarUnpack:
   - resources/**
+  - src/main/command.ts
+  - src/shared/paths.ts
   - src/shared/browser.ts
   - src/shared/preview.ts
   - src/shared/board.ts
@@ -91,8 +95,9 @@ dmg:
       path: /Applications
   # pi-gna's updater downloads the whole dmg, so no .blockmap files.
   writeUpdateInfo: false
-# Windows beta (docs/WINDOWS.md): an unsigned per-user installer, published as a GitHub prerelease by
-# .github/workflows/windows-beta.yml. No in-app updates yet; releases/latest, which the macOS updater reads, skips it.
+# Windows preview (docs/WINDOWS.md): unsigned per-user installer, appended to the existing release by
+# .github/workflows/windows-beta.yml after native gates pass. No Windows updater or Computer Use yet.
+# The original tag and Mac DMG assets stay unchanged; the Mac updater selects only its own DMG.
 win:
   icon: resources/icon.png
   target:

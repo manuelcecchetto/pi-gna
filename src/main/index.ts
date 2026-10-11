@@ -19,6 +19,7 @@ import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared
 import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
 import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
+import { pythonForHost } from "./python";
 import { AtpRuns } from "./atp-runner";
 import { AtpThreads } from "./atp-threads";
 import { BrowserAgent, browserRoute } from "./browser/agent";
@@ -63,7 +64,7 @@ import { createHostCore, dispatch, type HostContext, IPC_ROUTES } from "./host-c
 import { debugRpc, log, logToFile } from "./log";
 import { readActiveBranch } from "./session-file";
 import { SessionHost } from "./session-host";
-import { indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
+import { flushSessionIndex, indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { ChatImporter } from "./chat-import";
 import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
@@ -450,7 +451,7 @@ let usage: UsageService | undefined;
 
 function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
   const tasks = (chatTasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv }));
-  atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
+  atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), python: () => pythonForHost().command, shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
   // Nothing listens until remote access is turned on in Settings (RemoteHost.sync, from applySettings).
   remoteServer = new RemoteServer({
     devices,
@@ -733,7 +734,7 @@ function init(): void {
     const pis = handingOff ? host.handOff().then((chats) => writeHandoff(handoffFile, chats, bridgePort)) : host.closeAll();
     // Phones learn the Mac is quitting (best effort, bounded) while the network is still up.
     const quitPush = push && current.remote.enabled ? Promise.race([push.notifyQuit(), new Promise((resolve) => setTimeout(resolve, 3000))]) : undefined;
-    void Promise.allSettled([quitPush, remoteHost?.stop(), pis, devices.flushed(), board.flushed(), laments.flushed(), themes.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
+    void Promise.allSettled([quitPush, remoteHost?.stop(), pis.finally(flushSessionIndex), devices.flushed(), board.flushed(), laments.flushed(), themes.flushed(), computerPolicy.flushed(), settings.flushed(), uiState.flushed(), githubSettings.flushed(), computerAgent.releaseAll().finally(() => computerHelper.stop())]).finally(() => app.quit());
   });
   app.on("window-all-closed", () => {
     if (!hidesOnClose(current)) app.quit();

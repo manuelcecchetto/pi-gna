@@ -14,8 +14,8 @@ beforeAll(async () => {
   await mkdir(join(home, ".config"), { recursive: true });
   await mkdir(join(base, "outside"));
   await writeFile(join(home, "note.txt"), "x");
-  await symlink(join(base, "outside"), join(home, "escape"));
-  await symlink(join(home, "code"), join(home, "shortcut"));
+  await symlink(join(base, "outside"), join(home, "escape"), process.platform === "win32" ? "junction" : "dir");
+  await symlink(join(home, "code"), join(home, "shortcut"), process.platform === "win32" ? "junction" : "dir");
 });
 afterAll(() => rm(base, { recursive: true, force: true }));
 

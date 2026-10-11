@@ -1,6 +1,6 @@
 // Pure parts of preview tabs: which tab a file opens in, which root it is served from, and the file watcher.
 import { watch, type FSWatcher } from "node:fs";
-import { dirname, basename, sep } from "node:path";
+import { dirname, basename, relative, resolve, sep } from "node:path";
 import { parsePreviewUrl, type PreviewMode } from "../../shared/preview";
 
 export const RELOAD_DEBOUNCE_MS = 150;
@@ -34,12 +34,14 @@ export function samePreviewPage(a: string, b: string): boolean {
 
 /** Root a file is served from: the project when the file lies inside it, otherwise the file's own directory. Both realpathed. */
 export function previewRoot(file: string, project?: string): string {
-  return project && file.startsWith(project + sep) ? project : dirname(file);
+  if (!project) return dirname(file);
+  const base = resolve(project);
+  return resolve(file).startsWith(base.endsWith(sep) ? base : base + sep) ? project : dirname(file);
 }
 
 /** Path of `file` below `root`, with forward slashes. */
 export function relativeTo(root: string, file: string): string {
-  return file.slice(root.length + 1).split(sep).join("/");
+  return relative(root, file).split(sep).join("/");
 }
 
 /** Calls `fn` once after `delay` ms without further calls. */

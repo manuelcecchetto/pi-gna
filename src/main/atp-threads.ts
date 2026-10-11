@@ -3,6 +3,7 @@
 // every client opens the same chats; the desktop's older copy (localStorage) is merged in once.
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { isDraftId, isPlanPath } from "../shared/atp";
+import { isAbsoluteHostPath } from "../shared/paths";
 import type { AtpDraft, AtpPlanThreads } from "../shared/host-api";
 import { log } from "./log";
 
@@ -13,7 +14,7 @@ interface File {
   drafts?: Record<string, AtpDraft>;
 }
 
-const isPath = (value: unknown): value is string => typeof value === "string" && value.startsWith("/") && value.endsWith(".jsonl");
+const isPath = (value: unknown): value is string => isAbsoluteHostPath(value) && value.endsWith(".jsonl");
 
 /** Only well-formed entries: plans are `.atp.json` paths, threads are session files. */
 function parsePlans(raw: unknown): Record<string, AtpPlanThreads> {
@@ -39,14 +40,13 @@ function parseDrafts(raw: unknown): Record<string, AtpDraft> {
   for (const [id, value] of Object.entries(raw)) {
     if (!isDraftId(id) || !value || typeof value !== "object") continue;
     const entry = value as Record<string, unknown>;
-    const folder = (value: unknown) => typeof value === "string" && value.startsWith("/");
-    if (!folder(entry.project) || !folder(entry.cwd) || !isPath(entry.session)) continue;
+    if (!isAbsoluteHostPath(entry.project) || !isAbsoluteHostPath(entry.cwd) || !isPath(entry.session)) continue;
     const startedAt = time(entry.startedAt);
     const updatedAt = Math.max(time(entry.updatedAt), startedAt);
     drafts[id] = {
       id,
-      project: entry.project as string,
-      cwd: entry.cwd as string,
+      project: entry.project,
+      cwd: entry.cwd,
       session: entry.session,
       title: typeof entry.title === "string" ? entry.title.slice(0, 200) : "",
       startedAt,

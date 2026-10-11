@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app" } }));
@@ -54,7 +55,7 @@ describe("piArgs pr-review skill", () => {
   it("loads the bundled pr-review skill only when GitHub is on", () => {
     expect(argsFor(base).join(" ")).not.toContain("pr-review");
     const args = argsFor({ ...base, github: true });
-    expect(args[args.indexOf("/app/resources/skills/pr-review") - 1]).toBe("--skill");
+    expect(args[args.indexOf(join("/app", "resources", "skills", "pr-review")) - 1]).toBe("--skill");
   });
 });
 
@@ -62,11 +63,11 @@ describe("piArgs visuals prompt", () => {
   it("loads the visual extension only when visuals is on", () => {
     expect(argsFor(base).join(" ")).not.toContain("visual");
     const args = argsFor({ ...base, visuals: true });
-    expect(args[args.indexOf("/app/resources/visual-extension.ts") - 1]).toBe("-e");
+    expect(args[args.indexOf(join("/app", "resources", "visual-extension.ts")) - 1]).toBe("-e");
   });
   it("also loads it for ATP chats", () => {
     const args = argsFor({ ...base, visuals: true }, { role: "worker", plan: "/p/x.atp.json" } as never);
-    expect(args).toContain("/app/resources/visual-extension.ts");
+    expect(args).toContain(join("/app", "resources", "visual-extension.ts"));
   });
 });
 

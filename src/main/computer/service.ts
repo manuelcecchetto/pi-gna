@@ -39,6 +39,8 @@ export interface ComputerServiceDeps {
   resetGrants(): Promise<void>;
   connectTimeoutMs: number;
   callTimeoutMs: number;
+  /** Alternate transport for policy/RPC tests (Windows named pipes); production uses the macOS Unix socket. */
+  connect?(path: string, timeoutMs: number): Promise<Socket>;
 }
 
 export const defaultDeps = (bundledApp: string, socketDir: string): ComputerServiceDeps => ({
@@ -158,7 +160,7 @@ export class ComputerService {
     await rm(socketPath, { force: true });
     await deps.launch(installed, ["--socket", socketPath, "--token", token, "--parent", String(deps.parentPid)]);
 
-    const socket = await this.connect(socketPath);
+    const socket = await (deps.connect ? deps.connect(socketPath, deps.connectTimeoutMs) : this.connect(socketPath));
     const client = new RpcClient(
       socket,
       (notification) => {

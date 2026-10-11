@@ -1,6 +1,7 @@
 // The Setup flow's checks and pi's install (src/shared/setup.ts). Everything runs with the login shell's PATH, like
 // pi's chats, so what Setup finds is what chats run. One install at a time; npm's output streams to the window.
-import { execFile, spawn } from "node:child_process";
+import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -100,10 +101,18 @@ export class PiSetup {
         resolve(value);
       };
       const npm = resolveCommand("npm", [...PI_INSTALL_ARGS]);
-      const child = spawn(npm.file, npm.args, {
-        env: { ...process.env, npm_config_color: "false", npm_config_progress: "false" },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      let child: ChildProcessByStdio<null, Readable, Readable>;
+      try {
+        child = spawn(npm.file, npm.args, {
+          env: { ...process.env, npm_config_color: "false", npm_config_progress: "false" },
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+        });
+      } catch (error) {
+        // An unsupported Windows .cmd can throw EINVAL before there is a child or a timer.
+        resolve({ ok: false, error: (error as Error).message });
+        return;
+      }
       this.child = child;
       const installMs = this.options.installMs ?? 10 * 60_000;
       const timer = setTimeout(() => {

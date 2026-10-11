@@ -3,7 +3,7 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app", getPath: () => "/tmp" }, shell: {}, dialog: {} }));
@@ -441,7 +441,7 @@ describe("remote security: uploads", () => {
   it("stores only under remote-uploads/<device>/<uuid>/ whatever the name says", async () => {
     const reply = await put(`?name=${encodeURIComponent("../../../../evil/../x.txt")}`, "payload");
     expect(reply.status).toBe(200);
-    expect(reply.json.path.startsWith(join(dir, "remote-uploads", deviceId) + "/")).toBe(true);
+    expect(reply.json.path.startsWith(join(dir, "remote-uploads", deviceId) + sep)).toBe(true);
     expect(reply.json.name).not.toContain("/");
     expect(readFileSync(reply.json.path, "utf8")).toBe("payload");
     expect(stored().filter((entry) => entry.endsWith(".txt"))).toHaveLength(1);

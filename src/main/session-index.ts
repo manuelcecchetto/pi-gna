@@ -62,9 +62,17 @@ function saveCache(): void {
       await writeFile(`${file}.tmp`, JSON.stringify(data));
       await rename(`${file}.tmp`, file);
     } catch (error) {
+      dirty = true; // A transient Windows sharing violation must not discard the next save attempt.
       log.warn("index", `save ${file}: ${(error as Error).message}`);
     }
   });
+}
+
+/** Finish cache writes before shutdown (and a simulated new launch). Listings themselves need not wait for disk. */
+export async function flushSessionIndex(): Promise<void> {
+  await persisted?.loaded;
+  saveCache();
+  await saving;
 }
 
 export async function listSessions(): Promise<ProjectGroup[]> {

@@ -5,7 +5,8 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { resolveCommand } from "../src/main/command.ts";
 import { pathToFileURL } from "node:url";
 import type { AuthEvent, AuthMethod, AuthPrompt, AuthProvider, AuthReply, AuthRequest, AuthState, AuthStatus } from "../src/shared/auth";
 
@@ -177,7 +178,7 @@ function claudeExecutable(sdk: Sdk, bridge: string): string {
   if (typeof configured === "string" && configured) return configured;
   // Where Node would resolve the SDK's platform package from the bridge.
   for (let dir = bridge; ; dir = dirname(dir)) {
-    const binary = join(dir, "node_modules", "@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`, "claude");
+    const binary = join(dir, "node_modules", "@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === "win32" ? "claude.exe" : "claude");
     if (existsSync(binary)) return binary;
     if (dirname(dir) === dir) return "claude";
   }
@@ -228,7 +229,8 @@ async function claudeProvider(sdk: Sdk): Promise<AuthProvider | undefined> {
 /** `claude auth status`: JSON either way, exit code 1 when signed out. */
 function claudeStatus(claude: string): Promise<ClaudeStatus | undefined> {
   return new Promise((resolve) => {
-    execFile(claude, ["auth", "status", "--json"], { timeout: 15_000 }, (_error, stdout) => {
+    const command = resolveCommand(claude, ["auth", "status", "--json"]);
+    execFile(command.file, command.args, { timeout: 15_000, windowsHide: true }, (_error, stdout) => {
       try {
         resolve(JSON.parse(stdout) as ClaudeStatus);
       } catch {
@@ -259,8 +261,8 @@ function installBridge(current: Login): Promise<void> {
   const cli = join(root, typeof bin === "string" ? bin : join("dist", "bundle", "cli.js"));
   return new Promise((resolve, reject) => {
     // pi installs with npm, which sits beside the node that runs pi.
-    const env = { ...process.env, PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(":") };
-    const child = spawn(process.execPath, [cli, "install", BRIDGE_SOURCE], { stdio: ["ignore", "pipe", "pipe"], env });
+    const env = { ...process.env, PATH: [dirname(process.execPath), process.env.PATH].filter(Boolean).join(delimiter) };
+    const child = spawn(process.execPath, [cli, "install", BRIDGE_SOURCE], { stdio: ["ignore", "pipe", "pipe"], env, windowsHide: true });
     children.add(child);
     const kill = () => child.kill();
     current.controller.signal.addEventListener("abort", kill, { once: true });
@@ -295,7 +297,8 @@ async function notePlan(sdk: Sdk, claude: string): Promise<void> {
 
 function claudeAuthLogin(claude: string, id: string, current: Login, prompt: (question: SdkPrompt) => Promise<string>): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(claude, ["auth", "login", "--claudeai"], { stdio: ["pipe", "pipe", "pipe"] });
+    const command = resolveCommand(claude, ["auth", "login", "--claudeai"]);
+    const child = spawn(command.file, command.args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     children.add(child);
     const exited = new AbortController();
     const kill = () => child.kill();
@@ -351,7 +354,8 @@ function claudeLogout(sdk: Sdk): Promise<void> {
   const bridge = claudeBridge(sdk);
   if (!bridge) return Promise.reject(new Error("pi-claude-bridge is not installed"));
   return new Promise((resolve, reject) => {
-    execFile(claudeExecutable(sdk, bridge), ["auth", "logout"], { timeout: 15_000 }, (error, _stdout, stderr) =>
+    const command = resolveCommand(claudeExecutable(sdk, bridge), ["auth", "logout"]);
+    execFile(command.file, command.args, { timeout: 15_000, windowsHide: true }, (error, _stdout, stderr) =>
       error ? reject(new Error(lastLine(stderr) || error.message)) : resolve(),
     );
   });

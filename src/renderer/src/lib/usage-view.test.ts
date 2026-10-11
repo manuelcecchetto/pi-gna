@@ -59,8 +59,9 @@ describe("usage view", () => {
 
   it("formats money with a floor and percentages with one decimal", () => {
     expect(usd(0.004)).toBe("<$0.01");
-    expect(usd(0)).toMatch(/0\.00/);
-    expect(usd(2824.1)).toMatch(/2,?824/);
+    const currency = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" });
+    expect(usd(0)).toBe(currency.format(0));
+    expect(usd(2824.1)).toBe(currency.format(2824.1));
     expect(percentOf(0.9764)).toBe("97.6%");
     expect(hoursOf(5_400_000)).toBe("1.5 h");
   });

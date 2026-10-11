@@ -4,6 +4,8 @@
 // a Fix chat in a git worktree), then mark them resolved. Main owns the laments and applies every change through
 // applyLamentOp, from the renderer and agents alike.
 
+import { isAbsoluteHostPath } from "./paths";
+
 /** How bad the gap was, mildest first; a lament is as bad as its worst report. */
 export const SEVERITIES = ["annoying", "costly", "blocking"] as const;
 export type Severity = (typeof SEVERITIES)[number];
@@ -222,6 +224,6 @@ function title(value: unknown): string {
 }
 
 function path(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.startsWith("/") || value.length > 4096) throw new LamentError(`${field} must be an absolute path`);
+  if (!isAbsoluteHostPath(value) || value.length > 4096) throw new LamentError(`${field} must be an absolute path`);
   return value;
 }

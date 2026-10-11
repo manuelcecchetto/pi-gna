@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CardImages } from "./card-images";
 
@@ -14,7 +14,7 @@ describe("CardImages", () => {
     const first = await images.save("abc123", { mimeType: "image/png", data: png.toString("base64") });
     const second = await images.save("abc123", { mimeType: "image/jpeg", data: png.toString("base64") });
     expect(dirname(first)).toBe(join(dir, "abc123"));
-    expect(first).toMatch(/\/image-[0-9a-f-]{36}\.png$/);
+    expect(basename(first)).toMatch(/^image-[0-9a-f-]{36}\.png$/);
     expect(second).toMatch(/\.jpeg$/);
     expect(await readFile(first)).toEqual(png);
     await images.save("zzz999", { mimeType: "image/png", data: png.toString("base64") });

@@ -1,7 +1,9 @@
 // pi's own settings where pi-gna needs them: for display, to carry a project's trust to its cards' worktrees, and
 // the keys the Settings page edits (src/shared/pi-settings.ts). pi still owns behavior; project settings
 // (.pi/settings.json) can override these after project trust and are not read here.
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
+import { writePrivateFile } from "./private-file";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { CompactionSettings } from "../shared/compaction";
@@ -71,9 +73,13 @@ export async function writePiSettings(patch: unknown): Promise<PiSettingsState> 
     const next = patchPiSettings(await readSettingsObject(path), patch);
     const target = await realpath(path).catch(() => path);
     const mode = (await stat(target).catch(() => undefined))?.mode;
-    const tmp = `${target}.pigna-${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(next, null, 2), mode === undefined ? undefined : { mode: mode & 0o777 });
-    await rename(tmp, target);
+    const tmp = `${target}.pigna-${randomUUID()}.tmp`;
+    await writePrivateFile(tmp, JSON.stringify(next, null, 2), mode === undefined ? 0o600 : mode & 0o777);
+    try {
+      await rename(tmp, target);
+    } finally {
+      await rm(tmp, { force: true });
+    }
     return next;
   });
   return { path, values: readPiValues(next) };

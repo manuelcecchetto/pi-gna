@@ -88,8 +88,8 @@ describe("parseLocalTarget", () => {
     expect(parseLocalTarget("src/a.ts", "/p")).toBeUndefined();
   });
 
-  it("leaves web addresses and Windows paths alone", () => {
-    for (const input of ["https://example.com/a.pdf", "http://localhost:3000", "localhost:3000", "example.com/x", "//host/x", "C:\\a\\b.md", "C:/a/b.md", "file:///C:/a/b.md", "\\\\srv\\share", "file://host/a", "", "hello world", "about:blank"]) {
+  it("leaves web addresses and remote file URL authorities alone", () => {
+    for (const input of ["https://example.com/a.pdf", "http://localhost:3000", "localhost:3000", "example.com/x", "//host/x", "file://host/a", "", "hello world", "about:blank"]) {
       expect(parseLocalTarget(input), input).toBeUndefined();
     }
   });
@@ -136,7 +136,7 @@ describe("link targets", () => {
     for (const href of ["/abs/a.ts", "/abs/a.ts:12", "~/a.md", "./a.md", "../a.md#L2", "src/a.ts", "docs/A.md#L10", "file:///a/b.ts", "README.md", "a.ts:12", "a%20b/c.md"]) {
       expect(isLocalLinkHref(href), href).toBe(true);
     }
-    for (const href of ["https://x.com/a.ts", "http://localhost:3000", "mailto:a@b.c", "javascript:alert(1)", "data:text/html,x", "#top", "//host/x", "", "C:\\a\\b", "tel:123"]) {
+    for (const href of ["https://x.com/a.ts", "http://localhost:3000", "mailto:a@b.c", "javascript:alert(1)", "data:text/html,x", "#top", "//host/x", "", "C:relative.txt", "tel:123"]) {
       expect(isLocalLinkHref(href), href).toBe(false);
     }
   });

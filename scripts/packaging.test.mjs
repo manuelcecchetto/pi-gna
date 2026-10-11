@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const config = readFileSync(join(root, "electron-builder.yml"), "utf8");
+const config = readFileSync(join(root, "electron-builder.yml"), "utf8").replace(/\r\n/g, "\n");
 
 // The `- entry` lines under a top-level key of electron-builder.yml.
 function list(key) {
@@ -40,7 +40,7 @@ function shippedExtensionDependencies() {
     const file = pending.pop();
     for (const dependency of runtimeImports(file)) {
       expect(dependency, `unresolved import in ${relative(root, file)}`).toBeDefined();
-      const path = relative(root, dependency);
+      const path = relative(root, dependency).replace(/\\/g, "/");
       if (path.startsWith("resources/") || seen.has(path)) continue;
       seen.add(path);
       pending.push(dependency);

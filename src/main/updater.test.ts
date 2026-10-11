@@ -91,7 +91,7 @@ describe("installBlocker", () => {
   });
 });
 
-describe("SWAP_SCRIPT", () => {
+describe.skipIf(process.platform === "win32")("SWAP_SCRIPT (POSIX shell)", () => {
   let dir: string;
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -175,7 +175,8 @@ describe("Updater", () => {
     const exe = join(dir, "Applications", "pi-gna.app", "Contents", "MacOS", "pi-gna");
     mkdirSync(join(exe, ".."), { recursive: true });
     Object.assign(app, {
-      getPath: (key: string) => (key === "exe" ? exe : join(dir, "profile")),
+      // The updater models a macOS bundle even when its mocked I/O tests run on Windows.
+      getPath: (key: string) => (key === "exe" ? exe.replaceAll("\\", "/") : join(dir, "profile")),
       getName: () => "pi-gna",
       getVersion: () => "0.1.0",
       isPackaged: true,

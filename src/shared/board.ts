@@ -3,6 +3,8 @@
 // through the kanban_* tools. Main owns the cards and applies every change through applyOp, from the renderer
 // (drag, menus, dialog) and from agents (the bridge) alike.
 
+import { isAbsoluteHostPath } from "./paths";
+
 export const COLUMNS = ["todo", "in_progress", "in_review", "done"] as const;
 export type Column = (typeof COLUMNS)[number];
 
@@ -426,6 +428,6 @@ function title(value: unknown): string {
 }
 
 function path(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value.startsWith("/") || value.length > 4096) throw new BoardError(`${field} must be an absolute path`);
+  if (!isAbsoluteHostPath(value) || value.length > 4096) throw new BoardError(`${field} must be an absolute path`);
   return value;
 }

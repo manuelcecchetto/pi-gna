@@ -45,11 +45,14 @@ describe("listSessions", () => {
       vi.resetModules();
       const index = await import("./session-index");
       index.persistSessionIndex(file);
-      return (await index.listSessions()).flatMap((project) => project.sessions.map((session) => session.title)).sort();
+      const titles = (await index.listSessions()).flatMap((project) => project.sessions.map((session) => session.title)).sort();
+      // A simulated quit must finish this instance's queued writes before another launch edits/loads the same file.
+      await index.flushSessionIndex();
+      return titles;
     };
 
     expect(await launch()).toEqual(["First chat", "Second chat"]);
-    await vi.waitFor(async () => expect((await saved()).entries).toHaveLength(3));
+    expect((await saved()).entries).toHaveLength(3);
     // A title read from the saved index, not from the session file, proves the next launch skips unchanged files.
     const index = await saved();
     const entry = (name: string) => index.entries.find(([path]) => path.endsWith(name))?.[1];
@@ -59,7 +62,7 @@ describe("listSessions", () => {
     await rm(join(dir, "b.jsonl"));
 
     expect(await launch()).toEqual(["From the saved index"]);
-    await vi.waitFor(async () => expect((await saved()).entries.map(([path]) => path.slice(dir.length + 1)).sort()).toEqual(["a.jsonl", "empty.jsonl"]));
+    expect((await saved()).entries.map(([path]) => path.slice(dir.length + 1)).sort()).toEqual(["a.jsonl", "empty.jsonl"]);
 
     // A file from another version, or a damaged one, is ignored.
     await writeFile(file, JSON.stringify({ ...(await saved()), version: 0 }));
@@ -70,6 +73,38 @@ describe("listSessions", () => {
     }
     vi.doUnmock("node:fs/promises");
   });
+});
+
+it("retries a failed cache save on flush even without another session change", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pi-gna-index-retry-"));
+  const dir = join(root, "--repo--");
+  await mkdir(dir);
+  await writeFile(join(dir, "chat.jsonl"), jsonl([header, user("u1", "Keep this cache")]));
+  vi.stubEnv("PI_CODING_AGENT_SESSION_DIR", root);
+  let attempts = 0;
+  vi.doMock("node:fs/promises", async (actual) => {
+    const fs = await actual<typeof import("node:fs/promises")>();
+    return { ...fs, rename: async (...args: Parameters<typeof fs.rename>) => {
+      if (++attempts === 1) throw Object.assign(new Error("sharing violation"), { code: "EBUSY" });
+      return fs.rename(...args);
+    } };
+  });
+  try {
+    vi.resetModules();
+    const index = await import("./session-index");
+    const file = join(root, "index.json");
+    index.persistSessionIndex(file);
+    await index.listSessions();
+    await index.flushSessionIndex();
+    expect(attempts).toBe(1);
+    await index.flushSessionIndex();
+    expect(attempts).toBe(2);
+    expect(JSON.parse(await readFile(file, "utf8")).entries[0][1].summary.title).toBe("Keep this cache");
+  } finally {
+    vi.doUnmock("node:fs/promises");
+    vi.unstubAllEnvs();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 describe("indexSettled", () => {

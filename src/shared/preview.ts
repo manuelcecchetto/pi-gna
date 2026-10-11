@@ -178,24 +178,46 @@ export interface LocalTarget {
   column?: number;
 }
 
-function normalizePath(path: string): string {
+const WINDOWS_DRIVE = /^[a-z]:[\\/]/i;
+const WINDOWS_UNC = /^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/;
+
+/** No Node dependency: paths belong to the host, which may be Windows even when the client is an iPhone. */
+function normalizePath(path: string): string | undefined {
+  if (path.includes("\0") || /^\\\\[?.][\\/]/.test(path)) return undefined;
+  const drive = WINDOWS_DRIVE.test(path);
+  const unc = WINDOWS_UNC.test(path);
+  const windows = drive || unc;
+  const parts = path.split(windows ? /[\\/]/ : /\//).filter(Boolean);
+  const root = drive ? `${parts.shift()}\\` : unc ? `\\\\${parts.shift()}\\${parts.shift()}\\` : "/";
   const out: string[] = [];
-  for (const part of path.split("/")) {
-    if (part === "" || part === ".") continue;
+  for (const part of parts) {
+    if (part === ".") continue;
     if (part === "..") out.pop();
     else out.push(part);
   }
-  return `/${out.join("/")}`;
+  return root + out.join(windows ? "\\" : "/");
+}
+
+/** A literal tool/attachment path, not a URL: expand home and resolve relative to the host's cwd. */
+export function resolveFilePath(path: string, cwd?: string, home?: string): string | undefined {
+  const text = path.trim();
+  if (!text || text.startsWith("//") || /^\\\\[?.][\\/]/.test(text)) return undefined;
+  if (text === "~" || /^~[\\/]/.test(text)) return home ? normalizePath(`${home}/${text.slice(2)}`) : undefined;
+  if (WINDOWS_DRIVE.test(text) || WINDOWS_UNC.test(text) || text.startsWith("/")) return normalizePath(text);
+  // A drive-relative path (C:foo), URI or incomplete UNC path is not relative to the chat's cwd.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(text) || text.startsWith("\\")) return undefined;
+  return cwd ? normalizePath(`${cwd}/${text}`) : undefined;
 }
 
 /**
  * What the user typed -> a local file, or undefined when it should stay a web address. Recognizes absolute
  * paths, `~/` paths (expanded when `home` is given), `./` and `../` paths (when `cwd` is given), `file://`
- * URLs and a trailing `:line[:col]`. Windows-looking input is rejected.
+ * URLs and a trailing `:line[:col]`. Drive paths and explicit UNC paths work independently of the client's OS;
+ * protocol-relative web addresses and non-local file URL authorities are not interpreted as network shares.
  */
 export function parseLocalTarget(input: string, cwd?: string, home?: string): LocalTarget | undefined {
   let text = input.trim();
-  if (!text || /^[a-z]:[\\/]/i.test(text) || text.startsWith("\\\\")) return undefined;
+  if (!text || text.includes("\0")) return undefined;
   const hashLine = /^(file:.*?)(#L\d+(?:C\d+)?(?:-L?\d+(?:C\d+)?)?)$/i.exec(text);
   const fileAnchor = hashLine?.[2];
   if (hashLine) text = hashLine[1] ?? text;
@@ -213,7 +235,7 @@ export function parseLocalTarget(input: string, cwd?: string, home?: string): Lo
     } catch {
       return undefined;
     }
-    if (/^\/[a-z]:/i.test(path)) return undefined;
+    if (/^\/[a-z]:[\\/]/i.test(path)) path = path.slice(1);
     text = fileAnchor ? path + fileAnchor : path;
   } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) || text.startsWith("//")) {
     return undefined;
@@ -228,16 +250,10 @@ export function parseLocalTarget(input: string, cwd?: string, home?: string): Lo
     line = Number(position[2]);
     column = position[3] ? Number(position[3]) : undefined;
   }
-  let path: string;
-  if (text === "~" || text.startsWith("~/")) {
-    path = home ? normalizePath(`${home}/${text.slice(2)}`) : text;
-  } else if (text.startsWith("/")) {
-    path = normalizePath(text);
-  } else if (cwd && /^\.\.?\//.test(text)) {
-    path = normalizePath(`${cwd}/${text}`);
-  } else {
-    return undefined;
-  }
+  const local = /^(~(?:[\\/]|$)|\/|\.\.?[\\/])/.test(text) || WINDOWS_DRIVE.test(text) || WINDOWS_UNC.test(text);
+  if (!local) return undefined;
+  const path = resolveFilePath(text, cwd, home) ?? (!home && (text === "~" || /^~[\\/]/.test(text)) ? text : undefined);
+  if (!path) return undefined;
   const target: LocalTarget = { path };
   if (line !== undefined) target.line = line;
   if (column !== undefined) target.column = column;
@@ -283,7 +299,9 @@ export function parsePreviewUrl(url: string): ParsedPreviewUrl | undefined {
  */
 export function isLocalLinkHref(href: string): boolean {
   const text = href.trim();
-  if (!text || text.startsWith("#") || text.startsWith("//") || text.startsWith("\\") || /^[a-z]:[\\/]/i.test(text)) return false;
+  if (!text || text.includes("\0") || text.startsWith("#") || text.startsWith("//") || /^\\\\[?.][\\/]/.test(text)) return false;
+  if (WINDOWS_DRIVE.test(text) || WINDOWS_UNC.test(text)) return true;
+  if (text.startsWith("\\")) return false;
   if (/^file:/i.test(text)) return true;
   // `scheme:` unless it is really `name.ts:12`.
   const scheme = /^([a-z][a-z0-9+.-]*):(\d+(?::\d+)?)?/i.exec(text);
@@ -301,7 +319,8 @@ export function parseLinkTarget(href: string, cwd?: string, home?: string): Loca
       // keep the literal text
     }
   }
-  if (!/^(file:|\/|~|\.\.?\/)/i.test(text)) text = `./${text}`;
+  if (!isLocalLinkHref(text)) return undefined;
+  if (!/^(file:|\/|~|\.\.?[\\/])/i.test(text) && !WINDOWS_DRIVE.test(text) && !WINDOWS_UNC.test(text)) text = `./${text}`;
   return parseLocalTarget(text, cwd, home);
 }
 
@@ -313,9 +332,9 @@ export function looksLikePath(code: string): boolean {
   const text = code.trim();
   if (!text || text.length > 300 || /[\s<>|*?(){}[\]"'`=,;$]/.test(text) || text.includes("://") || text.startsWith("-")) return false;
   const bare = text.replace(/(?::\d+(?::\d+)?|#L\d+(?:-L?\d+)?)$/, "");
-  const name = bare.split("/").pop() ?? "";
+  const name = baseName(bare);
   if (!/^[\w@.+~-]*\.[A-Za-z][A-Za-z0-9]{0,9}$/.test(name) || name === ".") return false;
-  if (bare.includes("/")) return !bare.endsWith("/");
+  if (/[\\/]/.test(bare)) return !/[\\/]$/.test(bare);
   // A lone name needs an extension the preview knows (a.b, 1.2.3, e.g. are not files).
   return kindFor(bare) !== "other";
 }

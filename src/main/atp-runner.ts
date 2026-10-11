@@ -26,7 +26,9 @@ export interface AtpRunnerDeps {
   settings: { get(): Promise<Settings> };
   /** The bundled librarian CLI, for the workers' prompts. */
   librarian: string;
-  /** git and python3 need the login shell's environment. */
+  /** Select after the environment is ready, so worker prompts use the host's interpreter. */
+  python?: () => string;
+  /** git and Python need the login shell's environment on POSIX. */
   shellEnv: Promise<void>;
   /** The runners, notes and orchestrators, whole, after every change. */
   publish(state: AtpRunnerState): void;
@@ -176,7 +178,7 @@ export class AtpRuns {
     const head = await atp.head(cwd);
     const session: AtpSession = { role: "worker", plan, node: claim.node };
     const name = `ATP ${claim.node}: ${claim.title}`;
-    const prompt = workerMessage({ project: cwd, plan, branch: head?.branch ?? "", librarian: this.deps.librarian, claim, resumed });
+    const prompt = workerMessage({ project: cwd, plan, branch: head?.branch ?? "", librarian: this.deps.librarian, python: this.deps.python?.(), claim, resumed });
     this.patch(plan, { phase: "working", node: claim.node, title: claim.title, handle: undefined, since: Date.now() });
     const launched = await tasks.launch({ cwd, atp: session, name, prompt, model: taskModel(await this.deps.settings.get(), "worker") });
     this.patch(plan, { handle: launched.handle });

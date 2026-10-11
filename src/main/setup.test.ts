@@ -52,7 +52,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe("status", () => {
+// Native Windows npm shims and the same failure/streaming policies are exercised in setup.windows.test.ts.
+describe.skipIf(process.platform === "win32")("status (POSIX shell fixtures)", () => {
   it("finds node, npm, pi and pi's package", async () => {
     fakeNpm("true");
     mkdirSync(join(dir, "pkg", "bin"), { recursive: true });
@@ -78,7 +79,7 @@ describe("status", () => {
   });
 });
 
-describe("installPi", () => {
+describe.skipIf(process.platform === "win32")("installPi (POSIX shell fixtures)", () => {
   it("installs, streams npm's lines and puts its bin on PATH once", async () => {
     fakeNpm(`printf 'one\\ntwo\\r\\nthr'; sleep 0.1; printf 'ee\\n'; echo warn >&2; printf 'last'; ${INSTALLS_PI}`);
     const lines: string[] = [];

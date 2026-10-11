@@ -8,6 +8,7 @@
 // share their project's theme (projectOf).
 import { THEME_PRESETS, themePreset, type ThemePresetId } from "./theme-presets";
 import { projectOf } from "./board";
+import { isAbsoluteHostPath } from "./paths";
 import { type Settings, THEMES, type Theme, WALLPAPERS, type Wallpaper } from "./settings";
 
 export const MODES = ["light", "dark"] as const;
@@ -209,7 +210,7 @@ export function applyThemeOp(themes: Themes, op: ThemeOp): Themes {
   if (op?.type !== "set" && op?.type !== "reset") throw new ThemeError(`unknown theme change ${String((op as { type?: unknown } | null)?.type)}`);
   if (op.scope !== "global" && (!isObject(op.scope) || Object.keys(op.scope).length !== 1 || typeof op.scope.project !== "string")) throw new ThemeError("a project theme needs the project absolute path");
   const project = scopeKey(op.scope);
-  if (op.scope !== "global" && (typeof project !== "string" || !project.startsWith("/"))) throw new ThemeError("a project theme needs the project's absolute path");
+  if (op.scope !== "global" && !isAbsoluteHostPath(project)) throw new ThemeError("a project theme needs the project's absolute path");
   const current = scopeTheme(themes, op.scope);
   const next = op.type === "reset" ? {} : mergeTheme(current, op.patch, project === undefined ? "global" : "project");
   if (same(current, next)) return themes;
@@ -243,7 +244,7 @@ export function parseThemes(raw: unknown): { themes: Themes; dropped: number } {
   };
   if (raw.global !== undefined) themes.global = read(raw.global, "global") ?? {};
   for (const [project, value] of Object.entries(isObject(raw.projects) ? raw.projects : {})) {
-    const theme = project.startsWith("/") ? read(value, "project") : (dropped++, undefined);
+    const theme = isAbsoluteHostPath(project) ? read(value, "project") : (dropped++, undefined);
     if (theme && Object.keys(theme).length) themes.projects[project] = theme;
   }
   return { themes, dropped };

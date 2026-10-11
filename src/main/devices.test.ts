@@ -171,7 +171,6 @@ describe("authentication", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       await store.revoke(device.id);
-      for (let i = 0; i < 50 && (await readFile(file, "utf8")).includes(device.id); i++) await new Promise((resolve) => setImmediate(resolve));
       expect(await readFile(file, "utf8")).not.toContain(device.id);
       expect(await new DeviceStore(file, () => undefined).authenticate(token, phone.tailnetLogin)).toBeNull();
     } finally {

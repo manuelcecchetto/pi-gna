@@ -73,7 +73,7 @@ describe("browse", () => {
     mkdirSync(join(home, "proj"), { recursive: true });
     mkdirSync(join(dir, "outside"));
     rmSync(join(dir, "link"), { force: true });
-    symlinkSync(join(dir, "outside"), join(home, "escape"));
+    symlinkSync(join(dir, "outside"), join(home, "escape"), process.platform === "win32" ? "junction" : "dir");
     writeFileSync(join(home, "a.txt"), "x");
     writeFileSync(join(home, ".hidden"), "x");
     const folders = await browse(home, undefined, false);

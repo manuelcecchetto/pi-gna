@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+import { fileSymlink } from "../../test/fs";
 
 vi.mock("electron", () => ({ session: {}, app: { getPath: () => "/tmp" } }));
 vi.mock("./manager", () => ({ PARTITION: "persist:pigna-browser" }));
@@ -49,27 +50,28 @@ describe("PreviewRegistry", () => {
   });
   it("resolves a URL back to the real path", () => {
     const registry = new PreviewRegistry();
-    const token = registry.mint("/root");
-    expect(registry.resolve(`pigna-file://${token}/dir/a%20b.md`)).toEqual({ path: "/root/dir/a b.md", root: "/root" });
+    const root = resolve("/root");
+    const token = registry.mint(root);
+    expect(registry.resolve(`pigna-file://${token}/dir/a%20b.md`)).toEqual({ path: join(root, "dir", "a b.md"), root });
     expect(registry.resolve("pigna-file://nope/a")).toBeUndefined();
   });
 });
 
 describe("confine", () => {
   it("accepts paths under the root", () => {
-    expect(confine("/r", "a/b.txt")).toBe("/r/a/b.txt");
-    expect(confine("/r", "./a")).toBe("/r/a");
+    expect(confine("/r", "a/b.txt")).toBe(resolve("/r/a/b.txt"));
+    expect(confine("/r", "./a")).toBe(resolve("/r/a"));
   });
   it("refuses traversal, backslashes, NUL and smuggled separators", () => {
     for (const rel of ["../x", "a/../../x", "a/..", "..\\x", "a\\b", "a\0b"]) expect(confine("/r", rel)).toBeUndefined();
   });
   it("treats an absolute-looking path as relative to the root", () => {
-    expect(confine("/r", "/etc/passwd")).toBe("/r/etc/passwd");
+    expect(confine("/r", "/etc/passwd")).toBe(resolve("/r/etc/passwd"));
   });
   it("denies dotfiles except the opened one", () => {
     expect(confine("/r", ".env")).toBeUndefined();
     expect(confine("/r", ".git/config")).toBeUndefined();
-    expect(confine("/r", ".env", new Set([".env"]))).toBe("/r/.env");
+    expect(confine("/r", ".env", new Set([".env"]))).toBe(resolve("/r/.env"));
   });
 });
 
@@ -89,12 +91,20 @@ describe("handlePreview", () => {
   writeFileSync(join(root, "project", "page.html"), "<p>x</p>");
   writeFileSync(join(root, "project", ".env"), "SECRET=1");
   writeFileSync(join(root, "secret.txt"), "outside");
-  symlinkSync(join(root, "secret.txt"), join(root, "project", "link.txt"));
+  mkdirSync(join(root, "outside"));
+  writeFileSync(join(root, "outside", "secret.txt"), "outside");
+  symlinkSync(join(root, "outside"), join(root, "project", "escape"), process.platform === "win32" ? "junction" : "dir");
+  afterAll(() => rmSync(base, { recursive: true, force: true }));
   mkdirSync(join(root, "project", "sub"));
   const registry = new PreviewRegistry();
   const token = registry.mint(join(root, "project"));
   const get = (path: string, headers?: Record<string, string>, method = "GET") =>
     handlePreview(registry, viewer, new Request(`pigna-file://${path}`, { method, headers }));
+
+  it("also refuses an escaping file symlink when the OS permits creating one", async ({ skip }) => {
+    if (!await fileSymlink(join(root, "secret.txt"), join(root, "project", "link.txt"))) skip("Windows file symlinks require Developer Mode or privilege; junction confinement is tested separately");
+    expect((await get(`${token}/link.txt`)).status).toBe(404);
+  });
 
   it("serves raw bytes with type, no-store and Range", async () => {
     const full = await get(`${token}/a.pdf?raw=1`);
@@ -144,7 +154,7 @@ describe("handlePreview", () => {
     expect(await (await get(`${token}/a.md`, { accept: "text/html,application/xhtml+xml,*/*;q=0.8" })).text()).toContain("__viewer");
   });
   it("404s unknown tokens, traversal, dotfiles, directories, symlink escapes and missing files", async () => {
-    for (const path of ["deadbeef/a.pdf", `${token}/%2e%2e/secret.txt`, `${token}/a%2f..%2f..%2fsecret.txt`, `${token}/.env`, `${token}/sub`, `${token}/link.txt`, `${token}/missing.txt`, `${token}/__viewer/../../secret.txt`]) {
+    for (const path of ["deadbeef/a.pdf", `${token}/%2e%2e/secret.txt`, `${token}/a%2f..%2f..%2fsecret.txt`, `${token}/.env`, `${token}/sub`, `${token}/escape/secret.txt`, `${token}/missing.txt`, `${token}/__viewer/../../secret.txt`]) {
       const response = await get(path);
       expect(response.status, path).toBe(404);
       expect(await response.text()).not.toContain(root);

@@ -1,8 +1,9 @@
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { piInputs, projectTrust, readPiSettings, writePiSettings } from "./pi-settings";
+import { assertPrivateFile, fileSymlink } from "../test/fs";
 
 let root: string;
 
@@ -80,17 +81,20 @@ describe("pi's settings.json", () => {
     const state = await writePiSettings({ defaultModel: "claude-opus-5-5", "compaction.enabled": false });
     expect(state.values).toEqual({ defaultModel: "claude-opus-5-5", "compaction.enabled": false });
     expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({ packages: ["npm:x"], compaction: { modelOverrides: {}, enabled: false }, defaultModel: "claude-opus-5-5" });
-    expect((await stat(file())).mode & 0o777).toBe(0o600);
+    await assertPrivateFile(file());
     expect(await readPiSettings()).toEqual({ path: file(), values: state.values });
   });
 
-  it("starts the file when there is none, and writes through a symlink", async () => {
+  it("starts the file when there is none", async () => {
     await writePiSettings({ cacheWarming: "off" });
     expect(JSON.parse(await readFile(file(), "utf8"))).toEqual({ cacheWarming: "off" });
+    await assertPrivateFile(file());
+  });
+
+  it("writes through a file symlink when the OS permits creating one", async ({ skip }) => {
     const dotfiles = join(root, "dotfiles.json");
-    await rm(file());
     await writeFile(dotfiles, "{}");
-    await symlink(dotfiles, file());
+    if (!await fileSymlink(dotfiles, file())) skip("Windows file symlinks require Developer Mode or privilege");
     await writePiSettings({ steeringMode: "all" });
     expect((await lstat(file())).isSymbolicLink()).toBe(true);
     expect(JSON.parse(await readFile(dotfiles, "utf8"))).toEqual({ steeringMode: "all" });
