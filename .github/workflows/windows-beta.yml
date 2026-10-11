@@ -45,6 +45,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       WINDOWS_RELEASE_TAG: ${{ inputs.release_tag }}
+      # Hosted Windows runners can create file symlinks; do not silently lose that security coverage.
+      PIGNA_REQUIRE_FILE_SYMLINKS: "1"
     steps:
       - uses: actions/checkout@v7
         with:

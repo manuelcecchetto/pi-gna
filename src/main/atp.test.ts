@@ -173,7 +173,8 @@ describe("Atp", () => {
     await atp.release(path, "T1", "pigna-w1", "stopped");
     expect((await atp.read(path)).nodes.find((node) => node.id === "T1")?.status).toBe("READY");
     await expect(atp.release(path, "T1", "pigna-w1", "again")).rejects.toThrow(/not CLAIMED/);
-  });
+    // This lifecycle starts seven real Python processes; a cold Windows runner can exceed Vitest's 5 s default.
+  }, 15_000);
 
   it("serializes concurrent librarian processes so only one worker can claim the ready node", async () => {
     await atp.activate(path);

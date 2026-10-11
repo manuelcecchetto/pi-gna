@@ -27,6 +27,7 @@ export function manifestFor({ version, repo, sourceCommit, releaseCommit, instal
   return {
     schema: 1, version, releaseTag: `v${version}`, releaseCommit, sourceCommit,
     source: `https://github.com/${repo}/tree/${sourceCommit}`, createdAt,
+    ...(process.env.GITHUB_RUN_ID && { workflow: `https://github.com/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}` }),
     platform: "win32", arch: "x64", channel: "windows-preview", computerUse: false, automaticUpdates: false,
     signing: "unsigned", node: process.version,
     installer: { name: ASSETS[0], bytes: installer.length, sha256: createHash("sha256").update(installer).digest("hex") },
