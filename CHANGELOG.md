@@ -7,7 +7,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 - Questions card: Enter now continues from a multiple-choice question (Space toggles an answer); before, Enter only toggled the focused answer, so the keyboard could not move on.
 - Rename and pin chats from a sidebar row's right-click menu. Rename edits the title in place (Enter keeps it, Esc drops it), for a running chat and a closed one alike. A pinned chat stays at the top of its project and of the Recent view, on every device; the phone's chat list follows.
-- An `ask_user` call in the transcript opens to its questions and answers instead of raw JSON: each prompt with its options, the chosen ones checked, your own text as an extra row, and a note when an answer was the default or skipped. While the questions wait, their defaults are tagged.
+- An `ask_user` call in the transcript opens to its questions, each with your answer under it, instead of raw JSON.
 
 ## 0.17.0 - 2026-10-11
 
