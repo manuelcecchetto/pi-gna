@@ -8,6 +8,7 @@ import { lastCacheHit } from "../lib/context";
 import { fuzzyFilter, fuzzySearch } from "../lib/fuzzy";
 import { desktopLinks, previewClick } from "../lib/preview";
 import { detectMenu, type MenuState } from "../../../shared/composer-menu";
+import { remainingGhost, wantsSuggestion } from "../../../shared/autocomplete";
 import { fastApplies, isFast, modelChipLabel, sharedNames } from "../../../shared/fast";
 import { modelKey, pinnedFirst } from "../../../shared/model-pins";
 import { toggleModelPin, usePinnedModels } from "../lib/model-pins";
@@ -28,6 +29,7 @@ import {
   setModel,
   setThinking,
   showBoard,
+  suggestContext,
   useApp,
   useAppShallow,
 } from "../state/app";
@@ -65,6 +67,10 @@ const ESC_ARM_MS = 2500;
  */
 const FLOW_REST_MS = 2000;
 export const flowRests = (animationName: string, sinceTyped: number) => animationName === "composer-flow" && sinceTyped >= FLOW_REST_MS;
+
+/** Composer autocomplete asks for a suggestion once typing pauses this long. */
+const SUGGEST_DELAY_MS = 120;
+const caretAtEnd = (element: HTMLTextAreaElement) => element.selectionStart === element.selectionEnd && element.selectionEnd === element.value.length;
 
 /**
  * The session fields the composer shows. A streaming delta changes none of them (it replaces the items), so a
@@ -116,6 +122,13 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
   const [armed, setArmed] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   const typed = useRef(0);
+  /** Composer autocomplete's ghost text: the suggestion, shown while the text is still `after` with the caret at its end. */
+  const autocompleteOn = useApp((state) => state.settings.autocomplete);
+  const [ghost, setGhost] = useState<{ after: string; text: string }>();
+  const mirror = useRef<HTMLDivElement>(null);
+  const asked = useRef(0);
+  const askTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const shownGhost = autocompleteOn && ghost && ghost.after === text ? ghost.text : undefined;
   const commands = useApp((state) => state.commands[handle]);
   const compaction = useApp((state) => state.compaction);
   const annotations = useApp((state) => state.annotations[handle]) ?? NO_ANNOTATIONS;
@@ -151,8 +164,34 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
     const element = area.current;
     if (!element) return;
     element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 320)}px`;
-  }, [text, hint]);
+    // Room for the ghost text too when it runs onto another line.
+    const height = Math.max(element.scrollHeight, mirror.current?.scrollHeight ?? 0);
+    element.style.height = `${Math.min(height, 320)}px`;
+    if (mirror.current) mirror.current.scrollTop = element.scrollTop;
+  }, [text, hint, shownGhost]);
+
+  useEffect(() => () => clearTimeout(askTimer.current), []);
+
+  /** Drops the ghost and any suggestion on its way. */
+  const dropGhost = () => {
+    clearTimeout(askTimer.current);
+    asked.current++;
+    setGhost(undefined);
+  };
+
+  /** Asks the local model how `draft` goes on, once typing pauses; a later keystroke overtakes the answer. */
+  const askSuggestion = (draft: string) => {
+    dropGhost();
+    if (!autocompleteOn || !wantsSuggestion(draft)) return;
+    const ask = asked.current;
+    askTimer.current = setTimeout(() => {
+      void window.studio.autocomplete.suggest({ cwd: session.cwd, draft, ...suggestContext(handle) }).then((suggestion) => {
+        const element = area.current;
+        if (ask !== asked.current || !suggestion || !element || element.value !== draft || !caretAtEnd(element) || document.activeElement !== element) return;
+        setGhost({ after: draft, text: suggestion });
+      });
+    }, SUGGEST_DELAY_MS);
+  };
 
   useEffect(() => {
     area.current?.focus();
@@ -234,6 +273,19 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
         return;
       }
     }
+    if (shownGhost && !menu && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      if (event.key === "Tab") {
+        event.preventDefault();
+        // An editing command, not setText: the insert joins the text box's undo stack, so ⌘Z / Ctrl+Z takes it back.
+        document.execCommand("insertText", false, shownGhost);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dropGhost();
+        return;
+      }
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       if (menu) setMenu(undefined);
@@ -265,6 +317,15 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
     const next = detectMenu(event.target.value, event.target.selectionStart);
     setMenu(next);
     setSelected(0);
+    // Typing the ghost's own characters uses it up; anything else asks again.
+    const value = event.target.value;
+    const rest = ghost && !next && caretAtEnd(event.target) ? remainingGhost(ghost.after, ghost.text, value) : undefined;
+    if (rest !== undefined) {
+      clearTimeout(askTimer.current);
+      asked.current++;
+      setGhost({ after: value, text: rest });
+    } else if (!next && caretAtEnd(event.target) && !(event.nativeEvent as InputEvent).isComposing) askSuggestion(value);
+    else dropGhost();
   };
 
   // Cmd+V: copied screenshots and images, and files or folders copied in Finder. Text pastes as usual.
@@ -358,22 +419,39 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
 
         <AttachmentChips handle={handle} attachments={attachments} card={card} />
 
-        <textarea
-          ref={area}
-          value={text}
-          rows={2}
-          disabled={exited}
-          placeholder={hint}
-          onChange={onChange}
-          onFocus={(event) => flow(event.currentTarget)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          onBlur={() => setMenu(undefined)}
-          onSelect={(event) => {
-            if (menu) setMenu(detectMenu(event.currentTarget.value, event.currentTarget.selectionStart));
-          }}
-          className="selectable block max-h-80 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14.5px] leading-relaxed text-fg outline-none placeholder:text-faint"
-        />
+        <div className="relative">
+          {/* The ghost: an invisible copy of the text, then the suggestion, wrapped exactly as the text box wraps. */}
+          {shownGhost && (
+            <div ref={mirror} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3 pb-1 text-[14.5px] leading-relaxed" data-testid="composer-ghost">
+              <span className="invisible">{text}</span>
+              <span className="text-faint">{shownGhost}</span>
+              <span className="ml-1.5 rounded border border-line px-1 align-[1px] font-mono text-[10.5px] text-faint">Tab</span>
+            </div>
+          )}
+          <textarea
+            ref={area}
+            value={text}
+            rows={2}
+            disabled={exited}
+            placeholder={hint}
+            onChange={onChange}
+            onFocus={(event) => flow(event.currentTarget)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onBlur={() => {
+              setMenu(undefined);
+              dropGhost();
+            }}
+            onSelect={(event) => {
+              if (menu) setMenu(detectMenu(event.currentTarget.value, event.currentTarget.selectionStart));
+              if (ghost && !caretAtEnd(event.currentTarget)) dropGhost();
+            }}
+            onScroll={(event) => {
+              if (mirror.current) mirror.current.scrollTop = event.currentTarget.scrollTop;
+            }}
+            className="selectable relative block max-h-80 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14.5px] leading-relaxed text-fg outline-none placeholder:text-faint"
+          />
+        </div>
 
         <div className="flex items-center gap-1 px-2 pb-2">
           <AttachButton handle={handle} disabled={exited} />

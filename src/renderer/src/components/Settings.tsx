@@ -4,6 +4,7 @@
 import { BookOpen, Bug, Code, Globe, FolderOpen, type IconComponent, Search, TriangleAlert } from "./icons";
 import { useCallback, useEffect, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
+import type { AutocompleteStatus } from "../../../shared/autocomplete";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { author, bugs, homepage, license } from "../../../../package.json";
 import { tildify } from "../lib/format";
@@ -374,6 +375,47 @@ function TaskRow({ task }: { task: Task }) {
   );
 }
 
+/** Composer autocomplete's switch, with the local model's download and start under it. */
+function AutocompleteRow() {
+  const on = useApp((state) => state.settings.autocomplete);
+  const [status, setStatus] = useState<AutocompleteStatus>();
+  useEffect(() => {
+    let alive = true;
+    void window.studio.autocomplete.status().then((next) => alive && setStatus(next));
+    const off = window.studio.autocomplete.onStatus(setStatus);
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+  const phase = on ? status?.phase : undefined;
+  const note =
+    phase === "downloading"
+      ? `Downloading the model… ${Math.round((status?.progress ?? 0) * 100)}%`
+      : phase === "starting"
+        ? "Starting the model…"
+        : phase === "ready"
+          ? "Ready."
+          : phase === "error"
+            ? status?.error
+            : undefined;
+  return (
+    <Row
+      title="Composer autocomplete"
+      about={
+        <>
+          Suggests how your message goes on as you type: Tab takes the suggestion, {navigator.userAgent.includes("Mac") ? "⌘Z" : "Ctrl+Z"} takes it back. A small model (about 400 MB,
+          downloaded once) runs on this computer and reads your earlier messages in the project; nothing leaves the computer.
+          {note && <span className={`mt-1 block ${phase === "error" ? "text-bad" : "text-muted"}`} data-testid="autocomplete-status">{note}</span>}
+        </>
+      }
+    >
+      {phase === "error" && <Button onClick={() => void window.studio.autocomplete.retry()}>Retry</Button>}
+      <Switch on={on} onChange={(next) => void applySettings({ type: "autocomplete", on: next })} />
+    </Row>
+  );
+}
+
 const QUEUE_LABELS = { "one-at-a-time": "One at a time", all: "All at once" };
 const TRUST_LABELS = { ask: "Ask", always: "Always", never: "Never" };
 const WARMING_LABELS = { off: "Off", streaming: "During runs", idle: "Between runs too" };
@@ -408,6 +450,7 @@ function AgentSection({ pi }: { pi: Pi }) {
         <Row title="Inline visuals" about="Agents may add small interactive HTML visuals (diagrams, comparisons, timelines) to replies. Renders sandboxed, offline. Applies to chats you open afterwards.">
           <Switch on={visuals} onChange={(on) => void applySettings({ type: "visuals", on })} />
         </Row>
+        <AutocompleteRow />
         {/* pi talks through FIFOs to outlive pi-gna: none on Windows. */}
         {!navigator.userAgent.includes("Windows") && (
           <Row

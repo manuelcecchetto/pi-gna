@@ -15,6 +15,7 @@ import type { PreviewMode, PreviewOpenOptions, PreviewText } from "./preview";
 import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { ImportResult, ImportScan } from "./chat-import";
+import type { AutocompleteStatus, SuggestRequest } from "./autocomplete";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
@@ -673,6 +674,11 @@ export interface HostMethods {
   "import.scan": { args: Record<string, never>; result: ImportScan };
   "import.run": { args: { projects: string[] }; result: ImportResult };
 
+  // autocomplete (desktop only: the model runs on this computer, over its session files)
+  "autocomplete.status": { args: Record<string, never>; result: AutocompleteStatus };
+  "autocomplete.suggest": { args: { request: SuggestRequest }; result: string };
+  "autocomplete.retry": { args: Record<string, never>; result: null };
+
   // setup (desktop only: installs run code on the Mac)
   "setup.status": { args: Record<string, never>; result: SetupStatus };
   "setup.installPi": { args: Record<string, never>; result: SetupInstallResult };
@@ -768,6 +774,9 @@ export const DESKTOP_ONLY_METHODS = [
   "setup.installPi",
   "import.scan",
   "import.run",
+  "autocomplete.status",
+  "autocomplete.suggest",
+  "autocomplete.retry",
 ] as const satisfies readonly HostMethod[];
 
 const DESKTOP_ONLY: ReadonlySet<string> = new Set(DESKTOP_ONLY_METHODS);
@@ -788,6 +797,8 @@ export const READ_ONLY_METHODS = [
   "chat.readFile",
   "chat.compactionSettings",
   "setup.status",
+  "autocomplete.status",
+  "autocomplete.suggest",
   "board.get",
   "laments.get",
   "themes.get",

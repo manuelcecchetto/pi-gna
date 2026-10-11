@@ -1,4 +1,5 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
+import type { AutocompleteStatus, SuggestRequest } from "./autocomplete";
 import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
@@ -144,6 +145,10 @@ export const IPC = {
   importScan: "import:scan",
   importRun: "import:run",
   importProgress: "import:progress",
+  autocompleteGet: "autocomplete:get",
+  autocompleteChanged: "autocomplete:changed",
+  autocompleteSuggest: "autocomplete:suggest",
+  autocompleteRetry: "autocomplete:retry",
   setupStatus: "setup:status",
   setupInstallPi: "setup:install-pi",
   setupLine: "setup:line",
@@ -394,6 +399,16 @@ export type UpdateState =
   | { phase: "failed"; release: UpdateRelease; error: string };
 
 /** Settings > Import chats (src/shared/chat-import.ts): Codex and Claude Code chats, by project, into pi's sessions. */
+/** Composer autocomplete (src/shared/autocomplete.ts): desktop only, the model runs on this computer. */
+export interface AutocompleteApi {
+  status(): Promise<AutocompleteStatus>;
+  onStatus(listener: (status: AutocompleteStatus) => void): () => void;
+  /** The ghost text for a draft, or "" for none; a newer call makes the last one resolve "". */
+  suggest(request: SuggestRequest): Promise<string>;
+  /** Downloads or starts again after an error. */
+  retry(): Promise<null>;
+}
+
 export interface ImportApi {
   scan(): Promise<ImportScan>;
   /** Imports the chats of these projects (cwds from the scan); resolves when done. */
@@ -647,6 +662,7 @@ export interface StudioApi {
   auth: AuthApi;
   plugins: PluginsApi;
   imports: ImportApi;
+  autocomplete: AutocompleteApi;
   github: GithubApi;
   atp: AtpApi;
   update: UpdateApi;

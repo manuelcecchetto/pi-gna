@@ -3,7 +3,7 @@ import { responsePreview } from "../shared/push-rules";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeImage, nativeTheme, net, powerSaveBlocker, screen, session, shell } from "electron";
 import { bugs } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
@@ -67,6 +67,7 @@ import { readActiveBranch } from "./session-file";
 import { SessionHost } from "./session-host";
 import { flushSessionIndex, indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { ChatImporter } from "./chat-import";
+import { Autocomplete } from "./autocomplete";
 import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
@@ -317,6 +318,13 @@ const plugins = new PiPlugins({
 });
 const setup = new PiSetup({ onLine: (line) => send(IPC.setupLine, line) });
 const chatImport = new ChatImporter({ sessionsDir, progress: (update) => send(IPC.importProgress, update), emptyFile: join(app.getPath("userData"), "chat-import.json") });
+// Composer autocomplete: the setting turns it on and off (applySettings); its server stops with pi-gna.
+const autocomplete = new Autocomplete({
+  dir: join(app.getPath("userData"), "autocomplete"),
+  sessionsDir,
+  fetch: (url, init) => net.fetch(url, init),
+  onStatus: (status) => send(IPC.autocompleteChanged, status),
+});
 
 function createWindow(): void {
   const stateFile = join(app.getPath("userData"), "window-state.json");
@@ -521,6 +529,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     auth,
     plugins,
     chatImport,
+    autocomplete,
     setup,
     browser: () => browser,
     remoteBrowser: () => remoteBrowser,
@@ -587,6 +596,7 @@ function applySettings(next: Settings): Promise<void> {
   const appearance = applyAppearance();
   buildMenu(next.features);
   syncKeepAwake();
+  autocomplete.setEnabled(next.autocomplete);
   void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
   if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
@@ -712,6 +722,7 @@ function init(): void {
   // After the windows closed and every pi child stopped: a staged update replaces this app once it exits.
   app.on("will-quit", () => {
     setup.dispose();
+    autocomplete.dispose();
     updater?.installOnQuit();
   });
 

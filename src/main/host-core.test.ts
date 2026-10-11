@@ -4,7 +4,7 @@ vi.mock("electron", () => ({ app: { getAppPath: () => "/app", getPath: () => "/t
 
 import { DESKTOP_ONLY_METHODS, HOST_ERROR_STATUS, methodScope, type HostMethod } from "../shared/host-api";
 import { IPC } from "../shared/ipc";
-import { createHostCore, dispatch, type HostContext, type HostDeps, IPC_ROUTES } from "./host-core";
+import { createHostCore, dispatch, type HostContext, type HostDeps, IPC_ROUTES, suggestRequest } from "./host-core";
 
 const calls: unknown[][] = [];
 const record = (name: string) => (...args: unknown[]) => (calls.push([name, ...args]), Promise.resolve({ name }));
@@ -49,7 +49,7 @@ describe("host methods table", () => {
     expect(new Set(routed).size).toBe(routed.length);
     for (const route of IPC_ROUTES) expect(core[route.method], route.method).toBeDefined();
     // Channels the main process pushes to the window have no route; every invoke/send channel does.
-    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.sessionIndexed, IPC.settingsChanged, IPC.uiChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.themesChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pluginsLoginUpdate, IPC.setupLine, IPC.remoteChanged, IPC.usageProgress, IPC.importProgress, IPC.usageChanged, IPC.devicesChanged, IPC.pairingChanged, IPC.pageToggle, IPC.sidebarToggle, IPC.paletteToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
+    const pushes = new Set<string>([IPC.events, IPC.attention, IPC.sessionIndexed, IPC.settingsChanged, IPC.uiChanged, IPC.boardChanged, IPC.lamentsChanged, IPC.themesChanged, IPC.computerChanged, IPC.atpPlans, IPC.atpHeld, IPC.atpRunners, IPC.atpThreadsChanged, IPC.browserState, IPC.browserReveal, IPC.browserAnnotation, IPC.updateState, IPC.updateReveal, IPC.authUpdate, IPC.pluginsLoginUpdate, IPC.setupLine, IPC.remoteChanged, IPC.usageProgress, IPC.importProgress, IPC.autocompleteChanged, IPC.usageChanged, IPC.devicesChanged, IPC.pairingChanged, IPC.pageToggle, IPC.sidebarToggle, IPC.paletteToggle, IPC.browserToggle, IPC.windowFocus, IPC.openProject]);
     expect(channels.filter((channel) => !pushes.has(channel) && !routed.includes(channel))).toEqual([]);
   });
 
@@ -408,5 +408,18 @@ describe("usage", () => {
     calls.length = 0;
     await dispatch(core, phone(), "usage.refresh", {});
     expect(calls).toEqual([["usage.refresh"]]);
+  });
+});
+
+describe("autocomplete.suggest", () => {
+  it("takes an absolute project, a draft and the ends of the last exchange", () => {
+    expect(suggestRequest({ cwd: "/p", draft: "fix", lastAgent: `${"a".repeat(5000)}z`, extra: 1 })).toEqual({ cwd: "/p", draft: "fix", lastAgent: `${"a".repeat(3999)}z` });
+    expect(() => suggestRequest({ cwd: "relative", draft: "fix" })).toThrow("absolute");
+    expect(() => suggestRequest({ cwd: "/p" })).toThrow("draft");
+    expect(() => suggestRequest({ cwd: "/p", draft: "x", lastUser: 3 })).toThrow("last message");
+  });
+
+  it("is the desktop's alone", () => {
+    expect(() => dispatch(core, phone(), "autocomplete.suggest", { request: { cwd: "/p", draft: "x" } })).toThrow(expect.objectContaining({ code: "scope_denied" }));
   });
 });

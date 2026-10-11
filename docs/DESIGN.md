@@ -26,6 +26,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     SessionHost    handle -> PiProcess, forwards events + extension UI requests to the renderer
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     chat-import/   ChatImporter: Codex and Claude Code transcripts -> pi session files (Settings > Import chats)
+    autocomplete/  Autocomplete: composer ghost text from a local llama.cpp server and typeahead model (Settings > Agent > Beta)
     files          `rg --files` for @ mentions, kept until a file comes or goes (a recursive watcher; 15 s on Linux)
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
@@ -978,6 +979,39 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
 - **Inline visuals** (Agent > Beta, `visuals`, off by default): read when a chat starts, like the features. It loads
   `resources/visual-extension.ts` into that chat (`SessionFeatures.visuals`), which adds `resources/pigna-visual-prompt.md`
   to the prompt's project context beside the AGENTS.md files; the renderer reads the same setting live, so flipping it renders or hides visuals in existing transcripts at once. See Visuals.
+- **Composer autocomplete** (Agent > Beta, `autocomplete`, off by default; desktop only): ghost text after the caret
+  that suggests how the message goes on. Tab inserts it with `document.execCommand("insertText")`, not `setText`, so it
+  joins the text box's own undo stack and ⌘Z / Ctrl+Z takes it back; Esc drops it; typing its own characters uses it
+  up without asking again. It shows only with the caret at the end, no selection, no / or @ menu and no IME
+  composition, and the draft must end on a line with words and not be a slash command (`wantsSuggestion`). The ghost
+  is an `aria-hidden` mirror behind the transparent textarea (an invisible copy of the text, then the suggestion), so it
+  wraps exactly as the text does, and the box grows for it. The composer asks 120 ms after typing pauses; each client
+  has one request in flight and a newer one aborts it.
+  Main (`src/main/autocomplete/`) installs on the switch: a llama.cpp `llama-server` build and the model, pinned in
+  `assets.ts` with their SHA-256s (GitHub's asset digests, the Hub's LFS ids), downloaded with `net.fetch` to a
+  `.part` file, verified, then unpacked with the system's own tar (`System32\tar.exe` reads zip on Windows) into
+  `userData/autocomplete`. A `.ok`/`.unpacked` marker means verified, so later starts do not hash 380 MB again. Builds
+  are tried best first: Metal on a Mac, then Vulkan before CPU on Windows and Linux; a build whose server exits
+  before `/health` answers (no Vulkan driver) is marked failed for the run and the next one is fetched. The server starts
+  on the first suggestion, on 127.0.0.1 at a free port behind a random `--api-key`, with `-c 4096 -np 1 -ngl 99
+  --cache-reuse 256 --no-webui`. It stops after 10 minutes without a suggestion, when the switch goes off, and in
+  `will-quit`.
+  The prompt (`buildPrompt` in `src/shared/autocomplete.ts`) is the plain-text format the model was trained on: a
+  scene line, up to three of the user's earlier typed messages in the project, `***Roleplay chat below***`, the chat's
+  last user message and agent reply, then `User: <draft>`. It asks for 16 tokens at temperature 0, stops at a newline,
+  and drops a continuation of the half-typed word (`cleanSuggestion`). Earlier messages come from pi's session files of
+  the project's folder and the cwd's (`PromptHistory`: the newest 200 files, only user lines parsed, `isTypedPrompt`
+  drops pi-gna's task prompts, pastes and code, re-read only when a file's size or mtime moves). They are ranked by
+  shared words over √length (`pickExamples`), with no training and no index to build.
+  Model choice (bake-off on 2026-10-11, 598 cut points of 300 real prompts typed after 2026-09-20, held out by date,
+  M2, greedy decoding; the metric is leading words that exactly match what was really typed): orb-human-typeahead-350m
+  (Apache-2.0, a Granite 350M typeahead fine-tune) scored 0.232 words per suggestion with this prompt, at 201 ms median
+  for a new prompt and 161 ms when the server reuses the text already processed. Qwen3.5-0.8B-Base scored 0.239 at
+  481/413 ms on a twice as large download. The past messages were the one context that clearly helped (Qwen: 0.177
+  without them, 0.246 with them). A project "index" (README, folders, file-name terms) added nothing (0.181). Absolute
+  usefulness is modest: a first word is right about 1 time in 6, three or more words about 1 time in 80. No model is
+  trained on anyone's messages: a model trained on one user's prompts could memorise them, so it could never ship.
+  Unverified: Windows and Linux (Vulkan fallback and zip extraction run only in unit tests on macOS).
 - **Keep chats running on restart** (Agent > Beta, `keepChatsOnRestart`, off by default, hidden on Windows): read when a
   chat starts (`SessionFeatures.keepOnRestart`). See "A restart keeps the chats running".
 - **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global

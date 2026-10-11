@@ -1,5 +1,6 @@
 // App state and actions. Session state transitions live in shared/session-state.ts (pure); this module
 // owns side effects: IPC calls, toasts, lifecycle of pi processes, and project refreshes.
+import { lastExchange } from "../../../shared/autocomplete";
 import type { AtpSession } from "../../../shared/atp";
 import { applyOp, type Board, BoardError, type BoardOp, type Card, type Column, emptyBoard, freshId, LIMITS, projectOf } from "../../../shared/board";
 import { formatAnnotations } from "../../../shared/annotations";
@@ -1251,6 +1252,9 @@ export function discussCard(card: Card): void {
 }
 
 /** The card in a chat's composer, while it is on the board. */
+/** The last exchange of a chat, read when the composer asks for a suggestion (not subscribed: a stream would re-render). */
+export const suggestContext = (handle: string) => lastExchange(store.get().sessions[handle]?.items ?? []);
+
 export function composerCard(state: AppState, handle: string): Card | undefined {
   const id = state.composerCards[handle];
   return id === undefined ? undefined : state.board.cards.find((card) => card.id === id);

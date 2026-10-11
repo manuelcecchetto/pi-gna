@@ -78,6 +78,9 @@ export interface Settings {
   /** Beta: chats started while it is on keep running through a restart (Restart now after an update) and the next
    * pi-gna takes them over. Read when a chat starts (macOS and Linux). */
   keepChatsOnRestart: boolean;
+  /** Beta: the composer suggests how a message goes on, from a small model that runs on this computer
+   * (src/shared/autocomplete.ts). Turning it on downloads the model once. */
+  autocomplete: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
   remote: RemoteSettings;
@@ -95,6 +98,7 @@ export type SettingsOp =
   | { type: "visuals"; on: boolean }
   | { type: "yolo"; on: boolean }
   | { type: "keepChatsOnRestart"; on: boolean }
+  | { type: "autocomplete"; on: boolean }
   | { type: "remoteEnabled"; on: boolean }
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
@@ -120,6 +124,7 @@ export const emptySettings = (): Settings => ({
   visuals: false,
   yolo: false,
   keepChatsOnRestart: false,
+  autocomplete: false,
   models: {},
   remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
   openAtLogin: false,
@@ -193,6 +198,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn keeping chats on restart ${String(op.on)}`);
       return settings.keepChatsOnRestart === op.on ? settings : { ...settings, keepChatsOnRestart: op.on };
     }
+    case "autocomplete": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn autocomplete ${String(op.on)}`);
+      return settings.autocomplete === op.on ? settings : { ...settings, autocomplete: op.on };
+    }
     case "remoteEnabled": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
       return settings.remote.enabled === op.on ? settings : { ...settings, remote: { ...settings.remote, enabled: op.on } };
@@ -259,6 +268,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.yolo !== undefined) dropped++;
   if (typeof file.keepChatsOnRestart === "boolean") settings.keepChatsOnRestart = file.keepChatsOnRestart;
   else if (file.keepChatsOnRestart !== undefined) dropped++;
+  if (typeof file.autocomplete === "boolean") settings.autocomplete = file.autocomplete;
+  else if (file.autocomplete !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
   if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;

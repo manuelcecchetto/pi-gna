@@ -64,7 +64,7 @@ export const SECTIONS: SectionInfo[] = [
     icon: Bot,
     group: "pi",
     about: "How pi works in new chats.",
-    keywords: "steering follow-up queue messages compaction context summarize retry errors images resize block skills commands cache warming project trust",
+    keywords: "steering follow-up queue messages compaction context summarize retry errors images resize block skills commands cache warming project trust autocomplete suggestions ghost text typeahead",
   },
   {
     id: "import",

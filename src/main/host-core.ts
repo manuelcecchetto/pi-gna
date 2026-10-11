@@ -47,6 +47,8 @@ import { applyTheme, type ThemeStore, themeImage } from "./themes";
 import type { PiAuth } from "./pi-auth";
 import type { PiPlugins } from "./plugins";
 import type { ChatImporter } from "./chat-import";
+import type { Autocomplete } from "./autocomplete";
+import type { SuggestRequest } from "../shared/autocomplete";
 import type { PiSetup } from "./setup";
 import type { SessionHost } from "./session-host";
 import type { SettingsStore } from "./settings";
@@ -103,6 +105,7 @@ export interface HostDeps {
   auth: PiAuth;
   plugins: PiPlugins;
   chatImport: ChatImporter;
+  autocomplete: Autocomplete;
   setup: PiSetup;
   browser(): BrowserManager | undefined;
   /** Frames and input for phones; exists with the browser manager. */
@@ -181,6 +184,24 @@ const maybeProject = (cwd: unknown): string | undefined => (cwd === undefined ||
 const text = (value: unknown, what: string): string => {
   if (typeof value !== "string" || !value || value.length > 4096) throw new Error(`invalid ${what}`);
   return value;
+};
+
+/** The last characters of an optional string: the prompt keeps only the end of a message anyway. */
+const ending = (value: unknown, what: string, max: number): string | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") throw new Error(`invalid ${what}`);
+  return value.slice(-max);
+};
+
+/** A composer's suggestion request: its project, the draft and the chat's last exchange, ends kept. */
+export const suggestRequest = (raw: unknown): SuggestRequest => {
+  const request = raw as Partial<Record<keyof SuggestRequest, unknown>> | null;
+  if (!request || typeof request !== "object") throw new Error("invalid suggestion request");
+  const draft = ending(request.draft, "draft", 4000);
+  if (draft === undefined) throw new Error("invalid draft");
+  const lastUser = ending(request.lastUser, "last message", 2000);
+  const lastAgent = ending(request.lastAgent, "last reply", 4000);
+  return { cwd: project(request.cwd), draft, ...(lastUser !== undefined && { lastUser }), ...(lastAgent !== undefined && { lastAgent }) };
 };
 
 const mcpScope = (scope: unknown): "global" | "project" => {
@@ -747,6 +768,13 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       },
       async (_ctx, { projects }) => (await env(), deps.chatImport.run(projects)),
     ),
+    "autocomplete.status": any("desktop", () => deps.autocomplete.get()),
+    "autocomplete.suggest": method<{ request: SuggestRequest }>(
+      "desktop",
+      (raw) => ({ request: suggestRequest(raw?.request) }),
+      (ctx, { request }) => deps.autocomplete.suggest(ctx.clientId, request),
+    ),
+    "autocomplete.retry": any("desktop", () => (deps.autocomplete.retry(), null)),
     "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
     "plugins.logout": method<{ cwd?: string; server: string }>(
       "desktop",
@@ -949,6 +977,9 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.setupInstallPi, "setup.installPi"),
   route(IPC.importScan, "import.scan"),
   route(IPC.importRun, "import.run", (projects) => ({ projects })),
+  route(IPC.autocompleteGet, "autocomplete.status"),
+  route(IPC.autocompleteSuggest, "autocomplete.suggest", (request) => ({ request })),
+  route(IPC.autocompleteRetry, "autocomplete.retry"),
   route(IPC.githubProject, "github.project", (cwd, refresh) => ({ cwd, refresh })),
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),
   route(IPC.githubList, "github.list", (cwd, kind, filter) => ({ cwd, kind, filter })),

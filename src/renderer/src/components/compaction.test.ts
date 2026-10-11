@@ -7,11 +7,12 @@ import { CompactionProgress } from "./CompactionProgress";
 import { Composer } from "./Composer";
 import { Transcript } from "./Transcript";
 
-const app = vi.hoisted(() => ({ expanded: {} as Record<string, boolean>, expandAll: false, commands: {}, annotations: [], attachments: {}, models: [], levels: {}, compaction: {}, sessions: {} as Record<string, unknown> }));
+const app = vi.hoisted(() => ({ expanded: {} as Record<string, boolean>, expandAll: false, commands: {}, annotations: [], attachments: {}, models: [], levels: {}, compaction: {}, settings: { autocomplete: false }, sessions: {} as Record<string, unknown> }));
 vi.mock("../state/app", () => ({
   useApp: (selector: (state: typeof app) => unknown) => selector(app),
   useAppShallow: (selector: (state: typeof app) => unknown) => selector(app),
   composerCard: () => undefined,
+  suggestContext: () => ({}),
 }));
 // The transcript reads its state and actions through the ChatUi context (lib/chat-ui.tsx); here from the same fake app state.
 vi.mock("../lib/chat-ui", () => ({

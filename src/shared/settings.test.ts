@@ -37,6 +37,11 @@ describe("applySettingsOp", () => {
     expect(start.keepChatsOnRestart).toBe(false);
     expect(applySettingsOp(start, { type: "keepChatsOnRestart", on: true }).keepChatsOnRestart).toBe(true);
     expect(parseSettings({ version: 1, keepChatsOnRestart: true }).settings.keepChatsOnRestart).toBe(true);
+    expect(start.autocomplete).toBe(false);
+    expect(applySettingsOp(start, { type: "autocomplete", on: true }).autocomplete).toBe(true);
+    expect(() => applySettingsOp(start, { type: "autocomplete", on: "yes" as never })).toThrow();
+    expect(parseSettings({ version: 1, autocomplete: true }).settings.autocomplete).toBe(true);
+    expect(parseSettings({ version: 1, autocomplete: "on" }).dropped).toBe(1);
   });
 
   it("picks the option yolo allows with: one-time grants before lasting ones, none without an allowing option", () => {
