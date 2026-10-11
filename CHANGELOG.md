@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.20.0 - 2026-10-11
+
 - Inline visuals can show local images: `<img src="path">`, or `<image href="path">` inside an SVG, with a path to an image file on your computer (a screenshot, a render, a generated picture). The visual itself still loads nothing from the network; pi-gna reads the file and passes it in.
 - Agents can draw technical illustrations in inline visuals, such as an engine cut open with labelled parts and throttle settings that change the drawing. A new bundled `inline-visuals` skill teaches illustrations, animated flows and UI mocks with worked examples, so the always-on visual instructions are shorter.
 - On the phone, inline visuals render right away, like on the Mac, instead of waiting for a tap.
