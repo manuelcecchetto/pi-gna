@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Zooming the app (⌘+, ⌘−, ⌘0) briefly shows the new zoom level, such as 110%, at the top of the chat.
+
 ## 0.19.1 - 2026-10-11
 
 - Composer autocomplete is more precise and no longer loops: a suggestion shows only when the local model is confident (its first word is right about twice as often), stops at the end of a sentence and after at most 6 words, never follows a finished sentence, and is dropped when it repeats what you just typed. It also looks at more of your earlier messages in the project.

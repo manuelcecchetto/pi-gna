@@ -5,6 +5,7 @@ import { SessionPane } from "./components/SessionPane";
 import { HeroBackdrop } from "./components/Transcript";
 import { ThemeRoot } from "./components/ThemeRoot";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
+import { ZoomCue } from "./components/ZoomCue";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
 import { deferred, preloadDeferred } from "./lib/deferred";
@@ -117,6 +118,7 @@ export function App() {
             </div>
           )}
           <Toasts />
+          <ZoomCue />
         </section>
         {pane.open && (
           <>
