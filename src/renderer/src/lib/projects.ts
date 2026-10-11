@@ -25,6 +25,10 @@ export interface OpenChat {
   listed: boolean;
   draft: boolean;
   exited: boolean;
+  /** The countdown of the agent's questions, while they wait (QuestionsCard): its length, end or what was left. */
+  askTimeout?: number;
+  askDeadline?: number;
+  askLeft?: number;
 }
 
 /** What a page shows of a chat it does not render (the ATP page's orchestrator): select it with useAppShallow. */

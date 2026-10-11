@@ -14,6 +14,7 @@ files:
   - src/shared/browser.ts
   - src/shared/preview.ts
   - src/shared/board.ts
+  - src/shared/ask.ts
   - src/shared/laments.ts
   - src/shared/threads.ts
   - src/shared/settings.ts
@@ -35,6 +36,7 @@ asarUnpack:
   - src/shared/browser.ts
   - src/shared/preview.ts
   - src/shared/board.ts
+  - src/shared/ask.ts
   - src/shared/laments.ts
   - src/shared/threads.ts
   - src/shared/settings.ts

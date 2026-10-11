@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { PanelRight } from "../renderer/src/components/icons";
 import { Dialogs } from "../renderer/src/components/Dialogs";
+import { QuestionsCard, questionsOf } from "../renderer/src/components/QuestionsCard";
 import { Transcript } from "../renderer/src/components/Transcript";
 import { useStore } from "../renderer/src/lib/store";
 import type { ComputerPreviewFrame } from "../shared/computer";
@@ -135,6 +136,7 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
   const { handle, error } = useJoinedChat(client, route, attempt);
   const entry = useStore(client.store, (s) => (handle ? s.chats[handle] : undefined));
   const session = entry?.session;
+  const ask = session && questionsOf(session.dialogs);
   const failure = error ?? entry?.error;
   const title = session?.name ?? session?.title ?? route.title ?? "New chat";
   const level = session ? attention(session) : undefined;
@@ -178,13 +180,22 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
             </div>
           )}
           <Transcript session={session} earlier={earlier} onPickProject={() => setPicking(true)} />
-          {session.dialogs.length > 0 && (
+          {session.dialogs.some((dialog) => dialog.method !== "questions") && (
             <div className="max-h-[55%] shrink-0 overflow-y-auto px-3 pb-2" data-testid="dialogs">
               <Dialogs handle={session.handle} dialogs={session.dialogs} />
             </div>
           )}
           <ComputerPreview client={client} handle={session.handle} active={session.running && runUsesComputer(session.items)} />
-          <MobileComposer client={client} session={session} initialText={route.prefill} cardId={route.cardId} />
+          {ask ? (
+            // The agent's questions take the composer's place until they are answered.
+            <div className="max-h-[70%] shrink-0 overflow-y-auto px-3 pt-1 pb-2">
+              <div className="rounded-[22px] border border-line-strong bg-panel">
+                <QuestionsCard key={ask.id} handle={session.handle} dialog={ask} />
+              </div>
+            </div>
+          ) : (
+            <MobileComposer client={client} session={session} initialText={route.prefill} cardId={route.cardId} />
+          )}
         </>
       )}
       {picking && (

@@ -148,6 +148,10 @@ export function createChatUi(client: HostClient, homeDir: string, push: (route: 
           failed("Could not answer", error);
         }
       },
+      pauseDialog(handle, id) {
+        // Best effort: an answer that follows settles the card anyway.
+        client.call("chat.pauseDialog", { handle, id }).catch(() => {});
+      },
       async editQueue(handle, op: QueueOp) {
         try {
           return await client.call("chat.editQueue", { handle, op });

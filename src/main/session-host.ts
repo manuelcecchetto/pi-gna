@@ -8,6 +8,7 @@ import { projectOf } from "../shared/board";
 import { jsonBytes } from "../shared/chat-page";
 import { type Actor, actorOf, type AttentionSummary, type ChatSnapshot, type ClientPresence, type DialogOutcome, type GlobalEvent, type HostCtx, HostError, type HostEvent, isAllowedRpc, type QueueEdit } from "../shared/host-api";
 import type { OpenSessionRequest, OpenSessionResult } from "../shared/ipc";
+import { answersFrom, type AskQuestion, type AskResult, defaultAnswers } from "../shared/ask";
 import { DIALOG_METHODS, type ExtensionUiResponse, type RpcCommand, type RpcOutput, RpcResponse, RpcSessionState, type SessionEntry } from "../shared/protocol";
 import { type Feature, yoloOption } from "../shared/settings";
 import { attention, createSession, hydrate, isDisposable, isListed, type Item, leanRecord, reduceHostEvent, runOutcome, type RunOutcome, type SessionState } from "../shared/session-state";
@@ -189,18 +190,21 @@ export class SessionHost {
   private publishGlobal: (event: GlobalEvent) => void = () => {};
   /** Choices main asked of the user (requestChoice). Answered from the window only; pi never sees them. */
   private readonly choices = new Map<string, { handle: string; resolve: (value: string | undefined) => void }>();
+  /** The agent's questions (requestAnswers), main's own like choices: answered by any client, never forwarded to pi. */
+  private readonly asks = new Map<string, Ask>();
   private readonly endListeners = new Set<(handle: string) => void>();
   private readonly exitListeners = new Set<(handle: string) => void>();
   private readonly presenceListeners = new Set<(handle: string) => void>();
   private readonly settleListeners = new Set<(handle: string, outcome: RunOutcome) => void>();
   private readonly working = new Set<string>();
   private readonly runningListeners = new Set<() => void>();
-  /** The browser_*, set_theme, threads_*, kanban_* and lament tools and the chat titler, which reach pi-gna through the
+  /** The browser_*, set_theme, threads_*, kanban_*, ask_user and lament tools and the chat titler, which reach pi-gna through the
    * bridge, the subagent model defaults (the recommended setup's pi-subagents) and /fast. */
   private readonly extensions = {
     browser: onDisk("resources", "browser-extension.ts"),
     theme: onDisk("resources", "theme-extension.ts"),
     kanban: onDisk("resources", "kanban-extension.ts"),
+    ask: onDisk("resources", "ask-extension.ts"),
     laments: onDisk("resources", "lament-extension.ts"),
     threads: onDisk("resources", "threads-extension.ts"),
     title: onDisk("resources", "title-extension.ts"),
@@ -261,7 +265,9 @@ export class SessionHost {
     if (features.computer) args.push("-e", onDisk("resources", "computer-extension.ts"));
     if (EXCLUDED_TOOLS) args.push("--exclude-tools", EXCLUDED_TOOLS);
     if (trust !== undefined) args.push(trust ? "--approve" : "--no-approve");
+    // ATP's chats run unattended: nobody would see their questions.
     if (atp) args.push(...this.atpArgs(atp));
+    else args.push("-e", this.extensions.ask);
     return { args, env: { PIGNA_BRIDGE: this.bridge.url, PIGNA_TOKEN: this.bridge.register(handle) } };
   }
 
@@ -427,6 +433,7 @@ export class SessionHost {
   /** pi's process ended: settle what waited on it and forget the chat. */
   private exited(handle: string, exit: PiExit): void {
     this.settleChoices(handle);
+    this.settleAsks(handle);
     this.settleDialogs(handle, "exit");
     this.ended(handle);
     this.bridge.unregister(handle);
@@ -920,13 +927,65 @@ export class SessionHost {
     for (const choice of [...this.choices.values()]) if (choice.handle === handle) choice.resolve(undefined);
   }
 
+  /**
+   * Ask the user the agent's questions (the ask_user tool) on the card that takes the chat's composer place. The
+   * countdown runs here, so the defaults go back even with no client open; any client can pause it (pauseDialog) or
+   * answer (respondDialog). Cancelled when the user dismisses the card, the tool call is aborted or the chat ends.
+   */
+  requestAnswers(handle: string, questions: AskQuestion[], timeoutMs: number, signal?: AbortSignal): Promise<AskResult> {
+    const cancelled: AskResult = { questions, answers: [], cancelled: true };
+    if (!this.live.has(handle) || signal?.aborted) return Promise.resolve(cancelled);
+    const id = `pigna-ask-${randomUUID()}`;
+    return new Promise((resolve) => {
+      const onAbort = () => {
+        this.settleDialog(handle, id, "desktop", "cancelled");
+        ask.resolve(cancelled);
+      };
+      const ask: Ask = {
+        handle,
+        questions,
+        ...(timeoutMs > 0 && { deadline: Date.now() + timeoutMs }),
+        resolve: (result) => {
+          clearTimeout(ask.timer);
+          signal?.removeEventListener("abort", onAbort);
+          if (this.asks.delete(id)) resolve(result);
+        },
+      };
+      if (timeoutMs > 0) {
+        ask.timer = setTimeout(() => {
+          this.settleDialog(handle, id, "desktop", "timeout");
+          ask.resolve({ questions, answers: defaultAnswers(questions), cancelled: false });
+        }, timeoutMs);
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+      this.asks.set(id, ask);
+      const title = questions.length === 1 ? (questions[0]?.prompt ?? "") : `${questions.length} questions: ${questions[0]?.prompt ?? ""}`;
+      this.push(handle, [{ kind: "rpc", record: { type: "extension_ui_request", id, method: "questions", title, questions, ...(timeoutMs > 0 && { timeout: timeoutMs, deadline: ask.deadline }) } }]);
+    });
+  }
+
+  /** The user touched the questions card: its countdown stops for good, and every client freezes it where it was. */
+  pauseDialog(handle: string, id: string): void {
+    const ask = this.asks.get(id);
+    if (!ask || ask.handle !== handle) throw new HostError("not_found", "no such questions");
+    if (ask.deadline === undefined) return;
+    const left = Math.max(0, ask.deadline - Date.now());
+    clearTimeout(ask.timer);
+    ask.deadline = undefined;
+    this.push(handle, [{ kind: "dialog_paused", id, left }]);
+  }
+
+  private settleAsks(handle: string): void {
+    for (const ask of [...this.asks.values()]) if (ask.handle === handle) ask.resolve({ questions: ask.questions, answers: [], cancelled: true });
+  }
+
   /** Keep the set of waiting dialogs in step with the events: a request opens one, a resolution closes it. */
   private trackDialog(handle: string, chat: Live, event: HostEvent): void {
     if (event.kind === "rpc" && event.record.type === "extension_ui_request" && DIALOG_METHODS.has(event.record.method)) {
       const { id } = event.record;
       const timeout = "timeout" in event.record ? event.record.timeout : undefined;
-      // pi gives up on its own dialogs after `timeout`; mirror that. Main's choices run their own timer.
-      const timer = timeout && !this.choices.has(id) ? setTimeout(() => this.settleDialog(handle, id, "desktop", "timeout"), timeout) : undefined;
+      // pi gives up on its own dialogs after `timeout`; mirror that. Main's choices and questions run their own timer.
+      const timer = timeout && !this.choices.has(id) && !this.asks.has(id) ? setTimeout(() => this.settleDialog(handle, id, "desktop", "timeout"), timeout) : undefined;
       timer?.unref?.();
       chat.dialogs.set(id, timer);
     } else if (event.kind === "dialog_resolved") {
@@ -961,13 +1020,24 @@ export class SessionHost {
     const by = actorOf(ctx);
     const choice = this.choices.get(id);
     if (choice && choice.handle !== handle) throw new HostError("not_found", "no such dialog");
+    const ask = this.asks.get(id);
+    if (ask && ask.handle !== handle) throw new HostError("not_found", "no such dialog");
     const cancelled = "cancelled" in response && response.cancelled;
+    // Questions are checked before the card goes: a malformed answer leaves it up for another try.
+    let answered: AskResult | undefined;
+    if (ask && !cancelled) {
+      const replies = "value" in response ? parseReplies(response.value) : undefined;
+      const answers = answersFrom(ask.questions, replies);
+      if (!Array.isArray(answers)) throw new HostError("bad_request", `bad answer: ${answers.error}`);
+      answered = { questions: ask.questions, answers, cancelled: false };
+    }
     // Marking it resolved first (push is synchronous) is what makes a concurrent second answer lose.
     this.push(handle, [{ kind: "dialog_resolved", id, by, outcome: cancelled ? "cancelled" : "answered" }]);
     if (choice) {
       log.info("pi", `approval ${id.slice(0, 18)} answered by ${typeof by === "string" ? by : `device ${by.device}`}`);
       choice.resolve("value" in response ? response.value : undefined);
-    } else chat.pi.respondUi(response);
+    } else if (ask) ask.resolve(answered ?? { questions: ask.questions, answers: [], cancelled: true });
+    else chat.pi.respondUi(response);
   }
 
   /** Explicit close: clients are told first (they leave the chat), then pi stops. */
@@ -1001,11 +1071,16 @@ export class SessionHost {
 
   private async handOver(handle: string, chat: Live): Promise<HandedOffChat | undefined> {
     if (chat.loading || chat.holds.size || chat.state.atp || chat.state.phase === "exited") return void (await chat.pi.close());
-    // Main's own choices wait on a bridge request to this pi-gna, which ends with it.
+    // Main's own choices and questions wait on a bridge request to this pi-gna, which ends with it.
     for (const [id, choice] of [...this.choices]) {
       if (choice.handle !== handle) continue;
       choice.resolve(undefined);
       this.settleDialog(handle, id, "desktop", "exit");
+    }
+    for (const [id, ask] of [...this.asks]) {
+      if (ask.handle !== handle) continue;
+      this.settleDialog(handle, id, "desktop", "exit");
+      ask.resolve({ questions: ask.questions, answers: [], cancelled: true });
     }
     const token = this.bridge.tokenOf(handle);
     const io = await chat.pi.detach();
@@ -1061,6 +1136,24 @@ export class SessionHost {
       back.push(handle);
     }
     return back;
+  }
+}
+
+/** The agent's questions waiting on a chat's card. `deadline` is when the countdown ends, until the user pauses it. */
+interface Ask {
+  handle: string;
+  questions: AskQuestion[];
+  deadline?: number;
+  timer?: ReturnType<typeof setTimeout>;
+  resolve: (result: AskResult) => void;
+}
+
+/** A questions answer is `{ replies: AskReply[] }` as JSON in the response's value. */
+function parseReplies(value: string): unknown {
+  try {
+    return (JSON.parse(value) as { replies?: unknown }).replies;
+  } catch {
+    return undefined;
   }
 }
 

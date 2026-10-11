@@ -34,6 +34,7 @@ import {
 import { ColumnIcon } from "./ColumnIcon";
 import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
+import { QuestionsCard, questionsOf } from "./QuestionsCard";
 import { QueueCard } from "./QueueCard";
 import { TokenRate } from "./TokenRate";
 import { Popover, Switch } from "./primitives";
@@ -277,6 +278,8 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
   const widgetsAbove = Object.entries(session.widgets).filter(([, w]) => w.placement === "aboveEditor");
   const widgetsBelow = Object.entries(session.widgets).filter(([, w]) => w.placement === "belowEditor");
   const busy = session.running || Boolean(session.compacting);
+  // The agent's questions take the box's place until they are answered; the text typed so far stays.
+  const ask = questionsOf(session.dialogs);
   const onCompact = useCallback(() => void compact(handle), [handle]);
 
   useEffect(() => {
@@ -329,6 +332,10 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
         <div className="composer-glow" aria-hidden />
       <div className="composer-box relative z-10">
         <div className="composer-ring" aria-hidden />
+        {ask ? (
+          <QuestionsCard key={ask.id} handle={handle} dialog={ask} onStop={() => void stop()} />
+        ) : (
+        <>
         {menu && items.length > 0 && (
           <div className="absolute inset-x-0 bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-line-strong bg-panel p-1 shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
             {items.map((item, index) => (
@@ -399,6 +406,8 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
             )}
           </div>
         </div>
+        </>
+        )}
       </div>
       </div>
       {widgetsBelow.map(([key, widget]) => (

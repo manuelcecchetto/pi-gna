@@ -679,3 +679,16 @@ describe("compaction lifecycle", () => {
     expect(finishedRetry.items[0]).toBe(finishedRetry.compacting);
   });
 });
+
+describe("ask_user in the transcript", () => {
+  const args = { questions: [{ prompt: "Which fix?", options: [{ label: "start" }] }, { prompt: "Anything else?" }] };
+  const questions = [{ id: "q1", prompt: "Which fix?", options: [{ label: "start" }], multi: false, allowOther: true, defaultPicks: [0] }];
+
+  it("reads as one Answered line, marking what the user did not choose", () => {
+    expect(presentTool("ask_user", args, "/repo")).toMatchObject({ verb: "Asked", activeVerb: "Asking", target: "Which fix?", meta: "+1" });
+    const details = { questions, cancelled: false, answers: [{ id: "q1", values: ["start"], custom: false, source: "default" }, { id: "q2", values: [], custom: false, source: "default" }] };
+    expect(presentTool("ask_user", args, "/repo", details)).toMatchObject({ verb: "Answered:", target: "start (default) · (not answered)" });
+    expect(presentTool("ask_user", args, "/repo", { questions, answers: [], cancelled: true })).toMatchObject({ verb: "Declined to answer", target: "" });
+    expect(summarizeTools([{ presentation: presentTool("ask_user", args, "/repo", details), failed: false }])).toBe("Asked you");
+  });
+});

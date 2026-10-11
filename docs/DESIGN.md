@@ -1740,6 +1740,23 @@ Verified live (pi 1.0.0, Oct 2026):
   empty state, which would flash while clicking through chats.
 - Extension UI: `select`/`confirm`/`input`/`editor` become approval cards above the composer; `notify` -> toast;
   `setStatus` is tracked in session state but not shown (there is no status line); `setWidget` -> panel above the composer; `set_editor_text` -> composer text.
+- Agent questions (`ask_user`, `resources/ask-extension.ts`, loaded in every chat but ATP's): the agent asks 1 to 10
+  questions, each single or multiple choice over 0..n options with an optional free-form answer (free form only when
+  it has no options), each with an optional default. pi's own `questionnaire.ts` example draws in the terminal
+  (`ctx.ui.custom`, absent in RPC mode), so pi-gna draws the card; the tool keeps that example's arguments and
+  `{ questions, answers, cancelled }` details. The extension calls `POST /ask` (`src/main/ask.ts`): `start` checks
+  the questions (`normalizeAsk`, `src/shared/ask.ts`) and `SessionHost.requestAnswers` pushes a main-owned
+  `questions` dialog (pi never sees it); `wait` holds at most 45 s and is repeated, because undici's fetch drops a
+  request without headers after 300 s and a paused card can wait for hours; `cancel` is the tool's abort (Esc).
+  The countdown (default 30 s, `timeoutSec`, 0 = none) runs in main, so the defaults go back with no window open:
+  `deadline` is on the host's clock, and any touch (`chat.pauseDialog`: a click, a key, a mouse that moves 8 px over
+  the card, not one resting where it appeared) stops it for good and every client freezes it (`dialog_paused`,
+  `left`). The card (`QuestionsCard`) takes the composer box's place on desktop and phone; Esc twice there stops the
+  run as in the composer, Enter continues only from the free-text field, ↑/↓ move between a question's rows (the
+  free-text field last), Space/Enter on a row or 1-9 pick, ⌥↑/⌥↓ change question, Skip takes the default, × answers
+  "declined". The Send button and the chat's sidebar row fill with `--accent` as the countdown runs (`--ask-fill`, a
+  CSS animation started part-way). A timed-out question without a default answers "(not answered)". The transcript
+  row reads `Answered: start (default) · (not answered)`; the agent reads each question with its answer.
 
 ## Visual language
 

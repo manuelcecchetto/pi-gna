@@ -30,6 +30,7 @@ import { type MenuItem, useContextMenu } from "./ContextMenu";
 import { PI, PiLogo, PiSpinner } from "./PiLogo";
 import { PignaMark } from "./PignaMark";
 import { DigitHint, useCommandDigits, useNow } from "./primitives";
+import { countdownFill } from "./QuestionsCard";
 import { SettingsNav } from "./SettingsNav";
 import { useThemeImage } from "./ThemeRoot";
 import { UpdateRow } from "./Update";
@@ -536,14 +537,20 @@ function SessionRowView({
       type="button"
       onClick={onClick}
       onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active, kanban))}
-      className={`group flex items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
+      className={`group relative isolate flex items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
     >
+      {live?.askTimeout && <AskFill timeout={live.askTimeout} deadline={live.askDeadline} left={live.askLeft} />}
       <span className="grid w-4 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
       <span className={`min-w-0 flex-1 truncate text-[14px] ${needsYou ? "font-medium" : ""}`}>{title}</span>
       {project && <span className="max-w-[35%] shrink truncate text-[11.5px] text-faint">{project}</span>}
       {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <RowTime time={row.time} />}
     </button>
   );
+}
+
+/** The whole row is the countdown of the chat's questions: it fills as the defaults draw near, and stands once paused. */
+function AskFill({ timeout, deadline, left }: { timeout: number; deadline?: number; left?: number }) {
+  return <span aria-hidden className="ask-row-fill" data-paused={deadline === undefined ? "" : undefined} style={countdownFill({ timeout, deadline, left })} />;
 }
 
 /** Ticks on its own: the memoized rows render only when what they show of the chat changes. */

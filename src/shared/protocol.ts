@@ -3,6 +3,8 @@
 // message-types.md and session-format.md in the installed package. Keep this file
 // types-only; pi is an external process, not a dependency.
 
+import type { AskQuestion } from "./ask";
+
 // ── Content blocks ──────────────────────────────────────────────────────────
 
 export interface TextContent {
@@ -279,7 +281,13 @@ export type ExtensionUiDialog =
   | { type: "extension_ui_request"; id: string; method: "select"; title: string; options: string[]; timeout?: number }
   | { type: "extension_ui_request"; id: string; method: "confirm"; title: string; message?: string; timeout?: number }
   | { type: "extension_ui_request"; id: string; method: "input"; title: string; placeholder?: string; timeout?: number }
-  | { type: "extension_ui_request"; id: string; method: "editor"; title: string; prefill?: string; timeout?: number };
+  | { type: "extension_ui_request"; id: string; method: "editor"; title: string; prefill?: string; timeout?: number }
+  /**
+   * The agent's questions (ask_user, src/shared/ask.ts), main's own: pi never sees this record. `timeout` is the whole
+   * countdown; while it runs, `deadline` is when it ends on the host's clock, and once the user paused it, `left` is
+   * what remained.
+   */
+  | { type: "extension_ui_request"; id: string; method: "questions"; title: string; questions: AskQuestion[]; timeout?: number; deadline?: number; left?: number };
 
 export type ExtensionUiNotice =
   | { type: "extension_ui_request"; id: string; method: "notify"; message: string; notifyType?: "info" | "warning" | "error" }
@@ -302,7 +310,7 @@ export type ExtensionUiResponse =
   | { type: "extension_ui_response"; id: string; confirmed: boolean }
   | { type: "extension_ui_response"; id: string; cancelled: true };
 
-export const DIALOG_METHODS = new Set(["select", "confirm", "input", "editor"]);
+export const DIALOG_METHODS = new Set(["select", "confirm", "input", "editor", "questions"]);
 
 // ── Session file entries ────────────────────────────────────────────────────
 

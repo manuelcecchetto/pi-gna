@@ -1,6 +1,7 @@
 import {
   AppWindow,
   Bot,
+  ShieldQuestion,
   ChevronRight,
   CircleSlash,
   CornerDownRight,
@@ -40,6 +41,7 @@ const ICONS: Record<ToolCategory, IconComponent> = {
   computer: MousePointer2,
   board: SquareKanban,
   agent: Bot,
+  ask: ShieldQuestion,
   think: Sparkles,
   other: Wrench,
 };

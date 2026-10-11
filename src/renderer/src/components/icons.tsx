@@ -59,6 +59,7 @@ export const Check = icon("check", <path d="M5 12.5l4.5 4.5L19 7.5" />);
 export const Plus = icon("plus", <path d="M12 5v14M5 12h14" />);
 export const Minus = icon("minus", <path d="M5 12h14" />);
 export const ChevronDown = icon("chevron-down", <path d="M6 9l6 6 6-6" />);
+export const ChevronUp = icon("chevron-up", <path d="M18 15l-6-6-6 6" />);
 export const ChevronLeft = icon("chevron-left", <path d="M15 6l-6 6 6 6" />);
 export const ChevronRight = icon("chevron-right", <path d="M9 6l6 6-6 6" />);
 export const ChevronsUpDown = icon("chevrons-up-down", <path d="M7 9l5-5 5 5M7 15l5 5 5-5" />);

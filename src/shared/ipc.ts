@@ -44,6 +44,7 @@ export const IPC = {
   editQueue: "studio:edit-queue",
   command: "studio:command",
   respondDialog: "studio:respond-dialog",
+  pauseDialog: "studio:pause-dialog",
   listFiles: "studio:list-files",
   pickFolder: "studio:pick-folder",
   pickAttachments: "studio:pick-attachments",
@@ -591,6 +592,8 @@ export interface StudioApi {
   editQueue(handle: string, op: QueueEdit): Promise<boolean>;
   command<T = unknown>(handle: string, command: RpcCommand): Promise<RpcResponse<T>>;
   respondDialog(handle: string, response: ExtensionUiResponse): Promise<DialogAnswer>;
+  /** The user touched a questions card: stop its countdown for every client. */
+  pauseDialog(handle: string, id: string): void;
   listFiles(cwd: string): Promise<string[]>;
   /**
    * Start the chat for a task (a card's investigation, resolution or QA, a lament's fix, a pull request's review) and

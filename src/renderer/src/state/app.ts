@@ -543,7 +543,7 @@ export function handleBatch(batch: HostEventBatch): void {
     else if (event.kind === "closed") {
       // Another client closed the chat: leave it (the desktop's own close already removed it).
       if (event.by !== "desktop") removeSession(handle);
-    } else if (event.kind === "dialog_resolved" || event.kind === "lease") continue;
+    } else if (event.kind === "dialog_resolved" || event.kind === "dialog_paused" || event.kind === "lease") continue;
     else if (event.kind === "exit") {
       // A spawn failure (pi not installed) is explained in the session's banner; keep the toast short.
       if (event.error) toast("pi could not start", "error");
@@ -1382,6 +1382,8 @@ export function openChat(session: SessionState): OpenChat {
     draft: isDraft(session),
     exited: session.phase === "exited",
   };
+  const ask = session.dialogs.find((dialog) => dialog.method === "questions");
+  if (ask?.method === "questions" && ask.timeout) Object.assign(next, { askTimeout: ask.timeout, askDeadline: ask.deadline, askLeft: ask.left });
   const previous = chatsByHandle.get(session.handle);
   const chat = previous && shallow(previous, next) ? previous : next;
   chatsByHandle.set(session.handle, chat);

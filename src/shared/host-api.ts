@@ -124,6 +124,8 @@ export type HostEvent =
   | { kind: "exit"; code: number | null; signal: string | null; error?: string; stderrTail: string }
   /** A dialog (extension UI or a main-owned approval) was settled; every client drops its card. */
   | { kind: "dialog_resolved"; id: string; by: Actor; outcome: DialogOutcome }
+  /** The user touched the questions card (ask_user): its countdown stops for good, with `left` ms remaining. */
+  | { kind: "dialog_paused"; id: string; left: number }
   /** Clients holding a lease on the chat changed. */
   | { kind: "lease"; clients: ClientPresence[] }
   /** The chat was closed explicitly (`chat.close`) or pi stopped it; clients leave it. */
@@ -512,6 +514,7 @@ export interface HostMethods {
   "chat.interrupt": { args: { handle: string }; result: string[] };
   "chat.editQueue": { args: { handle: string; op: QueueEdit }; result: boolean };
   "chat.respondDialog": { args: { handle: string; response: ExtensionUiResponse }; result: DialogAnswer };
+  "chat.pauseDialog": { args: { handle: string; id: string }; result: void };
   "chat.startTask": { args: { target: TaskTarget }; result: TaskStarted };
   "chat.files": { args: { cwd: string }; result: string[] };
   "chat.compactionSettings": { args: Record<string, never>; result: CompactionSettings };

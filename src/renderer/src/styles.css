@@ -866,6 +866,59 @@ code.hl span {
   }
 }
 
+/* The agent's questions (QuestionsCard): the countdown that sends their defaults fills the Send button, and the chat's
+   sidebar row, from the left. A running one is this animation started part-way (a negative delay), a paused one a
+   fixed --ask-fill. */
+@property --ask-fill {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+@keyframes ask-fill {
+  from {
+    --ask-fill: 0%;
+  }
+  to {
+    --ask-fill: 100%;
+  }
+}
+.ask-countdown {
+  background: linear-gradient(90deg, var(--accent) var(--ask-fill), color-mix(in srgb, var(--accent) 42%, var(--panel)) var(--ask-fill));
+}
+/* Under the row's content, over its own background (the row isolates). */
+.ask-row-fill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent) var(--ask-fill), transparent var(--ask-fill));
+}
+.ask-row-fill[data-paused] {
+  opacity: 0.6;
+}
+/* The step counter rolls one digit in from the direction the questions moved. */
+.ask-roll-down {
+  --ask-from: 100%;
+  animation: ask-roll 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.ask-roll-up {
+  --ask-from: -100%;
+  animation: ask-roll 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@keyframes ask-roll {
+  from {
+    transform: translateY(var(--ask-from));
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ask-roll-down,
+  .ask-roll-up {
+    animation: none;
+  }
+}
+
 /* Past turns (Transcript's sections, all but the newest three) skip style, layout and paint while off screen, so the
    streaming turn's growth, a resize or opening the chat lays out only what is in view. A turn that has not rendered yet
    is 600px tall; once it has, it keeps the height it last rendered at (`auto`, on every turn so the newest ones have

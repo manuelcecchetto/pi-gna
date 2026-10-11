@@ -8,7 +8,7 @@ import "./styles.css";
 // The shared transcript components take their state and actions from here (lib/chat-ui.tsx).
 const ui: ChatUi = {
   store,
-  actions: { homeDir: window.studio.homeDir, setExpanded, openLightbox, showBoard, openExternal: (url) => window.studio.openExternal(url), links: desktopLinks, respondDialog, editQueue },
+  actions: { homeDir: window.studio.homeDir, setExpanded, openLightbox, showBoard, openExternal: (url) => window.studio.openExternal(url), links: desktopLinks, respondDialog, pauseDialog: (handle, id) => window.studio.pauseDialog(handle, id), editQueue },
 };
 
 // Cmd +/- zooms the page but not the native traffic lights, so the title bar sizes what lines up with them in screen

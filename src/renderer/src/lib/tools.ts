@@ -1,9 +1,10 @@
 // How tool calls read in the transcript: a category, a verb and a target. Pure, so the
 // collapsed one-liners and the activity summaries stay consistent and testable.
+import { answerText, type AskResult } from "../../../shared/ask";
 import { parseLocalTarget } from "../../../shared/preview";
 import type { ToolCall } from "../../../shared/protocol";
 
-export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "think" | "other";
+export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "ask" | "think" | "other";
 
 export interface ToolPresentation {
   category: ToolCategory;
@@ -187,6 +188,13 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
         activeVerb: args.column ? "Moving its card" : "Reporting on its card",
         target: args.column ? `to ${str(args.column)}` : firstLine(str(args.report), 80),
       };
+    case "ask_user": {
+      const result = details && typeof details === "object" && Array.isArray((details as AskResult).answers) ? (details as AskResult) : undefined;
+      const asked = Array.isArray(args.questions) ? (args.questions as { prompt?: unknown }[]) : [];
+      if (result?.cancelled) return { category: "ask", verb: "Declined to answer", activeVerb: "Asking", target: "" };
+      if (result) return { category: "ask", verb: "Answered:", activeVerb: "Asking", target: result.answers.map(answerText).join(" · ") };
+      return { category: "ask", verb: "Asked", activeVerb: "Asking", target: firstLine(str(asked[0]?.prompt), 80), meta: asked.length > 1 ? `+${asked.length - 1}` : undefined };
+    }
     case "run":
     case "snapshot":
     case "screenshot":
@@ -260,6 +268,7 @@ export function summarizeTools(tools: SummaryInput[]): string | undefined {
   if (counts.browser) parts.push(`${plural(counts.browser, "browser action", "browser actions")}`);
   if (counts.computer) parts.push(`${apps.size ? `used ${[...apps].join(", ")} · ` : ""}${plural(counts.computer, "action", "actions")}`);
   if (counts.board) parts.push(`${plural(counts.board, "board action", "board actions")}`);
+  if (counts.ask) parts.push(counts.ask > 1 ? `asked you ${counts.ask}×` : "asked you");
   if (counts.agent) parts.push(`${plural(counts.agent, "delegation", "delegations")}`);
   if (counts.other) parts.push(`${plural(counts.other, "tool call", "tool calls")}`);
   if (failed) parts.push(`${failed} failed`);

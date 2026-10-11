@@ -331,6 +331,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         return { ok: false, code: error.code, message: error.message };
       }
     }),
+    "chat.pauseDialog": any<{ handle: string; id: string }>("remote", (_ctx, { handle, id }) => host.pauseDialog(handle, id)),
     "chat.startTask": any<{ target: TaskTarget }>("remote", async (ctx, { target }) => tasks.start(presence(ctx), target)),
     "chat.send": any<{ handle: string; text: string; mode?: "send" | "followUp"; cardId?: string; attachments?: AttachmentRef[]; annotations?: unknown[] }>("remote", async (ctx, args) => {
       // The phone keeps its browser comments and sends them with the prompt; the host composes the block and the crops.
@@ -853,6 +854,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.interrupt, "chat.interrupt", (handle) => ({ handle })),
   route(IPC.editQueue, "chat.editQueue", (handle, op) => ({ handle, op })),
   route(IPC.respondDialog, "chat.respondDialog", (handle, response) => ({ handle, response })),
+  route(IPC.pauseDialog, "chat.pauseDialog", (handle, id) => ({ handle, id }), true),
   route(IPC.startTask, "chat.startTask", (target) => ({ target })),
   route(IPC.listFiles, "chat.files", (cwd) => ({ cwd })),
   route(IPC.pickFolder, "fs.pickFolder"),

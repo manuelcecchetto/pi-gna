@@ -102,6 +102,14 @@ describe("dialog_resolved / lease / closed host events", () => {
     expect(reduceHostEvent(open, { kind: "dialog_resolved", id: "zzz", by: "desktop", outcome: "answered" }, 2)).toBe(open);
   });
 
+  it("freezes a questions card's countdown where it was paused", () => {
+    const record = { type: "extension_ui_request" as const, id: "q", method: "questions" as const, title: "?", questions: [], timeout: 30_000, deadline: 40_000 };
+    const asked = reduceHostEvent(open, { kind: "rpc", record }, 2);
+    const paused = reduceHostEvent(asked, { kind: "dialog_paused", id: "q", left: 12_000 }, 3);
+    expect(paused.dialogs.at(-1)).toEqual({ ...record, deadline: undefined, left: 12_000 });
+    expect(reduceHostEvent(paused, { kind: "dialog_paused", id: "a", left: 1 }, 4)).toBe(paused);
+  });
+
   it("lease and closed events do not change the transcript state", () => {
     expect(reduceHostEvent(open, { kind: "lease", clients: [] }, 2)).toBe(open);
     expect(reduceHostEvent(open, { kind: "closed", by: "host" }, 2)).toBe(open);

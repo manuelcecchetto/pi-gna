@@ -5,11 +5,13 @@ import type { ExtensionUiDialog } from "../../../shared/protocol";
 import { useChatActions } from "../lib/chat-ui";
 import { Ansi, Kbd, useNow } from "./primitives";
 
+/** The agent's questions are not among them: they take the composer's place (QuestionsCard). */
 export const Dialogs = memo(function Dialogs({ handle, dialogs }: { handle: string; dialogs: ExtensionUiDialog[] }) {
-  if (!dialogs.length) return null;
+  const cards = dialogs.filter((dialog) => dialog.method !== "questions");
+  if (!cards.length) return null;
   return (
     <div className="flex flex-col gap-2">
-      {dialogs.map((dialog) => (
+      {cards.map((dialog) => (
         <DialogCard key={dialog.id} handle={handle} dialog={dialog} />
       ))}
     </div>

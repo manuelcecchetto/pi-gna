@@ -44,6 +44,7 @@ const api: StudioApi = {
   interrupt: (handle) => ipcRenderer.invoke(IPC.interrupt, handle),
   editQueue: (handle, op) => ipcRenderer.invoke(IPC.editQueue, handle, op),
   respondDialog: (handle, response) => ipcRenderer.invoke(IPC.respondDialog, handle, response),
+  pauseDialog: (handle, id) => ipcRenderer.send(IPC.pauseDialog, handle, id),
   listFiles: (cwd) => ipcRenderer.invoke(IPC.listFiles, cwd),
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
   pickAttachments: (kind) => ipcRenderer.invoke(IPC.pickAttachments, kind),

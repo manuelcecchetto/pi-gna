@@ -257,6 +257,10 @@ export function reduceHostEvent(state: SessionState, event: HostEvent, now: numb
       const dialogs = state.dialogs.filter((dialog) => dialog.id !== event.id);
       return dialogs.length === state.dialogs.length ? state : { ...state, dialogs };
     }
+    case "dialog_paused": {
+      const dialogs = state.dialogs.map((dialog) => (dialog.id === event.id && dialog.method === "questions" ? { ...dialog, deadline: undefined, left: event.left } : dialog));
+      return dialogs.some((dialog, index) => dialog !== state.dialogs[index]) ? { ...state, dialogs } : state;
+    }
     // Lease changes and explicit closes concern the client's navigation, not the transcript.
     case "lease":
     case "closed":
@@ -270,6 +274,7 @@ function reduceUiRequest(state: SessionState, request: ExtensionUiRequest, now: 
     case "confirm":
     case "input":
     case "editor":
+    case "questions":
       return { ...state, dialogs: [...state.dialogs, request] };
     case "setStatus": {
       const statuses = { ...state.statuses };

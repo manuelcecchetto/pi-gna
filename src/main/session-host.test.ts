@@ -1123,4 +1123,56 @@ describe("command semantics", () => {
       vi.useRealTimers();
     }
   });
+
+  it("asks the agent's questions: the countdown sends the defaults, a touch pauses it, answers are checked", async () => {
+    vi.useFakeTimers();
+    try {
+      const { host, handle, events, pi } = await setup();
+      const questions = [
+        { id: "fix", prompt: "Which fix?", options: [{ label: "start" }, { label: "close" }], multi: false, allowOther: true, defaultPicks: [0] },
+        { id: "note", prompt: "Anything else?", options: [], multi: false, allowOther: true, defaultPicks: [] },
+      ];
+      const idOf = () => (events.filter((e) => e.kind === "rpc" && (e.record as { method?: string }).method === "questions").at(-1)!.record as { id: string }).id;
+
+      // Nobody answers: the defaults go when the countdown ends, and the card goes everywhere.
+      const timedOut = host.requestAnswers(handle, questions, 30_000);
+      const first = idOf();
+      expect(host.stateOf(handle)!.dialogs).toMatchObject([{ id: first, method: "questions", timeout: 30_000, deadline: Date.now() + 30_000 }]);
+      vi.advanceTimersByTime(30_000);
+      await expect(timedOut).resolves.toMatchObject({ cancelled: false, answers: [{ values: ["start"], source: "default" }, { values: [], source: "default" }] });
+      expect(events.at(-1)).toMatchObject({ kind: "dialog_resolved", id: first, outcome: "timeout" });
+
+      // A touch stops the countdown for good; a malformed answer keeps the card; a good one comes back to the agent.
+      const answered = host.requestAnswers(handle, questions, 30_000);
+      const second = idOf();
+      vi.advanceTimersByTime(10_000);
+      host.pauseDialog(handle, second);
+      expect(events.at(-1)).toEqual({ kind: "dialog_paused", id: second, left: 20_000 });
+      expect(host.stateOf(handle)!.dialogs[0]).toMatchObject({ deadline: undefined, left: 20_000 });
+      vi.advanceTimersByTime(60_000);
+      expect(host.stateOf(handle)!.dialogs).toHaveLength(1);
+      expect(() => host.respondDialog(handle, { type: "extension_ui_response", id: second, value: JSON.stringify({ replies: [{ id: "fix", picks: [0, 1] }] }) })).toThrowError(expect.objectContaining({ code: "bad_request" }));
+      expect(host.stateOf(handle)!.dialogs).toHaveLength(1);
+      host.respondDialog(handle, { type: "extension_ui_response", id: second, value: JSON.stringify({ replies: [{ id: "fix", picks: [1] }, { id: "note", text: "ship it" }] }) }, phone);
+      await expect(answered).resolves.toMatchObject({ cancelled: false, answers: [{ values: ["close"], source: "user" }, { values: ["ship it"], source: "user" }] });
+      expect(fake.responded).toHaveLength(0);
+
+      // Dismissed, aborted (Esc) or the chat ends: the agent gets no answer.
+      const dismissed = host.requestAnswers(handle, questions, 0);
+      expect(host.stateOf(handle)!.dialogs[0]).not.toHaveProperty("timeout");
+      host.respondDialog(handle, { type: "extension_ui_response", id: idOf(), cancelled: true });
+      await expect(dismissed).resolves.toMatchObject({ cancelled: true, answers: [] });
+      const abort = new AbortController();
+      const aborted = host.requestAnswers(handle, questions, 30_000, abort.signal);
+      abort.abort();
+      await expect(aborted).resolves.toMatchObject({ cancelled: true });
+      expect(host.stateOf(handle)!.dialogs).toHaveLength(0);
+      const orphaned = host.requestAnswers(handle, questions, 30_000);
+      expect(() => host.pauseDialog("other", idOf())).toThrowError(expect.objectContaining({ code: "not_found" }));
+      await pi.close();
+      await expect(orphaned).resolves.toMatchObject({ cancelled: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

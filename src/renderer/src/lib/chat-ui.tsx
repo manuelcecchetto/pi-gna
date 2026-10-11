@@ -48,6 +48,8 @@ export interface ChatUiActions {
   /** Absent where links cannot open: file links then read as plain text. */
   links?: ChatLinks;
   respondDialog(handle: string, response: ExtensionUiResponse): Promise<void>;
+  /** Stop a questions card's countdown (the user touched it). */
+  pauseDialog(handle: string, id: string): void;
   /** False when the queue no longer holds the text (the run moved on). */
   editQueue(handle: string, op: QueueOp): Promise<boolean>;
 }

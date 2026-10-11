@@ -37,6 +37,7 @@ import { CardImages } from "./card-images";
 import { AgentBridge } from "./bridge";
 import { listFiles } from "./files";
 import { Github, GithubStore } from "./github";
+import { askRoute } from "./ask";
 import { kanbanRoute } from "./kanban";
 import { ComputerAgent, computerRoute } from "./computer/agent";
 import { ComputerPreviews, shrinkWith } from "./computer/preview";
@@ -247,6 +248,7 @@ const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer
 });
 const laments = new LamentStore(join(app.getPath("userData"), "laments.json"), atMostEvery((next) => publish({ kind: "laments", laments: next })));
 bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => host.identify(handle))));
+bridge.route("/ask", askRoute((handle, questions, timeoutMs, signal) => host.requestAnswers(handle, questions, timeoutMs, signal)));
 // The chat titler (resources/title-extension.ts) asks at each new chat's first prompt, so a changed model applies at once.
 bridge.route("/title", async () => ({ model: taskModel(await settings.get(), "title") }));
 bridge.route(
