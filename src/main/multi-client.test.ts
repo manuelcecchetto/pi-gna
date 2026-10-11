@@ -143,7 +143,7 @@ describe("leases and closing", () => {
     const host = new SessionHost(() => undefined, bridge, "/atp");
     host.onGlobal((event) => globals.push(event as never));
     const phone = await host.open({ cwd: tmpdir(), sessionPath: join(tmpdir(), "phone.jsonl") }, { client: { clientId: "p1", actor: P1.actor } });
-    expect(globals.find((e) => e.kind === "chat.opened")).toMatchObject({ handle: phone.handle, sessionPath: "/tmp/phone.jsonl" });
+    expect(globals.find((e) => e.kind === "chat.opened")).toMatchObject({ handle: phone.handle, sessionPath: join(tmpdir(), "phone.jsonl") });
     expect(host.attentionAll().map((c) => c.handle)).toContain(phone.handle);
     const desktop = await host.open({ cwd: tmpdir(), sessionPath: join(tmpdir(), "phone.jsonl") }, { client: DESKTOP });
     expect(desktop).toMatchObject({ handle: phone.handle, reused: true });

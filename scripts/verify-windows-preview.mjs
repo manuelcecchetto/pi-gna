@@ -7,13 +7,13 @@ import { execFile, spawn } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 if (process.platform !== "win32") throw new Error("Run this smoke test on Windows.");
 const root = fileURLToPath(new URL("../", import.meta.url));
-const packaged = process.argv[2];
+const packaged = process.argv[2] ? resolve(process.argv[2]) : undefined;
 const electron = packaged || createRequire(import.meta.url)("electron");
 const work = await mkdtemp(join(tmpdir(), "pigna windows preview-"));
 const project = join(work, "Project with spaces ü");
