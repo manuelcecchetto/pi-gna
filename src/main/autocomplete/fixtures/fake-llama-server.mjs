@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Fake llama-server for tests: answers /health and /completion like llama.cpp's server, behind the same Bearer key,
+// Fake llama-server for tests: answers /health and /completion (content and token probabilities, the last word unsure)
+// like llama.cpp's server, behind the same Bearer key,
 // appends each completion request to $FAKE_LLAMA_LOG, and with $FAKE_LLAMA_FAIL set exits at once (a GPU build that
 // cannot run here).
 import { appendFileSync } from "node:fs";
@@ -18,6 +19,8 @@ createServer((req, res) => {
   req.on("data", (chunk) => (body += chunk));
   req.on("end", () => {
     if (process.env.FAKE_LLAMA_LOG) appendFileSync(process.env.FAKE_LLAMA_LOG, `${body}\n`);
-    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ content: " the composer scroll" }));
+    const tokens = [[" the", 0.9], [" composer", 0.8], [" scroll", 0.7], [" bar", 0.1]];
+    const completion_probabilities = tokens.map(([token, prob]) => ({ token, logprob: Math.log(prob) }));
+    res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ content: tokens.map(([token]) => token).join(""), completion_probabilities }));
   });
 }).listen(Number(arg("port")), arg("host"));

@@ -128,7 +128,7 @@ describe.skipIf(process.platform === "win32")("Autocomplete", () => {
       expect(statuses.some((status) => status.phase === "downloading")).toBe(true);
       expect(await service.suggest("c1", request)).toBe(" the composer scroll");
       const sent = JSON.parse(readFileSync(log, "utf8").trim().split("\n").at(-1)!);
-      expect(sent).toMatchObject({ n_predict: 16, temperature: 0, stop: ["\n"], cache_prompt: true });
+      expect(sent).toMatchObject({ n_predict: 10, temperature: 0, stop: ["\n"], cache_prompt: true, n_probs: 1 });
       expect(sent.prompt).toContain(`Earlier messages from the user:\n- ${PROMPT}\n***Roleplay chat below***\nUser: check it\nAgent: Checked.\nUser: why does the composer`);
       service.setEnabled(false);
       expect(service.get().phase).toBe("off");

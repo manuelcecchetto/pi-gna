@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Composer autocomplete is more precise and no longer loops: a suggestion shows only when the local model is confident (its first word is right about twice as often), stops at the end of a sentence and after at most 6 words, never follows a finished sentence, and is dropped when it repeats what you just typed. It also looks at more of your earlier messages in the project.
+
 ## 0.19.0 - 2026-10-11
 
 - Composer autocomplete (Settings > Agent > Beta, off by default): as you type, faint ghost text suggests how your message goes on; Tab takes it, ⌘Z / Ctrl+Z takes it back, Esc hides it. A small typeahead model (about 400 MB, downloaded once and checksum-verified) runs on your computer through llama.cpp, Metal on a Mac and Vulkan or CPU on Windows and Linux, and looks at your earlier messages in the project. Nothing leaves the computer.

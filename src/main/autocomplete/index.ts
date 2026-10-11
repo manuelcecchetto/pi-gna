@@ -6,7 +6,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { type AutocompleteStatus, buildPrompt, cleanSuggestion, pickExamples, type SuggestRequest, wantsSuggestion } from "../../shared/autocomplete";
+import { type AutocompleteStatus, buildPrompt, cleanSuggestion, confidentText, pickExamples, type SuggestRequest, wantsSuggestion } from "../../shared/autocomplete";
 import { log } from "../log";
 import { type Download, MODEL, type ServerBuild, serverBuilds } from "./assets";
 import { type Fetch, fetchVerified, installServer } from "./install";
@@ -208,12 +208,16 @@ export class Autocomplete {
       const response = await fetch(`${server.url}/completion`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${server.key}` },
-        body: JSON.stringify({ prompt, n_predict: 16, temperature: 0, stop: ["\n"], cache_prompt: true }),
+        // n_probs: each token's probability, so the suggestion stops before the model starts guessing.
+        body: JSON.stringify({ prompt, n_predict: 10, temperature: 0, stop: ["\n"], cache_prompt: true, n_probs: 1 }),
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(SUGGEST_MS)]),
       });
       if (!response.ok) return "";
-      const body = (await response.json()) as { content?: unknown };
-      return typeof body.content === "string" ? cleanSuggestion(body.content, request.draft) : "";
+      const body = (await response.json()) as { completion_probabilities?: { token?: unknown; logprob?: unknown }[] };
+      const tokens = (body.completion_probabilities ?? []).flatMap(({ token, logprob }) =>
+        typeof token === "string" && typeof logprob === "number" ? [{ text: token, prob: Math.exp(logprob) }] : [],
+      );
+      return cleanSuggestion(confidentText(tokens), request.draft);
     } catch {
       return "";
     } finally {

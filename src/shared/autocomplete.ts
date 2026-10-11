@@ -32,9 +32,12 @@ export const DRAFT_CHARS = 1200;
 export const LAST_USER_CHARS = 300;
 export const LAST_AGENT_CHARS = 600;
 export const EXAMPLE_CHARS = 250;
-export const EXAMPLES = 3;
-/** Words a suggestion may have at most: the model is asked for 16 tokens and cut at the line's end. */
-export const MAX_WORDS = 12;
+export const EXAMPLES = 10;
+/**
+ * Words a suggestion may have at most: the model is asked for 10 tokens and cut at the line's or sentence's end. Past
+ * the first few words a guess is almost never what gets typed (docs/DESIGN.md), so a long tail only adds noise.
+ */
+export const MAX_WORDS = 6;
 
 const flat = (text: string) => text.replace(/\s+/g, " ").trim();
 const tail = (text: string, chars: number) => flat(text).slice(-chars).trim();
@@ -92,22 +95,77 @@ export function buildPrompt(request: Pick<SuggestRequest, "draft" | "lastUser" |
 }
 
 /**
+ * Lowest probability the model may give a suggested word (the product of its tokens' probabilities): the suggestion
+ * ends before the first word below it, and is empty when the first one is. On 598 real drafts this showed a
+ * suggestion at about a quarter of the pauses, with its first word right about 45% of the time instead of 20%.
+ */
+export const MIN_WORD_PROB = 0.35;
+
+/** One generated token and the probability the model gave it. */
+export interface TokenProb {
+  text: string;
+  prob: number;
+}
+
+/**
+ * The model's continuation up to its last confident word, from its tokens: a token starting with a space starts a new
+ * word, and a newline ends the continuation.
+ */
+export function confidentText(tokens: readonly TokenProb[], min = MIN_WORD_PROB): string {
+  let kept = "";
+  let word = "";
+  let prob = 1;
+  for (const token of tokens) {
+    const newline = token.text.indexOf("\n");
+    const text = newline < 0 ? token.text : token.text.slice(0, newline);
+    if (text.startsWith(" ") && word.trim()) {
+      if (prob < min) return kept;
+      kept += word;
+      word = "";
+      prob = 1;
+    }
+    word += text;
+    prob *= token.prob;
+    if (newline >= 0) break;
+  }
+  return word.trim() && prob >= min ? kept + word : kept;
+}
+
+/** Each run of three words in `text`, lowercased, the unit an echo is caught by. */
+function trigrams(text: string): Set<string> {
+  const list = text.toLowerCase().match(/[\p{L}\p{N}'_-]+/gu) ?? [];
+  const found = new Set<string>();
+  for (let index = 0; index + 2 < list.length; index++) found.add(list.slice(index, index + 3).join(" "));
+  return found;
+}
+
+/**
  * The ghost text for `draft` from the model's raw continuation, or "" for none. The model was trained to start at a
  * word boundary, so a continuation of the last typed word is dropped rather than guessed at; after a trailing space
- * the suggestion starts with its word, otherwise with the space before it, and punctuation joins the last word.
+ * the suggestion starts with its word, otherwise with the space before it, and punctuation joins the last word. It
+ * ends with its first sentence, and one that repeats three words in a row from the draft is dropped: the small model
+ * otherwise loops on what was just written.
  */
 export function cleanSuggestion(raw: string, draft: string): string {
-  const line = raw.split("\n")[0]!.replace(/\s+$/, "");
+  const firstLine = raw.split("\n")[0]!;
+  const sentenceEnd = firstLine.search(/[.?!](\s|$)/);
+  const line = (sentenceEnd < 0 ? firstLine : firstLine.slice(0, sentenceEnd + 1)).replace(/\s+$/, "");
   if (!line.trim() || /^[\p{L}\p{N}]/u.test(line)) return "";
   const kept = line.trimStart().split(/\s+/).slice(0, MAX_WORDS).join(" ");
+  const seen = trigrams(draft);
+  const lastWords = flat(draft).split(" ").slice(-2).join(" ");
+  for (const run of trigrams(`${lastWords}${/^\s/.test(line) ? " " : ""}${kept}`)) if (seen.has(run)) return "";
   // Punctuation joins the last word; a word goes after a space.
   if (!/^\s/.test(line)) return kept;
   return /\s$/.test(draft) || draft === "" ? kept : ` ${kept}`;
 }
 
-/** Whether a draft gets suggestions: some text, caret on a line with words, not a slash command. */
+/**
+ * Whether a draft gets suggestions: some text, caret on a line with words, not a slash command, and not right after a
+ * finished sentence, where the model invents a new one that mostly echoes the last.
+ */
 export function wantsSuggestion(draft: string): boolean {
-  if (!draft.trim() || draft.trimStart().startsWith("/")) return false;
+  if (!draft.trim() || draft.trimStart().startsWith("/") || /[.?!]\s*$/.test(draft)) return false;
   const line = draft.slice(draft.lastIndexOf("\n") + 1);
   return line.trim().length >= 2;
 }

@@ -997,9 +997,21 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   --cache-reuse 256 --no-webui`. It stops after 10 minutes without a suggestion, when the switch goes off, and in
   `will-quit`.
   The prompt (`buildPrompt` in `src/shared/autocomplete.ts`) is the plain-text format the model was trained on: a
-  scene line, up to three of the user's earlier typed messages in the project, `***Roleplay chat below***`, the chat's
-  last user message and agent reply, then `User: <draft>`. It asks for 16 tokens at temperature 0, stops at a newline,
-  and drops a continuation of the half-typed word (`cleanSuggestion`). Earlier messages come from pi's session files of
+  scene line, up to ten of the user's earlier typed messages in the project, `***Roleplay chat below***`, the chat's
+  last user message and agent reply, then `User: <draft>`. It asks for 10 tokens at temperature 0 with `n_probs: 1`,
+  stops at a newline, keeps words only while each has probability >= 0.35 (`confidentText`, `MIN_WORD_PROB`), and
+  drops a continuation of the half-typed word (`cleanSuggestion`). A suggestion ends with its first sentence and
+  at 6 words, none is asked for right after a finished sentence (`wantsSuggestion`), and one repeating three words in
+  a row from the draft is dropped: with 12-word, multi-sentence suggestions the model looped (repeated Tabs gave "I'm
+  using react-native." then "I'm using react-native-screens."). Repetition samplers did not help: DRY changed nothing
+  and `repeat_penalty` 1.3 made it ramble and emit emoji.
+  Tuning on the same 598 drafts (2026-10-11, orb-350m): ungated, a suggestion showed at 91% of pauses and its first
+  word was right 20% of the time; gating at 0.35 shows one at about 25% with 46% right (0.5: 13% shown, 50% right).
+  Ten earlier messages instead of three: 46.4% vs 42.8% right (56% vs 48% on drafts without an agent reply yet), for
+  about 20 ms. No gain from 2000 chars of the agent's reply (43.5%), the last three user messages (41.9%), dropping
+  the context (24% at matched coverage), a "terse engineer" scene line (41.5%), or Qwen3.5-0.8B-Base (46% at 2x the
+  latency). Claude Haiku 5.5 through pi with richer context did worse on 80 drafts: 16% vs 29% first word right, about
+  3 s, and it invented plausible specifics. Earlier messages come from pi's session files of
   the project's folder and the cwd's (`PromptHistory`: the newest 200 files, only user lines parsed, `isTypedPrompt`
   drops pi-gna's task prompts, pastes and code, re-read only when a file's size or mtime moves). They are ranked by
   shared words over √length (`pickExamples`), with no training and no index to build.

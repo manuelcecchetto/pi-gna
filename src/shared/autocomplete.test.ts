@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPrompt, cleanSuggestion, isTypedPrompt, lastExchange, pickExamples, remainingGhost, wantsSuggestion } from "./autocomplete";
+import { buildPrompt, cleanSuggestion, confidentText, isTypedPrompt, lastExchange, pickExamples, remainingGhost, wantsSuggestion } from "./autocomplete";
 import type { Item } from "./session-state";
 
 describe("buildPrompt", () => {
@@ -45,8 +45,37 @@ describe("cleanSuggestion", () => {
     expect(cleanSuggestion(", then push", "fix it")).toBe(", then push");
   });
 
-  it("keeps at most 12 words", () => {
-    expect(cleanSuggestion(` ${"w ".repeat(20)}`, "go ").split(" ")).toHaveLength(12);
+  it("keeps at most 6 words", () => {
+    expect(cleanSuggestion(` ${"w ".repeat(20)}`, "go ").split(" ")).toHaveLength(6);
+  });
+
+  it("ends with the first sentence", () => {
+    expect(cleanSuggestion(" fix it? I want to see the code.", "can you")).toBe(" fix it?");
+    expect(cleanSuggestion(" v1.2 build. Then more", "ship the")).toBe(" v1.2 build.");
+  });
+
+  it("drops a suggestion that repeats three words of the draft", () => {
+    expect(cleanSuggestion(" using react-native too", "I'm using react-native. I'm")).toBe("");
+    expect(cleanSuggestion(" commit and push", "commit and push, then")).toBe("");
+    expect(cleanSuggestion(" and push", "commit")).toBe(" and push");
+  });
+});
+
+describe("confidentText", () => {
+  const tokens = (...pairs: [string, number][]) => pairs.map(([text, prob]) => ({ text, prob }));
+
+  it("keeps whole words while each is likely enough", () => {
+    expect(confidentText(tokens([" the", 0.9], [" compos", 0.8], ["er", 0.9], [" scroll", 0.2], [" bar", 0.9]))).toBe(" the composer");
+  });
+
+  it("weighs a word by all its tokens", () => {
+    expect(confidentText(tokens([" the", 0.9], [" compos", 0.5], ["er", 0.5]))).toBe(" the");
+  });
+
+  it("is empty when the first word is a guess, and ends at a newline", () => {
+    expect(confidentText(tokens([" maybe", 0.1], [" this", 0.99]))).toBe("");
+    expect(confidentText(tokens([" fix", 0.9], [" it?\n", 0.9], ["User", 0.9]))).toBe(" fix it?");
+    expect(confidentText([])).toBe("");
   });
 });
 
@@ -86,6 +115,8 @@ describe("wantsSuggestion", () => {
     expect(wantsSuggestion("  ")).toBe(false);
     expect(wantsSuggestion("/compact now")).toBe(false);
     expect(wantsSuggestion("first line\n")).toBe(false);
+    expect(wantsSuggestion("can you fix it? ")).toBe(false);
+    expect(wantsSuggestion("done.")).toBe(false);
   });
 });
 
