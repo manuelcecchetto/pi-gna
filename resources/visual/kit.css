@@ -101,6 +101,16 @@ svg text { fill: currentColor; stroke: none; }
 .split { display: flex; height: 26px; gap: 2px; border-radius: 6px; overflow: hidden; font-size: 12px; }
 .split > * { width: var(--v); background: var(--c, var(--accent)); color: #fff; display: flex; align-items: center; justify-content: center;
   min-width: 0; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Column chart: one child per column, its <span>s stacked from the bottom, each sized by --v (share of the height) and colored by --c. */
+.cols { display: flex; align-items: stretch; gap: 3px; height: var(--h, 160px); }
+.cols > * { flex: 1; min-width: 2px; display: flex; flex-direction: column-reverse; border-radius: 3px; overflow: hidden; }
+.cols > :hover { background: var(--raised); }
+.cols > * > span { flex: none; height: var(--v, 0%); background: var(--c, var(--accent)); }
+/* Cell grid (heat maps): a label column, then --n square cells per row, each a <div> colored by --c. */
+.cells { display: grid; grid-template-columns: max-content repeat(var(--n, 24), minmax(0, 1fr)); gap: 3px; align-items: center;
+  font-size: 11px; color: var(--faint); }
+.cells > span { white-space: nowrap; padding-right: 6px; }
+.cells > div { aspect-ratio: 1; min-height: 6px; border-radius: 3px; background: var(--c, var(--raised)); }
 /* Sequential scale: low label, ramp, high label. */
 .scale { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .scale::before { content: ""; order: 1; width: 120px; height: 6px; border-radius: 3px;

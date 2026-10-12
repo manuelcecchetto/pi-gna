@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Ask an agent for a dashboard or report and it builds one: several sections, each a sentence of findings and then its own chart, instead of one small visual. The visual kit adds column charts and heat-map grids for it, and the `inline-visuals` skill has a worked dashboard example.
 - A chat that starts with only a photo, such as a screenshot sent from the phone, now gets a title from its next message. Before, it kept no title.
 
 ## 0.20.1 - 2026-10-12

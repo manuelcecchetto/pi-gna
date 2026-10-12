@@ -23,6 +23,7 @@ Outputs land in `/tmp/vis-eval/<label>/` (one `.md` per case). The script scores
 | S6 | visual | Three UI mocks of a context-window hint in the real composer (kit mock classes, `data-toggle`) |
 | S7 | visual | Animated walkthrough of an agent pipeline with a revise loop and parallel builders (`kit.player`) |
 | S8 | visual | Afterburning turbojet cut open, idle to full afterburner (a technical illustration with state tabs) |
+| S9 | visuals | A usage dashboard from the real usage index: several sections, each its own fence (`cols`, `cells`, donut) |
 | N1 | none | One-line question (Vite port) |
 | N2 | none | Fix a typo |
 | N3 | none | `debounce` snippet |
@@ -78,3 +79,17 @@ sent back, revise, approved 8/10, split, parallel build, join and fan out, revie
 the findings also in prose and no flags. Two harness fixes came out of it: `visual-eval-page.mjs` now inlines `kit.js` before
 the fragments (scripted visuals threw `kit is not defined`), and the network flag ignores the SVG namespace that
 `createElementNS` needs.
+
+## Dashboards (S9)
+
+Sonnet 5.5, medium, after the dashboard section, `cols` and `cells` were added: read the skill, answered with three
+fences (5.8 KB in total) after a scope paragraph (source, window, partial last day), each section's prose stating its
+finding: a model `split` over 30 daily `cols`, a 7 × 24 `cells` heat map, ranked tool error rates in `bars`. No flags.
+The first skill text said to color `cells` by the square root of value / max; rendered, nearly every cell came out hot in
+both the skill example and the model's, so the skill now says linear.
+
+A second run after the few-labels rule (the user found per-mark values, double-named series and subtitles noisy):
+three fences again (5.8 KB), no `split` repeating the legend, one legend for the series, axis ticks at first, middle and
+last only, exact values in tooltips. It still put "48 of 1,196" counts beside each ranked bar, which the prompt then
+invited; the `bars` entry now says the value alone. `visual-eval-page.mjs` now runs each fragment's script in a block:
+the page shares one document, and this run's `const t` collided with the page's own script and blanked the section.

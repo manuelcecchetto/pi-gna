@@ -1892,7 +1892,7 @@ which fails silently on path mismatches, and whose frame CSP allows CDN scripts)
   One message listener, one 1 s watchdog and one theme listener (`linkFrame`, `lib/visual-frames.ts`) serve every running
   frame and exist only while one runs. A fling past ~10,000 px/s shows a visual blank for a few frames (P23).
 - The prompt (`resources/pigna-visual-prompt.md`) lists the kit classes, tokens and helpers, when exactly one visual is
-  warranted and when not, and SVG rules. The craft for the ambitious ones (technical illustrations, `kit.player` animation, UI mocks, local
+  warranted and when not (a dashboard the user asks for is the exception: one visual per section), and SVG rules. The craft for the ambitious ones (dashboards, technical illustrations, `kit.player` animation, UI mocks, local
   images: techniques, worked examples, a pre-send checklist) is the bundled skill `resources/skills/inline-visuals`, which
   the chat gets with `--skill` while visuals are on (`piArgs`); the prompt tells the agent to read it first, so the
   always-on prompt stays about 8 KB. `visual-kit.test.ts` checks both against the kit, and `FAKE_FIXTURE=skill` renders

@@ -27,8 +27,7 @@ describe("visual kit vocabulary", () => {
     const tokens = new Set([...prompt.matchAll(/--([a-z][\w-]*)/g)].map((m) => m[1]));
     for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) tokens.add(`c${n}`);
     for (const n of [0, 1, 2, 3, 4]) tokens.add(`heat-${n}`);
-    tokens.delete("v"); // per-element inputs, not theme tokens
-    tokens.delete("c");
+    for (const input of ["v", "c", "h", "n"]) tokens.delete(input); // per-element inputs, not theme tokens
     for (const name of tokens) expect(dark, name).toContain(`--${name}:`);
     for (const name of ["c1", "c8", "heat-0", "heat-4", "fg", "accent"]) expect(light, name).toContain(`--${name}:`);
     const js = read("visual/kit.js");

@@ -1,11 +1,90 @@
 ---
 name: inline-visuals
-description: Craft guide for pi-gna's inline `visual` fences beyond simple charts. Read it before drawing a technical illustration (a cutaway, section or exploded view of an engine, device, circuit or building), an animated flow with kit.player, a UI mock of a product change, or any visual that shows local images. Has the techniques, worked examples and a pre-send checklist.
+description: Craft guide for pi-gna's inline `visual` fences beyond simple charts. Read it before building a dashboard or report (several charts of usage, CI, a release or other metrics), drawing a technical illustration (a cutaway, section or exploded view of an engine, device, circuit or building), an animated flow with kit.player, a UI mock of a product change, or any visual that shows local images. Has the techniques, worked examples and a pre-send checklist.
 ---
 
-# Inline visuals: illustrations, animation, mocks
+# Inline visuals: dashboards, illustrations, animation, mocks
 
-The always-on visual instructions hold the contract (fragment, kit classes, tokens, when one visual is warranted). This skill is how to make the ambitious ones look finished. Everything here still obeys that contract: one visual, after prose that answers alone, no network.
+The always-on visual instructions hold the contract (fragment, kit classes, tokens, when one visual is warranted). This skill is how to make the ambitious ones look finished. Everything here still obeys that contract: one visual (in a dashboard, one per section), after prose that answers alone, no network.
+
+## Dashboards
+
+When the user asks for a dashboard, report or overview, answer as a short report: a sentence or two stating a section's finding, then that section's visual, then the next. Use 2 to 5 sections, each in its own fence: the headline `stats` and the mix first, then change over time, then rhythm or distribution, then health or detail. Separate fences stay well under the 64 KB cap. Say once, in the prose before the first section, what the data covers (source, window, what counts); a caveat for one chart goes in its `hint`.
+
+- Each chart sits in its own `card`, and its `head` states the finding. Put cards side by side in a `grid` with a wider minimum (`style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"`).
+- Build charts in a script from an inline data array into kit classes, so they reflow with the panel and need no resize handler. Use `cols` for values over time (one `<span>` per series, `data-tip` with the total on each column), `cells` for weekday × hour or calendar intensity, `bars` for a ranked list and `split` for one whole.
+- Color `cells` with `kit.heat(value / max)` and put a `scale` under the grid. Keep it linear: a square root pushes most cells into the hot end, so the peak no longer stands out. Leave empty cells uncolored.
+- For a donut, draw an SVG with `viewBox="0 0 42 42"` and one `<circle r="15.915">` per slice. The circumference is 100, so `stroke-dasharray="share 100-share"` and `stroke-dashoffset="-start"`, rotated -90 to start at the top. Put a `--raised` track under the slices, a `data-tip` on each slice and the values in a list beside it.
+- Give each series one color across every section (Opus is `--c1` in the donut and in the columns), and name it once: the first chart's legend names it, later charts reuse the color without another legend.
+- Keep labels sparse: the finding title, first and last ticks on an axis, values on hover. The section's prose already says the numbers that matter, so the chart does not print them again.
+
+```visual
+<div class="stack">
+  <div class="stats">
+    <div class="stat"><span class="stat-value">96.5k</span><span class="stat-label">turns, Sep 11 to Oct 10</span></div>
+    <div class="stat"><span class="stat-value">1,674</span><span class="stat-label">sessions</span></div>
+    <div class="stat"><span class="stat-value">0.48%</span><span class="stat-label">turns that errored</span></div>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+    <div class="card stack">
+      <div class="head"><span>Opus does 44% of turns</span></div>
+      <div class="row" style="align-items:center;gap:16px">
+        <svg viewBox="0 0 42 42" style="width:84px">
+          <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--raised)" stroke-width="5"/>
+          <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--c1)" stroke-width="5" stroke-dasharray="43.4 56.6" stroke-dashoffset="0" transform="rotate(-90 21 21)" data-tip="Opus · 42,697 turns"/>
+          <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--c2)" stroke-width="5" stroke-dasharray="25.8 74.2" stroke-dashoffset="-44.2" transform="rotate(-90 21 21)" data-tip="Astra · 25,642 turns"/>
+          <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--c3)" stroke-width="5" stroke-dasharray="28.4 71.6" stroke-dashoffset="-70.8" transform="rotate(-90 21 21)" data-tip="Other models · 28,191 turns"/>
+        </svg>
+        <div class="legend" style="flex-direction:column"><span style="--c:var(--c1)">Opus 44%</span><span style="--c:var(--c2)">Astra 27%</span><span style="--c:var(--c3)">Other 29%</span></div>
+      </div>
+    </div>
+    <div class="card stack">
+      <div class="head"><span>Opus drove the October climb</span></div>
+      <div class="cols" id="days" style="--h:110px"></div>
+      <div class="row hint" style="justify-content:space-between"><span>Oct 1</span><span>Oct 10</span></div>
+    </div>
+  </div>
+  <div class="card stack">
+    <div class="head"><span>Weekdays peak at 11:00</span></div>
+    <div class="cells" id="week"></div>
+    <span class="scale"><span>Less</span><span>More</span></span>
+  </div>
+</div>
+<script>
+  const days = [[320,0,2299],[1985,25,3425],[2165,0,1890],[1729,10,878],[2205,716,3264],[4060,280,954],[6343,40,1055],[7323,0,3247],[6003,0,102],[4544,270,1361]];
+  const cols = document.getElementById("days");
+  days.forEach((d, i) => {
+    const col = document.createElement("div");
+    col.dataset.tip = "Oct " + (i + 1) + " · " + kit.fmt(d[0] + d[1] + d[2]) + " turns";
+    d.forEach((v, k) => {
+      const s = document.createElement("span");
+      s.style.setProperty("--v", (v / 11000) * 100 + "%");
+      s.style.setProperty("--c", "var(--c" + (k + 1) + ")");
+      col.append(s);
+    });
+    cols.append(col);
+  });
+  const week = [
+    ["Mon", [527,289,127,0,0,0,156,224,149,124,615,412,411,563,400,476,559,1126,1356,768,428,775,280,484]],
+    ["Wed", [118,240,67,0,0,0,5,465,558,759,571,1217,856,897,897,603,622,1129,1244,1064,854,1008,1034,986]],
+    ["Thu", [383,682,528,357,279,232,253,187,268,983,1731,1740,1456,1080,641,577,1211,910,520,311,1198,832,731,358]],
+    ["Sun", [545,352,243,321,164,430,0,173,351,312,448,520,187,317,359,464,280,695,351,239,228,322,393,370]],
+  ];
+  const grid = document.getElementById("week");
+  const label = (text) => Object.assign(document.createElement("span"), { textContent: text });
+  grid.append(label(""));
+  for (let h = 0; h < 24; h++) grid.append(label(h % 6 ? "" : String(h).padStart(2, "0")));
+  for (const [day, hours] of week) {
+    grid.append(label(day));
+    hours.forEach((v, h) => {
+      const cell = document.createElement("div");
+      if (v) cell.style.setProperty("--c", kit.heat(v / 1740));
+      cell.dataset.tip = day + " " + h + ":00 · " + v + " turns";
+      grid.append(cell);
+    });
+  }
+</script>
+```
 
 ## Local images
 
@@ -125,3 +204,5 @@ Put each treatment under a `head` naming it ("2. One merged banner") with a `hin
 - Interactive states all draw something sensible: click through each tab or stage in your head, including the first one shown.
 - Image paths are literal in the markup and point at files that exist.
 - The fragment is under 64 KB, and has no outer card or border around the whole visual.
+- A dashboard: each section's prose states its finding, and a series keeps its color in every section.
+- Nothing is labelled twice, and no mark prints a value its tooltip could hold.
