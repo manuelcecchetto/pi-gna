@@ -133,6 +133,7 @@ function BrowserButton({ client, handle, onOpen }: { client: HostClient; handle:
 export function ChatScreen({ client, route, back, push, replace }: { client: HostClient; route: ChatRoute; back: () => void; push: (route: Route) => void; replace: (route: Route) => void }) {
   const [attempt, setAttempt] = useState(0);
   const [picking, setPicking] = useState(false);
+  const projects = useStore(client.store, (s) => s.global.projects) ?? [];
   const { handle, error } = useJoinedChat(client, route, attempt);
   const entry = useStore(client.store, (s) => (handle ? s.chats[handle] : undefined));
   const session = entry?.session;
@@ -179,7 +180,11 @@ export function ChatScreen({ client, route, back, push, replace }: { client: Hos
               </button>
             </div>
           )}
-          <Transcript session={session} earlier={earlier} onPickProject={() => setPicking(true)} />
+          <Transcript
+            session={session}
+            earlier={earlier}
+            projectPicker={{ projects, onPick: (cwd) => replace({ screen: "chat", cwd }), onBrowse: () => setPicking(true) }}
+          />
           {session.dialogs.some((dialog) => dialog.method !== "questions") && (
             <div className="max-h-[55%] shrink-0 overflow-y-auto px-3 pb-2" data-testid="dialogs">
               <Dialogs handle={session.handle} dialogs={session.dialogs} />

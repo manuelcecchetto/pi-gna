@@ -12,7 +12,7 @@ import { remainingGhost, wantsSuggestion } from "../../../shared/autocomplete";
 import { fastApplies, isFast, modelChipLabel, sharedNames } from "../../../shared/fast";
 import { modelKey, pinnedFirst } from "../../../shared/model-pins";
 import { toggleModelPin, usePinnedModels } from "../lib/model-pins";
-import type { SessionState } from "../../../shared/session-state";
+import { isDraft, type SessionState } from "../../../shared/session-state";
 import {
   attachFiles,
   compact,
@@ -38,6 +38,7 @@ import { ContextMeter } from "./ContextMeter";
 import { Dialogs } from "./Dialogs";
 import { QuestionsCard, questionsOf } from "./QuestionsCard";
 import { QueueCard } from "./QueueCard";
+import { StatusCard } from "./StatusCard";
 import { TokenRate } from "./TokenRate";
 import { Popover, Switch } from "./primitives";
 import { LazyProviderLogo } from "./LazyProviderLogo";
@@ -93,13 +94,13 @@ export type ComposerSession = Pick<
   | "thinkingLevel"
   | "stats"
   | "autoCompaction"
-> & { cacheHit: number | null; fast: boolean };
+> & { cacheHit: number | null; fast: boolean; /** Nothing sent yet (isDraft): the status card shows. */ empty: boolean };
 
 /** @internal The composer's slice of a session: a new object each call, compared field by field (useAppShallow). */
 export function composerFields(session: SessionState | undefined): ComposerSession | undefined {
   if (!session) return undefined;
   const { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction } = session;
-  return { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction, cacheHit: lastCacheHit(session.items), fast: isFast(session.statuses) };
+  return { handle, sessionPath, cwd, phase, running, compacting, editorText, dialogs, widgets, queue, model, modelRef, thinkingLevel, stats, autoCompaction, cacheHit: lastCacheHit(session.items), fast: isFast(session.statuses), empty: isDraft(session) };
 }
 
 /**
@@ -376,6 +377,15 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
         </div>
       )}
 
+      {!floating && session.empty && !session.queue.steering.length && !session.queue.followUp.length && (
+        <StatusCard
+          cwd={session.cwd}
+          onInsert={(line) => {
+            setText([text.trim(), line].filter(Boolean).join("\n\n"));
+            area.current?.focus();
+          }}
+        />
+      )}
       <QueueCard
         session={session}
         onEdit={(queued) => {

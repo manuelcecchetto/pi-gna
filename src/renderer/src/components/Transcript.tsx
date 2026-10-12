@@ -3,7 +3,6 @@ import {
   ArrowDown,
   Check,
   ChevronRight,
-  ChevronsUpDown,
   CircleSlash,
   Copy,
   FileText,
@@ -16,6 +15,7 @@ import {
   SquareKanban,
   SquareTerminal,
 } from "./icons";
+import { ProjectPicker, type ProjectPickerProps } from "./ProjectPicker";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ImageContent, TextContent, UserMessage } from "../../../shared/protocol";
 import { type CardMention, splitCardBlock, splitFileMentions } from "../lib/attachments";
@@ -53,7 +53,7 @@ export interface EarlierTurns {
   preview?: (index: number) => Promise<string>;
 }
 
-export function Transcript({ session, earlier, onPickProject }: { session: SessionState; earlier?: EarlierTurns; /** Makes the project name of the empty state a button (the phone: switch project). */ onPickProject?: () => void }) {
+export function Transcript({ session, earlier, projectPicker }: { session: SessionState; earlier?: EarlierTurns; /** Makes the empty state's path a project picker. */ projectPicker?: ProjectPickerProps }) {
   const derive = useMemo(() => createRunDeriver(), []);
   const runs = useMemo(() => derive({ items: session.items, running: session.running }), [derive, session.items, session.running]);
   const rail = useMemo(() => (earlier?.outline?.length ? [...outlineItems(earlier.outline, earlier.preview), ...railItems(runs)] : railItems(runs)), [runs, earlier?.outline, earlier?.preview]);
@@ -84,7 +84,7 @@ export function Transcript({ session, earlier, onPickProject }: { session: Sessi
   });
 
   if (session.loading) return <div className="flex-1" />; // not the empty state: this chat has a history
-  if (!runs.length && !session.running) return <EmptyTranscript session={session} onPickProject={onPickProject} />;
+  if (!runs.length && !session.running) return <EmptyTranscript session={session} projectPicker={projectPicker} />;
 
   /** Render a turn from an earlier page, for the turn rail to scroll to; one the host still holds is paged in first. */
   const reveal = async (key: string) => {
@@ -349,7 +349,7 @@ export function HeroBackdrop() {
   return style ? <div className="hero" style={style} aria-hidden /> : null;
 }
 
-function EmptyTranscript({ session, onPickProject }: { session: SessionState; onPickProject?: () => void }) {
+function EmptyTranscript({ session, projectPicker }: { session: SessionState; projectPicker?: ProjectPickerProps }) {
   const { homeDir } = useChatActions();
   const logo = useChatUi((state) => state.look?.logo);
   return (
@@ -358,17 +358,8 @@ function EmptyTranscript({ session, onPickProject }: { session: SessionState; on
       <div className="relative flex flex-col items-center">
         {logo && <img src={logo} alt="" data-testid="project-logo" className="mb-4 size-16 object-contain" />}
         <h1 className="text-[26px] font-medium tracking-tight text-fg">What should we build?</h1>
-        {onPickProject ? (
-          <button
-            type="button"
-            onClick={onPickProject}
-            aria-label="Switch project"
-            data-testid="switch-project"
-            className="mt-3 flex max-w-full items-center gap-1.5 rounded-full border border-line bg-panel px-4 py-2 font-mono text-[13px] text-fg active:opacity-60"
-          >
-            <span className="min-w-0 truncate">{tildify(session.cwd, homeDir)}</span>
-            <ChevronsUpDown size={14} className="shrink-0 text-muted" />
-          </button>
+        {projectPicker ? (
+          <ProjectPicker cwd={session.cwd} home={homeDir} {...projectPicker} />
         ) : (
           <div className="mt-2 font-mono text-[12px] text-faint">{tildify(session.cwd, homeDir)}</div>
         )}

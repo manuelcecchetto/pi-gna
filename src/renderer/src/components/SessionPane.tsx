@@ -2,7 +2,7 @@ import { ListChevronsDownUp, ListChevronsUpDown, PanelRight, Paperclip, SquareKa
 import { useRef, useState } from "react";
 import { cardsOfChat } from "../../../shared/board";
 import { isDraft, type SessionState } from "../../../shared/session-state";
-import { addChatToBoard, attachFiles, earlierTurns, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
+import { addChatToBoard, attachFiles, closeSession, earlierTurns, newSession, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";
 import { COLLAPSED_INSET } from "./Sidebar";
@@ -14,11 +14,18 @@ export function SessionPane({ handle }: { handle: string }) {
   return <ChatPane session={session} />;
 }
 
+/** The empty chat's project picker: a new chat in `cwd`, and this one closed while nothing was sent in it. */
+function moveDraft(session: SessionState, cwd: string): void {
+  newSession(cwd);
+  if (isDraft(session)) void closeSession(session.handle, false);
+}
+
 function ChatPane({ session }: { session: SessionState }) {
   const expandAll = useApp((state) => state.expandAll);
   const browserOpen = useApp((state) => state.pane.open);
   const inset = useApp((state) => state.sidebar.collapsed);
   const kanban = useFeature("kanban");
+  const projects = useApp((state) => state.projects);
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
   const hasFiles = (event: React.DragEvent) => event.dataTransfer.types.includes("Files");
@@ -81,7 +88,7 @@ function ChatPane({ session }: { session: SessionState }) {
         </button>
       </header>
       {session.phase === "exited" && <ExitBanner session={session} />}
-      <Transcript session={session} earlier={earlierTurns(session)} />
+      <Transcript session={session} earlier={earlierTurns(session)} projectPicker={{ projects, onPick: (cwd) => moveDraft(session, cwd), onBrowse: () => void window.studio.pickFolder().then((cwd) => cwd && moveDraft(session, cwd)) }} />
       <Composer handle={session.handle} />
     </div>
   );

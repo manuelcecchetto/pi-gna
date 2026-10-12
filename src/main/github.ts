@@ -20,6 +20,7 @@ import {
   type Remote,
   tokenVariable,
 } from "../shared/github";
+import { type GithubSummary, type RawStatusIssue, type RawStatusPr, summarize } from "../shared/project-status";
 import { log } from "./log";
 import { JsonStore } from "./store";
 
@@ -137,6 +138,8 @@ export interface SettingsStore {
 // ── gh ───────────────────────────────────────────────────────────────────────
 
 const ACCOUNTS_TTL = 10 * 60_000;
+/** The status card asks at most this often per project unless refreshed. */
+const SUMMARY_TTL = 60_000;
 const BODY = 20_000;
 const ISSUE_FIELDS = ["number", "title", "state", "author", "labels", "createdAt", "updatedAt", "url", "body"];
 const PR_FIELDS = [...ISSUE_FIELDS, "isDraft", "headRefName", "baseRefName", "reviewDecision"];
@@ -164,6 +167,7 @@ export class Github {
   private readonly secrets = new Set<string>();
   private readonly orgs = new Map<string, Promise<Set<string>>>();
   private readonly resolving = new Map<string, Promise<Account>>();
+  private readonly summaries = new Map<string, { at: number; value: Promise<GithubSummary | null> }>();
 
   constructor(
     private readonly store: SettingsStore,
@@ -215,6 +219,29 @@ export class Github {
     } catch (error) {
       return { problem: this.problem(error) };
     }
+  }
+
+  /** The status card's open pull requests (with CI) and issues; null without a repository gh can read. */
+  async summary(cwd: string, refresh = false): Promise<GithubSummary | null> {
+    const project = projectOf(cwd);
+    const cached = this.summaries.get(project);
+    if (!refresh && cached && this.now() - cached.at < SUMMARY_TTL) return cached.value;
+    const value = this.readSummary(project).catch((error: unknown) => {
+      this.problem(error);
+      this.summaries.delete(project);
+      return null;
+    });
+    this.summaries.set(project, { at: this.now(), value });
+    return value;
+  }
+
+  private async readSummary(project: string): Promise<GithubSummary> {
+    const repo = await this.repoOf(project);
+    const limit = String(GITHUB_LIST_LIMIT + 1);
+    const list = (kind: GithubKind, fields: string) => this.gh(project, (repo) => [kind, "list", "--repo", `${repo.host}/${repo.repo}`, "--state", "open", "--limit", limit, "--json", fields]);
+    const [prs, issues] = await Promise.all([list("pr", "number,title,url,isDraft,reviewDecision,author,statusCheckRollup"), list("issue", "number,title,url,updatedAt,labels")]);
+    const account = await this.account(project, repo);
+    return summarize(repo, account.login, JSON.parse(prs) as RawStatusPr[], JSON.parse(issues) as RawStatusIssue[], GITHUB_LIST_LIMIT);
   }
 
   /** An issue or pull request of the project's repository, from "#12" or its link, as a card's GitHub link. */

@@ -23,6 +23,7 @@ import type { ViewportRequest } from "../shared/viewport";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "../shared/uploads";
 import { readPreviewImage, readPreviewText, resolvePreviewTargets, within } from "./browser/resolve-targets";
 import { listFiles } from "./files";
+import { gitPull, gitStatus, gitSwitch } from "./project-status";
 import { siteIcon } from "./site-icons";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
@@ -795,6 +796,12 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     ),
     "github.lookup": method<{ cwd: string; input: string }>("remote", (raw) => ({ cwd: project(raw.cwd), input: String(raw.input).slice(0, 500) }), async (_ctx, { cwd, input }) => (await env(), github.lookup(cwd, input))),
 
+    // The status card: git and gh with the login shell's PATH.
+    "status.git": method<{ cwd: string }>("desktop", (raw) => ({ cwd: project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), gitStatus(cwd))),
+    "status.github": method<{ cwd: string; refresh?: boolean }>("desktop", (raw) => ({ cwd: project(raw.cwd), refresh: raw.refresh === true }), async (_ctx, { cwd, refresh }) => (await env(), github.summary(cwd, refresh === true))),
+    "status.pull": method<{ cwd: string }>("desktop", (raw) => ({ cwd: project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), gitPull(cwd))),
+    "status.switch": method<{ cwd: string; branch: string }>("desktop", (raw) => ({ cwd: project(raw.cwd), branch: text(raw.branch, "branch") }), async (_ctx, { cwd, branch }) => (await env(), gitSwitch(cwd, branch))),
+
     // python3, rg and git come from the login shell's PATH.
     "atp.watch": method<{ cwd: string | null }>("desktop", (raw) => ({ cwd: raw.cwd === null ? null : project(raw.cwd) }), async (_ctx, { cwd }) => (await env(), atp.watch(cwd))),
     // A project's plans without watching it: the phone asks again while its ATP page is open (the desktop's watch is one project for all).
@@ -984,6 +991,10 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),
   route(IPC.githubList, "github.list", (cwd, kind, filter) => ({ cwd, kind, filter })),
   route(IPC.githubLookup, "github.lookup", (cwd, input) => ({ cwd, input })),
+  route(IPC.statusGit, "status.git", (cwd) => ({ cwd })),
+  route(IPC.statusGithub, "status.github", (cwd, refresh) => ({ cwd, refresh })),
+  route(IPC.statusPull, "status.pull", (cwd) => ({ cwd })),
+  route(IPC.statusSwitch, "status.switch", (cwd, branch) => ({ cwd, branch })),
   route(IPC.atpWatch, "atp.watch", (cwd) => ({ cwd })),
   route(IPC.atpRead, "atp.read", (plan) => ({ plan })),
   route(IPC.atpState, "atp.state"),

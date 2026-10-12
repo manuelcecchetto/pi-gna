@@ -9,6 +9,7 @@ import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEn
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { CompactionSettings } from "./compaction";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
+import type { GitResult, GitStatus, GithubSummary } from "./project-status";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
 import type { LamentOp, Laments } from "./laments";
 import type { ThemeOp, Themes } from "./themes";
@@ -157,6 +158,10 @@ export const IPC = {
   githubChoose: "github:choose",
   githubList: "github:list",
   githubLookup: "github:lookup",
+  statusGit: "status:git",
+  statusGithub: "status:github",
+  statusPull: "status:pull",
+  statusSwitch: "status:switch",
   atpWatch: "atp:watch",
   atpPlans: "atp:plans",
   atpRead: "atp:read",
@@ -327,6 +332,16 @@ export interface GithubApi {
   list(cwd: string, kind: GithubKind, filter: GithubFilter): Promise<GithubList>;
   /** An issue or pull request of the project's repository, from "#12" or its link, as a card's link. */
   lookup(cwd: string, input: string): Promise<GithubLookup>;
+}
+
+/** The status card above an empty chat's composer (src/shared/project-status.ts). */
+export interface StatusApi {
+  /** The checkout at `cwd`; null outside a git repository. */
+  git(cwd: string): Promise<GitStatus | null>;
+  /** Its repository's open pull requests and issues; null without one gh can read. */
+  github(cwd: string, refresh?: boolean): Promise<GithubSummary | null>;
+  pull(cwd: string): Promise<GitResult>;
+  switchBranch(cwd: string, branch: string): Promise<GitResult>;
 }
 
 /**
@@ -664,6 +679,7 @@ export interface StudioApi {
   imports: ImportApi;
   autocomplete: AutocompleteApi;
   github: GithubApi;
+  status: StatusApi;
   atp: AtpApi;
   update: UpdateApi;
   setup: SetupApi;

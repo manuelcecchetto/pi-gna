@@ -110,6 +110,12 @@ const api: StudioApi = {
     list: (cwd, kind, filter) => ipcRenderer.invoke(IPC.githubList, cwd, kind, filter),
     lookup: (cwd, input) => ipcRenderer.invoke(IPC.githubLookup, cwd, input),
   },
+  status: {
+    git: (cwd) => ipcRenderer.invoke(IPC.statusGit, cwd),
+    github: (cwd, refresh) => ipcRenderer.invoke(IPC.statusGithub, cwd, refresh),
+    pull: (cwd) => ipcRenderer.invoke(IPC.statusPull, cwd),
+    switchBranch: (cwd, branch) => ipcRenderer.invoke(IPC.statusSwitch, cwd, branch),
+  },
   atp: {
     watch: (cwd) => ipcRenderer.invoke(IPC.atpWatch, cwd),
     onPlans: (listener) => subscribe<AtpProjectPlans>(IPC.atpPlans, listener),

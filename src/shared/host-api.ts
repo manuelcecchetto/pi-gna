@@ -9,6 +9,7 @@ import type { Annotation, BrowserCommand, BrowserState, HistoryEntry } from "./b
 import type { CompactionSettings } from "./compaction";
 import type { ComputerOp, ComputerPreviewFrame, ComputerSettings, Permissions } from "./computer";
 import type { GithubFilter, GithubItem, GithubKind, GithubList, GithubLookup, GithubProject, GithubRepo } from "./github";
+import type { GitResult, GitStatus, GithubSummary } from "./project-status";
 import type { LamentOp, Laments } from "./laments";
 import type { ThemeOp, Themes } from "./themes";
 import type { PreviewMode, PreviewOpenOptions, PreviewText } from "./preview";
@@ -689,6 +690,12 @@ export interface HostMethods {
   "github.list": { args: { cwd: string; kind: GithubKind; filter: GithubFilter }; result: GithubList };
   "github.lookup": { args: { cwd: string; input: string }; result: GithubLookup };
 
+  // status card (desktop)
+  "status.git": { args: { cwd: string }; result: GitStatus | null };
+  "status.github": { args: { cwd: string; refresh?: boolean }; result: GithubSummary | null };
+  "status.pull": { args: { cwd: string }; result: GitResult };
+  "status.switch": { args: { cwd: string; branch: string }; result: GitResult };
+
   // update, host
   "update.get": { args: Record<string, never>; result: UpdateState };
   "update.download": { args: Record<string, never>; result: null };
@@ -777,6 +784,11 @@ export const DESKTOP_ONLY_METHODS = [
   "autocomplete.status",
   "autocomplete.suggest",
   "autocomplete.retry",
+  // git pull and switch change the Mac's checkout; the phone has no status card.
+  "status.git",
+  "status.github",
+  "status.pull",
+  "status.switch",
 ] as const satisfies readonly HostMethod[];
 
 const DESKTOP_ONLY: ReadonlySet<string> = new Set(DESKTOP_ONLY_METHODS);
