@@ -5,7 +5,7 @@ import { BookOpen, Bug, Code, Globe, FolderOpen, type IconComponent, Search, Tri
 import { useCallback, useEffect, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import type { AutocompleteStatus } from "../../../shared/autocomplete";
-import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
+import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, MIN_PROB_RANGE, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { author, bugs, homepage, license } from "../../../../package.json";
 import { tildify } from "../lib/format";
 import { WALLPAPER_LABELS, wallpaperStyle } from "../lib/wallpapers";
@@ -416,6 +416,43 @@ function AutocompleteRow() {
   );
 }
 
+/** How sure the model must be of each suggested word: lower suggests more often, and more often wrongly. The slider
+ * moves freely and saves when let go. */
+function AutocompleteThresholdRow() {
+  const saved = useApp((state) => state.settings.autocompleteMinProb);
+  const [value, setValue] = useState(saved);
+  useEffect(() => setValue(saved), [saved]);
+  const { min, max, step } = MIN_PROB_RANGE;
+  const commit = () => {
+    if (value !== saved) void applySettings({ type: "autocompleteMinProb", value });
+  };
+  return (
+    <Row
+      title="Suggestion confidence"
+      about="How sure the model must be of each word it suggests. Lower shows suggestions more often, and more of them wrong."
+    >
+      <div className="flex w-56 items-center gap-3">
+        <input
+          type="range"
+          aria-label="Suggestion confidence"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => setValue(Number(Number(event.currentTarget.value).toFixed(2)))}
+          onPointerUp={commit}
+          onKeyUp={commit}
+          onBlur={commit}
+          style={{ "--progress": `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties}
+          className="level-slider"
+          data-testid="autocomplete-threshold"
+        />
+        <span className="w-9 text-right font-mono text-[12px] text-muted">{Math.round(value * 100)}%</span>
+      </div>
+    </Row>
+  );
+}
+
 const QUEUE_LABELS = { "one-at-a-time": "One at a time", all: "All at once" };
 const TRUST_LABELS = { ask: "Ask", always: "Always", never: "Never" };
 const WARMING_LABELS = { off: "Off", streaming: "During runs", idle: "Between runs too" };
@@ -426,6 +463,7 @@ function AgentSection({ pi }: { pi: Pi }) {
   const visuals = useApp((state) => state.settings.visuals);
   const yolo = useApp((state) => state.settings.yolo);
   const keepChats = useApp((state) => state.settings.keepChatsOnRestart);
+  const autocomplete = useApp((state) => state.settings.autocomplete);
   const toggle = (key: PiKey) => <Switch on={pi.value(key) === true} onChange={(on) => pi.set({ [key]: on })} />;
   const choice = (key: PiKey, labels: Record<string, string>) => {
     const setting = PI_SETTINGS[key];
@@ -451,6 +489,7 @@ function AgentSection({ pi }: { pi: Pi }) {
           <Switch on={visuals} onChange={(on) => void applySettings({ type: "visuals", on })} />
         </Row>
         <AutocompleteRow />
+        {autocomplete && <AutocompleteThresholdRow />}
         {/* pi talks through FIFOs to outlive pi-gna: none on Windows. */}
         {!navigator.userAgent.includes("Windows") && (
           <Row

@@ -596,6 +596,7 @@ function applySettings(next: Settings): Promise<void> {
   const appearance = applyAppearance();
   buildMenu(next.features);
   syncKeepAwake();
+  autocomplete.minProb = next.autocompleteMinProb;
   autocomplete.setEnabled(next.autocomplete);
   void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.

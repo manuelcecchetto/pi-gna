@@ -5,6 +5,7 @@
 // clearly helped (docs/DESIGN.md, Composer autocomplete). Everything here is pure, for both sides and the tests.
 
 import type { Item } from "./session-state";
+import { MIN_WORD_PROB } from "./settings";
 
 /** Where the local model is: off, being fetched (0..1), loading, answering, or failed. */
 export type AutocompletePhase = "off" | "downloading" | "starting" | "ready" | "error";
@@ -93,13 +94,6 @@ export function buildPrompt(request: Pick<SuggestRequest, "draft" | "lastUser" |
   lines.push(`User: ${tail(request.draft, DRAFT_CHARS)}`);
   return lines.join("\n");
 }
-
-/**
- * Lowest probability the model may give a suggested word (the product of its tokens' probabilities): the suggestion
- * ends before the first word below it, and is empty when the first one is. On 598 real drafts this showed a
- * suggestion at about a quarter of the pauses, with its first word right about 45% of the time instead of 20%.
- */
-export const MIN_WORD_PROB = 0.35;
 
 /** One generated token and the probability the model gave it. */
 export interface TokenProb {

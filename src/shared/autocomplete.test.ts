@@ -77,6 +77,12 @@ describe("confidentText", () => {
     expect(confidentText(tokens([" fix", 0.9], [" it?\n", 0.9], ["User", 0.9]))).toBe(" fix it?");
     expect(confidentText([])).toBe("");
   });
+
+  it("follows a lower threshold", () => {
+    // A real first word from the local model: below the default, kept at 25%.
+    expect(confidentText(tokens([" slider", 0.27]))).toBe("");
+    expect(confidentText(tokens([" slider", 0.27]), 0.25)).toBe(" slider");
+  });
 });
 
 describe("pickExamples", () => {

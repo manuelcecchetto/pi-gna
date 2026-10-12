@@ -999,7 +999,9 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   The prompt (`buildPrompt` in `src/shared/autocomplete.ts`) is the plain-text format the model was trained on: a
   scene line, up to ten of the user's earlier typed messages in the project, `***Roleplay chat below***`, the chat's
   last user message and agent reply, then `User: <draft>`. It asks for 10 tokens at temperature 0 with `n_probs: 1`,
-  stops at a newline, keeps words only while each has probability >= 0.35 (`confidentText`, `MIN_WORD_PROB`), and
+  stops at a newline, keeps words only while each has probability >= the threshold (`confidentText`; Settings' slider
+  `autocompleteMinProb`, 5-90%, default `MIN_WORD_PROB` 0.35; with the v1.2 model most first words land at 0.18-0.37,
+  so 0.35 rarely fires), and
   drops a continuation of the half-typed word (`cleanSuggestion`). A suggestion ends with its first sentence and
   at 6 words, none is asked for right after a finished sentence (`wantsSuggestion`), and one repeating three words in
   a row from the draft is dropped: with 12-word, multi-sentence suggestions the model looped (repeated Tabs gave "I'm

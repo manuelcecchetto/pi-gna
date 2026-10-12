@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > Agent > Beta has a Suggestion confidence slider under Composer autocomplete: lower it and suggestions show more often. At the old fixed 35% they almost never appeared.
+
 ## 0.20.0 - 2026-10-11
 
 - Inline visuals can show local images: `<img src="path">`, or `<image href="path">` inside an SVG, with a path to an image file on your computer (a screenshot, a render, a generated picture). The visual itself still loads nothing from the network; pi-gna reads the file and passes it in.

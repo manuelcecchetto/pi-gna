@@ -42,6 +42,13 @@ describe("applySettingsOp", () => {
     expect(() => applySettingsOp(start, { type: "autocomplete", on: "yes" as never })).toThrow();
     expect(parseSettings({ version: 1, autocomplete: true }).settings.autocomplete).toBe(true);
     expect(parseSettings({ version: 1, autocomplete: "on" }).dropped).toBe(1);
+    expect(start.autocompleteMinProb).toBe(0.35);
+    expect(applySettingsOp(start, { type: "autocompleteMinProb", value: 0.2 }).autocompleteMinProb).toBe(0.2);
+    expect(applySettingsOp(start, { type: "autocompleteMinProb", value: 0.35 })).toBe(start);
+    expect(() => applySettingsOp(start, { type: "autocompleteMinProb", value: 0 })).toThrow(SettingsError);
+    expect(() => applySettingsOp(start, { type: "autocompleteMinProb", value: 1.5 })).toThrow(SettingsError);
+    expect(parseSettings({ version: 1, autocompleteMinProb: 0.15 }).settings.autocompleteMinProb).toBe(0.15);
+    expect(parseSettings({ version: 1, autocompleteMinProb: "low" })).toMatchObject({ settings: { autocompleteMinProb: 0.35 }, dropped: 1 });
   });
 
   it("picks the option yolo allows with: one-time grants before lasting ones, none without an allowing option", () => {

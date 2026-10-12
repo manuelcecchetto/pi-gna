@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { type AutocompleteStatus, buildPrompt, cleanSuggestion, confidentText, pickExamples, type SuggestRequest, wantsSuggestion } from "../../shared/autocomplete";
+import { MIN_WORD_PROB } from "../../shared/settings";
 import { log } from "../log";
 import { type Download, MODEL, type ServerBuild, serverBuilds } from "./assets";
 import { type Fetch, fetchVerified, installServer } from "./install";
@@ -47,6 +48,8 @@ const freePort = () =>
 export class Autocomplete {
   private status: AutocompleteStatus = { phase: "off" };
   private enabled = false;
+  /** The lowest probability a suggested word may have; follows the setting. */
+  minProb = MIN_WORD_PROB;
   /** The verified executable of each build tried, and the builds that would not start here. */
   private executable: { build: ServerBuild; path: string } | undefined;
   private readonly failed = new Set<string>();
@@ -217,7 +220,7 @@ export class Autocomplete {
       const tokens = (body.completion_probabilities ?? []).flatMap(({ token, logprob }) =>
         typeof token === "string" && typeof logprob === "number" ? [{ text: token, prob: Math.exp(logprob) }] : [],
       );
-      return cleanSuggestion(confidentText(tokens), request.draft);
+      return cleanSuggestion(confidentText(tokens, this.minProb), request.draft);
     } catch {
       return "";
     } finally {

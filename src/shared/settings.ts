@@ -63,6 +63,19 @@ export interface RemoteSettings {
 
 export const REMOTE_DEFAULT_PORT = 4517;
 
+/**
+ * Lowest probability the model may give a suggested word (the product of its tokens' probabilities): the suggestion
+ * ends before the first word below it, and is empty when the first one is. On 598 real drafts this showed a
+ * suggestion at about a quarter of the pauses, with its first word right about 45% of the time instead of 20%.
+ */
+export const MIN_WORD_PROB = 0.35;
+
+/** The range Settings' slider offers for the lowest word probability (`Settings.autocompleteMinProb`). */
+export const MIN_PROB_RANGE = { min: 0.05, max: 0.9, step: 0.05 } as const;
+
+export const isMinProb = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value >= MIN_PROB_RANGE.min && value <= MIN_PROB_RANGE.max;
+
 export interface Settings {
   version: 1;
   features: Record<Feature, boolean>;
@@ -81,6 +94,9 @@ export interface Settings {
   /** Beta: the composer suggests how a message goes on, from a small model that runs on this computer
    * (src/shared/autocomplete.ts). Turning it on downloads the model once. */
   autocomplete: boolean;
+  /** The lowest probability a suggested word may have (`confidentText`): lower shows more, and more wrong, suggestions.
+   * Read at each suggestion. */
+  autocompleteMinProb: number;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
   remote: RemoteSettings;
@@ -99,6 +115,7 @@ export type SettingsOp =
   | { type: "yolo"; on: boolean }
   | { type: "keepChatsOnRestart"; on: boolean }
   | { type: "autocomplete"; on: boolean }
+  | { type: "autocompleteMinProb"; value: number }
   | { type: "remoteEnabled"; on: boolean }
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
@@ -125,6 +142,7 @@ export const emptySettings = (): Settings => ({
   yolo: false,
   keepChatsOnRestart: false,
   autocomplete: false,
+  autocompleteMinProb: MIN_WORD_PROB,
   models: {},
   remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
   openAtLogin: false,
@@ -202,6 +220,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn autocomplete ${String(op.on)}`);
       return settings.autocomplete === op.on ? settings : { ...settings, autocomplete: op.on };
     }
+    case "autocompleteMinProb": {
+      if (!isMinProb(op.value)) throw new SettingsError(`not an autocomplete threshold: ${String(op.value)}`);
+      return settings.autocompleteMinProb === op.value ? settings : { ...settings, autocompleteMinProb: op.value };
+    }
     case "remoteEnabled": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
       return settings.remote.enabled === op.on ? settings : { ...settings, remote: { ...settings.remote, enabled: op.on } };
@@ -270,6 +292,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.keepChatsOnRestart !== undefined) dropped++;
   if (typeof file.autocomplete === "boolean") settings.autocomplete = file.autocomplete;
   else if (file.autocomplete !== undefined) dropped++;
+  if (isMinProb(file.autocompleteMinProb)) settings.autocompleteMinProb = file.autocompleteMinProb;
+  else if (file.autocompleteMinProb !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
   if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;
