@@ -4,7 +4,7 @@
 // `session_info_changed`, so every client shows the title at once. Runs beside the turn and never fails it: without
 // the model, its auth or an answer, the chat keeps its first message as its title.
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { cleanTitle, TITLE_PROMPT, titleInput } from "../src/shared/chat-title";
+import { cleanTitle, firstWords, TITLE_PROMPT, titleInput } from "../src/shared/chat-title";
 import { pickModel, type TaskModel } from "../src/shared/settings";
 
 const BRIDGE = process.env.PIGNA_BRIDGE;
@@ -18,7 +18,7 @@ const textOf = (content: unknown): string =>
 
 export default function (pi: ExtensionAPI) {
   if (!BRIDGE || !TOKEN) return;
-  // Once per process: a failed title is not retried.
+  // Once per process: a failed title is not retried, nor is a chat that had words before this process.
   let tried = false;
 
   async function wanted(): Promise<TaskModel> {
@@ -52,13 +52,14 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", (event, ctx) => {
     if (tried || pi.getSessionName()) return;
+    // New chats only: a chat you reopen, or one past its first words, keeps the title it has. A chat that opened with a
+    // photo alone has no words yet: its next message titles it.
+    const users = (ctx.sessionManager.getBranch() as Entry[]).filter((entry) => entry.type === "message" && entry.message?.role === "user").map((entry) => textOf(entry.message?.content));
+    if (!firstWords(users, event.prompt)) {
+      if (titleInput(event.prompt) || users.some((text) => titleInput(text))) tried = true;
+      return;
+    }
     tried = true;
-    // New chats only: a chat you reopen, or one past its first message, keeps the title it has.
-    const users = (ctx.sessionManager.getBranch() as Entry[]).filter((entry) => entry.type === "message" && entry.message?.role === "user");
-    if (users.length > 1 || (users.length === 1 && textOf(users[0]!.message?.content) !== event.prompt)) return;
-    const text = titleInput(event.prompt);
-    // An image-only first message: no words to title.
-    if (!text) return;
-    void title(text, ctx).catch((error: Error) => console.error(`pi-gna: no chat title: ${error.message}`));
+    void title(titleInput(event.prompt), ctx).catch((error: Error) => console.error(`pi-gna: no chat title: ${error.message}`));
   });
 }

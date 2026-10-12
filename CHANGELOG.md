@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- A chat that starts with only a photo, such as a screenshot sent from the phone, now gets a title from its next message. Before, it kept no title.
+
 ## 0.20.1 - 2026-10-12
 
 - Settings > Agent > Beta has a Suggestion confidence slider under Composer autocomplete: lower it and suggestions show more often. At the old fixed 35% they almost never appeared.

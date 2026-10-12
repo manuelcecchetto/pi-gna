@@ -18,6 +18,17 @@ export function titleInput(message: string): string {
   return stripStudioBlocks(message).replace(/\s+/g, " ").trim().slice(0, INPUT_CHARS);
 }
 
+/**
+ * Whether `prompt` is the chat's first message with words, the one its title comes from. `users` are the branch's user
+ * messages, which may end with this prompt already. A first message of images alone has none: the next one counts.
+ */
+export function firstWords(users: string[], prompt: string): boolean {
+  const words = titleInput(prompt);
+  if (!words) return false;
+  const said = users.map(titleInput).filter(Boolean);
+  return said.length === 0 || (said.length === 1 && said[0] === words && titleInput(users.at(-1) ?? "") === words);
+}
+
 /** The model's answer as a title, or undefined when it gave none. */
 export function cleanTitle(answer: string): string | undefined {
   const line = answer.split("\n").map((part) => part.trim()).find(Boolean);
