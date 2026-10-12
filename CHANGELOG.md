@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.20.2 - 2026-10-12
+
 - An empty chat shows a small status card on top of the composer: the branch and how far it is behind or ahead, your open pull requests (how many are ready to merge, how many fail CI), open issues and the board's cards in review. Each opens a menu: pull or switch branch, put a pull request or issue into the message, or open a card. It is read with git and gh on your Mac and nothing is fetched on its own.
 - The project path under "What should we build?" is now a picker, on the Mac and the phone: it lists your recent projects, and Open folder… is at its end. It has the composer's color, so it reads on every wallpaper.
 - Ask an agent for a dashboard or report and it builds one: several sections, each a sentence of findings and then its own chart, instead of one small visual. The visual kit adds column charts and heat-map grids for it, and the `inline-visuals` skill has a worked dashboard example.
