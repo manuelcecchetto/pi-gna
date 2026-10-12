@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.20.1 - 2026-10-12
+
 - Settings > Agent > Beta has a Suggestion confidence slider under Composer autocomplete: lower it and suggestions show more often. At the old fixed 35% they almost never appeared.
 
 ## 0.20.0 - 2026-10-11
