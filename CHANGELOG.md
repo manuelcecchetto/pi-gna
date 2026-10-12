@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Keep chats running on restart (Beta) works now. After a restart or update the new pi-gna never took the running chats over, and their pi processes stayed behind for good, each still holding its memory. Now the chats carry on where they were, and a pi nobody takes over is stopped.
+
 ## 0.20.2 - 2026-10-12
 
 - An empty chat shows a small status card on top of the composer: the branch and how far it is behind or ahead, your open pull requests (how many are ready to merge, how many fail CI), open issues and the board's cards in review. Each opens a menu: pull or switch branch, put a pull request or issue into the message, or open a card. It is read with git and gh on your Mac and nothing is fetched on its own.

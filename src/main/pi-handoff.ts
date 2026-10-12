@@ -4,7 +4,7 @@
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./log";
-import { isPi } from "./pi-process";
+import { isPiOf } from "./pi-process";
 import type { HandedOffChat } from "./session-host";
 
 /** Bump when a handover written by this version would not fit the next one (the shape of `SessionState`, `PiIo`). */
@@ -53,7 +53,7 @@ export function sweepPiIo(root: string, keep: Set<string>): void {
     const dir = join(root, entry);
     if (keep.has(dir)) continue;
     const pid = Number(readText(join(dir, "pid")).trim());
-    if (pid && isPi(pid)) {
+    if (pid && isPiOf(pid, dir)) {
       log.info("pigna", `stopping pi ${pid}, left from an earlier pi-gna`);
       process.kill(pid, "SIGTERM");
     }

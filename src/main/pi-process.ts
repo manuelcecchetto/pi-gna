@@ -7,7 +7,7 @@
 // FIFOs), pi is an ordinary stdio child and stops with pi-gna.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { closeSync, constants, mkdirSync, mkdtempSync, openSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, constants, mkdirSync, mkdtempSync, openSync, readlinkSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,11 +62,17 @@ export const CAN_DETACH = process.platform !== "win32";
 /** Where the FIFO folders live: pi-gna sets its profile's (`index.ts`), before any pi starts. */
 export const piIo = { root: join(tmpdir(), "pigna-pi-io") };
 
-/** Whether `pid` is a live `pi --mode rpc` (and not another process that got its pid since). */
-export function isPi(pid: number): boolean {
+/**
+ * Whether `pid` is the pi of the FIFO folder `dir` (and not another process that got its pid since): its stdin is
+ * that folder's `in`. Not its command line: pi sets its title to "pi", which hides its arguments from ps on macOS.
+ */
+export function isPiOf(pid: number, dir: string): boolean {
   try {
     process.kill(pid, 0);
-    return execFileSync("/bin/ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).includes("--mode rpc");
+    const fifo = join(realpathSync(dir), "in");
+    if (process.platform === "linux") return readlinkSync(`/proc/${pid}/fd/0`) === fifo;
+    const out = execFileSync("/usr/sbin/lsof", ["-a", "-p", String(pid), "-d", "0", "-Fn"], { encoding: "utf8" });
+    return out.split("\n").includes(`n${fifo}`);
   } catch {
     return false;
   }
@@ -142,7 +148,7 @@ export class PiProcess {
 
   /** A pi the last pi-gna handed over (`detach`); undefined when it is gone. */
   static attach(io: PiIo, options: Pick<PiProcessOptions, "cwd" | "tag">, handlers: PiProcessHandlers): PiProcess | undefined {
-    if (!isPi(io.pid)) return undefined;
+    if (!isPiOf(io.pid, io.dir)) return undefined;
     try {
       return new PiProcess(options, handlers, io);
     } catch (error) {

@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const FAKE_PI = `#!/usr/bin/env node
+// As the real pi does: on macOS the title replaces its command line in ps, so "--mode rpc" no longer shows.
+process.title = "pi";
 const out = (record) => process.stdout.write(JSON.stringify(record) + "\\n");
 let n = 0;
 let timer;
@@ -123,4 +125,31 @@ describe.skipIf(process.platform === "win32")("PiProcess over FIFOs", () => {
     expect(existsSync(io.dir)).toBe(false);
     expect(PiProcess.attach(io, { cwd: dir, tag: "t3" }, collect().handlers)).toBeUndefined();
   });
+
+  it("the launch sweep stops a pi nobody took over, and keeps one that was", async () => {
+    const { sweepPiIo } = await import("./pi-handoff");
+    // A pi that answered: it has set its title by now.
+    const started = async () => {
+      const pi = new PiProcess({ cwd: dir, tag: "t", detachable: true }, collect().handlers);
+      await pi.send({ type: "get_state" } as never);
+      return (await pi.detach())!;
+    };
+    const left = await started();
+    const kept = await started();
+    sweepPiIo(piIo.root, new Set([kept.dir]));
+    await until(() => !isAlive(left.pid));
+    expect(existsSync(left.dir)).toBe(false);
+    expect(isAlive(kept.pid)).toBe(true);
+    const taken = PiProcess.attach(kept, { cwd: dir, tag: "t2" }, collect().handlers)!;
+    await taken.close();
+  });
 });
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
