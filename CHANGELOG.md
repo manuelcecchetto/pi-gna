@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.20.3 - 2026-10-12
+
 - Keep chats running on restart (Beta) works now. After a restart or update the new pi-gna never took the running chats over, and their pi processes stayed behind for good, each still holding its memory. Now the chats carry on where they were, and a pi nobody takes over is stopped.
 
 ## 0.20.2 - 2026-10-12
