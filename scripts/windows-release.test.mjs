@@ -57,6 +57,8 @@ describe("append-only Windows release", () => {
     expect(workflow).toContain("scripts/verify-windows-installer.mjs");
     expect(workflow).toContain("scripts/windows-release.mjs publish");
     const source = readFileSync(new URL("../src/main/index.ts", import.meta.url), "utf8");
-    expect(source).toMatch(/computer: process\.platform === "darwin" &&/);
+    // Computer Use stays off on Windows: only the macOS app and the Linux (KDE Plasma) helper exist.
+    expect(source).toMatch(/computer: \(process\.platform === "darwin" \|\| process\.platform === "linux"\) &&/);
+    expect(source).not.toMatch(/computer:[^\n]*win32/);
   });
 });

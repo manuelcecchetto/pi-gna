@@ -193,7 +193,9 @@ export class RemoteBrowser {
           await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
           await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
         } else {
-          for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await cdp(wc, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+          // The hover move is not awaited (see the agent's click): its ack waits for a frame a minimized window never draws.
+          void cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", clickCount: 1 }).catch(() => undefined);
+          for (const type of ["mousePressed", "mouseReleased"]) await cdp(wc, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
         }
         return null;
       }

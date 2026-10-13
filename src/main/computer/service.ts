@@ -24,6 +24,8 @@ export interface ComputerServiceDeps {
   bundledApp: string;
   /** Where the helper is installed; defaults to ~/.pi-gna/computer-use. */
   installDir: string;
+  /** The helper's name inside installDir; HELPER_APP (the macOS app) unless set (the Linux helper's folder). */
+  appName?: string;
   /** Preferred socket folder (app.getPath("userData")); falls back to tmpdir when the path is too long. */
   socketDir: string;
   parentPid: number;
@@ -86,7 +88,7 @@ export class ComputerService {
 
   /** Where the helper runs from: what to add by hand under Screen & System Audio Recording. */
   get installedApp(): string {
-    return join(this.deps.installDir, HELPER_APP);
+    return join(this.deps.installDir, this.deps.appName ?? HELPER_APP);
   }
 
   /** Subscribe to helper notifications (`cancelled`, `permissions_changed`, `app_gone`). Returns an unsubscribe. */

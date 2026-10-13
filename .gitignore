@@ -5,3 +5,6 @@ dist/
 *.log
 build/computer-use/
 .vitest/
+
+# Python bytecode of the Linux Computer Use helper
+__pycache__/

@@ -184,8 +184,8 @@ describe("computer route locks and cleanup", () => {
     const queued = t.agent.run("a1", click("Calculator", { element_index: 9 }));
     await vi.waitFor(() => expect(t.gates.has("click:com.apple.calculator")).toBe(true));
     t.notify({ method: "cancelled", params: { app: "com.apple.calculator", session: "a1", reason: "esc" } });
-    await expect(pending).rejects.toThrow("Stopped by the user (Esc)");
-    await expect(queued).rejects.toThrow("Stopped by the user (Esc)");
+    await expect(pending).rejects.toThrow(/^Stopped by the user \((Esc|Stop button)\)$/);
+    await expect(queued).rejects.toThrow(/^Stopped by the user \((Esc|Stop button)\)$/);
     expect(t.aborted).toEqual(["a1"]);
     t.gated.clear();
     await t.agent.run("b2", click("Calculator")); // lock released

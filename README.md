@@ -11,7 +11,7 @@
 prompt templates and MCP servers, and your sessions are pi's own session files. Start a chat in the terminal,
 continue it in pi-gna, and go back. Nothing to migrate, nothing to configure twice.
 
-macOS only for now (Apple silicon and Intel).
+macOS only for now (Apple silicon and Intel). Linux (KDE Plasma on Wayland) is experimental and runs from source: see [docs/LINUX.md](docs/LINUX.md).
 
 ## Install
 

@@ -16,7 +16,7 @@ import type { LamentOp } from "../shared/laments";
 import { type AtpRunnerState, HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared/protocol";
-import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
+import { closeKeepsBy, emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
 import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
 import { pythonForHost } from "./python";
@@ -30,7 +30,7 @@ import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { serveVisual } from "./visual-protocol";
 import { servePreview } from "./browser/preview-protocol";
 import { VISUAL_SCHEME, visualFrameToKill } from "./visual-frame";
-import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
+import { attachDialog, describePaths } from "./attachments";
 import { Uploads } from "./uploads";
 import { BoardStore } from "./board";
 import { CardImages } from "./card-images";
@@ -41,6 +41,7 @@ import { askRoute } from "./ask";
 import { kanbanRoute } from "./kanban";
 import { ComputerAgent, computerRoute } from "./computer/agent";
 import { ComputerPreviews, shrinkWith } from "./computer/preview";
+import { linuxDeps } from "./computer/linux";
 import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
@@ -212,8 +213,8 @@ const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"
 const DESKTOP = { clientId: "desktop", actor: "desktop" } as const;
 const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`, batch.events).at(-1)?.seq, bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
   ...(await settings.get()).features,
-  // The Computer Use helper is a macOS app.
-  computer: process.platform === "darwin" && (await computerPolicy.get()).enabled,
+  // The Computer Use helpers: a macOS app, and on Linux a Python helper for KDE Plasma (native/computer-use-linux).
+  computer: (process.platform === "darwin" || process.platform === "linux") && (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
   keepOnRestart: (await settings.get()).keepChatsOnRestart,
 }), () => current.yolo);
@@ -268,7 +269,9 @@ bridge.route(
 );
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
-  defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
+  process.platform === "linux"
+    ? linuxDeps(app.isPackaged ? join(process.resourcesPath, "computer-use-linux") : join(app.getAppPath(), "native", "computer-use-linux"), app.getPath("userData"))
+    : defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
 );
 const computerAgent = new ComputerAgent(
   computerHelper,
@@ -377,11 +380,12 @@ function createWindow(): void {
       log[details.level === "error" ? "error" : "warn"]("renderer", `${details.message}  (${details.sourceId.split("/").at(-1)}:${details.lineNumber})`);
     }
   });
-  // With remote access on, closing hides the window: the app, its chats and the browser pane keep running.
+  // With remote access on, closing hides the window (minimizes it on Linux): the app, its chats and the browser pane keep running.
   window.on("close", (event) => {
     if (quitting || !hidesOnClose(current)) return;
     event.preventDefault();
-    window?.hide();
+    if (closeKeepsBy(process.platform) === "minimize") window?.minimize();
+    else window?.hide();
   });
   trackWindowState(window, stateFile);
   window.on("focus", () => send(IPC.windowFocus, true));
@@ -550,10 +554,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
         return result.canceled ? null : (result.filePaths[0] ?? null);
       },
       pickAttachments: async (kind) => {
-        const options: Electron.OpenDialogOptions =
-          kind === "photos"
-            ? { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] }
-            : { title: "Attach files and folders", properties: ["openFile", "openDirectory", "multiSelections"] };
+        const options: Electron.OpenDialogOptions = attachDialog(kind, process.platform);
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
         return result.canceled ? [] : describePaths(result.filePaths);
       },

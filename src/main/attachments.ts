@@ -32,3 +32,11 @@ export async function describePaths(paths: string[]): Promise<PickedPath[]> {
 }
 
 export const IMAGE_EXTENSIONS = Object.keys(IMAGE_TYPES).map((ext) => ext.slice(1));
+
+/** The native picker behind the composer's attach button ("files") and Add photos ("photos"). */
+export function attachDialog(kind: "photos" | "files", platform: string): { title: string; properties: ("openFile" | "openDirectory" | "multiSelections")[]; filters?: { name: string; extensions: string[] }[] } {
+  if (kind === "photos") return { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] };
+  // The Linux file chooser (the desktop portal) picks either files or folders, and asked for both it shows folders only.
+  if (platform === "linux") return { title: "Attach files", properties: ["openFile", "multiSelections"] };
+  return { title: "Attach files and folders", properties: ["openFile", "openDirectory", "multiSelections"] };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Model } from "./protocol";
-import { applySettingsOp, emptySettings, parseSettings, pickModel, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, yoloOption } from "./settings";
+import { applySettingsOp, closeKeepsBy, emptySettings, parseSettings, pickModel, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, yoloOption } from "./settings";
 
 const start = emptySettings();
 
@@ -169,6 +169,14 @@ describe("remote access and host lifecycle", () => {
     const dropped = parseSettings({ persona: "chad" });
     expect(dropped.dropped).toBe(1);
     expect(dropped.settings.persona).toBeUndefined();
+  });
+
+  // Wayland: a hidden window draws no frames, so the phone's stream stops (0 fps), and the agent's clicks, keys and
+  // screenshots on the pane stop landing; a minimized one keeps all of them, and its taskbar entry is the way back.
+  it("keeps the window running by minimizing it on Linux and by hiding it elsewhere", () => {
+    expect(closeKeepsBy("linux")).toBe("minimize");
+    expect(closeKeepsBy("darwin")).toBe("hide");
+    expect(closeKeepsBy("win32")).toBe("hide");
   });
 
   it("changes behaviour only while remote access is on", () => {
