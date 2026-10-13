@@ -101,6 +101,10 @@ class Eis:
             if device not in self.emulating:
                 self.lib.ei_device_start_emulating(device, 0)
                 self.emulating.add(device)
+        # A key sent right after the handshake was lost in Chromium/Electron windows (observed: the first of three);
+        # a short pause after it delivered every key (8 of 8 runs at 0.1 s and more).
+        time.sleep(0.3)
+        self._pump(0)
 
     def _pump(self, timeout: float) -> None:
         fd = self.lib.ei_get_fd(self.ei)

@@ -32,7 +32,7 @@ from gi.repository import GLib  # noqa: E402
 
 PROTOCOL = 1
 # Bumped when the helper's behaviour changes; main reinstalls only a newer version (src/main/computer/linux.ts).
-HELPER_VERSION = 3
+HELPER_VERSION = 4
 
 ERR = {
     "permission": -32001, "app": -32002, "window": -32003, "stale": -32004, "failed": -32005,
