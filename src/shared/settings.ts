@@ -162,6 +162,13 @@ export const wantsKeepAwake = (settings: Settings, working: boolean): boolean =>
 /** Whether closing the window hides it instead of quitting (so the Mac keeps serving). */
 export const hidesOnClose = (settings: Settings): boolean => settings.remote.enabled;
 
+/**
+ * How a window that closes without quitting keeps running. On Linux (Wayland) a hidden window draws no frames: the
+ * phone's browser stream stops and the agent's clicks, keys and screenshots on the pane stop landing. A minimized one
+ * keeps them, and its taskbar entry brings it back (there is no Dock to click).
+ */
+export const closeKeepsBy = (platform: string): "hide" | "minimize" => (platform === "linux" ? "minimize" : "hide");
+
 const NAME = 200;
 const isName = (value: unknown): value is string => typeof value === "string" && value.trim() !== "" && value.length <= NAME;
 

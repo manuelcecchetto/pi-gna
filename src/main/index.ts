@@ -16,7 +16,7 @@ import type { LamentOp } from "../shared/laments";
 import { type AtpRunnerState, HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared/protocol";
-import { emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
+import { closeKeepsBy, emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
 import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
 import { pythonForHost } from "./python";
@@ -377,11 +377,12 @@ function createWindow(): void {
       log[details.level === "error" ? "error" : "warn"]("renderer", `${details.message}  (${details.sourceId.split("/").at(-1)}:${details.lineNumber})`);
     }
   });
-  // With remote access on, closing hides the window: the app, its chats and the browser pane keep running.
+  // With remote access on, closing hides the window (minimizes it on Linux): the app, its chats and the browser pane keep running.
   window.on("close", (event) => {
     if (quitting || !hidesOnClose(current)) return;
     event.preventDefault();
-    window?.hide();
+    if (closeKeepsBy(process.platform) === "minimize") window?.minimize();
+    else window?.hide();
   });
   trackWindowState(window, stateFile);
   window.on("focus", () => send(IPC.windowFocus, true));
