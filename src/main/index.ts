@@ -30,7 +30,7 @@ import { APP_ORIGIN, registerAppScheme, serveRenderer } from "./app-protocol";
 import { serveVisual } from "./visual-protocol";
 import { servePreview } from "./browser/preview-protocol";
 import { VISUAL_SCHEME, visualFrameToKill } from "./visual-frame";
-import { describePaths, IMAGE_EXTENSIONS } from "./attachments";
+import { attachDialog, describePaths } from "./attachments";
 import { Uploads } from "./uploads";
 import { BoardStore } from "./board";
 import { CardImages } from "./card-images";
@@ -551,10 +551,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
         return result.canceled ? null : (result.filePaths[0] ?? null);
       },
       pickAttachments: async (kind) => {
-        const options: Electron.OpenDialogOptions =
-          kind === "photos"
-            ? { title: "Add photos", properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: IMAGE_EXTENSIONS }] }
-            : { title: "Attach files and folders", properties: ["openFile", "openDirectory", "multiSelections"] };
+        const options: Electron.OpenDialogOptions = attachDialog(kind, process.platform);
         const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
         return result.canceled ? [] : describePaths(result.filePaths);
       },
