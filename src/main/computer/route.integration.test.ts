@@ -196,7 +196,7 @@ describe("POST /computer against a fake helper", () => {
     await post({ action: "get_app_state", app: "Notes" });
     const pending = await post({ action: "type_text", app: "Notes", text: "__esc__" });
     expect(pending.status).toBe(400);
-    expect(pending.body.error).toContain("Esc");
+    expect(pending.body.error).toMatch(/^Stopped by the user \((Esc|Stop button)\)$/);
     expect(aborted).toEqual(["chat1"]);
     await vi.waitFor(async () => expect(await calls()).toContain("overlay_hide:com.example.Notes"));
     // The next call starts a fresh run and asks for approval again.

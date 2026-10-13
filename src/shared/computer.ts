@@ -187,6 +187,37 @@ export const HELPER_BUNDLE_ID = "io.github.manuelcecchetto.pigna.computeruse";
 const TERMINAL = "Terminals can run anything; Computer Use never operates them";
 const SECURITY = "macOS security and authentication prompts are never operated";
 const OWN = "pi-gna and its helper are never operated by the agent";
+const LINUX_SECURITY = "security and authentication prompts are never operated";
+const SHELL = "the desktop shell and lock screen are never operated";
+
+/** Linux apps by desktop file id (the Linux helper's app id; ids without a dot end in ".desktop"), with their names.
+ * Mirrored in native/computer-use-linux/pigna_cu/apps.py, which refuses them too. */
+const LINUX_DENIED: Readonly<Record<string, [string, string]>> = {
+  "org.kde.konsole": ["Konsole", TERMINAL],
+  "org.kde.yakuake": ["Yakuake", TERMINAL],
+  "kitty.desktop": ["kitty", TERMINAL],
+  "alacritty.desktop": ["Alacritty", TERMINAL],
+  "org.codeberg.dnkl.foot": ["foot", TERMINAL],
+  "foot.desktop": ["foot", TERMINAL],
+  "org.wezfurlong.wezterm": ["WezTerm", TERMINAL],
+  "org.gnome.Terminal": ["GNOME Terminal", TERMINAL],
+  "org.gnome.Console": ["Console", TERMINAL],
+  "xterm.desktop": ["XTerm", TERMINAL],
+  "org.kde.cool-retro-term": ["Cool Retro Term", TERMINAL],
+  "com.gexperts.Tilix": ["Tilix", TERMINAL],
+  "terminator.desktop": ["Terminator", TERMINAL],
+  "org.kde.polkit-kde-authentication-agent-1": ["password prompts", LINUX_SECURITY],
+  "polkit-kde-authentication-agent-1.desktop": ["password prompts", LINUX_SECURITY],
+  "org.kde.kwalletd6": ["KDE Wallet", LINUX_SECURITY],
+  "org.kde.kwalletmanager": ["KDE Wallet Manager", LINUX_SECURITY],
+  "org.kde.ksecretd": ["KDE Wallet", LINUX_SECURITY],
+  "org.gnupg.pinentry-qt": ["PIN entry", LINUX_SECURITY],
+  "org.kde.kscreenlocker_greet": ["the lock screen", SHELL],
+  "org.freedesktop.impl.portal.desktop.kde": ["portal dialogs", LINUX_SECURITY],
+  "org.kde.plasmashell": ["the Plasma shell", SHELL],
+  "org.kde.krunner": ["KRunner", SHELL],
+  "pi-gna.desktop": ["pi-gna", OWN],
+};
 
 /** Apps no approval can unlock, with the reason shown to the model and the user. */
 export const DENYLIST: Readonly<Record<string, string>> = {
@@ -209,6 +240,7 @@ export const DENYLIST: Readonly<Record<string, string>> = {
   "com.apple.keychainaccess": SECURITY,
   "com.apple.ScreenSharing": SECURITY,
   "com.apple.loginwindow": SECURITY,
+  ...Object.fromEntries(Object.entries(LINUX_DENIED).map(([id, [, reason]]) => [id, reason])),
 };
 
 /** What the settings pages call the never-allowed apps; a bundle id means nothing to most people. */
@@ -232,6 +264,7 @@ const DENIED_NAMES: Readonly<Record<string, string>> = {
   "com.apple.keychainaccess": "Keychain Access",
   "com.apple.ScreenSharing": "Screen Sharing",
   "com.apple.loginwindow": "the login window",
+  ...Object.fromEntries(Object.entries(LINUX_DENIED).map(([id, [name]]) => [id, name])),
 };
 
 /** The never-allowed apps by name, one group per reason, for the settings pages; DENYLIST is what is enforced. */

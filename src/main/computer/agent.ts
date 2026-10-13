@@ -34,7 +34,8 @@ const ALLOW_ALWAYS = "Always allow";
 const DENY = "Deny";
 const IDLE_MS = 5 * 60_000;
 const OFF = "Computer use is off. Enable it in Settings > Computer Use.";
-const STOPPED = "Stopped by the user (Esc)";
+/** The Linux helper stops from its banner's Stop button (Wayland clients cannot watch Esc globally). */
+const STOPPED = process.platform === "linux" ? "Stopped by the user (Stop button)" : "Stopped by the user (Esc)";
 const RUN_ENDED = "The chat's run ended, so Computer Use was released. Start again with computer_get_app_state.";
 
 /** Body parameters forwarded to the helper per action (snake_case, as the helper wants them). */
@@ -178,7 +179,7 @@ export class ComputerAgent {
     if (notification.method === "cancelled") {
       const handle = notification.params.session;
       if (!handle || !this.sessions.has(handle)) return;
-      log.info("computer", `${handle.slice(0, 4)} cancelled with Esc`);
+      log.info("computer", `${handle.slice(0, 4)} cancelled by the user`);
       void this.host.abort(handle).catch(() => undefined);
       void this.release(handle, STOPPED);
     } else if (notification.method === "app_gone") {

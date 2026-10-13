@@ -41,6 +41,7 @@ import { askRoute } from "./ask";
 import { kanbanRoute } from "./kanban";
 import { ComputerAgent, computerRoute } from "./computer/agent";
 import { ComputerPreviews, shrinkWith } from "./computer/preview";
+import { linuxDeps } from "./computer/linux";
 import { ComputerService, defaultDeps, HELPER_APP } from "./computer/service";
 import { ComputerStore } from "./computer/store";
 import { LamentStore, lamentRoute } from "./laments";
@@ -212,8 +213,8 @@ const settings = new SettingsStore(join(app.getPath("userData"), "settings.json"
 const DESKTOP = { clientId: "desktop", actor: "desktop" } as const;
 const host = new SessionHost((batch) => hub.publishBatch(`chat:${batch.handle}`, batch.events).at(-1)?.seq, bridge, join(app.getPath("userData"), "atp-sessions"), async () => ({
   ...(await settings.get()).features,
-  // The Computer Use helper is a macOS app.
-  computer: process.platform === "darwin" && (await computerPolicy.get()).enabled,
+  // The Computer Use helpers: a macOS app, and on Linux a Python helper for KDE Plasma (native/computer-use-linux).
+  computer: (process.platform === "darwin" || process.platform === "linux") && (await computerPolicy.get()).enabled,
   visuals: (await settings.get()).visuals,
   keepOnRestart: (await settings.get()).keepChatsOnRestart,
 }), () => current.yolo);
@@ -268,7 +269,9 @@ bridge.route(
 );
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
-  defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
+  process.platform === "linux"
+    ? linuxDeps(app.isPackaged ? join(process.resourcesPath, "computer-use-linux") : join(app.getAppPath(), "native", "computer-use-linux"), app.getPath("userData"))
+    : defaultDeps(app.isPackaged ? join(process.resourcesPath, "computer-use", HELPER_APP) : join(app.getAppPath(), "build", "computer-use", HELPER_APP), app.getPath("userData")),
 );
 const computerAgent = new ComputerAgent(
   computerHelper,

@@ -64,7 +64,14 @@ describe("denylist", () => {
     const groups = deniedApps();
     expect(groups.flatMap((group) => group.ids).sort()).toEqual(Object.keys(DENYLIST).sort());
     expect(groups.flatMap((group) => group.names).some((name) => name.includes("."))).toBe(false);
-    expect(groups.find((group) => group.names.includes("Terminal"))?.names).toEqual(["Terminal", "iTerm2", "Ghostty", "WezTerm", "kitty", "Alacritty", "Warp"]);
+    expect(groups.find((group) => group.names.includes("Terminal"))?.names).toEqual([
+      "Terminal", "iTerm2", "Ghostty", "WezTerm", "kitty", "Alacritty", "Warp",
+      "Konsole", "Yakuake", "foot", "GNOME Terminal", "Console", "XTerm", "Cool Retro Term", "Tilix", "Terminator",
+    ]);
+  });
+  it("denies Linux terminals, prompts and the shell by desktop file id", () => {
+    for (const id of ["org.kde.konsole", "kitty.desktop", "org.kde.polkit-kde-authentication-agent-1", "org.kde.plasmashell", "pi-gna.desktop"]) expect(isDenied(id)).toBe(true);
+    expect(isDenied("org.kde.kcalc")).toBe(false);
   });
   it("is case-insensitive and allows ordinary apps", () => {
     expect(isDenied("COM.APPLE.TERMINAL")).toBe(true);

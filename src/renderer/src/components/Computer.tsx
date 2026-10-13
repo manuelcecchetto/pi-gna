@@ -8,6 +8,9 @@ import { formatStamp } from "../lib/format";
 import { remoteError, toast } from "../state/app";
 import { Switch } from "./primitives";
 
+/** The Linux helper works in the foreground (real pointer and keyboard) and stops from its banner instead of Esc. */
+const LINUX = navigator.userAgent.includes("Linux") && !navigator.userAgent.includes("Android");
+
 const studio = () => window.studio.computer;
 
 type Status = { state: "loading" } | { state: "ready"; permissions: Permissions } | { state: "error"; message: string };
@@ -65,10 +68,18 @@ export function ComputerSection() {
     <div className="flex flex-col gap-7">
       <section className="flex items-start gap-4">
         <div className="flex-1">
-          <h2 className="text-[13px] font-medium text-fg">Let pi use apps on this Mac</h2>
+          <h2 className="text-[13px] font-medium text-fg">Let pi use apps on this {LINUX ? "computer" : "Mac"}</h2>
           <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-            When on, new chats get the <code>computer_*</code> tools: pi can read an app's windows and operate them in the background with its own cursor, while you keep working. Chats already open pick the tools up when they restart. pi asks before it
-            first uses each app.
+            {LINUX ? (
+              <>
+                When on, new chats get the <code>computer_*</code> tools: pi can read an app's windows in the background, and to click, type or press keys it brings the window to the front and uses your real pointer and keyboard. Chats already open pick the tools up when they restart. pi asks before it first uses each app.
+              </>
+            ) : (
+              <>
+                When on, new chats get the <code>computer_*</code> tools: pi can read an app's windows and operate them in the background with its own cursor, while you keep working. Chats already open pick the tools up when they restart. pi asks before it
+                first uses each app.
+              </>
+            )}
           </p>
         </div>
         <span className="mt-0.5">
@@ -88,15 +99,15 @@ export function ComputerSection() {
         <div className="flex flex-col divide-y divide-line rounded-lg border border-line">
           <PermissionRow
             name="Accessibility"
-            about="Read app windows and send clicks and keys."
+            about={LINUX ? "Read app windows (AT-SPI accessibility on this desktop)." : "Read app windows and send clicks and keys."}
             granted={permissions?.accessibility}
             unknown={status.state === "error"}
             onRequest={() => void run(() => studio().requestPermissions("accessibility"))}
             onOpen={() => open("accessibility")}
           />
           <PermissionRow
-            name="Screen Recording"
-            about="Take screenshots of app windows."
+            name={LINUX ? "Window screenshots" : "Screen Recording"}
+            about={LINUX ? "KWin lets the helper capture app windows (set up when the helper is installed)." : "Take screenshots of app windows."}
             granted={permissions?.screenRecording}
             unknown={status.state === "error"}
             onRequest={() => void run(() => studio().requestPermissions("screen_recording"))}
@@ -165,7 +176,13 @@ export function ComputerSection() {
         <ShieldAlert size={15} className="mt-0.5 shrink-0 text-muted" />
         <div className="text-[12.5px] leading-relaxed text-muted">
           <p>
-            pi can see what an approved app's window shows (its text and a screenshot) and click, type and press keys in it. It never moves your mouse. Press <kbd className="font-mono">Esc</kbd> to cancel at any time.
+            {LINUX ? (
+              <>pi can see what an approved app's window shows (its text and a screenshot) and click, type and press keys in it. While it acts it moves your pointer and types on your keyboard, so avoid using them at the same time. Stop it at any time with the Stop button on its banner.</>
+            ) : (
+              <>
+                pi can see what an approved app's window shows (its text and a screenshot) and click, type and press keys in it. It never moves your mouse. Press <kbd className="font-mono">Esc</kbd> to cancel at any time.
+              </>
+            )}
           </p>
           <p className="mt-1.5">Close apps showing sensitive data (banking, passwords, private messages) before you let pi work, and check what it does the first time you approve an app.</p>
         </div>
