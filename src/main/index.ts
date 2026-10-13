@@ -3,7 +3,7 @@ import { responsePreview } from "../shared/push-rules";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeImage, nativeTheme, net, powerSaveBlocker, screen, session, shell } from "electron";
+import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeImage, nativeTheme, net, powerSaveBlocker, screen, session, shell, utilityProcess } from "electron";
 import { bugs } from "../../package.json";
 import type { AtpHead } from "../shared/atp";
 import type { AuthMethod } from "../shared/auth";
@@ -68,6 +68,7 @@ import { SessionHost } from "./session-host";
 import { flushSessionIndex, indexSettled, listSessions, persistSessionIndex, sessionsDir } from "./session-index";
 import { ChatImporter } from "./chat-import";
 import { Autocomplete } from "./autocomplete";
+import { Dictation } from "./dictation";
 import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
@@ -325,6 +326,13 @@ const autocomplete = new Autocomplete({
   fetch: (url, init) => net.fetch(url, init),
   onStatus: (status) => send(IPC.autocompleteChanged, status),
 });
+// Dictation: the same, with its speech model in a utility process that stops with pi-gna.
+const dictation = new Dictation({
+  dir: join(app.getPath("userData"), "dictation"),
+  fetch: (url, init) => net.fetch(url, init),
+  fork: (env) => utilityProcess.fork(join(import.meta.dirname, "dictation-worker.js"), [], { env: { ...process.env, ...env }, serviceName: "pi-gna Dictation" }),
+  onStatus: (status) => send(IPC.dictationChanged, status),
+});
 
 function createWindow(): void {
   const stateFile = join(app.getPath("userData"), "window-state.json");
@@ -530,6 +538,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     plugins,
     chatImport,
     autocomplete,
+    dictation,
     setup,
     browser: () => browser,
     remoteBrowser: () => remoteBrowser,
@@ -598,6 +607,7 @@ function applySettings(next: Settings): Promise<void> {
   syncKeepAwake();
   autocomplete.minProb = next.autocompleteMinProb;
   autocomplete.setEnabled(next.autocomplete);
+  dictation.setEnabled(next.dictation);
   void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
   if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
@@ -724,6 +734,7 @@ function init(): void {
   app.on("will-quit", () => {
     setup.dispose();
     autocomplete.dispose();
+    dictation.dispose();
     updater?.installOnQuit();
   });
 
@@ -779,8 +790,13 @@ function init(): void {
   void app.whenReady().then(async () => {
     log.info("pigna", `${app.getName()} ${app.getVersion()} build ${__PIGNA_BUILD__}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
     log.info("pigna", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PIGNA_DEBUG=1 logs RPC traffic)"}`);
-    // The window only ever asks for clipboard writes (copy buttons); the browser pane's partition has its own handler.
-    session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(permission === "clipboard-sanitized-write"));
+    // The window asks for clipboard writes (copy buttons) and, with dictation on, the microphone (audio only, never the
+    // camera); the browser pane's partition has its own handler.
+    session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+      if (permission === "clipboard-sanitized-write") return callback(true);
+      const audio = "mediaTypes" in details && details.mediaTypes?.length === 1 && details.mediaTypes[0] === "audio";
+      callback(permission === "media" && audio && current.dictation && contents === window?.webContents);
+    });
     serveVisual();
     servePreview(join(import.meta.dirname, "../preview"));
     if (!devUrl) serveRenderer(join(import.meta.dirname, "../renderer"));

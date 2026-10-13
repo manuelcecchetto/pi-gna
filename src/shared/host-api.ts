@@ -17,6 +17,7 @@ import type { PiPatch, PiSettingsState } from "./pi-settings";
 import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { ImportResult, ImportScan } from "./chat-import";
 import type { AutocompleteStatus, SuggestRequest } from "./autocomplete";
+import type { DictationStatus } from "./dictation";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
@@ -680,6 +681,12 @@ export interface HostMethods {
   "autocomplete.suggest": { args: { request: SuggestRequest }; result: string };
   "autocomplete.retry": { args: Record<string, never>; result: null };
 
+  // dictation (desktop only: the microphone and the model are on this computer)
+  "dictation.status": { args: Record<string, never>; result: DictationStatus };
+  "dictation.warm": { args: Record<string, never>; result: null };
+  "dictation.transcribe": { args: { pcm: Float32Array }; result: string };
+  "dictation.retry": { args: Record<string, never>; result: null };
+
   // setup (desktop only: installs run code on the Mac)
   "setup.status": { args: Record<string, never>; result: SetupStatus };
   "setup.installPi": { args: Record<string, never>; result: SetupInstallResult };
@@ -784,6 +791,10 @@ export const DESKTOP_ONLY_METHODS = [
   "autocomplete.status",
   "autocomplete.suggest",
   "autocomplete.retry",
+  "dictation.status",
+  "dictation.warm",
+  "dictation.transcribe",
+  "dictation.retry",
   // git pull and switch change the Mac's checkout; the phone has no status card.
   "status.git",
   "status.github",
@@ -811,6 +822,8 @@ export const READ_ONLY_METHODS = [
   "setup.status",
   "autocomplete.status",
   "autocomplete.suggest",
+  "dictation.status",
+  "dictation.transcribe",
   "board.get",
   "laments.get",
   "themes.get",

@@ -9,6 +9,7 @@ import type { Themes } from "../shared/themes";
 import type { McpLoginUpdate } from "../shared/plugins";
 import type { ImportProgress } from "../shared/chat-import";
 import type { AutocompleteStatus } from "../shared/autocomplete";
+import type { DictationStatus } from "../shared/dictation";
 import type { Settings, SettingsSection } from "../shared/settings";
 import type { UsageProgress } from "../shared/usage";
 import type { AtpPlanThreads, AtpRunnerState, DeviceInfo, PairingStatus, RemoteStatus, Revved, UiState } from "../shared/host-api";
@@ -209,6 +210,13 @@ const api: StudioApi = {
     onStatus: (listener) => subscribe<AutocompleteStatus>(IPC.autocompleteChanged, listener),
     suggest: (request) => ipcRenderer.invoke(IPC.autocompleteSuggest, request),
     retry: () => ipcRenderer.invoke(IPC.autocompleteRetry),
+  },
+  dictation: {
+    status: () => ipcRenderer.invoke(IPC.dictationGet),
+    onStatus: (listener) => subscribe<DictationStatus>(IPC.dictationChanged, listener),
+    warm: () => ipcRenderer.send(IPC.dictationWarm),
+    transcribe: (pcm) => ipcRenderer.invoke(IPC.dictationTranscribe, pcm),
+    retry: () => ipcRenderer.invoke(IPC.dictationRetry),
   },
   setup: {
     status: () => ipcRenderer.invoke(IPC.setupStatus),

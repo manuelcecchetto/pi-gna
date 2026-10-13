@@ -1,4 +1,4 @@
-// Fetches and unpacks what composer autocomplete runs (assets.ts) into userData/autocomplete. A file is used only
+// Fetches and unpacks what composer autocomplete and dictation run (their assets.ts) into userData. A file is used only
 // after its size and SHA-256 match the pin; a `.ok` marker beside it records that, so a start does not hash 380 MB
 // again. Downloads go to a `.part` file first, so a quit mid-download leaves nothing that looks finished.
 import { execFile } from "node:child_process";
@@ -56,39 +56,52 @@ export function tarCommand(platform: string = process.platform): string {
 const run = (file: string, args: string[]) =>
   new Promise<void>((resolve, reject) => execFile(file, args, { windowsHide: true }, (error, _out, stderr) => (error ? reject(new Error(stderr.trim() || error.message)) : resolve())));
 
-/** The llama-server executable under `dir`, wherever the archive put it. */
-export async function findServer(dir: string, platform: string = process.platform): Promise<string | undefined> {
-  const name = platform === "win32" ? "llama-server.exe" : "llama-server";
+/** The first file called `name` under `dir`, wherever the archive put it. */
+export async function findFile(dir: string, name: string): Promise<string | undefined> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) if (entry.isFile() && entry.name === name) return join(dir, entry.name);
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const found = await findServer(join(dir, entry.name), platform);
+    const found = await findFile(join(dir, entry.name), name);
     if (found) return found;
   }
   return undefined;
 }
 
-/** Downloads and unpacks one server build under `root`; returns its executable. */
-export async function installServer(fetch: Fetch, build: ServerBuild, root: string, onBytes: (bytes: number) => void, signal?: AbortSignal): Promise<string> {
-  const dir = join(root, build.id);
+/** An archive to unpack: its download and the folder name it unpacks into. */
+export interface Archive extends Download {
+  id: string;
+}
+
+/**
+ * Downloads and unpacks `archive` under `root` unless an earlier run did; returns the file `name` inside it: a bare
+ * name is searched for, a path with a / is taken as is. A `.unpacked` marker records a finished unpack, and the
+ * archive itself is deleted once unpacked.
+ */
+export async function installArchive(fetch: Fetch, archive: Archive, root: string, name: string, onBytes: (bytes: number) => void, signal?: AbortSignal): Promise<string> {
+  const dir = join(root, archive.id);
   const done = join(dir, ".unpacked");
+  const find = () => (name.includes("/") ? Promise.resolve(existsSync(join(dir, name)) ? join(dir, name) : undefined) : findFile(dir, name));
   if (existsSync(done)) {
-    const found = await findServer(dir);
+    const found = await find();
     if (found) {
-      onBytes(build.size);
+      onBytes(archive.size);
       return found;
     }
   }
-  const archive = join(root, `${build.id}${build.url.endsWith(".zip") ? ".zip" : ".tar.gz"}`);
-  await fetchVerified(fetch, build, archive, onBytes, signal);
+  const file = join(root, `${archive.id}${archive.url.endsWith(".zip") ? ".zip" : archive.url.endsWith(".tgz") ? ".tgz" : ".tar.gz"}`);
+  await fetchVerified(fetch, archive, file, onBytes, signal);
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
-  await run(tarCommand(), ["-xf", archive, "-C", dir]);
-  const found = await findServer(dir);
-  if (!found) throw new Error(`no llama-server in ${build.id}`);
-  await writeFile(done, build.sha256);
-  await rm(archive, { force: true });
-  await rm(`${archive}.ok`, { force: true });
+  await run(tarCommand(), ["-xf", file, "-C", dir]);
+  const found = await find();
+  if (!found) throw new Error(`no ${name} in ${archive.id}`);
+  await writeFile(done, archive.sha256);
+  await rm(file, { force: true });
+  await rm(`${file}.ok`, { force: true });
   return found;
 }
+
+/** Downloads and unpacks one server build under `root`; returns its executable. */
+export const installServer = (fetch: Fetch, build: ServerBuild, root: string, onBytes: (bytes: number) => void, signal?: AbortSignal): Promise<string> =>
+  installArchive(fetch, build, root, process.platform === "win32" ? "llama-server.exe" : "llama-server", onBytes, signal);

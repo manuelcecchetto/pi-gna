@@ -138,6 +138,7 @@ export const Angry = icon("angry", <>{ring}<path d="M8.5 16.5a4.5 4.5 0 0 1 7 0M
 
 // Chat.
 export const MessageSquare = icon("message-square", bubble);
+export const Mic = icon("mic", <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
 export const MessageSquarePlus = icon("message-square-plus", <>{bubble}<path d="M12 8v6M9 11h6" /></>);
 export const MessagesSquare = icon(
   "messages-square",

@@ -1,5 +1,6 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
 import type { AutocompleteStatus, SuggestRequest } from "./autocomplete";
+import type { DictationStatus } from "./dictation";
 import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
@@ -150,6 +151,11 @@ export const IPC = {
   autocompleteChanged: "autocomplete:changed",
   autocompleteSuggest: "autocomplete:suggest",
   autocompleteRetry: "autocomplete:retry",
+  dictationGet: "dictation:get",
+  dictationChanged: "dictation:changed",
+  dictationWarm: "dictation:warm",
+  dictationTranscribe: "dictation:transcribe",
+  dictationRetry: "dictation:retry",
   setupStatus: "setup:status",
   setupInstallPi: "setup:install-pi",
   setupLine: "setup:line",
@@ -424,6 +430,18 @@ export interface AutocompleteApi {
   retry(): Promise<null>;
 }
 
+/** Dictation (src/shared/dictation.ts): desktop only, the speech model runs on this computer. */
+export interface DictationApi {
+  status(): Promise<DictationStatus>;
+  onStatus(listener: (status: DictationStatus) => void): () => void;
+  /** Loads the model while a recording goes on. */
+  warm(): void;
+  /** The text spoken in 16 kHz mono PCM; rejects when dictation is not ready or the model fails. */
+  transcribe(pcm: Float32Array): Promise<string>;
+  /** Downloads or starts again after an error. */
+  retry(): Promise<null>;
+}
+
 export interface ImportApi {
   scan(): Promise<ImportScan>;
   /** Imports the chats of these projects (cwds from the scan); resolves when done. */
@@ -678,6 +696,7 @@ export interface StudioApi {
   plugins: PluginsApi;
   imports: ImportApi;
   autocomplete: AutocompleteApi;
+  dictation: DictationApi;
   github: GithubApi;
   status: StatusApi;
   atp: AtpApi;

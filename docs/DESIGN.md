@@ -27,6 +27,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     SessionIndex   lists ~/.pi/agent/sessions (pi has no list_sessions command)
     chat-import/   ChatImporter: Codex and Claude Code transcripts -> pi session files (Settings > Import chats)
     autocomplete/  Autocomplete: composer ghost text from a local llama.cpp server and typeahead model (Settings > Agent > Beta)
+    dictation/     Dictation: composer mic, local Parakeet Ultra speech model in a utility process (Settings > Agent > Beta)
     files          `rg --files` for @ mentions, kept until a file comes or goes (a recursive watcher; 15 s on Linux)
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
@@ -1026,6 +1027,37 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   usefulness is modest: a first word is right about 1 time in 6, three or more words about 1 time in 80. No model is
   trained on anyone's messages: a model trained on one user's prompts could memorise them, so it could never ship.
   Unverified: Windows and Linux (Vulkan fallback and zip extraction run only in unit tests on macOS).
+- **Dictation** (Agent > Beta, `dictation`, off by default; desktop only): a mic button beside Attach, and Right
+  Option (Right Alt / AltGr elsewhere) for the active chat while no other text field has the focus: a tap starts a
+  recording and the next tap stops it; held for 250 ms it records until let go (`RightOptionGesture`,
+  `src/renderer/src/lib/dictation.ts`). Any other key while it is down calls it off, so ⌥← and ⌥e and AltGr characters
+  keep working; the left Option key never dictates. The renderer records with MediaRecorder and, at the end, decodes
+  and resamples to 16 kHz mono with an OfflineAudioContext; recordings under 0.3 s are dropped, and one stops itself
+  at 5 minutes (`MAX_SECONDS`). The transcript goes in at the caret with `execCommand("insertText")`, so ⌘Z takes it
+  back, with a space before and after where the draft needs one (`dictationInsert`). The window may use the microphone
+  only while the setting is on, audio only, from its own web contents (the permission handler in `index.ts`); the
+  packaged Mac app carries `NSMicrophoneUsageDescription` (electron-builder.yml).
+  Main (`src/main/dictation/`) installs on the switch, with autocomplete's verified download and unpack
+  (`installArchive`): transcribe.cpp's native library for the platform (Metal on Apple silicon, CPU on Intel Macs,
+  Vulkan with a CPU fallback chosen at load on Windows x64 and Linux; no Windows on Arm build exists), the Koffi addon
+  of the same platform from npm, and the model, pinned in `assets.ts`. The model is moondream's Parakeet Ultra
+  (CC-BY-4.0, Parakeet-TDT-0.6B-v3 fine-tune, 25 European languages, punctuation, language detection) at Q5_K_M,
+  549.8 MB. It runs in an Electron utility process (`dictation-worker.ts`), so a native crash costs one recording and
+  the next starts a new process. The worker bundles the `transcribe-cpp` binding (a devDependency, pinned to the
+  native release: its ABI check refuses any other); the build aliases its `koffi` import to `dictation/koffi.ts`,
+  which loads the downloaded addon (the app ships no node_modules), and writes the binding's version in at build time
+  (`electron.vite.config.ts`), since the bundle has no package.json to read it from. The model loads when a recording
+  starts (`dictation.warm`), so it is usually ready when the recording ends; the worker stops after 10 minutes without
+  a recording and when the switch goes off.
+  Model choice (2026-10-13, transcribe.cpp v0.4.0's own catalog of its GGUF builds, FLEURS WER at Q8_0): Parakeet
+  Ultra 4.26% English, 2.34% Italian, 4.58% German, about 200x real time on an M4 with Metal; Parakeet-TDT-0.6B-v3
+  4.83 / 3.02 / 5.24 at the same size; Whisper large-v3-turbo 4.38 / 2.77 / 4.54 at a quarter of the speed;
+  Qwen3-ASR-0.6B (which our llama.cpp server could run) 4.23 / 5.19 / 6.80 at about a third of the speed and twice
+  the download. Measured here (M4, Electron): the first load compiles Metal shaders, about 8.7 s once; afterwards a
+  load takes about 0.2 s and a 6 s recording about 150 ms, word-for-word right in English and Italian.
+  Unverified: Windows and Linux (the archives and addon paths are pinned and unit-tested, never run), and a real
+  microphone in an automated run (QA fed a recorded sentence through a Web Audio stream in place of getUserMedia,
+  since Chromium's fake capture device delivered silence).
 - **Keep chats running on restart** (Agent > Beta, `keepChatsOnRestart`, off by default, hidden on Windows): read when a
   chat starts (`SessionFeatures.keepOnRestart`). See "A restart keeps the chats running".
 - **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global

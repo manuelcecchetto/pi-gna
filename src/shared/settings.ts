@@ -97,6 +97,9 @@ export interface Settings {
   /** The lowest probability a suggested word may have (`confidentText`): lower shows more, and more wrong, suggestions.
    * Read at each suggestion. */
   autocompleteMinProb: number;
+  /** Beta: the composer's mic writes what you say, with a speech model that runs on this computer
+   * (src/shared/dictation.ts). Turning it on downloads the model once. */
+  dictation: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
   remote: RemoteSettings;
@@ -116,6 +119,7 @@ export type SettingsOp =
   | { type: "keepChatsOnRestart"; on: boolean }
   | { type: "autocomplete"; on: boolean }
   | { type: "autocompleteMinProb"; value: number }
+  | { type: "dictation"; on: boolean }
   | { type: "remoteEnabled"; on: boolean }
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
@@ -143,6 +147,7 @@ export const emptySettings = (): Settings => ({
   keepChatsOnRestart: false,
   autocomplete: false,
   autocompleteMinProb: MIN_WORD_PROB,
+  dictation: false,
   models: {},
   remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
   openAtLogin: false,
@@ -224,6 +229,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (!isMinProb(op.value)) throw new SettingsError(`not an autocomplete threshold: ${String(op.value)}`);
       return settings.autocompleteMinProb === op.value ? settings : { ...settings, autocompleteMinProb: op.value };
     }
+    case "dictation": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn dictation ${String(op.on)}`);
+      return settings.dictation === op.on ? settings : { ...settings, dictation: op.on };
+    }
     case "remoteEnabled": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
       return settings.remote.enabled === op.on ? settings : { ...settings, remote: { ...settings.remote, enabled: op.on } };
@@ -294,6 +303,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.autocomplete !== undefined) dropped++;
   if (isMinProb(file.autocompleteMinProb)) settings.autocompleteMinProb = file.autocompleteMinProb;
   else if (file.autocompleteMinProb !== undefined) dropped++;
+  if (typeof file.dictation === "boolean") settings.dictation = file.dictation;
+  else if (file.dictation !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
   if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;

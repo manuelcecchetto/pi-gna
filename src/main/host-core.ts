@@ -49,6 +49,8 @@ import type { PiAuth } from "./pi-auth";
 import type { PiPlugins } from "./plugins";
 import type { ChatImporter } from "./chat-import";
 import type { Autocomplete } from "./autocomplete";
+import type { Dictation } from "./dictation";
+import { MAX_SAMPLES } from "../shared/dictation";
 import type { SuggestRequest } from "../shared/autocomplete";
 import type { PiSetup } from "./setup";
 import type { SessionHost } from "./session-host";
@@ -107,6 +109,7 @@ export interface HostDeps {
   plugins: PiPlugins;
   chatImport: ChatImporter;
   autocomplete: Autocomplete;
+  dictation: Dictation;
   setup: PiSetup;
   browser(): BrowserManager | undefined;
   /** Frames and input for phones; exists with the browser manager. */
@@ -776,6 +779,17 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       (ctx, { request }) => deps.autocomplete.suggest(ctx.clientId, request),
     ),
     "autocomplete.retry": any("desktop", () => (deps.autocomplete.retry(), null)),
+    "dictation.status": any("desktop", () => deps.dictation.get()),
+    "dictation.warm": any("desktop", () => (deps.dictation.warm(), null)),
+    "dictation.transcribe": method<{ pcm: Float32Array }>(
+      "desktop",
+      (raw) => {
+        if (!(raw?.pcm instanceof Float32Array) || !raw.pcm.length || raw.pcm.length > MAX_SAMPLES) throw new Error("invalid recording");
+        return { pcm: raw.pcm };
+      },
+      (_ctx, { pcm }) => deps.dictation.transcribe(pcm),
+    ),
+    "dictation.retry": any("desktop", () => (deps.dictation.retry(), null)),
     "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
     "plugins.logout": method<{ cwd?: string; server: string }>(
       "desktop",
@@ -987,6 +1001,10 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.autocompleteGet, "autocomplete.status"),
   route(IPC.autocompleteSuggest, "autocomplete.suggest", (request) => ({ request })),
   route(IPC.autocompleteRetry, "autocomplete.retry"),
+  route(IPC.dictationGet, "dictation.status"),
+  route(IPC.dictationWarm, "dictation.warm", () => ({}), true),
+  route(IPC.dictationTranscribe, "dictation.transcribe", (pcm) => ({ pcm })),
+  route(IPC.dictationRetry, "dictation.retry"),
   route(IPC.githubProject, "github.project", (cwd, refresh) => ({ cwd, refresh })),
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),
   route(IPC.githubList, "github.list", (cwd, kind, filter) => ({ cwd, kind, filter })),

@@ -5,6 +5,7 @@ import { BookOpen, Bug, Code, Globe, FolderOpen, type IconComponent, Search, Tri
 import { useCallback, useEffect, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import type { AutocompleteStatus } from "../../../shared/autocomplete";
+import { useDictationStatus } from "../lib/dictation";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, MIN_PROB_RANGE, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { author, bugs, homepage, license } from "../../../../package.json";
 import { tildify } from "../lib/format";
@@ -299,6 +300,7 @@ const SHORTCUTS: { title: string; keys: [string, string][] }[] = [
       ["⌥↩", "Queue as a follow-up, after pi finishes"],
       ["esc esc", "Stop pi (queued messages come back to the composer)"],
       ["⌘U", "Attach files"],
+      ["right ⌥", "Dictate: tap to start and stop, or hold while you speak (Dictation, Settings > Agent)"],
       ["⌥↑ ⌥↓", "Jump to the previous or next turn"],
       ["⌃O", "Expand or collapse every tool call"],
     ],
@@ -416,6 +418,40 @@ function AutocompleteRow() {
   );
 }
 
+/** Dictation's switch, with the speech model's download and start under it. */
+function DictationRow() {
+  const on = useApp((state) => state.settings.dictation);
+  const status = useDictationStatus(on);
+  const phase = on ? status?.phase : undefined;
+  const mac = navigator.userAgent.includes("Mac");
+  const note =
+    phase === "downloading"
+      ? `Downloading the speech model… ${Math.round((status?.progress ?? 0) * 100)}%`
+      : phase === "starting"
+        ? "Loading the speech model…"
+        : phase === "ready"
+          ? "Ready."
+          : phase === "error"
+            ? status?.error
+            : undefined;
+  return (
+    <Row
+      title="Dictation"
+      about={
+        <>
+          The composer's mic writes what you say where the caret is: tap {mac ? "Right Option" : "Right Alt"} to start and again to stop, or hold it while you speak.
+          A speech model (moondream's Parakeet Ultra, CC BY 4.0, about 550 MB, downloaded once; 25 European languages) runs on this computer;
+          nothing leaves the computer.
+          {note && <span className={`mt-1 block ${phase === "error" ? "text-bad" : "text-muted"}`} data-testid="dictation-status">{note}</span>}
+        </>
+      }
+    >
+      {phase === "error" && <Button onClick={() => void window.studio.dictation.retry()}>Retry</Button>}
+      <Switch on={on} onChange={(next) => void applySettings({ type: "dictation", on: next })} />
+    </Row>
+  );
+}
+
 /** How sure the model must be of each suggested word: lower suggests more often, and more often wrongly. The slider
  * moves freely and saves when let go. */
 function AutocompleteThresholdRow() {
@@ -490,6 +526,7 @@ function AgentSection({ pi }: { pi: Pi }) {
         </Row>
         <AutocompleteRow />
         {autocomplete && <AutocompleteThresholdRow />}
+        <DictationRow />
         {/* pi talks through FIFOs to outlive pi-gna: none on Windows. */}
         {!navigator.userAgent.includes("Windows") && (
           <Row
