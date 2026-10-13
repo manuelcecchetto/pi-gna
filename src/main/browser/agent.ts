@@ -4,7 +4,7 @@
 // A web page is the one the user sees; a file preview is read and driven in the agent's own copy
 // (BrowserManager.agentPage), so the user's zoom, scroll and pane never reach it.
 import { homedir } from "node:os";
-import { nativeImage, type WebContents } from "electron";
+import { type NativeImage, nativeImage, type WebContents } from "electron";
 import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize, viewportLine } from "../../shared/browser";
 import { parseLocalTarget, previewLabel } from "../../shared/preview";
 import { resolveViewport, toInputCoords, type ViewportSpec } from "../../shared/viewport";
@@ -16,6 +16,8 @@ import { focusForTyping, ISOLATED_WORLD, locate, SNAPSHOT } from "./page-scripts
 
 const TEXT_LIMIT = 20_000;
 const SCREENSHOT_LONG_EDGE = 1600;
+/** How long a capture may wait for the page to draw a frame before falling back, then failing. */
+const SCREENSHOT_WAIT_MS = 5_000;
 interface KeyDef {
   key: string;
   code: string;
@@ -104,7 +106,7 @@ export class BrowserAgent {
     if (request.action === "window") return this.window(handle, request);
     const tab = this.tabFor(handle, request.tab);
     // A tab of a chat that is not on screen is in no window; holding it keeps the page rendering for the action. The
-    // agent's copy of a preview lives in the keeper already.
+    // agent's copy of a preview has a window of its own already (the keeper, or the offscreen holder on Linux).
     const held = !tab.preview;
     if (held) this.browser.hold(tab.id);
     try {
@@ -139,7 +141,10 @@ export class BrowserAgent {
           await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
           await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
         } else {
-          for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+          // The hover move is not awaited: its ack waits for a frame, which a minimized window or one on another
+          // virtual desktop never draws on Wayland (~5 s per click). CDP keeps the order, so the press still follows it.
+          void cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", clickCount: 1 }).catch(() => undefined);
+          for (const type of ["mousePressed", "mouseReleased"]) {
             await cdp(wc, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
           }
         }
@@ -168,8 +173,7 @@ export class BrowserAgent {
       }
       case "screenshot": {
         const { wc } = await page();
-        const { data } = (await cdp(wc, "Page.captureScreenshot", { format: "png" })) as { data: string };
-        let image = nativeImage.createFromBuffer(Buffer.from(data, "base64"));
+        let image = await capture(wc);
         if (image.isEmpty()) throw new Error("The page could not be captured.");
         const size = image.getSize();
         const fit = screenshotSize(size.width, size.height, SCREENSHOT_LONG_EDGE);
@@ -352,6 +356,26 @@ export async function pressKey(wc: WebContents, spec: string): Promise<void> {
   const base = { key: def.key, code: def.code, windowsVirtualKeyCode: def.keyCode, nativeVirtualKeyCode: def.keyCode, modifiers };
   await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: text ? "keyDown" : "rawKeyDown", text, unmodifiedText: text });
   await cdp(wc, "Input.dispatchKeyEvent", { ...base, type: "keyUp" });
+}
+
+/** The value of `promise`, or undefined once `ms` passed without one. */
+function within<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([promise, new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms)))]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Page.captureScreenshot answers with the next frame the page draws, and a page in a window that draws none (a still
+ * page in the opacity-0 keeper on Wayland, a hidden window) never answers; a tab's actions are queued, so one such
+ * capture blocked every later action of that tab. Fall back to the view's own surface, then fail with a reason.
+ */
+async function capture(wc: WebContents): Promise<NativeImage> {
+  const shot = await within(cdp(wc, "Page.captureScreenshot", { format: "png" }) as Promise<{ data: string }>, SCREENSHOT_WAIT_MS);
+  if (shot) return nativeImage.createFromBuffer(Buffer.from(shot.data, "base64"));
+  log.warn("browser", `no frame for Page.captureScreenshot in ${SCREENSHOT_WAIT_MS} ms; capturing the view instead`);
+  const view = await within(wc.capturePage(), SCREENSHOT_WAIT_MS);
+  if (view) return view;
+  throw new Error("The page did not draw a frame to capture (its window may be hidden). Try again, or bring pi-gna to the front.");
 }
 
 function waitForStop(wc: WebContents, timeoutMs: number): Promise<void> {

@@ -102,6 +102,13 @@ const originOf = (url: string): string => {
 const PARK_SIZE = { width: 1280, height: 800 };
 /** Size of the agent's copy of a file preview unless it asked for another. */
 export const AGENT_PREVIEW_SIZE = { width: 1280, height: 800 };
+/**
+ * On Linux (Wayland) the agent's copies of previews render offscreen, in a window that is never shown, instead of in
+ * the keeper: a shown opacity-0 window draws no new frame for a still page there, so Page.captureScreenshot never
+ * answers, and showing it takes the keyboard focus from the user's app and adds a taskbar entry. Offscreen copies
+ * capture, click and type without any window on screen.
+ */
+const offscreenCopies = () => process.platform === "linux";
 
 /** The page an agent action reads and drives, with what input on it needs (see `BrowserManager.agentPage`). */
 export interface AgentPage {
@@ -138,6 +145,8 @@ export class BrowserManager {
   /** Views of tabs held for remote viewers that are not in the pane or a window; they sit in the keeper window. */
   private readonly parked = new Set<WebContentsView>();
   private keeper?: BrowserWindow;
+  /** Holds the agent's offscreen copies of previews where `offscreenCopies`; never shown. */
+  private copyHolder?: BrowserWindow;
   private annotating = false;
   private annotateGeneration = 0;
   private stateTimer?: ReturnType<typeof setTimeout>;
@@ -167,6 +176,7 @@ export class BrowserManager {
     // Device windows belong to the app window.
     window.on("close", () => {
       this.keeper?.destroy();
+      this.copyHolder?.destroy();
       for (const tab of [...this.tabs.values()]) if (tab.win) this.closeTab(tab.id);
     });
     void readFile(this.historyPath, "utf8")
@@ -907,9 +917,41 @@ export class BrowserManager {
   }
 
   private dropKeeperIfIdle(): void {
-    if (this.parked.size || [...this.tabs.values()].some((tab) => tab.agentView)) return;
+    const copies = [...this.tabs.values()].some((tab) => tab.agentView);
+    if (!copies) {
+      this.copyHolder?.destroy();
+      this.copyHolder = undefined;
+    }
+    if (this.parked.size || (copies && !offscreenCopies())) return;
     this.keeper?.destroy();
     this.keeper = undefined;
+  }
+
+  /** Where the agent's copies of previews live: the keeper, or the never-shown holder of offscreen copies. */
+  private copyHost(size: { width: number; height: number }): BrowserWindow {
+    if (!offscreenCopies()) return this.keeperWindow(size);
+    const holder = this.copyHolder;
+    if (holder && !holder.isDestroyed()) {
+      const [width = 0, height = 0] = holder.getContentSize();
+      if (width < size.width || height < size.height) holder.setContentSize(Math.max(width, size.width), Math.max(height, size.height));
+      return holder;
+    }
+    const made = new BrowserWindow({
+      width: size.width,
+      height: size.height,
+      useContentSize: true,
+      show: false,
+      frame: false,
+      skipTaskbar: true,
+      fullscreenable: false,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false },
+    });
+    made.on("closed", () => {
+      if (this.copyHolder === made) this.copyHolder = undefined;
+      for (const tab of this.tabs.values()) this.dropAgentView(tab);
+    });
+    this.copyHolder = made;
+    return made;
   }
 
   private keeperWindow(size: { width: number; height: number }): BrowserWindow {
@@ -948,8 +990,8 @@ export class BrowserManager {
   /**
    * The page an agent action reads and drives. A web page is shared: the agent acts on the page the user sees, so the
    * user can step in (a login) and watch. A file preview is not: the user's zoom, scroll and pane size are theirs, so the
-   * agent gets its own copy of the file in the keeper at a fixed size (AGENT_PREVIEW_SIZE, or the size it asked for), and
-   * the pane can be closed, scrolled or resized without touching it. The copy follows the file and view the tab shows;
+   * agent gets its own copy of the file in the keeper (offscreen on Linux, see `offscreenCopies`) at a fixed size
+   * (AGENT_PREVIEW_SIZE, or the size it asked for), and the pane can be closed, scrolled or resized without touching it. The copy follows the file and view the tab shows;
    * `line` loads it at that line. A navigation the agent makes in its copy (a link to another file, back) is carried to
    * the tab, so the user sees which file the agent went to.
    */
@@ -980,10 +1022,10 @@ export class BrowserManager {
   }
 
   private makeAgentView(tab: Tab): WebContentsView {
-    const view = pageView();
+    const view = pageView(offscreenCopies());
     tab.agentView = view;
     const size = tab.agentViewport ?? AGENT_PREVIEW_SIZE;
-    this.keeperWindow(size).contentView.addChildView(view);
+    this.copyHost(size).contentView.addChildView(view);
     view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
     const wc = view.webContents;
     this.guard(wc, tab);
@@ -1011,7 +1053,7 @@ export class BrowserManager {
     if (!view) return;
     const spec = tab.agentViewport;
     const size = spec ?? AGENT_PREVIEW_SIZE;
-    this.keeperWindow(size);
+    this.copyHost(size);
     view.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
     const wc = view.webContents;
     if (!wc.getURL()) return;
@@ -1035,7 +1077,9 @@ export class BrowserManager {
     const view = tab.agentView;
     if (!view) return;
     tab.agentView = undefined;
-    if (this.keeper && !this.keeper.isDestroyed() && this.keeper.contentView.children.includes(view)) this.keeper.contentView.removeChildView(view);
+    for (const host of [this.keeper, this.copyHolder]) {
+      if (host && !host.isDestroyed() && host.contentView.children.includes(view)) host.contentView.removeChildView(view);
+    }
     if (!view.webContents.isDestroyed()) view.webContents.close();
     this.dropKeeperIfIdle();
   }
@@ -1127,9 +1171,9 @@ function shownUrl(state: PreviewState): string {
 }
 
 /** A page's view in the browser profile: a tab, or the agent's copy of a preview. */
-function pageView(): WebContentsView {
+function pageView(offscreen = false): WebContentsView {
   const view = new WebContentsView({
-    webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    webPreferences: { partition: PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, offscreen },
   });
   view.setBackgroundColor("#ffffff");
   return view;

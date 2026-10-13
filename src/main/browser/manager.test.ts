@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // Just enough of Electron for tabs that load, report their icon and are captured: no real pages.
 const electron = vi.hoisted(() => {
   const shots = { count: 0, empty: false };
-  const keepers: { destroyed: boolean; contentView: { children: unknown[] } }[] = [];
+  const keepers: { destroyed: boolean; shown: boolean; contentView: { children: unknown[] } }[] = [];
   return { shots, keepers };
 });
 
@@ -45,6 +45,7 @@ vi.mock("electron", async () => {
     }
   }
   class WebContentsView {
+    constructor(readonly options?: { webPreferences?: { offscreen?: boolean } }) {}
     webContents = new FakeContents();
     bounds = { x: 0, y: 0, width: 0, height: 0 };
     setBackgroundColor = () => undefined;
@@ -61,6 +62,7 @@ vi.mock("electron", async () => {
     BrowserWindow: class {
       static made = 0;
       destroyed = false;
+      shown = false;
       size = [0, 0];
       contentView = {
         children: [] as unknown[],
@@ -73,7 +75,9 @@ vi.mock("electron", async () => {
       }
       setOpacity = () => undefined;
       setIgnoreMouseEvents = () => undefined;
-      showInactive = () => undefined;
+      showInactive = () => {
+        this.shown = true;
+      };
       on = () => undefined;
       isDestroyed = () => this.destroyed;
       getContentSize = () => this.size;
@@ -277,6 +281,30 @@ describe("BrowserManager agent copies of previews", () => {
     await manager.agentPage(tab);
     expect(copy.loads.at(-1)).toMatch(/\?view=raw$/);
     expect(user.loads.length).toBe(userLoads + 1);
+  });
+
+  it("keeps the agent's copy in the shown keeper on macOS and Windows", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    const { manager, tab } = await previewed();
+    await manager.agentPage(tab);
+    expect((tab.agentView as unknown as { options?: { webPreferences?: { offscreen?: boolean } } }).options?.webPreferences?.offscreen).toBeFalsy();
+    expect(electron.keepers[0]?.shown).toBe(true);
+    platform.mockRestore();
+  });
+
+  // Wayland: a shown, opacity-0 keeper draws no frame for a still page, so Page.captureScreenshot never answers, and
+  // showing it takes the keyboard focus from the user's app and adds a taskbar entry.
+  it("renders the agent's copy offscreen on Linux, in a window that is never shown", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    const { manager, tab } = await previewed();
+    await manager.agentPage(tab);
+    expect((tab.agentView as unknown as { options?: { webPreferences?: { offscreen?: boolean } } }).options?.webPreferences?.offscreen).toBe(true);
+    expect(electron.keepers).toHaveLength(1);
+    expect(electron.keepers[0]?.contentView.children).toContain(tab.agentView);
+    expect(electron.keepers[0]?.shown).toBe(false);
+    manager.closeTab(tab.id);
+    expect(electron.keepers[0]?.destroyed).toBe(true);
+    platform.mockRestore();
   });
 
   it("acts on the page the user sees for a web tab", async () => {
