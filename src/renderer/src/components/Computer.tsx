@@ -116,24 +116,27 @@ export function ComputerSection() {
         </div>
       </section>
 
-      <section className="flex items-start gap-4">
-        <div className="flex-1">
-          <h2 className="text-[13px] font-medium text-fg">Cursor motion</h2>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{CURSOR_MOTIONS[settings.cursorMotion].about} Applies the next time pi starts using an app. With Reduce Motion on, the cursor jumps.</p>
-        </div>
-        <select
-          aria-label="Cursor motion"
-          value={settings.cursorMotion}
-          onChange={(event) => isCursorMotion(event.target.value) && void applyComputer({ type: "cursor-motion", motion: event.target.value })}
-          className="mt-0.5 rounded-lg border border-line bg-panel px-2 py-1 text-[12px] text-fg outline-none"
-        >
-          {Object.entries(CURSOR_MOTIONS).map(([id, { label }]) => (
-            <option key={id} value={id}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </section>
+      {/* The Linux helper moves the real pointer, which has no animated agent cursor. */}
+      {!LINUX && (
+        <section className="flex items-start gap-4">
+          <div className="flex-1">
+            <h2 className="text-[13px] font-medium text-fg">Cursor motion</h2>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{CURSOR_MOTIONS[settings.cursorMotion].about} Applies the next time pi starts using an app. With Reduce Motion on, the cursor jumps.</p>
+          </div>
+          <select
+            aria-label="Cursor motion"
+            value={settings.cursorMotion}
+            onChange={(event) => isCursorMotion(event.target.value) && void applyComputer({ type: "cursor-motion", motion: event.target.value })}
+            className="mt-0.5 rounded-lg border border-line bg-panel px-2 py-1 text-[12px] text-fg outline-none"
+          >
+            {Object.entries(CURSOR_MOTIONS).map(([id, { label }]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-2 text-[13px] font-medium text-fg">Always allowed apps</h2>

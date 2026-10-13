@@ -90,7 +90,7 @@ export const SECTIONS: SectionInfo[] = [
     about: "Serve pi-gna to your phone over Tailscale. Chats, tools and files stay on this Mac.",
     keywords: "iphone phone mobile tailscale remote keep awake sleep login lid clamshell port",
   },
-  { id: "computer", label: "Computer use", icon: Monitor, group: "Integrations", about: "The computer_* tools: what pi may operate on this Mac, and the macOS permissions they need.", keywords: "apps mac accessibility screen recording permissions always allowed denylist" },
+  { id: "computer", label: "Computer use", icon: Monitor, group: "Integrations", about: navigator.userAgent.includes("Linux") ? "The computer_* tools: what pi may operate on this computer, and what the desktop must allow." : "The computer_* tools: what pi may operate on this Mac, and the macOS permissions they need.", keywords: "apps mac accessibility screen recording permissions always allowed denylist" },
 ];
 
 const GROUPS: Group[] = ["pi-gna", "pi", "Integrations"];
