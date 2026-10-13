@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.21.0 - 2026-10-13
+
 - Dictation (Settings > Agent > Beta, off by default): a mic button in the composer writes what you say where the caret is. Tap Right Option to start and again to stop, or hold it while you speak; ⌘Z takes the text back. A speech model (Parakeet Ultra, about 550 MB, downloaded once, 25 European languages with punctuation) runs on your computer, and the audio never leaves it. Macs, Windows x64 and Linux.
 
 ## 0.20.3 - 2026-10-12
