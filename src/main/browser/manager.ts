@@ -109,6 +109,12 @@ export const AGENT_PREVIEW_SIZE = { width: 1280, height: 800 };
  * capture, click and type without any window on screen.
  */
 const offscreenCopies = () => process.platform === "linux";
+/**
+ * The keeper's own title, so a window manager rule can tell it from the app window: on KDE Plasma (Wayland) a rule
+ * with "Accept focus: No" and "Skip taskbar" keeps it from taking the keyboard focus each time a background chat's tab
+ * is parked in it (docs/LINUX.md).
+ */
+export const KEEPER_TITLE = "pi-gna background tabs";
 
 /** The page an agent action reads and drives, with what input on it needs (see `BrowserManager.agentPage`). */
 export interface AgentPage {
@@ -961,6 +967,7 @@ export class BrowserManager {
       return this.keeper;
     }
     const keeper = new BrowserWindow({
+      title: KEEPER_TITLE,
       width: size.width,
       height: size.height,
       useContentSize: true,

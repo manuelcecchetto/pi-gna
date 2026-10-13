@@ -69,9 +69,11 @@ vi.mock("electron", async () => {
         addChildView: (view: unknown) => this.contentView.children.push(view),
         removeChildView: (view: unknown) => this.contentView.children.splice(this.contentView.children.indexOf(view), 1),
       };
-      constructor(options: { width: number; height: number }) {
+      title?: string;
+      constructor(options: { width: number; height: number; title?: string }) {
         electron.keepers.push(this);
         this.size = [options.width, options.height];
+        this.title = options.title;
       }
       setOpacity = () => undefined;
       setIgnoreMouseEvents = () => undefined;
@@ -97,7 +99,7 @@ vi.mock("electron", async () => {
 vi.mock("../context-menu", () => ({ attachContextMenu: () => undefined }));
 vi.mock("../site-icons", () => ({ siteIcon: async () => null }));
 
-const { BrowserManager } = await import("./manager");
+const { BrowserManager, KEEPER_TITLE } = await import("./manager");
 type Manager = InstanceType<typeof BrowserManager>;
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
@@ -281,6 +283,14 @@ describe("BrowserManager agent copies of previews", () => {
     await manager.agentPage(tab);
     expect(copy.loads.at(-1)).toMatch(/\?view=raw$/);
     expect(user.loads.length).toBe(userLoads + 1);
+  });
+
+  it("titles the keeper so a window manager rule can keep it from taking focus", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    const { manager, tab } = await previewed();
+    await manager.agentPage(tab);
+    expect((electron.keepers[0] as unknown as { title?: string }).title).toBe(KEEPER_TITLE);
+    platform.mockRestore();
   });
 
   it("keeps the agent's copy in the shown keeper on macOS and Windows", async () => {

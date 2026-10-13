@@ -90,11 +90,32 @@ Check it on your desktop (moves the pointer and keyboard for a few seconds):
 python3 native/computer-use-linux/check.py
 ```
 
+## Keep pi-gna from taking focus (KDE Plasma)
+
+Add two window rules (System Settings > Window Management > Window Rules shows them afterwards):
+
+```bash
+K=kwinrulesrc; w() { kwriteconfig6 --file $K --group "$1" --key "$2" "$3"; }
+G1=pigna-keeper; w $G1 Description "pi-gna background tabs: never take focus"; w $G1 wmclass pi-gna; w $G1 wmclassmatch 1
+w $G1 title "pi-gna background tabs"; w $G1 titlematch 1; w $G1 acceptfocus false; w $G1 acceptfocusrule 2
+w $G1 fsplevel 4; w $G1 fsplevelrule 2; for k in skiptaskbar skippager skipswitcher; do w $G1 $k true; w $G1 ${k}rule 2; done
+G2=pigna-device; w $G2 Description "pi-gna device windows: do not steal focus"; w $G2 wmclass pi-gna; w $G2 wmclassmatch 1
+w $G2 title '^(.+ [0-9]+x[0-9]+ @[0-9.]+x|Responsive)$'; w $G2 titlematch 3; w $G2 fsplevel 4; w $G2 fsplevelrule 2
+OLD=$(kreadconfig6 --file $K --group General --key rules); w General rules "${OLD:+$OLD,}$G1,$G2"
+w General count $(( $(kreadconfig6 --file $K --group General --key count --default 0) + 2 ))
+qdbus6 org.kde.KWin /KWin reconfigure
+```
+
+The first rule is the one tested (above). The second keeps device windows (`browser_window`) from taking focus when
+they open; it was not tested.
+
 ## Known limitations
 
-- **Agent in a background chat steals focus.** When an agent uses the browser in a chat you are not looking at, pi-gna
-  parks its tab in a hidden "keeper" window. On Wayland, showing that window takes the keyboard focus from the app you
-  are in, and the window appears in the taskbar for a moment, on every browser action.
+- **Agent in a background chat steals focus, unless you add a KWin rule.** When an agent uses the browser in a chat you
+  are not looking at, pi-gna parks its tab in a hidden "keeper" window (titled "pi-gna background tabs"). On Wayland
+  KWin activates that window each time: in a test with three background chats for 90 s, 38 activations took the focus
+  from the app being typed in and 35% of the keys were lost. With the rule below: no activation, every key arrived,
+  and the agents' clicks and screenshots worked as before. See "Keep pi-gna from taking focus" below.
 - **Phone browser screen**: the stream of a pane tab is stretched and taps do not land (the phone maps touches for a
   1280x800 tab while the pane is narrower); with a device preset it fits but looks soft. The stream also pauses while
   the pi-gna window is minimized or on another virtual desktop (it runs while the window is merely covered).
