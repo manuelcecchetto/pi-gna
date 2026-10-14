@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.21.1 - 2026-10-14
+
 - iPhone notifications no longer switch themselves off after a pi-gna update. The phone app reloads after an update and, while doing so, removed its notification subscription without saying so: the Mac kept sending, and nothing arrived. Turn notifications on once more after installing this version; later updates keep them on.
 
 ## 0.21.0 - 2026-10-13
