@@ -394,7 +394,7 @@ Over IPC the same shape is a thrown `HostError` (`code` kept on the message pref
 ## 12. Static app, CSP, limits
 
 - The remote server serves `out/mobile` (T16) at `/`: `/assets/*`, `/sw.js`, `/manifest.webmanifest`, icons.
-  The service worker caches by build id and never `/api`. `GET /api/hello` returns `buildId`; a mismatch reloads.
+  The service worker caches by build id and never `/api`. `GET /api/hello` returns `buildId`; a mismatch reloads. The reload updates the service worker and clears its caches but never unregisters it: the push subscription belongs to the registration, and unregistering silently ended notifications after every update (Apple kept answering 201).
   Build: `pnpm build` runs `scripts/build.mjs` (electron-vite, then `vite build -c vite.mobile.config.ts` into `out/mobile`) with one
   `PIGNA_BUILD` id for both; `out/**` already ships in the asar and the server reads it with plain `fs` (no `onDisk`). `pnpm dev:mobile`
   rebuilds `out/mobile` on change; the RemoteServer serves it (no Vite dev server). `sw.js` is generated with the build id and shell file list.

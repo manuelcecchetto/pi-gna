@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- iPhone notifications no longer switch themselves off after a pi-gna update. The phone app reloads after an update and, while doing so, removed its notification subscription without saying so: the Mac kept sending, and nothing arrived. Turn notifications on once more after installing this version; later updates keep them on.
+
 ## 0.21.0 - 2026-10-13
 
 - Dictation (Settings > Agent > Beta, off by default): a mic button in the composer writes what you say where the caret is. Tap Right Option to start and again to stop, or hold it while you speak; ⌘Z takes the text back. A speech model (Parakeet Ultra, about 550 MB, downloaded once, 25 European languages with punctuation) runs on your computer, and the audio never leaves it. Macs, Windows x64 and Linux.

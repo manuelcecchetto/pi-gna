@@ -19,7 +19,9 @@ export async function reloadIfStale(hello: { buildId: string } | null): Promise<
   }
   if (sessionStorage.getItem(RELOAD_KEY) === hello.buildId) return false;
   sessionStorage.setItem(RELOAD_KEY, hello.buildId);
-  for (const registration of (await navigator.serviceWorker?.getRegistrations()) ?? []) await registration.unregister();
+  // Update the service worker, never unregister it: the push subscription belongs to the registration, and iOS drops it
+  // with the registration while Apple keeps answering the host 201, so notifications stopped after every update.
+  for (const registration of (await navigator.serviceWorker?.getRegistrations()) ?? []) await registration.update().catch(() => undefined);
   for (const key of await caches.keys()) await caches.delete(key);
   location.reload();
   return true;
