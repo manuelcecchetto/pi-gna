@@ -21,6 +21,7 @@ import {
   tokenVariable,
 } from "../shared/github";
 import { type GithubSummary, type RawStatusIssue, type RawStatusPr, summarize } from "../shared/project-status";
+import { resolveGit } from "./command";
 import { log } from "./log";
 import { JsonStore } from "./store";
 
@@ -39,14 +40,16 @@ export class ExecError extends Error {
   }
 }
 
-const execTool: Exec = (file, args, { env }) =>
-  new Promise((resolve, reject) =>
-    execFile(file, args, { env, timeout: 60_000, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+const execTool: Exec = (file, args, { env }) => {
+  const command = file === "git" ? resolveGit(args, env) : { file, args };
+  return new Promise((resolve, reject) =>
+    execFile(command.file, command.args, { env, timeout: 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (!error) return resolve(stdout);
       const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
       reject(new ExecError(stderr.trim() || error.message, file, stdout, missing));
     }),
   );
+};
 
 /** Something in the way that the page explains (no remote, no account that can read the repository). */
 class Problem extends Error {

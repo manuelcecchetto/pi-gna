@@ -67,3 +67,48 @@ export function resolveCommand(name: string, args: string[], env: NodeJS.Process
   const node = existsSync(local) ? local : (which("node", path, platform, env.PATHEXT) ?? "node");
   return { file: node, args: [script, ...args] };
 }
+
+/** Git for Windows' build folders, newest layout first: 2.56 moved x64 from mingw64 to ucrt64. */
+const GIT_FOR_WINDOWS_BUILDS = ["ucrt64", "clangarm64", "mingw64", "mingw32"];
+
+/**
+ * The real git.exe behind Git for Windows' `cmd\git.exe` launcher (the portable build's launcher is `bin\git.exe`),
+ * when it exists. The installer puts only the launcher on PATH; it sets MSYSTEM, HOME and PATH, then starts the
+ * real binary as a second process, so every git command costs two process starts. It also leaks about one kernel
+ * token per run that Windows frees only at reboot: an app shelling out to git all day reaches millions in a week
+ * or two, and process creation slows down machine-wide. Git for Windows supports running the real binary directly
+ * (gitforwindows.org/git-wrapper). Anything that is not that launcher shape, Scoop and Chocolatey shims included,
+ * comes back undefined.
+ */
+export function realGitForWindows(file: string): string | undefined {
+  const parts = file.split(/[\\/]/);
+  const name = parts.at(-1)?.toLowerCase();
+  const parent = parts.at(-2)?.toLowerCase();
+  if (name !== "git.exe" || (parent !== "cmd" && parent !== "bin")) return undefined;
+  const root = dirname(dirname(file));
+  return GIT_FOR_WINDOWS_BUILDS.map((build) => join(root, build, "bin", "git.exe")).find((candidate) => existsSync(candidate));
+}
+
+/** How long a found git's resolution is remembered (resolveGit). */
+const GIT_RESOLUTION_MS = 30_000;
+let gitCached: { key: string; file: string; at: number } | undefined;
+
+/** How to run git with `args` without a shell: on Windows, Git for Windows' real binary when there is one. */
+export function resolveGit(args: string[], env: NodeJS.ProcessEnv = process.env, platform = process.platform): Command {
+  if (platform !== "win32") return { file: "git", args };
+  const path = env.PATH ?? env.Path ?? "";
+  // The PATH walk stats every entry times every PATHEXT extension, synchronously, and git runs often enough that
+  // the answer is worth remembering for a while. A miss is never remembered, so git appearing just works; what the
+  // memory costs is a Git upgrade that moves the real binary failing commands for up to those 30 seconds.
+  const key = `${path}\n${env.PATHEXT ?? ""}\n${env.MSYSTEM ? "msystem" : ""}`;
+  if (gitCached?.key === key && Date.now() - gitCached.at < GIT_RESOLUTION_MS) return { file: gitCached.file, args };
+  const found = which("git", path, platform, env.PATHEXT);
+  if (!found) return { file: "git", args };
+  // A .cmd/.bat wrapper cannot be started without a shell (CVE-2024-27980), and a shell would cut a multi-line
+  // commit message at its first newline, so Node's own lookup keeps that case. With MSYSTEM set (say a Git Bash
+  // shell) the real binary does not add Git's folders to PATH itself and a `#!/bin/sh` hook would not start, so
+  // the launcher stays there too.
+  const file = /\.(cmd|bat)$/i.test(found) ? "git" : env.MSYSTEM ? found : (realGitForWindows(found) ?? found);
+  gitCached = { key, file, at: Date.now() };
+  return { file, args };
+}

@@ -3,15 +3,19 @@
 // is as of the last fetch, so opening an empty chat never touches the network or the checkout.
 import { execFile } from "node:child_process";
 import { type GitResult, type GitStatus, isBranchName, parseGitStatus } from "../shared/project-status";
+import { resolveGit } from "./command";
 
 export type GitRun = (cwd: string, args: string[], timeout: number) => Promise<string>;
 
-const runGit: GitRun = (cwd, args, timeout) =>
-  new Promise((resolve, reject) =>
-    execFile("git", ["-C", cwd, ...args], { env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" }, timeout, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) =>
+const runGit: GitRun = (cwd, args, timeout) => {
+  const env = { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" };
+  const command = resolveGit(["-C", cwd, ...args], env);
+  return new Promise((resolve, reject) =>
+    execFile(command.file, command.args, { env, timeout, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) =>
       error ? reject(new Error(stderr.trim() || error.message)) : resolve(stdout),
     ),
   );
+};
 
 /** The checkout at `cwd`; null outside a git repository (or without git). */
 export async function gitStatus(cwd: string, git: GitRun = runGit): Promise<GitStatus | null> {

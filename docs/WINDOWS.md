@@ -77,6 +77,11 @@ are recorded in [WINDOWS_PROGRESS.md](WINDOWS_PROGRESS.md). A green fixture suit
 
 - `src/main/command.ts` resolves npm/pnpm `.cmd` shims to scripts run by Node, without passing user input through a
   shell. Node's `NPM_CLI_JS` is preferred over the adjacent `npm-prefix.js` helper. Pi, npm and SDK lookup use it.
+- Every git pi-gna runs itself (worktrees, the status card, the GitHub page, ATP) goes through `resolveGit` in
+  `command.ts`: on Windows it runs Git for Windows' real `git.exe` instead of the `cmd\git.exe` launcher the
+  installer puts on PATH, which only starts the real binary as a second process and leaks a kernel token per run
+  that only a reboot frees (the same fix T3 Code shipped in pingdotgg/t3code#17707). The launcher stays when
+  `MSYSTEM` is set or no real binary is found, and a found resolution is remembered for 30 seconds, keyed on PATH.
 - Setup catches synchronous spawn errors both per check and during install, and adds the npm prefix root to Windows
   PATH with `;`. Native Windows fixtures cover partial Unicode/CRLF output, concurrent installs, failure, timeout,
   missing npm, broken pi and unsupported shims without contacting npm.

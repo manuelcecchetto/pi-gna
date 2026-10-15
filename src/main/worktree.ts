@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { relative, sep } from "node:path";
 import { worktreeCwd } from "../shared/board";
 import type { CardWorktree } from "../shared/ipc";
+import { resolveGit } from "./command";
 
 const BRANCHES = "pigna/";
 /** The branches of new ATP plans' worktrees: pigna/atp-<id>, which no card's branch (pigna/<card id>-…) can be. */
@@ -99,8 +100,10 @@ async function worktreeBranch(dir: string): Promise<string | null> {
 }
 
 function git(cwd: string, args: string[], env: Record<string, string> = {}): Promise<string> {
+  const full = { ...process.env, ...env };
+  const command = resolveGit(["-C", cwd, ...args], full);
   return new Promise((resolve, reject) =>
-    execFile("git", ["-C", cwd, ...args], { env: { ...process.env, ...env }, timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) =>
+    execFile(command.file, command.args, { env: full, timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) =>
       error ? reject(new Error(`git ${args[0]} failed: ${stderr.trim() || error.message}`)) : resolve(stdout.trim()),
     ),
   );

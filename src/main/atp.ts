@@ -22,6 +22,7 @@ import {
 } from "../shared/atp";
 import { emptyBoard, freshId, isCardId, worktreeCwd } from "../shared/board";
 import { bridgeError, type Route } from "./bridge";
+import { resolveGit } from "./command";
 import { log } from "./log";
 import { onDisk } from "./resources";
 import { pythonForHost } from "./python";
@@ -39,14 +40,16 @@ export type AtpCommit = { kind: "committed"; sha: string } | { kind: "worker" | 
 
 type Run = (file: string, args: string[], options?: { cwd?: string; timeout?: number }) => Promise<string>;
 
-const run: Run = (file, args, options = {}) =>
-  new Promise((resolve, reject) =>
-    execFile(file, args, { cwd: options.cwd, timeout: options.timeout ?? 60_000, maxBuffer: 32 * 1024 * 1024 }, (error, stdout, stderr) => {
+const run: Run = (file, args, options = {}) => {
+  const command = file === "git" ? resolveGit(args) : { file, args };
+  return new Promise((resolve, reject) =>
+    execFile(command.file, command.args, { cwd: options.cwd, timeout: options.timeout ?? 60_000, maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (!error) return resolve(stdout);
       const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
       reject(Object.assign(new Error(missing ? `${file} is not installed (or not on PATH)` : stderr.trim().replace(/^ERROR: /, "") || error.message), { code: (error as NodeJS.ErrnoException).code }));
     }),
   );
+};
 
 /** Folders never searched for plans: dependencies, VCS data and build output. */
 const SKIP_DIRS = ["node_modules", ".git", "dist", "build", "out", "target", ".venv", "venv", "Library"];
