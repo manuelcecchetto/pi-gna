@@ -24,10 +24,15 @@ await mkdir(join(project, "docs"), { recursive: true });
 await mkdir(profile);
 await mkdir(agent);
 await writeFile(file, "# Windows preview smoke\n\nLocal paths work.\n");
-for (const name of ["fake-pi.mjs", "fake-pi-visuals.mjs"]) await copyFile(join(root, "scripts", name), join(work, name));
+// The fake pi's modules read repo files relative to themselves (../resources/...), so the copies keep the repo's layout.
+await mkdir(join(work, "scripts"), { recursive: true });
+await mkdir(join(work, "resources", "skills", "inline-visuals"), { recursive: true });
+for (const name of ["fake-pi.mjs", "fake-pi-visuals.mjs"]) await copyFile(join(root, "scripts", name), join(work, "scripts", name));
+await copyFile(join(root, "resources", "skills", "inline-visuals", "SKILL.md"), join(work, "resources", "skills", "inline-visuals", "SKILL.md"));
+await copyFile(join(root, "resources", "icon.png"), join(work, "resources", "icon.png"));
 // Exercise the same safe shim resolution as a Windows npm install of pi, without invoking cmd.exe.
 const pi = join(work, "pi.cmd");
-await writeFile(join(work, "pi-entry.mjs"), `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(join(work, "pi-argv.json"))}, JSON.stringify(process.argv)); await import("./fake-pi.mjs");\n`);
+await writeFile(join(work, "pi-entry.mjs"), `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(join(work, "pi-argv.json"))}, JSON.stringify(process.argv)); await import("./scripts/fake-pi.mjs");\n`);
 await writeFile(pi, '@echo off\r\nnode "%~dp0\\pi-entry.mjs" %*\r\n');
 const env = {
   ...process.env, PIGNA_USER_DATA: profile, PIGNA_BACKGROUND: "1", PIGNA_CWD: project,
