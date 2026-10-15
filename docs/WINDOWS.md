@@ -229,8 +229,8 @@ published. Original Mac asset IDs, sizes and SHA-256 digests were checked unchan
 Windows installer SHA-256: `8329f95d2e31711fdadd769751cb36a8a4cbb86efd8bee4589335dbe2db128e5` (161,405,833 bytes).
 The GitHub asset digest matches its manifest and checksum file. The developer's installed application was not replaced.
 
-**v0.22.0 (2026-10-15):** the same append-only publication on the v0.22.0 release, source `b2743f2`, whose only
-app change over the tag is none (the two commits after the tag touch only this smoke script). Installer SHA-256:
+**v0.22.0 (2026-10-15):** the same append-only publication on the v0.22.0 release, source `b2743f2`
+(two commits past the tag, both in this smoke script, so the shipped app is the tagged one). Installer SHA-256:
 `51e62c744dc3291296ed2d4dfaa13f1cd829695a01414452a61e31280a3e19a1` (161,466,210 bytes); same release ID and
 unchanged Mac asset IDs/sizes/digests verified after appending. This is also the first Windows build whose own git
 calls run Git for Windows' real `git.exe` (`resolveGit`, above). Two gate lessons from getting it out:
