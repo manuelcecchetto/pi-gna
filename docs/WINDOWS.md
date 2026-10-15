@@ -1,6 +1,6 @@
 # pi-gna on Windows
 
-Status: **Windows x64 preview published on v0.16.0; port not feature-complete**. The source baseline is v0.16.0 (`01eba2a`). Keep one upstream
+Status: **Windows x64 previews published on v0.16.0 and v0.22.0; port not feature-complete**. The port's source baseline was v0.16.0 (`01eba2a`); previews now build from `main`. Keep one upstream
 codebase and the existing macOS helper; isolate Windows behavior behind platform boundaries, not a fork or a patched
 installed app. Never replace a user's working install while developing the port.
 
@@ -228,6 +228,20 @@ published. Original Mac asset IDs, sizes and SHA-256 digests were checked unchan
 
 Windows installer SHA-256: `8329f95d2e31711fdadd769751cb36a8a4cbb86efd8bee4589335dbe2db128e5` (161,405,833 bytes).
 The GitHub asset digest matches its manifest and checksum file. The developer's installed application was not replaced.
+
+**v0.22.0 (2026-10-15):** the same append-only publication on the v0.22.0 release, source `b2743f2`, whose only
+app change over the tag is none (the two commits after the tag touch only this smoke script). Installer SHA-256:
+`51e62c744dc3291296ed2d4dfaa13f1cd829695a01414452a61e31280a3e19a1` (161,466,210 bytes); same release ID and
+unchanged Mac asset IDs/sizes/digests verified after appending. This is also the first Windows build whose own git
+calls run Git for Windows' real `git.exe` (`resolveGit`, above). Two gate lessons from getting it out:
+
+- The preview smoke copies the fake pi into its temp profile. `fake-pi-visuals.mjs` reads
+  `../resources/skills/inline-visuals/SKILL.md` relative to itself at import, so the copies must keep the repo's
+  `scripts/` + `resources/` layout, or the fake pi dies on startup and the smoke reports a window-less
+  "session is not running". The smoke now also prints the RPC reply and the app's output into the CI log on
+  failure; the runner-local `smoke.log` does not survive a hosted run.
+- The seven-Python-process ATP lifecycle test (15 s budget) timed out once on a cold hosted runner and passed on
+  the next two runs unchanged. Treat a single timeout there as runner weather, not a regression; two in a row is a bug.
 
 SmartScreen/reputation and signing policy, real-model acceptance, full viewer/UI coverage and Windows updates remain
 separate work. The updater is still macOS-only; no driver is bundled or Computer Use extension exposed on Windows.
