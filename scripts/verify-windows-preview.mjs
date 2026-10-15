@@ -102,7 +102,7 @@ try {
   const session = await app.evaluate(`window.studio.openSession({cwd:${JSON.stringify(project)}})`);
   assert.ok(session.handle, "fake pi session opened");
   const state = await app.evaluate(`window.studio.command(${JSON.stringify(session.handle)}, {type:"get_state"})`);
-  assert.equal(state.success, true, "Windows shim starts pi RPC");
+  assert.equal(state.success, true, `Windows shim starts pi RPC: ${JSON.stringify(state)}`);
   const piArgs = JSON.parse(await readFile(join(work, "pi-argv.json"), "utf8"));
   assert.ok(!piArgs.some((arg) => arg.includes("computer-extension")), "Computer Use extension must not be exposed on Windows");
   await app.evaluate(`window.studio.browser.preview(${JSON.stringify(file)}, {root:${JSON.stringify(project)}, line:1})`);
@@ -124,5 +124,7 @@ try {
   else {
     await writeFile(join(work, "smoke.log"), output);
     console.error(`Failure log retained at ${join(work, "smoke.log")}`);
+    // The runner keeps no files, so the app's own output belongs in the log too, or a hosted failure says nothing.
+    console.error(`App output (last 8000 chars):\n${output.slice(-8000)}`);
   }
 }
