@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.22.0 - 2026-10-15
+
 - Windows: pi-gna now runs Git for Windows' real git.exe instead of the small launcher its installer puts on your PATH. That launcher only starts the real git as a second process, so every git command pi-gna ran (worktrees, the status card, the GitHub page, ATP) paid for two process starts; it also leaves a little Windows bookkeeping behind on every run that only a reboot clears, which slowly makes starting any program slower. Git inside pi-gna on Windows starts in one process now. A Windows x64 preview installer is attached to this release, as with 0.16.0: unsigned, no Computer Use and no in-app updates on Windows yet.
 
 ## 0.21.1 - 2026-10-14
