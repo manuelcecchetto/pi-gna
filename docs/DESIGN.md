@@ -179,6 +179,15 @@ Info.plist nor the icon. `pnpm dev` and test builds started on Electron directly
   launches, spawn to first contentful paint / RSS of the app's processes): packaged 561 ms / 435 MB; the same code
   unpackaged 768 ms / 551 MB; before packaging (file://, node launcher) ~620 ms / ~500 MB. The main log prints
   `window ready <ms> after launch` on every start. App 242 MB (238 MB is Electron), asar 3.4 MB, arm64 dmg 112 MB.
+- **Measured on Windows** with `scripts/measure-perf.mjs` (Oct 2026, Ryzen 7 7700, checkout build, fake pi): window
+  ready ~330 ms, composer ~440 ms, the same with 1,500 more chats in the index; opening a 34 MB chat settles in ~80 ms;
+  idle with chats open ~0% CPU. The script also streams a long answer while typing, pages a synthetic long history in
+  and saves CPU profiles and a rendering trace (`--profile`); its header lists the options. It drives a
+  `PIGNA_BACKGROUND=1` window, which is visible to Chromium on Windows (frames, `requestAnimationFrame`), unlike a Mac
+  background window. A probe's own `requestAnimationFrame` loop or a first-run Setup dialog's animation is enough to
+  read as idle GPU load, so its probes run only while measuring and its fake pi answers `--version` beside a
+  `package.json` named like pi's (Setup stays closed). DevTools CPU throttling shows as a busy renderer even at idle:
+  compare frames, lag and input delay under `--throttle`, not CPU percentages.
 - **Startup order** (`src/main/index.ts`). The JSON stores start reading their files when main loads, and the agent
   bridge starts listening while Electron gets ready; only a pi spawn waits for it (`SessionHost` awaits
   `bridge.start()`, which listens once). On ready: protocols, IPC, then settings and themes (awaited, so the window
@@ -880,6 +889,12 @@ AgentBridge      127.0.0.1, token-gated, for pi's extensions; never exposed, nev
   chat, also behind a page, nor a page's side chat) drops back to its latest page (`toLatestPage`, 40 turns or about
   2 MB, cut at a prompt, the dropped turns joining `earlier`), and again after each run it finishes there; scrolling
   back pages them in again. A 115 MB chat paged in whole and left went from 133 MB to 9 MB of the window's heap.
+  Sending a new message (not a steer or a command) drops back the same way, on screen too (`send`): the view moves to
+  the new turn anyway, and every turn left mounted costs every frame of the answer (style, layout, each turn's
+  `content-visibility` and turn-rail observers, code-highlight observers, React). Streamed after scrolling back through
+  2,000 turns (`scripts/measure-perf.mjs`, Windows, Ryzen 7 7700): 101 to 146 fps and 20 to 0.3 ms typing delay (p95);
+  with the renderer's CPU slowed 4x, 11 to 72 fps and 122 to 25 ms. Continuing a long chat without scrolling back was
+  already as cheap as a new one.
 - **Many clients.** Prompts from two clients arrive in order (a send while running is a steer). Dialogs and approvals:
   first answer wins, the rest get `already_answered` and drop the card on `dialog_resolved`. Store text edits conflict by
   `baseRev` (`409 conflict`); structural ops are last-writer-wins.

@@ -122,6 +122,8 @@ describe("formatStamp", () => {
     const now = new Date(2026, 9, 2, 12, 0).getTime(); // Friday
     const at = (day: number, hour: number) => new Date(2026, 9, day, hour, 22).getTime();
     expect(formatStamp(at(2, 9), now)).not.toMatch(/Yesterday|day/);
+    // The cached formatters print what toLocaleTimeString does.
+    expect(formatStamp(at(2, 9), now)).toBe(new Date(at(2, 9)).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
     expect(formatStamp(at(1, 17), now)).toMatch(/^Yesterday /);
     const tuesday = new Date(2026, 8, 29, 17, 22); // 3 days back; the UI uses the user's locale.
     expect(formatStamp(tuesday.getTime(), now).startsWith(tuesday.toLocaleDateString(undefined, { weekday: "long" }) + " ")).toBe(true);

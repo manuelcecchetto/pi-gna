@@ -119,6 +119,7 @@ describe("opening a chat from the sidebar", () => {
     items: Array.from({ length: to - from }, (_, i) => [user(from + i), answer(from + i)]).flat(),
   });
   const outline = (count: number) => Array.from({ length: count }, (_, n) => ({ key: `i${n}`, at: n, label: `q${n}` }));
+  const patchRunning = (handle: string, running: boolean) => store.set((s) => ({ ...s, sessions: { ...s.sessions, [handle]: { ...s.sessions[handle]!, running } } }));
   const snapshotOf = (state: SessionState, seq: number, earlier: number) => ({ seq, state: state as unknown as SessionStateJson, turns: { total: earlier + 1, from: earlier }, outline: outline(earlier) });
 
   /** Open the summary; returns the window's handle and the answer to give the open. */
@@ -264,6 +265,33 @@ describe("opening a chat from the sidebar", () => {
     await vi.advanceTimersByTimeAsync(120_000);
     expect(prompts()).toHaveLength(53);
     expect(session().earlier).toBeUndefined();
+  });
+
+  it("goes back to its latest page when you send a new message, not for a steer or a command", async () => {
+    const { handle, read, pageSession } = opening();
+    read({ handle, snapshot: snapshotOf(turns(handle, 50, 51), 3, 50) });
+    await vi.runAllTimersAsync();
+    const session = () => store.get().sessions[handle]!;
+    const prompts = () => session().items.filter((item) => item.kind === "user").length;
+    await earlierTurns(session())!.reach!("i0");
+    expect(prompts()).toBe(51);
+
+    // A command or a steer while it runs keeps what you read back through.
+    expect(await send(handle, "/compact", "send")).toBe(true);
+    expect(prompts()).toBe(51);
+    patchRunning(handle, true);
+    expect(await send(handle, "and also this", "send")).toBe(true);
+    expect(prompts()).toBe(51);
+
+    // A new message: the latest page stays, the rest is outlined and pages in again from the host.
+    patchRunning(handle, false);
+    expect(await send(handle, "next question", "send")).toBe(true);
+    expect(prompts()).toBe(40);
+    expect(session().earlier?.map((turn) => turn.key)).toEqual(Array.from({ length: 11 }, (_, n) => `i${n}`));
+    pageSession.mockClear();
+    await earlierTurns(session())!.load();
+    expect(pageSession).toHaveBeenCalledExactlyOnceWith(handle, 11, 11);
+    expect(prompts()).toBe(51);
   });
 
   it("fetches the answer of a turn it has not loaded once, for the turn rail's card", async () => {

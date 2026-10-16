@@ -488,6 +488,9 @@ describe("needsTimeDivider", () => {
   it("shows a divider when the day changes, even after a short gap", () => {
     const late = new Date(2026, 9, 2, 23, 55).getTime();
     expect(needsTimeDivider(turn(late, late + minute), turn(late + 10 * minute))).toBe(true);
+    // The 31st and the next month's 1st are different days too.
+    const monthEnd = new Date(2026, 9, 31, 23, 55).getTime();
+    expect(needsTimeDivider(turn(monthEnd, monthEnd + minute), turn(monthEnd + 10 * minute))).toBe(true);
   });
 });
 

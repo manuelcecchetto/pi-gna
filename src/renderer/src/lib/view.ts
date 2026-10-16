@@ -260,10 +260,16 @@ export function runEnd(run: Run): number | undefined {
   return end;
 }
 
+/** The local calendar day of a time, as a number: the transcript asks for every turn on every render, so no strings. */
+function localDay(time: number): number {
+  const date = new Date(time);
+  return (date.getFullYear() * 12 + date.getMonth()) * 31 + date.getDate();
+}
+
 export function needsTimeDivider(previous: Run | undefined, run: Run): boolean {
   const at = run.user?.message.timestamp;
   if (at === undefined) return false;
   const before = previous ? runEnd(previous) : undefined;
   if (before === undefined) return true; // the first message anchors the transcript in time
-  return at - before >= DIVIDER_GAP_MS || new Date(at).toDateString() !== new Date(before).toDateString();
+  return at - before >= DIVIDER_GAP_MS || localDay(at) !== localDay(before);
 }

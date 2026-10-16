@@ -73,15 +73,24 @@ export function formatBytes(bytes: number): string {
   return `${digits(value)} ${units[unit]}`;
 }
 
+// The stamps' formatters, made once: toLocale*String with options builds a new Intl formatter per call, and a
+// transcript formats its stamps on every render (each frame of a streaming answer).
+const stampFormats = {
+  time: new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }),
+  weekday: new Intl.DateTimeFormat(undefined, { weekday: "long" }),
+  day: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }),
+  dayOfYear: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }),
+};
+
 /** Codex-style stamps: "5:22 PM" today, "Yesterday 5:22 PM", "Thursday 5:23 PM" this week, else "Sep 12, 5:22 PM". */
 export function formatStamp(timestamp: number, now = Date.now()): string {
   const date = new Date(timestamp);
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const time = stampFormats.time.format(date);
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const days = Math.round((startOfDay(new Date(now)) - startOfDay(date)) / 86_400_000);
   if (days <= 0) return time;
   if (days === 1) return `Yesterday ${time}`;
-  if (days < 7) return `${date.toLocaleDateString(undefined, { weekday: "long" })} ${time}`;
+  if (days < 7) return `${stampFormats.weekday.format(date)} ${time}`;
   const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) })}, ${time}`;
+  return `${(sameYear ? stampFormats.day : stampFormats.dayOfYear).format(date)}, ${time}`;
 }

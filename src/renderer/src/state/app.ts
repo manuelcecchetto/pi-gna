@@ -658,7 +658,10 @@ export async function send(handle: string, text: string, mode: SendMode): Promis
   ];
   const cmd: RpcCommand = { type: "prompt", message, images: images.length ? images : undefined };
   if (session.running && !isCommand) cmd.streamingBehavior = mode === "followUp" ? "followUp" : "steer";
-  patchSession(handle, (s) => ({ ...s, prompted: true }));
+  // A new turn starts from the chat's latest page, as reopening it would (sending moves the view to it anyway): turns
+  // paged in while you read back through the history page in again when you scroll up. Kept, every frame of the
+  // answer would lay out, observe and render all of them (a 2,000-turn history took a whole core and 20 ms per key).
+  patchSession(handle, (s) => ({ ...(s.running || isCommand ? s : toLatestPage(s)), prompted: true }));
   const response = await command<{ disposition: string }>(handle, cmd);
   if (response.success && card) {
     removeComposerCard(handle);

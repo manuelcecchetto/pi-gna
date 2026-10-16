@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Long chats stay fast after you scroll back through them. Every earlier turn you scrolled to stayed in the page while the chat was open, so the next answer redrew and rechecked all of them for every word it streamed: after reading back through 2,000 turns, typing lagged and the window used a whole core. Sending a new message now takes the chat back to its latest turns (earlier ones load again as you scroll up, as they do after the chat has been off screen for a minute). In that case typing went from 20 ms to under 1 ms behind, and on a 4× slower processor the answer streams at 72 frames a second instead of 11. Timestamps in the transcript are also formatted about 40 times faster.
+
 ## 0.22.0 - 2026-10-15
 
 - Windows: pi-gna now runs Git for Windows' real git.exe instead of the small launcher its installer puts on your PATH. That launcher only starts the real git as a second process, so every git command pi-gna ran (worktrees, the status card, the GitHub page, ATP) paid for two process starts; it also leaves a little Windows bookkeeping behind on every run that only a reboot clears, which slowly makes starting any program slower. Git inside pi-gna on Windows starts in one process now. A Windows x64 preview installer is attached to this release, as with 0.16.0: unsigned, no Computer Use and no in-app updates on Windows yet.
