@@ -173,9 +173,29 @@ function GeneralSection({ pi }: { pi: Pi }) {
         <Row title="Setup" about="Install pi, sign in to a provider and add plugins, step by step.">
           <Button onClick={openSetup}>Run setup</Button>
         </Row>
+        <WorktreesRow />
       </Card>
       {pi.state?.problem && <PiFileNote pi={pi} />}
     </>
+  );
+}
+
+/** Where Resolve, Fix and new plans make their git worktrees (worktreeCwd). Ones made before a change stay where they are. */
+function WorktreesRow() {
+  const chosen = useApp((state) => state.settings.worktreeBase);
+  const home = window.studio.homeDir;
+  const folder = `${tildify(chosen ?? home, home)}/.pi-gna/worktrees`;
+  const pick = async () => {
+    const next = await window.studio.pickFolder();
+    if (next) await applySettings({ type: "worktreeBase", path: next === home ? null : next });
+  };
+  return (
+    <Row title="Worktrees" about={<>Resolve, Fix and new plans work in git worktrees in <span className="font-mono">{folder}</span>. Existing ones stay where they are.</>}>
+      {chosen && <Button onClick={() => void applySettings({ type: "worktreeBase", path: null })}>Use home folder</Button>}
+      <Button onClick={() => void pick()}>
+        <FolderOpen size={12} /> Change…
+      </Button>
+    </Row>
   );
 }
 

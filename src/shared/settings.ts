@@ -105,6 +105,9 @@ export interface Settings {
   remote: RemoteSettings;
   /** Start pi-gna when you log in to the Mac. */
   openAtLogin: boolean;
+  /** The folder card, lament and new plan worktrees go in, under .pi-gna/worktrees (worktreeCwd); missing: your home
+   * folder. Worktrees made under an earlier one keep working: projectOf finds them by that path. */
+  worktreeBase?: string;
   /** Setup's answer; missing until you pick one. */
   persona?: Persona;
 }
@@ -124,6 +127,8 @@ export type SettingsOp =
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
   | { type: "openAtLogin"; on: boolean }
+  /** null: back to your home folder. */
+  | { type: "worktreeBase"; path: string | null }
   | { type: "persona"; persona: Persona }
   /** null: back to the default. */
   | { type: "model"; task: Task; model: TaskModel | null };
@@ -168,6 +173,13 @@ export const hidesOnClose = (settings: Settings): boolean => settings.remote.ena
  * keeps them, and its taskbar entry brings it back (there is no Dock to click).
  */
 export const closeKeepsBy = (platform: string): "hide" | "minimize" => (platform === "linux" ? "minimize" : "hide");
+
+/** An absolute folder: /x, C:\\x or C:/x, or a UNC share. */
+const isFolder = (value: unknown): value is string =>
+  typeof value === "string" && value.length <= 1024 && !value.includes("\0") && /^(\/|[A-Za-z]:[\\/]|[\\/]{2}[^\\/])/.test(value);
+
+/** Where worktrees go (worktreeCwd's home): the chosen folder, else `home`. */
+export const worktreeBase = (settings: Settings, home: string): string => settings.worktreeBase ?? home;
 
 const NAME = 200;
 const isName = (value: unknown): value is string => typeof value === "string" && value.trim() !== "" && value.length <= NAME;
@@ -256,6 +268,12 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn open at login ${String(op.on)}`);
       return settings.openAtLogin === op.on ? settings : { ...settings, openAtLogin: op.on };
     }
+    case "worktreeBase": {
+      if (op.path !== null && !isFolder(op.path)) throw new SettingsError(`not an absolute folder: ${String(op.path)}`);
+      if ((settings.worktreeBase ?? null) === op.path) return settings;
+      const { worktreeBase: _, ...rest } = settings;
+      return op.path === null ? rest : { ...rest, worktreeBase: op.path };
+    }
     case "persona": {
       if (!PERSONAS.includes(op.persona)) throw new SettingsError(`unknown persona ${String(op.persona)}`);
       return settings.persona === op.persona ? settings : { ...settings, persona: op.persona };
@@ -314,6 +332,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.dictation !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
+  if (isFolder(file.worktreeBase)) settings.worktreeBase = file.worktreeBase;
+  else if (file.worktreeBase !== undefined) dropped++;
   if (PERSONAS.includes(file.persona as Persona)) settings.persona = file.persona as Persona;
   else if (file.persona !== undefined) dropped++;
   const remote = (file.remote ?? {}) as Record<string, unknown>;

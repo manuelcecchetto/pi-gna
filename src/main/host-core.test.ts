@@ -69,9 +69,10 @@ describe("host methods table", () => {
     expect(calls).toEqual([["pickFolder"]]);
   });
 
-  it("lets only the desktop switch yolo", async () => {
+  it("lets only the desktop switch yolo or move the worktrees", async () => {
     calls.length = 0;
     expect(() => dispatch(core, phone(), "settings.apply", { op: { type: "yolo", on: true } })).toThrow(expect.objectContaining({ code: "scope_denied" }));
+    expect(() => dispatch(core, phone(), "settings.apply", { op: { type: "worktreeBase", path: "/tmp" } })).toThrow(expect.objectContaining({ code: "scope_denied" }));
     await dispatch(core, phone(), "settings.apply", { op: { type: "visuals", on: true } });
     await dispatch(core, desktop(), "settings.apply", { op: { type: "yolo", on: true } });
     expect(calls).toEqual([

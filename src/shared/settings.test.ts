@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Model } from "./protocol";
-import { applySettingsOp, closeKeepsBy, emptySettings, parseSettings, pickModel, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, yoloOption } from "./settings";
+import { applySettingsOp, closeKeepsBy, emptySettings, parseSettings, pickModel, SettingsError, settingsConflict, type SettingsOp, TASK_DEFAULTS, taskModel, hidesOnClose, wantsKeepAwake, worktreeBase, yoloOption } from "./settings";
 
 const start = emptySettings();
 
@@ -157,6 +157,19 @@ describe("remote access and host lifecycle", () => {
     expect(() => applySettingsOp(start, { type: "keepAwake", mode: "sometimes" as never })).toThrow(SettingsError);
     expect(() => applySettingsOp(start, { type: "remoteEnabled", on: "yes" as never })).toThrow(SettingsError);
     expect(() => applySettingsOp(start, { type: "openAtLogin", on: 1 as never })).toThrow(SettingsError);
+  });
+
+  it("keeps worktrees under home until a folder is chosen, and goes back with null", () => {
+    expect(worktreeBase(start, "/Users/me")).toBe("/Users/me");
+    const moved = applySettingsOp(start, { type: "worktreeBase", path: "/Users/me/Code" });
+    expect(worktreeBase(moved, "/Users/me")).toBe("/Users/me/Code");
+    expect(applySettingsOp(moved, { type: "worktreeBase", path: "/Users/me/Code" })).toBe(moved);
+    expect(applySettingsOp(moved, { type: "worktreeBase", path: null })).toEqual(start);
+    expect(applySettingsOp(start, { type: "worktreeBase", path: null })).toBe(start);
+    expect(applySettingsOp(start, { type: "worktreeBase", path: "D:\\work" }).worktreeBase).toBe("D:\\work");
+    for (const path of ["Code", "~/Code", "", "/x\0y", 3]) expect(() => applySettingsOp(start, { type: "worktreeBase", path: path as string })).toThrow(SettingsError);
+    expect(parseSettings({ ...start, worktreeBase: "/Volumes/fast" }).settings.worktreeBase).toBe("/Volumes/fast");
+    expect(parseSettings({ ...start, worktreeBase: "relative" })).toMatchObject({ settings: start, dropped: 1 });
   });
 
   it("keeps Setup's persona once picked", () => {

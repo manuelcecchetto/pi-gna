@@ -79,6 +79,8 @@ export class Atp {
     private readonly pushHeld: (held: string[]) => void,
     private readonly exec: Run = run,
     private readonly home = homedir(),
+    /** Where new plans' worktrees go (Settings > worktree folder); earlier ones under `home` are still found. */
+    private readonly base: () => string | Promise<string> = () => home,
   ) {}
 
   // ── Plans ──────────────────────────────────────────────────────────────────
@@ -204,7 +206,8 @@ export class Atp {
     const list = await this.exec("git", ["-C", cwd, "worktree", "list", "--porcelain"]).catch(() => "");
     const branches = [...list.matchAll(/^branch refs\/heads\/(.+)$/gm)].map((match) => match[1] as string);
     const ids = [...new Set(branches.filter((branch) => branch.startsWith(ATP_BRANCHES)).map((branch) => branch.slice(ATP_BRANCHES.length)))].filter(isCardId);
-    return ids.map((id) => worktreeCwd(this.home, id, cwd)).filter((folder) => existsSync(folder));
+    const bases = [...new Set([await this.base(), this.home])];
+    return ids.flatMap((id) => bases.map((base) => worktreeCwd(base, id, cwd)).filter((folder) => existsSync(folder)).slice(0, 1));
   }
 
   /**
@@ -222,9 +225,10 @@ export class Atp {
       const clean = (await this.exec("git", ["-C", root, "status", "--porcelain"]).catch(() => "?")).trim() === "";
       if (clean && (await this.exec("git", ["-C", root, "merge", "--ff-only", "-q", head]).then(() => true, () => false))) return this.made(cwd, root);
     }
+    const base = await this.base();
     let id = freshId(emptyBoard());
-    while (existsSync(worktreeCwd(this.home, id, ""))) id = freshId(emptyBoard());
-    const made = await atpWorktree(cwd, id, this.home);
+    while (existsSync(worktreeCwd(base, id, ""))) id = freshId(emptyBoard());
+    const made = await atpWorktree(cwd, id, base);
     return made ? this.made(cwd, made.cwd) : cwd;
   }
 

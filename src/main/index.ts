@@ -16,7 +16,7 @@ import type { LamentOp } from "../shared/laments";
 import { type AtpRunnerState, HostError, type QueueEdit } from "../shared/host-api";
 import { type DialogAnswer, type HostEvent, type HostEventBatch, IPC, type OpenSessionRequest, type Page } from "../shared/ipc";
 import type { ExtensionUiResponse, RpcCommand, RpcSessionState } from "../shared/protocol";
-import { closeKeepsBy, emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake } from "../shared/settings";
+import { closeKeepsBy, emptySettings, type Feature, hidesOnClose, type Settings, type SettingsOp, taskModel, wantsKeepAwake, worktreeBase } from "../shared/settings";
 import { effectiveTheme } from "../shared/themes";
 import { Atp, librarianPath } from "./atp";
 import { pythonForHost } from "./python";
@@ -308,6 +308,9 @@ const atp = new Atp(
     publish({ kind: "atp.held", plans: held });
     atpRuns?.heldChanged();
   },
+  undefined,
+  homedir(),
+  async () => worktreeBase(await settings.get(), homedir()),
 );
 const atpThreads = new AtpThreads(join(app.getPath("userData"), "atp-threads.json"), (plan, threads) => publish({ kind: "atp.threads", plan, threads }));
 bridge.route("/atp", settings.gate("atp", atp.route()));
@@ -472,7 +475,7 @@ let chatTasks: ChatTasks | undefined;
 let usage: UsageService | undefined;
 
 function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
-  const tasks = (chatTasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: (project, task) => cardWorktree(project, task), shellEnv }));
+  const tasks = (chatTasks = new ChatTasks({ host, board, laments, settings, cardImages, worktree: async (project, task) => cardWorktree(project, task, homedir(), worktreeBase(await settings.get(), homedir())), shellEnv }));
   atpRuns = new AtpRuns({ host, tasks, atp, threads: atpThreads, settings, librarian: librarianPath(), python: () => pythonForHost().command, shellEnv, publish: (state) => publish({ kind: "atp.runners", ...state }) });
   // Nothing listens until remote access is turned on in Settings (RemoteHost.sync, from applySettings).
   remoteServer = new RemoteServer({

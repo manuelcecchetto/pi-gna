@@ -53,6 +53,18 @@ describe("worktreeCwd", () => {
 });
 
 describe("cardWorktree", () => {
+  it("makes a new worktree under the chosen folder and keeps reusing one made under home before", async () => {
+    const base = join(root, "volume");
+    const made = await cardWorktree(repo, card, home, base);
+    expect(made?.cwd).toBe(worktreeCwd(base, card.id, repo));
+    expect(projectOf(made?.cwd ?? "")).toBe(repo);
+
+    const other = { id: "def456", title: "Older card" };
+    const older = await cardWorktree(repo, other, home);
+    expect(await cardWorktree(repo, other, home, base)).toEqual({ cwd: older?.cwd, branch: older?.branch, created: false, dirty: false });
+    expect(existsSync(worktreeCwd(base, other.id, repo))).toBe(false);
+  });
+
   it("makes a worktree outside the project, on the card's branch from HEAD", async () => {
     const worktree = await cardWorktree(repo, card, home);
     expect(worktree).toEqual({ cwd: worktreeCwd(home, card.id, repo), branch: "pigna/abc123-fix-the-flash", created: true, dirty: false });

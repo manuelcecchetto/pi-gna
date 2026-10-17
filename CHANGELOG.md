@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Settings > General > Worktrees picks the folder card, Fix and new plan worktrees go in (under `.pi-gna/worktrees`), for example a separate disk or volume for agent work. Worktrees already made stay where they are and keep working.
+
 ## 0.23.0 - 2026-10-16
 
 - Long chats stay fast after you scroll back through them. Every earlier turn you scrolled to stayed in the page while the chat was open, so the next answer redrew and rechecked all of them for every word it streamed: after reading back through 2,000 turns, typing lagged and the window used a whole core. Sending a new message now takes the chat back to its latest turns (earlier ones load again as you scroll up, as they do after the chat has been off screen for a minute). In that case typing went from 20 ms to under 1 ms behind, and on a 4× slower processor the answer streams at 72 frames a second instead of 11. Timestamps in the transcript are also formatted about 40 times faster.

@@ -515,7 +515,9 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
 - **Resolve works in a git worktree** (`src/main/worktree.ts`, made by `ChatTasks`), on branch
   `pigna/<card id>-<title words>` from the checkout's HEAD, so its change stays off your checkout until you merge it;
   Investigate, Chat about it and triage stay in the checkout. The worktree is
-  `~/.pi-gna/worktrees/<card id><repository path>` (`worktreeCwd`), and the chat runs in the project's folder in it
+  `~/.pi-gna/worktrees/<card id><repository path>` (`worktreeCwd`; Settings > General > Worktrees moves the `~` part,
+  `Settings.worktreeBase`, desktop only, for a faster or dedicated disk; worktrees made under the old base are still
+  reused there, and `projectOf` finds `.pi-gna/worktrees/<id>/` under any base), and the chat runs in the project's folder in it
   (a project can be a subfolder of its repository). It is outside the project because pi loads the AGENTS.md of the
   cwd's parent folders too (twice, in a worktree inside the project) and test runners would find the copy.
   `projectOf` maps a worktree path back to its project for everything keyed by project: the attach check, the

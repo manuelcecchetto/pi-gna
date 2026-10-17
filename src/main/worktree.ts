@@ -21,16 +21,17 @@ const pending = new Map<string, Promise<CardWorktree | null>>();
 /**
  * The card's worktree, made on first use from the checkout's HEAD (or the card's branch, when an earlier worktree
  * was removed). Null when the project is not in a git repository. One at a time per card, so a second Resolve
- * waits for the first to make the worktree and then reuses it.
+ * waits for the first to make the worktree and then reuses it. A new one goes under `base` (Settings > worktree
+ * folder); one made under `home` before you chose it is reused there.
  */
-export function cardWorktree(project: string, card: { id: string; title: string }, home = homedir()): Promise<CardWorktree | null> {
-  return serialized(project, card.id, home, () => prepare(project, card.id, [`${BRANCHES}${card.id}`, `${BRANCHES}${card.id}-*`], branchName(card), home));
+export function cardWorktree(project: string, card: { id: string; title: string }, home = homedir(), base = home): Promise<CardWorktree | null> {
+  return serialized(project, card.id, base, () => prepare(project, card.id, [`${BRANCHES}${card.id}`, `${BRANCHES}${card.id}-*`], branchName(card), [base, home]));
 }
 
 /** A worktree for a new ATP plan, keyed by a fresh id (a card's id shape, so projectOf maps its chats back). */
-export function atpWorktree(project: string, id: string, home = homedir()): Promise<CardWorktree | null> {
+export function atpWorktree(project: string, id: string, base = homedir()): Promise<CardWorktree | null> {
   const branch = `${ATP_BRANCHES}${id}`;
-  return serialized(project, id, home, () => prepare(project, id, [branch], branch, home));
+  return serialized(project, id, base, () => prepare(project, id, [branch], branch, [base]));
 }
 
 function serialized(project: string, id: string, home: string, make: () => Promise<CardWorktree | null>): Promise<CardWorktree | null> {
@@ -44,8 +45,11 @@ function serialized(project: string, id: string, home: string, make: () => Promi
   return run;
 }
 
-/** The worktree of `id`, on the first existing branch matching `patterns` (an earlier, removed worktree's), else on `fresh` from HEAD. */
-async function prepare(project: string, id: string, patterns: string[], fresh: string, home: string): Promise<CardWorktree | null> {
+/**
+ * The worktree of `id`: one already under any of `bases`, else a new one under the first, on the first existing branch
+ * matching `patterns` (an earlier, removed worktree's) or on `fresh` from HEAD.
+ */
+async function prepare(project: string, id: string, patterns: string[], fresh: string, bases: string[]): Promise<CardWorktree | null> {
   // The project's path below the repository's top folder ("" at the top). In C, so the error reads the same in any language.
   const prefix = await git(project, ["rev-parse", "--show-prefix"], { LC_ALL: "C" }).catch((error: Error) => {
     if (/not a git repository/.test(error.message)) return null;
@@ -57,11 +61,13 @@ async function prepare(project: string, id: string, patterns: string[], fresh: s
   const sub = prefix.replace(/\/$/, "").replaceAll("/", sep);
   if (sub && !project.endsWith(`${sep}${sub}`)) throw new Error(`${project} links into its git repository; open the repository's folder itself`);
   const top = sub ? project.slice(0, -sub.length - 1) : project;
-  const dir = worktreeCwd(home, id, top);
-  const cwd = worktreeCwd(home, id, project);
-
-  const reused = await worktreeBranch(dir);
-  if (reused !== null) return { cwd, branch: reused, created: false, dirty: false };
+  for (const home of new Set(bases)) {
+    const reused = await worktreeBranch(worktreeCwd(home, id, top));
+    if (reused !== null) return { cwd: worktreeCwd(home, id, project), branch: reused, created: false, dirty: false };
+  }
+  const base = bases[0] as string;
+  const dir = worktreeCwd(base, id, top);
+  const cwd = worktreeCwd(base, id, project);
   // Whether the checkout has changes the new worktree lacks, asked while git makes it: status is the slow call in a
   // big repository.
   const dirty = git(project, ["status", "--porcelain"]).then((out) => out !== "");
