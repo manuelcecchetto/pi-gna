@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.24.0 - 2026-10-17
+
 - Settings > General > Worktrees picks the folder card, Fix and new plan worktrees go in (under `.pi-gna/worktrees`), for example a separate disk or volume for agent work. Worktrees already made stay where they are and keep working.
 
 ## 0.23.0 - 2026-10-16
