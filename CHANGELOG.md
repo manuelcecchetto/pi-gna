@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.25.0 - 2026-10-19
+
 - The agent can do much more in the browser pane. Pages that offer WebMCP tools (`document.modelContext`, now on for every page, local dev servers included) list them in the agent's page snapshot, and it can call them directly instead of clicking through the page. It also waits for text, an element or a URL instead of guessing with sleeps; answers `alert()` and `confirm()` dialogs (before, a click that opened one left the agent stuck, and an answer it gave left the box on screen); uploads files, including through a button that opens a file picker, without the picker opening; picks options in native selects; drags and drops; hovers to open menus and tooltips; scrolls with the wheel; and checks dark mode and reduced motion. While it emulates dark or light mode, a "Dark ×" pill next to the address shows it; click it to follow your system again.
 - The agent can record a video of a browser tab (`browser_record`): it starts recording, works through a flow or reproduces a bug, and stops; you get an MP4 (in Movies/pi-gna unless it saves it elsewhere) that it links in its reply and that plays in the side pane. Its clicks, hovers and drags show as a pointer with a ring in the video, a tab you are not looking at records too, and a red "Rec" next to the address shows while it records. A recording stops by itself after 10 minutes.
 
