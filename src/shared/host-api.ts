@@ -25,6 +25,7 @@ import type { TurnOutline } from "./turn-outline";
 import type { UiOp } from "./ui-state";
 import type { UsageProgress, UsageQuery, UsageReport } from "./usage";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
+import type { Subagent, SubagentTranscript } from "./subagents";
 import type { DialogAnswer, OpenSessionRequest, OpenSessionResult, PickedPath, ProjectGroup, SessionSummary, UpdateState } from "./ipc";
 
 // ── Envelopes ────────────────────────────────────────────────────────────────
@@ -524,6 +525,10 @@ export interface HostMethods {
   "chat.pauseDialog": { args: { handle: string; id: string }; result: void };
   "chat.startTask": { args: { target: TaskTarget }; result: TaskStarted };
   "chat.files": { args: { cwd: string }; result: string[] };
+  /** A chat's subagents as its session files tell them (src/main/subagents.ts), newest first. */
+  "chat.subagents": { args: { path: string }; result: Subagent[] };
+  /** A subagent's transcript; without `transcript` when its file still has `size` bytes. */
+  "chat.subagentTranscript": { args: { file: string; size?: number }; result: { size: number; transcript?: SubagentTranscript } };
   "chat.compactionSettings": { args: Record<string, never>; result: CompactionSettings };
   "chat.rawCommand": { args: { handle: string; command: RpcCommand }; result: RpcResponse };
 
@@ -816,6 +821,8 @@ export const READ_ONLY_METHODS = [
   "chat.attach",
   "chat.snapshot",
   "chat.files",
+  "chat.subagents",
+  "chat.subagentTranscript",
   "chat.resolveLinks",
   "chat.linkImage",
   "chat.readFile",

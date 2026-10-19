@@ -38,6 +38,7 @@ import { imageSrc } from "../lib/image-src";
 import type { ThumbBox } from "../lib/thumbnail";
 import { Ansi, ImageThumb } from "./primitives";
 import { TurnRail } from "./TurnRail";
+import { SubagentNotice } from "./SubagentParts";
 
 const PAGE = 30;
 
@@ -654,6 +655,9 @@ function BlockView({ block, cwd, home }: { block: Block; cwd: string; home: stri
         </Disclosure>
       );
     case "custom": {
+      if (block.message.customType === "subagent-notification" || block.message.customType === "subagent-update") {
+        return <SubagentNotice customType={block.message.customType} details={block.message.details} />;
+      }
       const content = block.message.content;
       const text = typeof content === "string" ? content : content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
       return (

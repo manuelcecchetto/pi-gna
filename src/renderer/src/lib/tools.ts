@@ -4,7 +4,7 @@ import { answerText, type AskResult } from "../../../shared/ask";
 import { parseLocalTarget } from "../../../shared/preview";
 import type { ToolCall } from "../../../shared/protocol";
 
-export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "ask" | "think" | "other";
+export type ToolCategory = "read" | "edit" | "bash" | "search" | "web" | "browser" | "computer" | "board" | "agent" | "subagent" | "ask" | "think" | "other";
 
 export interface ToolPresentation {
   category: ToolCategory;
@@ -235,11 +235,21 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
     case "snapshot":
     case "screenshot":
       return { category: "browser", verb: name === "run" ? "Drove the browser" : `Took a ${name}`, activeVerb: name === "run" ? "Driving the browser" : `Taking a ${name}`, target: "" };
-    case "subagent":
-    case "workflow": {
-      const target = str(args.agent) ? `${str(args.agent)}: ${firstLine(str(args.task), 80)}` : firstLine(str(args.task) || str(args.script), 80);
-      return { category: "agent", verb: name === "workflow" ? "Ran a workflow" : "Delegated", activeVerb: name === "workflow" ? "Running a workflow" : "Delegating", target };
+    case "subagent": {
+      // pi-subagents: a short description, the agent type, and the prompt; `resume` continues an agent.
+      const resume = Boolean(args.resume);
+      const target = firstLine(str(args.description) || str(args.prompt) || str(args.task), 80);
+      const type = str(args.subagent_type) || str(args.agent);
+      return { category: "agent", verb: resume ? "Resumed" : "Delegated", activeVerb: resume ? "Resuming" : "Delegating", target, meta: type || undefined };
     }
+    case "get_subagent_result": {
+      const description = details && typeof details === "object" ? str((details as { description?: unknown }).description) : "";
+      return { category: "subagent", verb: "Collected", activeVerb: args.wait ? "Waiting for" : "Checking", target: description || str(args.agent_id) };
+    }
+    case "steer_subagent":
+      return { category: "subagent", verb: "Steered", activeVerb: "Steering", target: firstLine(str(args.message), 80), meta: str(args.agent_id) || undefined };
+    case "workflow":
+      return { category: "agent", verb: "Ran a workflow", activeVerb: "Running a workflow", target: firstLine(str(args.task) || str(args.script), 80) };
     default: {
       const firstString = Object.values(args).find((value) => typeof value === "string") as string | undefined;
       return { category: "other", verb: name, activeVerb: name, target: firstString ? firstLine(firstString, 80) : "" };
@@ -306,6 +316,7 @@ export function summarizeTools(tools: SummaryInput[]): string | undefined {
   if (counts.board) parts.push(`${plural(counts.board, "board action", "board actions")}`);
   if (counts.ask) parts.push(counts.ask > 1 ? `asked you ${counts.ask}×` : "asked you");
   if (counts.agent) parts.push(`${plural(counts.agent, "delegation", "delegations")}`);
+  if (counts.subagent) parts.push(`${plural(counts.subagent, "subagent check-in", "subagent check-ins")}`);
   if (counts.other) parts.push(`${plural(counts.other, "tool call", "tool calls")}`);
   if (failed) parts.push(`${failed} failed`);
   const text = parts.join(" · ");

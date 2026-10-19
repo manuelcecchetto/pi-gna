@@ -54,6 +54,7 @@ resources/kanban-extension.ts    the same for the kanban_* tools
 resources/lament-extension.ts    the same for the lament tool
 resources/fast-extension.ts      the same for /fast: OpenAI priority processing (`service_tier`) on GPT models, per chat; the
                                  composers' zap reads its `fast` status and sends the command by the name pi gave it (src/shared/fast.ts)
+resources/subagents-extension.ts every chat: its pi-subagents agents, live, as the `pigna-subagents` status; `/subagent stop|steer` (see Subagents)
 resources/atp-extension.ts       ATP orchestrator chats only: atp_pause, atp_resume
 resources/atp/                   the ATP roles' system prompts and the vendored ATP skills (architects, librarian CLI)
 resources/pi-auth.mts            login helper run by the PATH `node` with pi's SDK (see Settings, Providers)
@@ -1223,6 +1224,45 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   openai-codex. Known gap: pi writes a pinned npm source as `^version` into its npm folder's package.json, so a later
   install can lift another package to a newer patch, which pi then lists as missing (and reinstalls at the pin when a
   chat starts); keep catalog pins at the newest patch of their range.
+
+## Subagents
+
+pi-subagents (the recommended `@gotgenes/pi-subagents`) runs agents inside the chat's pi and keeps each one's session at
+`<chat file without .jsonl>/tasks/<ts>_<id>.jsonl`. pi-gna shows them in three places, desktop only for now; the host
+methods are remote-scoped, so the phone needs only UI.
+
+- **Sidebar:** a chat with subagents gets a disclosure at the left of its row and, open, a tree of its agents (status
+  mark, description, run time; six, then "N more"). A tree opens by itself while its chat or one of its agents is on
+  screen or an agent runs; a toggle by hand wins (`useTreeOpen`). The count comes from the listing
+  (`SessionSummary.subagents`: `listSessions` counts `tasks/` only for chats that have a folder of their name).
+- **In the chat:** the `subagent` row says what it delegated (description, agent type) with a chip of the agent's status
+  that opens it; `get_subagent_result` and `steer_subagent` rows ("Collected", "Steered") get the chip too, and count as
+  "subagent check-ins" in the run summary. pi-subagents' `subagent-notification` and `subagent-update` messages render
+  as cards (`SubagentNotice`) instead of their XML. Above the composer, a tray lists the chat's running agents and the
+  ones that finished during the current run, with what each does now, tools, tokens and time, and Stop on hover.
+- **The agent's view** (`SubagentPane`, `AppState.subview`): its transcript, read from its file (`hydrate`, as a chat)
+  and again every second while it runs, only when the file grew; a breadcrumb back to the chat; below, a steer field
+  and Stop while it runs and its chat is open, else how it ended.
+
+Two sources make one list (`src/shared/subagents.ts`, `mergeSubagents`):
+- Live: `resources/subagents-extension.ts`, loaded into every chat, reads the package's service (`Symbol.for(
+  "@gotgenes/pi-subagents:service")`) once a second and, when it changed, sets the extension status `pigna-subagents`
+  (JSON: id, description, type, status, file, times, tools, tokens, model and latest tool call from the file's tail).
+  It takes the service at `session_start`: pi-subagents 23 loads every extension into each child session, its own too,
+  so a child publishes its own empty service over the chat's on globalThis and deletes it when it ends; reading the
+  global on each tick reported nothing (found with a real run, 2026-10-19). Stop and steer are `/subagent stop|steer
+  <id> [message]`, sent as a prompt (pi runs an extension command at once, even mid-run) by the name pi gave it
+  (`subagentCommand`).
+- Disk: `chat.subagents` (src/main/subagents.ts) joins the chat file's `subagent` calls to the `tasks/` files: a
+  child's first user message is the spawning call's exact `prompt` (a resume appends its prompt to the same file; a
+  `get_subagent_result` `transcriptPath` wins), outcomes from the `subagents:record` entries, tools and tokens from the
+  child file. The chat file is read only past the last read and only lines that mention subagents are parsed (9.5 MB in
+  19 ms, then 1 ms); a child file is read again when it changed. `chat.subagentTranscript` serves a child's transcript
+  (paths must be `<sessions>/<dir>/<chat>/tasks/<file>.jsonl`). A file with no outcome and no live record is
+  `unknown`: its chat stopped while it worked.
+
+QA without a model: `scripts/fake-pi.mjs` takes `[subagents=N]` (N agents reported as the extension does, finishing one
+by one with the completion notice; `FAKE_SUBAGENT_FILE` names the file they report) and answers `/subagent stop|steer`.
 
 ## Usage
 

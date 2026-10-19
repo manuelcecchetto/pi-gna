@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Subagents are easy to follow. A chat that delegates to subagents (pi-subagents) lists them under its row in the sidebar, each with its status, and a tray above the composer shows the ones at work: what each is doing now, its tools, tokens and time, with Stop. Click one to open its own view: its whole transcript, live while it runs, with a field to steer it and a Stop button. In the chat, a delegation says what it handed off and to which agent, with the agent's status (before, it read just "Delegated"), and a finished agent's notice is a short card with its result instead of raw XML. Chats from before this release show their subagents too.
+
 ## 0.25.0 - 2026-10-19
 
 - The agent can do much more in the browser pane. Pages that offer WebMCP tools (`document.modelContext`, now on for every page, local dev servers included) list them in the agent's page snapshot, and it can call them directly instead of clicking through the page. It also waits for text, an element or a URL instead of guessing with sleeps; answers `alert()` and `confirm()` dialogs (before, a click that opened one left the agent stuck, and an answer it gave left the box on screen); uploads files, including through a button that opens a file picker, without the picker opening; picks options in native selects; drags and drops; hovers to open menus and tooltips; scrolls with the wheel; and checks dark mode and reduced motion. While it emulates dark or light mode, a "Dark ×" pill next to the address shows it; click it to follow your system again.

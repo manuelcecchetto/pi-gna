@@ -35,6 +35,8 @@ import { countdownFill } from "./QuestionsCard";
 import { SettingsNav } from "./SettingsNav";
 import { useThemeImage } from "./ThemeRoot";
 import { UpdateRow } from "./Update";
+import { SubagentTree, TreeToggle, useTreeOpen } from "./Subagents";
+import { isActive, liveSubagents } from "../../../shared/subagents";
 
 const SESSIONS_PER_PROJECT = 6;
 /** How many more chats each "Show more" reveals in a project. */
@@ -59,7 +61,8 @@ export function Sidebar() {
   const worst = worstSeverity(openLaments);
   const runningPlans = useAtp((state) => Object.keys(state.runners).length);
   const features = useApp((state) => state.settings.features);
-  const active = useApp((state) => (state.page ? undefined : state.active));
+  // A page or a subagent's view covers the active chat: its row is not highlighted then.
+  const active = useApp((state) => (state.page || state.subview ? undefined : state.active));
   const layout = useApp((state) => state.sidebar);
   const pinned = usePinnedProjects();
   const hidden = useHiddenProjects();
@@ -547,6 +550,13 @@ function SessionRowView({
   const needsYou = level === "waiting" || level === "failed" || level === "unread";
   const editing = useStore(renaming, (key) => key === row.key);
   const onClick = () => openRow(row);
+  // Its subagents: the tree opens by itself while the chat or one of its agents is on screen, or an agent works.
+  const chat = rowSession(row);
+  const liveText = live?.subagents;
+  const liveAgents = useMemo(() => liveSubagents(liveText), [liveText]);
+  const subagents = Math.max(row.summary?.subagents ?? 0, liveAgents.length);
+  const viewing = useApp((state) => chat !== undefined && state.subview?.chat === chat);
+  const [treeOpen, setTreeOpen] = useTreeOpen(chat, active || viewing || liveAgents.some((agent) => isActive(agent.status)));
   const tone = active ? "bg-raised text-fg" : needsYou ? "text-fg hover:bg-raised/50" : "text-muted hover:bg-raised/50 hover:text-fg";
   if (editing) {
     const path = rowSession(row);
@@ -561,11 +571,13 @@ function SessionRowView({
     );
   }
   return (
+    <div className="relative">
+    {subagents > 0 && chat && <TreeToggle open={treeOpen} count={subagents} onToggle={setTreeOpen} />}
     <button
       type="button"
       onClick={onClick}
       onContextMenu={(event) => onMenu(event, sessionMenu(row, onClick, active, kanban))}
-      className={`group relative isolate flex items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${tone}`}
+      className={`group relative isolate flex w-full items-center gap-2.5 rounded-lg py-[5px] pr-2.5 pl-3 text-left ${tone}`}
     >
       {live?.askTimeout && <AskFill timeout={live.askTimeout} deadline={live.askDeadline} left={live.askLeft} />}
       <span className="grid w-4 shrink-0 place-items-center">{level && <Indicator level={level} />}</span>
@@ -574,6 +586,8 @@ function SessionRowView({
       {row.pinned && <Pin size={11} aria-label="Pinned" className="shrink-0 text-faint" />}
       {digit !== undefined ? <DigitHint digit={digit} /> : row.time && <RowTime time={row.time} />}
     </button>
+    {treeOpen && subagents > 0 && chat && <SubagentTree chat={chat} live={liveText} cwd={live?.cwd ?? row.summary?.cwd ?? ""} title={title} />}
+    </div>
   );
 }
 

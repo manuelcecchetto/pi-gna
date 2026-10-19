@@ -40,6 +40,7 @@ import { Dialogs } from "./Dialogs";
 import { QuestionsCard, questionsOf } from "./QuestionsCard";
 import { QueueCard } from "./QueueCard";
 import { StatusCard } from "./StatusCard";
+import { SubagentTray } from "./Subagents";
 import { TokenRate } from "./TokenRate";
 import { Popover, Switch } from "./primitives";
 import { LazyProviderLogo } from "./LazyProviderLogo";
@@ -359,6 +360,7 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
       {widgetsAbove.map(([key, widget]) => (
         <Widget key={key} lines={widget.lines} />
       ))}
+      <SubagentTray handle={handle} />
       {annotations.length > 0 && (
         <div className="flex flex-col gap-1">
           {annotations.map((annotation) => (

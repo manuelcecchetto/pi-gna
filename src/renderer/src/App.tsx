@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "./components/icons";
 import { Ansi } from "./components/primitives";
 import { SessionPane } from "./components/SessionPane";
+import { SubagentPane } from "./components/SubagentPane";
 import { HeroBackdrop } from "./components/Transcript";
 import { ThemeRoot } from "./components/ThemeRoot";
 import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
@@ -70,6 +71,7 @@ export function App() {
   // Only which chat is open: SessionPane subscribes to the chat itself, so streaming does not render the shell.
   const active = useApp((state) => (state.active && state.sessions[state.active] ? state.active : undefined));
   const page = useApp((state) => state.page);
+  const subview = useApp((state) => state.subview);
   const paneState = useApp((state) => state.pane);
   // The browser belongs to the chat: a page (Kanban, Settings, ...) covers the window and hides it.
   const pane = { ...paneState, open: paneState.open && !page };
@@ -109,6 +111,8 @@ export function App() {
             <AtpPage key={page.cwd} page={page} />
           ) : page ? (
             <KanbanPage page={page} />
+          ) : subview ? (
+            <SubagentPane key={`${subview.chat}:${subview.agent}`} view={subview} />
           ) : active ? (
             <SessionPane key={active} handle={active} />
           ) : (

@@ -27,6 +27,7 @@ import { gitPull, gitStatus, gitSwitch } from "./project-status";
 import { siteIcon } from "./site-icons";
 import { readCompactionSettings, readPiSettings, writePiSettings } from "./pi-settings";
 import { listSessions } from "./session-index";
+import { checkedChatFile, checkedSubagentFile, listSubagents, readSubagentTranscript } from "./subagents";
 import { describePaths } from "./attachments";
 import { browse } from "./browse";
 import type { Uploads } from "./uploads";
@@ -382,6 +383,20 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       return tasks.send(String(args.handle), String(args.text ?? ""), args.mode === "followUp" ? "followUp" : "send", args.cardId, attachments, annotations);
     }),
     "chat.files": any<{ cwd: string }>("remote", async (_ctx, { cwd }) => (await env(), listFiles(cwd))),
+    "chat.subagents": method<{ path: string }>("remote", (raw) => ({ path: checkedChatFile(raw.path) }), async (_ctx, { path }) => (await piDirs(), listSubagents(path))),
+    "chat.subagentTranscript": method<{ file: string; size?: number }>(
+      "remote",
+      (raw) => {
+        if (raw.size !== undefined && !(Number.isInteger(raw.size) && raw.size >= 0)) throw new Error("Invalid size");
+        return { file: checkedSubagentFile(raw.file), size: raw.size as number | undefined };
+      },
+      async (_ctx, { file, size }) => {
+        await piDirs();
+        return readSubagentTranscript(file, size).catch(() => {
+          throw new HostError("not_found", "no such subagent");
+        });
+      },
+    ),
     "chat.compactionSettings": any("remote", async () => (await piDirs(), readCompactionSettings())),
     "fs.browseFolders": any<{ path?: string; files?: boolean; hidden?: boolean }>("remote", (_ctx, { path, files, hidden }) => browse(deps.app.homeDir, path, files === true, hidden === true)),
     "uploads.discard": any<{ id: string }>("remote", async (ctx, { id }) => {
@@ -922,6 +937,8 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.pauseDialog, "chat.pauseDialog", (handle, id) => ({ handle, id }), true),
   route(IPC.startTask, "chat.startTask", (target) => ({ target })),
   route(IPC.listFiles, "chat.files", (cwd) => ({ cwd })),
+  route(IPC.listSubagents, "chat.subagents", (path) => ({ path })),
+  route(IPC.subagentTranscript, "chat.subagentTranscript", (file, size) => ({ file, ...(size !== undefined && { size }) })),
   route(IPC.pickFolder, "fs.pickFolder"),
   route(IPC.openExternal, "host.openExternal", (url) => ({ url }), true),
   route(IPC.visualKill, "host.killVisual", (frameId) => ({ frameId }), true),

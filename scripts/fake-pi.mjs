@@ -21,6 +21,9 @@
 // Composer chrome: get_commands, thinking levels (large models offer them), set_model / set_thinking_level, compact and
 // session stats with a context size. A prompt containing "ext-ui" raises extension UI (a startup-style warning notify,
 // a widget above the editor, set_editor_text, setTitle); "retry-demo" shows an auto-retry for a moment.
+// `[subagents=N]` reports N subagents at work as resources/subagents-extension.ts does (the `pigna-subagents` status),
+// agent i finishing after 6*i updates (one per `[delay=N]`) with pi-subagents' completion notice; FAKE_SUBAGENT_FILE
+// names the session file they report. `/subagent stop|steer <id>` stops one or is taken, as the extension's command.
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -90,6 +93,14 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       }, 300);
     case "prompt": {
       // `/fast on|off` as resources/fast-extension.ts answers it: handled at once, the state as the `fast` status.
+      const sub = /^\/subagent (stop|steer) (\S+)/.exec(command.message);
+      if (sub) {
+        const agent = subagents.find((entry) => entry.id === sub[2] && entry.status === "running");
+        if (agent && sub[1] === "stop") Object.assign(agent, { status: "stopped", endedAt: Date.now() });
+        if (agent && sub[1] === "steer") agent.last = { name: "steer", args: { message: command.message.slice(sub[0].length).trim() } };
+        reportSubagents();
+        return reply({ disposition: "handled" });
+      }
       const fast = /^\/fast (on|off)$/.exec(command.message);
       if (fast) {
         out({ type: "extension_ui_request", id: `status-${process.pid}-${Date.now()}`, method: "setStatus", statusKey: "fast", statusText: fast[1] === "on" ? "on" : undefined });
@@ -210,8 +221,49 @@ function completeNode(text) {
   execFileSync("python3", [librarian, "atp-complete-task", "--plan-path", plan, "--node-id", node, "--status", "DONE", "--report-file", report]);
 }
 
+/** The `[subagents=N]` agents of this fake chat, as the extension reports them. */
+const subagents = [];
+const reportSubagents = () =>
+  out({ type: "extension_ui_request", id: `sub-${process.pid}-${Date.now()}-${Math.random()}`, method: "setStatus", statusKey: "pigna-subagents", statusText: JSON.stringify({ v: 1, agents: subagents }) });
+
+function startSubagents(count, delay) {
+  const now = Date.now();
+  const fresh = Array.from({ length: count }, (_, i) => ({
+    id: `fake-agent-${now}-${i + 1}`,
+    description: `Fake agent ${i + 1}`,
+    type: i % 2 ? "Explore" : "general-purpose",
+    model: "fake/fake-sonnet",
+    status: "running",
+    startedAt: now,
+    toolUses: 0,
+    tokens: 0,
+    ...(process.env.FAKE_SUBAGENT_FILE && { file: process.env.FAKE_SUBAGENT_FILE }),
+  }));
+  subagents.unshift(...fresh);
+  let tick = 0;
+  const timer = setInterval(() => {
+    tick += 1;
+    fresh.forEach((agent, i) => {
+      if (agent.status !== "running") return;
+      agent.toolUses += 1;
+      agent.tokens += 1800;
+      agent.last = { name: tick % 2 ? "read" : "bash", args: tick % 2 ? { path: `src/part-${tick}.ts` } : { command: `pnpm test --shard ${tick}` } };
+      if (tick < 6 * (i + 1)) return;
+      Object.assign(agent, { status: "completed", endedAt: Date.now() });
+      const details = { id: agent.id, description: agent.description, status: "completed", toolUses: agent.toolUses, totalTokens: agent.tokens, durationMs: agent.endedAt - agent.startedAt, resultPreview: `${agent.description} finished: **all checks pass**.` };
+      const notice = { role: "custom", customType: "subagent-notification", content: `<task-notification>${agent.id}</task-notification>`, display: true, details, timestamp: Date.now() };
+      out({ type: "message_start", message: notice });
+      out({ type: "message_end", message: notice });
+    });
+    reportSubagents();
+    if (fresh.every((agent) => agent.status !== "running")) clearInterval(timer);
+  }, delay);
+  reportSubagents();
+}
+
 async function run(text) {
   completeNode(text);
+  if (directive(text, "subagents", 0)) startSubagents(directive(text, "subagents", 0), directive(text, "delay", DELAY));
   streaming = true;
   aborted = false;
   out({ type: "agent_start" });

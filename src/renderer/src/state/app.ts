@@ -57,6 +57,7 @@ import type { OpenChat } from "../lib/projects";
 import { pagePreview } from "../lib/rail";
 import { createStore, shallow, useStore, useStoreShallow } from "../lib/store";
 import { fastCommand } from "../../../shared/fast";
+import { SUBAGENTS_STATUS } from "../../../shared/subagents";
 
 export interface Toast {
   id: number;
@@ -114,6 +115,8 @@ export interface AppState {
   settings: Revved<Settings>;
   /** A full-window page shown instead of the active chat. */
   page?: PageState;
+  /** A subagent's transcript shown instead of the active chat (components/SubagentPane.tsx); a page still covers it. */
+  subview?: Subview;
   /** A DOM dialog or menu is open over the page; it hides the native browser view, which would cover it. */
   overlay: boolean;
   /** A newer pi-gna release and how far installing it got (main's Updater). */
@@ -122,6 +125,15 @@ export interface AppState {
   updateOpen: boolean;
   /** The ⌘K search is open. */
   palette: boolean;
+}
+
+/** The subagent on screen: which chat (its session file) it belongs to, and its pi-subagents id. */
+export interface Subview {
+  chat: string;
+  agent: string;
+  /** The chat's project, and its title for the way back. */
+  cwd: string;
+  title: string;
 }
 
 /** A page of one project (its Kanban board, maybe with a card open, its laments, ...), or the Settings page. */
@@ -321,7 +333,7 @@ function markRead(handle: string | undefined): void {
 /** Show a chat (leaving any page). */
 export function activate(handle: string | undefined): void {
   const previous = store.get().active;
-  if (store.get().page) store.set((state) => ({ ...state, page: undefined }));
+  if (store.get().page || store.get().subview) store.set((state) => ({ ...state, page: undefined, subview: undefined }));
   markRead(handle);
   if (previous === handle) return;
   store.set((state) => ({ ...state, active: handle }));
@@ -1397,6 +1409,7 @@ export function openChat(session: SessionState): OpenChat {
     listed: isListed(session),
     draft: isDraft(session),
     exited: session.phase === "exited",
+    subagents: session.statuses[SUBAGENTS_STATUS],
   };
   const ask = session.dialogs.find((dialog) => dialog.method === "questions");
   if (ask?.method === "questions" && ask.timeout) Object.assign(next, { askTimeout: ask.timeout, askDeadline: ask.deadline, askLeft: ask.left });

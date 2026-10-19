@@ -31,5 +31,5 @@ export function patchProjects(projects: ProjectGroup[], path: string, summary: S
 }
 
 function sameSummary(a: SessionSummary, b: SessionSummary): boolean {
-  return a.id === b.id && a.cwd === b.cwd && a.title === b.title && a.named === b.named && a.createdAt === b.createdAt && a.modifiedAt === b.modifiedAt && a.promptedAt === b.promptedAt;
+  return a.id === b.id && a.cwd === b.cwd && a.title === b.title && a.named === b.named && a.createdAt === b.createdAt && a.modifiedAt === b.modifiedAt && a.promptedAt === b.promptedAt && a.subagents === b.subagents;
 }

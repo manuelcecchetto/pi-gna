@@ -9,6 +9,7 @@ import type { PreviewMode, PreviewOpenOptions } from "./preview";
 import type { Annotation, BrowserCommand, BrowserLayout, BrowserState, HistoryEntry } from "./browser";
 import type { ViewportRequest, ViewportSpec } from "./viewport";
 import type { CompactionSettings } from "./compaction";
+import type { Subagent, SubagentTranscript } from "./subagents";
 import type { GithubFilter, GithubKind, GithubList, GithubLookup, GithubProject } from "./github";
 import type { GitResult, GitStatus, GithubSummary } from "./project-status";
 import type { ComputerOp, ComputerSettings, Permissions } from "./computer";
@@ -36,6 +37,8 @@ export const IPC = {
   openSession: "studio:open-session",
   closeSession: "studio:close-session",
   renameSession: "studio:rename-session",
+  listSubagents: "studio:list-subagents",
+  subagentTranscript: "studio:subagent-transcript",
   detachSession: "studio:detach-session",
   attachSession: "studio:attach-session",
   pageSession: "studio:page-session",
@@ -539,6 +542,8 @@ export interface BrowserApi {
 
 export interface SessionSummary {
   path: string;
+  /** How many subagent files the chat has (`<chat>/tasks/`); absent when none. */
+  subagents?: number;
   id: string;
   cwd: string;
   title: string;
@@ -625,6 +630,10 @@ export interface StudioApi {
   closeSession(handle: string): Promise<void>;
   /** Name a chat by its session file, open or closed (SessionHost.rename). */
   renameSession(path: string, name: string): Promise<void>;
+  /** A chat's subagents from its session files (src/main/subagents.ts). */
+  listSubagents(path: string): Promise<Subagent[]>;
+  /** A subagent's transcript; without `transcript` while its file still has `size` bytes. */
+  subagentTranscript(file: string, size?: number): Promise<{ size: number; transcript?: SubagentTranscript }>;
   /** Leave a chat without stopping it: pi stops only if nobody else holds it and it is disposable. */
   detachSession(handle: string): Promise<void>;
   /** Join a live chat (one another client started, or one this window had before a reload); null when it ended. */

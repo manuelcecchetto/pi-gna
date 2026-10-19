@@ -200,7 +200,7 @@ export class SessionHost {
   private readonly working = new Set<string>();
   private readonly runningListeners = new Set<() => void>();
   /** The browser_*, set_theme, threads_*, kanban_*, ask_user and lament tools and the chat titler, which reach pi-gna through the
-   * bridge, the subagent model defaults (the recommended setup's pi-subagents) and /fast. */
+   * bridge, the subagent model defaults and live subagents (the recommended setup's pi-subagents) and /fast. */
   private readonly extensions = {
     browser: onDisk("resources", "browser-extension.ts"),
     theme: onDisk("resources", "theme-extension.ts"),
@@ -211,6 +211,7 @@ export class SessionHost {
     title: onDisk("resources", "title-extension.ts"),
     fast: onDisk("resources", "fast-extension.ts"),
     subagentModels: onDisk("resources", "subagent-models-extension.ts"),
+    subagents: onDisk("resources", "subagents-extension.ts"),
   };
   private readonly idleCheck: ReturnType<typeof setInterval>;
   /** At most one pi waiting for the next New chat (`spawnSpare`). */
@@ -258,7 +259,7 @@ export class SessionHost {
   /** `trust`: whether pi may load the project's own resources, when pi cannot tell from the cwd itself. */
   /** @internal exposed for tests */
   piArgs(handle: string, trust: boolean | undefined, atp: AtpSession | undefined, features: SessionFeatures): { args: string[]; env: Record<string, string> } {
-    const args = ["-e", this.extensions.browser, "-e", this.extensions.theme, "-e", this.extensions.threads, "-e", this.extensions.title, "-e", this.extensions.subagentModels, "-e", this.extensions.fast, "--append-system-prompt", this.prompt];
+    const args = ["-e", this.extensions.browser, "-e", this.extensions.theme, "-e", this.extensions.threads, "-e", this.extensions.title, "-e", this.extensions.subagentModels, "-e", this.extensions.subagents, "-e", this.extensions.fast, "--append-system-prompt", this.prompt];
     if (features.visuals) args.push("-e", onDisk("resources", "visual-extension.ts"), "--skill", this.skills.inlineVisuals);
     if (features.kanban) args.push("-e", this.extensions.kanban);
     if (features.laments) args.push("-e", this.extensions.laments);

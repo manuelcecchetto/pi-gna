@@ -5,6 +5,7 @@ import { isDraft, type SessionState } from "../../../shared/session-state";
 import { addChatToBoard, attachFiles, closeSession, earlierTurns, newSession, sessionTitle, showBoard, toggleBrowser, toggleExpandAll, useApp, useFeature } from "../state/app";
 import { ColumnIcon } from "./ColumnIcon";
 import { Composer } from "./Composer";
+import { ChatSubagents } from "./Subagents";
 import { COLLAPSED_INSET } from "./Sidebar";
 import { Transcript } from "./Transcript";
 
@@ -88,7 +89,9 @@ function ChatPane({ session }: { session: SessionState }) {
         </button>
       </header>
       {session.phase === "exited" && <ExitBanner session={session} />}
-      <Transcript session={session} earlier={earlierTurns(session)} projectPicker={{ projects, onPick: (cwd) => moveDraft(session, cwd), onBrowse: () => void window.studio.pickFolder().then((cwd) => cwd && moveDraft(session, cwd)) }} />
+      <ChatSubagents session={session}>
+        <Transcript session={session} earlier={earlierTurns(session)} projectPicker={{ projects, onPick: (cwd) => moveDraft(session, cwd), onBrowse: () => void window.studio.pickFolder().then((cwd) => cwd && moveDraft(session, cwd)) }} />
+      </ChatSubagents>
       <Composer handle={session.handle} />
     </div>
   );

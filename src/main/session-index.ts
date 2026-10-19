@@ -8,6 +8,7 @@ import type { ProjectGroup, SessionSummary } from "../shared/ipc";
 import { groupSessions } from "../shared/session-list";
 import { log } from "./log";
 import { lastPromptAt, summarizeSessionFile } from "./session-file";
+import { countSubagents } from "./subagents";
 
 export function sessionsDir(): string {
   if (process.env.PI_CODING_AGENT_SESSION_DIR) return process.env.PI_CODING_AGENT_SESSION_DIR;
@@ -86,15 +87,22 @@ export async function listSessions(): Promise<ProjectGroup[]> {
     return [];
   }
 
+  // A chat with subagents has a folder of its name beside its file (`<chat>/tasks/`): only those are counted.
+  const withFolder = new Set<string>();
   const files = (
     await Promise.all(
-      dirs.map(async (dir) =>
-        (await readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".jsonl")).map((f) => join(dir, f)),
-      ),
+      dirs.map(async (dir) => {
+        const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+        for (const entry of entries) if (entry.isDirectory()) withFolder.add(join(dir, `${entry.name}.jsonl`));
+        return entries.filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl")).map((entry) => join(dir, entry.name));
+      }),
     )
   ).flat();
 
-  const summaries = await mapLimit(files, 16, indexSession);
+  const summaries = await mapLimit(files, 16, async (path) => {
+    const summary = await indexSession(path);
+    return summary && withFolder.has(path) ? withSubagents(summary, await countSubagents(path)) : summary;
+  });
   // Forget files that are gone, so the cache does not keep every deleted session.
   const present = new Set(files);
   for (const path of cache.keys()) {
@@ -116,8 +124,12 @@ export async function listSessions(): Promise<ProjectGroup[]> {
  */
 export async function indexSettled(path: string): Promise<SessionSummary | null | undefined> {
   if (dirname(dirname(path)) !== sessionsDir()) return undefined;
-  return (await indexSession(path)) ?? null;
+  const summary = await indexSession(path);
+  return summary ? withSubagents(summary, await countSubagents(path)) : null;
 }
+
+/** The row with its subagent count; the cached summary itself is left as its file made it. */
+const withSubagents = (summary: SessionSummary, count: number): SessionSummary => (count ? { ...summary, subagents: count } : summary);
 
 /** One session file's row: undefined when it lists nothing (no user message or name) or cannot be read. */
 async function indexSession(path: string): Promise<SessionSummary | undefined> {

@@ -26,6 +26,8 @@ export interface OpenChat {
   listed: boolean;
   draft: boolean;
   exited: boolean;
+  /** Its subagents as the chat's pi reports them (shared/subagents.ts `liveSubagents`). */
+  subagents?: string;
   /** The countdown of the agent's questions, while they wait (QuestionsCard): its length, end or what was left. */
   askTimeout?: number;
   askDeadline?: number;

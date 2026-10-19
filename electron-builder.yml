@@ -24,6 +24,7 @@ files:
   - src/shared/chat-title.ts
   - src/shared/file-mentions.ts
   - src/shared/fast.ts
+  - src/shared/subagents.ts
   - "!resources/icon.png"
   - "!resources/icon.svg"
   - "!resources/pigna-flag.ts"
@@ -46,6 +47,7 @@ asarUnpack:
   - src/shared/chat-title.ts
   - src/shared/file-mentions.ts
   - src/shared/fast.ts
+  - src/shared/subagents.ts
 electronLanguages: [en]
 # Electron security checklist #19. Verify with `npx @electron/fuses read --app "dist/mac-arm64/<name>.app"`.
 electronFuses:

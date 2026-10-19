@@ -30,6 +30,12 @@ import { Markdown } from "./Markdown";
 import { PiSpinner } from "./PiLogo";
 import { ImageThumb, Shimmer, useNow } from "./primitives";
 import { resultImages, resultText, ToolDetails } from "./ToolDetails";
+import { agentOfCall } from "../../../shared/subagents";
+import { useSubagentsUi } from "../lib/subagents-ui";
+import { SubagentCallChip } from "./SubagentParts";
+
+/** The calls that are about a subagent: spawning or resuming one, collecting its result, steering it. */
+const SUBAGENT_TOOLS: ReadonlySet<string> = new Set(["subagent", "get_subagent_result", "steer_subagent"]);
 
 const ICONS: Record<ToolCategory, IconComponent> = {
   read: FileText,
@@ -41,6 +47,7 @@ const ICONS: Record<ToolCategory, IconComponent> = {
   computer: MousePointer2,
   board: SquareKanban,
   agent: Bot,
+  subagent: Bot,
   ask: ShieldQuestion,
   think: Sparkles,
   other: Wrench,
@@ -243,9 +250,12 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
   const elapsed = run?.startedAt && run.endedAt ? run.endedAt - run.startedAt : 0;
   const duration = elapsed >= 100 ? formatDuration(elapsed) : undefined;
   const timeout = toolTimeoutMs(call.name, call.arguments);
+  const subagents = useSubagentsUi();
+  const agent = subagents && SUBAGENT_TOOLS.has(call.name) ? agentOfCall(subagents.agents, call, run?.result?.details ?? run?.partial?.details) : undefined;
 
   return (
     <div>
+      <div className="flex min-w-0 items-center gap-1.5">
       <button
         type="button"
         onClick={() => (Sheet ? setSheet(true) : setExpanded(step.key, !open))}
@@ -278,6 +288,8 @@ function ToolRow({ step, cwd, home, live }: { step: Extract<Step, { kind: "tool"
           <ChevronRight size={12} className={`transition ${open ? "rotate-90" : "opacity-0 group-hover:opacity-100"}`} />
         </span>
       </button>
+      {agent && <SubagentCallChip agent={agent} />}
+      </div>
       <InlineImages images={resultImages(run?.result ?? run?.partial)} />
       {open && <ToolDetails call={call} run={run} />}
       {Sheet && sheet && (
