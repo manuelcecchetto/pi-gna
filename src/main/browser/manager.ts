@@ -15,6 +15,7 @@ import {
   mediaFeatures,
   mergeMedia,
   normalizeAddress,
+  recordingName,
 } from "../../shared/browser";
 import { parsePreviewUrl, PREVIEW_SCHEME, previewFor, previewLabel, previewUrl, type PreviewMode, type PreviewOpenOptions, type TabPreview } from "../../shared/preview";
 import { fitViewport, resolveViewport, userAgentFor, type ViewportRequest, type ViewportSpec } from "../../shared/viewport";
@@ -25,6 +26,7 @@ import { IconCache, tabFavicon, type TabIcon } from "./favicon";
 import { previewContext, type SourceHint } from "./annotation-source";
 import { ANNOTATE, ISOLATED_WORLD, STOP_ANNOTATE } from "./page-scripts";
 import { previews } from "./preview-protocol";
+import { type FrameSource, Recording, type RecordingResult } from "./recorder";
 import { isRunnable, needsReload, previewRoot, relativeTo, reusableTab, samePreviewPage, watchFile } from "./preview-tabs";
 
 export const PARTITION = "persist:pigna-browser";
@@ -101,6 +103,10 @@ export interface Tab {
   dialog?: PendingDialog;
   /** Agent actions waiting to hear that a dialog opened (see `nextDialog`). */
   dialogWaiters?: Set<(dialog: PendingDialog) => void>;
+  /** The video the agent is recording of the tab (browser_record). */
+  recording?: Recording;
+  /** A recording that stopped without the agent (time or size limit), until the agent's stop collects it. */
+  recorded?: Promise<RecordingResult>;
 }
 
 /** Electron decodes the bitmap (PNG, JPEG; ICO where the platform can) and shrinks it for the tab strip. */
@@ -243,6 +249,7 @@ export class BrowserManager {
             start: tab.start,
             faviconKey: tab.preview || tab.card || tab.favicon?.origin !== originOf(wc.getURL()) ? undefined : tab.favicon?.key,
             media: tab.media,
+            recording: tab.recording?.startedAt,
           },
         ];
       }),
@@ -430,6 +437,42 @@ export class BrowserManager {
     return tab.media;
   }
 
+  /**
+   * Record a video of the tab from `source`: a web tab's shared screencast (which holds the tab, so it keeps drawing
+   * frames when the pane does not show it), or the agent's copy of its preview.
+   */
+  async startRecording(tab: Tab, source: FrameSource): Promise<void> {
+    if (tab.recording) throw new Error("This tab is being recorded already; stop that recording first.");
+    tab.recorded = undefined;
+    const recording = new Recording(source, () => {
+      if (tab.recording !== recording) return;
+      tab.recorded = this.stopRecording(tab, undefined, "stopped at the length or size limit");
+      tab.recorded.catch((error) => log.warn("browser", `recording failed: ${(error as Error).message}`));
+    });
+    await recording.start();
+    tab.recording = recording;
+    this.emitState();
+  }
+
+  /** Stop the tab's recording and save it to `file`, by default the Videos folder's pi-gna folder. */
+  async stopRecording(tab: Tab, file?: string, reason?: string): Promise<RecordingResult> {
+    const recording = tab.recording;
+    if (!recording) {
+      const done = tab.recorded;
+      tab.recorded = undefined;
+      if (done) return done;
+      throw new Error("This tab is not being recorded. Start with browser_record op: start.");
+    }
+    tab.recording = undefined;
+    this.emitState();
+    return recording.stop(file ?? join(app.getPath("videos"), "pi-gna", recordingName(tab.view.webContents.isDestroyed() ? "" : tab.view.webContents.getURL(), new Date())), reason);
+  }
+
+  /** The agent's pointer at a point of the page it drives (CSS px), drawn into the tab's recording. */
+  recordPointer(tab: Tab, x: number, y: number, click: boolean): void {
+    tab.recording?.pointer(x, y, click);
+  }
+
   /** The user turned the agent's media emulation off from the toolbar. */
   clearMedia(id: string): void {
     const tab = this.tabs.get(id);
@@ -491,6 +534,8 @@ export class BrowserManager {
     const index = this.order.filter((other) => this.tabs.get(other)?.agent === tab.agent).indexOf(id);
     this.order.splice(this.order.indexOf(id), 1);
     if (tab.agent && this.recent.get(tab.agent) === id) this.recent.delete(tab.agent);
+    // A recording in progress is saved (Videos/pi-gna) rather than lost with the tab.
+    if (tab.recording) void this.stopRecording(tab, undefined, "the tab closed").catch((error) => log.warn("browser", `recording failed: ${(error as Error).message}`));
     this.tabs.delete(id);
     tab.dialog?.close();
     this.hintHeaders.delete(tab.view.webContents.id);

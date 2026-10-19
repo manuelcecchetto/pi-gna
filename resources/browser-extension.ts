@@ -381,6 +381,23 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerTool({
     executionMode: SEQUENTIAL,
+    name: "browser_record",
+    label: "Browser record",
+    description: `${ABOUT}Record a video of your tab: op "start", then act on the page (your clicks, hovers and drags show as a pointer), then op "stop", which saves an MP4 and returns its path; link it in your reply as [recording](path) so the user can play it. Use it to show a flow, a bug or an animation. save sets the file (absolute, ~/ or relative to the working directory; default the Videos/pi-gna folder). op "status" says whether it is recording. A recording stops by itself after 10 minutes.`,
+    parameters: Type.Object({
+      op: Type.Union([Type.Literal("start"), Type.Literal("stop"), Type.Literal("status")]),
+      save: Type.Optional(Type.String({ description: "Where to save the video (stop only)" })),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      const file = params.op === "stop" && params.save ? resolvePath(params.save, ctx.cwd) : undefined;
+      // Stopping writes the whole video; give it more than an action's time.
+      return reply(await call({ action: "record", op: params.op, file, tab: params.tab }, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
     name: "browser_emulate",
     label: "Browser emulate",
     description: `${ABOUT}Emulate media features on your tab: colorScheme light or dark (prefers-color-scheme, to check a dark mode), reducedMotion reduce (prefers-reduced-motion). "system" clears one; reset clears all. It stays until cleared, and the user sees the page the same way. Use browser_screenshot afterwards.`,
@@ -398,10 +415,14 @@ export default function (pi: ExtensionAPI) {
   });
 }
 
+/** `path` resolved like a shell path against `cwd`. */
+function resolvePath(path: string, cwd: string): string {
+  return resolve(cwd, path.startsWith("~/") ? homedir() + path.slice(1) : path);
+}
+
 /** An existing file's absolute path, `path` resolved like a shell path against `cwd`; throws when there is none. */
 async function existingFile(path: string, cwd: string): Promise<string> {
-  const expanded = path.startsWith("~/") ? homedir() + path.slice(1) : path;
-  const file = resolve(cwd, expanded);
+  const file = resolvePath(path, cwd);
   const info = await stat(file).catch(() => undefined);
   if (!info?.isFile()) throw new Error(`No file at ${file}`);
   return file;

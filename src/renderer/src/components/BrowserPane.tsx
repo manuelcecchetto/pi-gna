@@ -184,6 +184,15 @@ export function BrowserPane() {
             {active.loading ? <X size={15} /> : <RotateCw size={14} />}
           </IconButton>
           <AddressBar tab={active} onSuggesting={setSuggesting} />
+          {active.recording && (
+            <span
+              title="The agent is recording this tab (browser_record); it saves the video when it stops"
+              className="ml-1 flex shrink-0 items-center gap-1 rounded-full bg-bad/15 px-2 py-0.5 font-medium text-[11px] text-bad"
+            >
+              <span className="size-1.5 animate-pulse rounded-full bg-bad" />
+              Rec
+            </span>
+          )}
           {active.media && <MediaChip tab={active} media={active.media} />}
           {!active.start && <>
           <IconButton

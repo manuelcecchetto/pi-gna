@@ -237,7 +237,7 @@ tabs close when its session ends. The phone still lists every chat's tabs.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
   `browser_screenshot`, `browser_evaluate`, `browser_console`, `browser_viewport`, `browser_window`, `browser_page_tool`,
   `browser_wait_for`, `browser_dialog`, `browser_upload`, `browser_hover`, `browser_select`, `browser_drag`,
-  `browser_scroll`, `browser_emulate`. The extension calls `POST /browser` on a
+  `browser_scroll`, `browser_emulate`, `browser_record`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
   and its actions run through a per-session queue, because a page is sequential.
@@ -289,6 +289,17 @@ tabs close when its session ends. The phone still lists every chat's tabs.
 - **Media emulation** (`browser_emulate`): `Emulation.setEmulatedMedia` for `prefers-color-scheme` and
   `prefers-reduced-motion`, kept on the tab (`Tab.media`) and re-sent after a debugger detach or crash and to the
   agent's copy of a preview. The user sees the page the same way, so the toolbar shows a "Dark ×" pill that clears it.
+- **Recording** (`browser_record`, `recorder.ts`): Electron dropped tab capture (`getMediaSourceId` +
+  `chromeMediaSource: "tab"`), so frames come from Chromium's screencast and a hidden encoder page paints them on a
+  canvas and encodes it with `MediaRecorder` (MP4/H.264 in Chromium 152, WebM otherwise), drawing the agent's pointer
+  and a ring for each click, hover and drag over them. A tab has one screencast per debugger session, and the phones'
+  remote view runs it: a recording of a web tab joins `RemoteBrowser` as a `local` viewer with its own frame settings
+  (the largest ask wins), which `closeAll` (remote access off) leaves alone; the agent's copy of a preview gets its own
+  (`screencastSource`, `Page.enable` first). The shared screencast holds the tab, so a tab nobody sees keeps drawing in
+  the keeper. A screencast survives navigations and sends frames only when what is in view changes; the encoder takes
+  the newest frame when it is free (older ones are dropped), and `stop` forces a last frame so the video lasts until the
+  stop. Saved to the path the agent gives or `Videos/pi-gna/<site> <time>.mp4`; it stops by itself after 10 minutes or
+  500 MB, and a tab closing saves it. The toolbar shows "Rec" meanwhile.
 - **End to end**: `pnpm build && pnpm verify:browser-agent` drives all of the above through a throwaway instance's
   bridge against a fixture page (fixed ports 9488/9489).
 - **Policy** lives in the extension: loopback and `*.localhost` URLs are allowed; any other origin asks once per

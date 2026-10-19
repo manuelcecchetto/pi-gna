@@ -29,6 +29,7 @@ function previewBrowser(wc: unknown) {
     agentPage: async () => ({ wc, scale: 1, touch: false, copy: true }),
     agentViewport: () => undefined,
     nextDialog: noDialog,
+    recordPointer: () => undefined,
   };
 }
 
@@ -107,6 +108,7 @@ describe("BrowserAgent", () => {
       agentPage: async () => ({ wc: tab.view.webContents, scale: 1, touch: false, copy: false }),
       agentViewport: () => undefined,
       nextDialog: noDialog,
+      recordPointer: () => undefined,
     };
     expect(await new BrowserAgent(browser as never).run("h1", { action: "console", tab: "t1" })).toMatchObject({ url: "https://site.test/", text: "No console messages." });
     expect(order).toEqual(["hold", "mark", "stale", "release"]);
@@ -132,6 +134,7 @@ describe("BrowserAgent", () => {
       agentPage: async () => (calls.push("agentPage"), { wc: copy, scale: 1, touch: false, copy: true }),
       agentViewport: () => undefined,
       nextDialog: noDialog,
+      recordPointer: () => undefined,
     };
     expect(await new BrowserAgent(browser as never).run("h1", { action: "snapshot" })).toMatchObject({ title: "copy", text: "# A" });
     expect(calls).toEqual(["agentPage"]);
@@ -156,6 +159,7 @@ describe("BrowserAgent", () => {
       agentPage: async () => (calls.push("agentPage"), { wc, scale: 1, touch: false, copy: false }),
       agentViewport: () => undefined,
       nextDialog: noDialog,
+      recordPointer: () => undefined,
     };
     expect(await new BrowserAgent(browser as never).run("h1", { action: "snapshot" })).toMatchObject({ text: "page" });
     expect(calls).toEqual(["hold", "ensureVisible", "agentPage", "release"]);
@@ -186,6 +190,7 @@ function webTab(script: (code: string) => unknown, sendCommand: (method: string,
     agentPage: async () => ({ wc, scale: 1, touch: false, copy: false }),
     agentViewport: () => undefined,
     nextDialog: () => ({ opened: new Promise((resolve) => (open = resolve)), cancel: () => (open = undefined) }),
+    recordPointer: () => undefined,
   };
   return { tab, browser, agent: new BrowserAgent(browser as never), openDialog: (dialog: unknown) => open?.(dialog), waiting: () => !!open };
 }
@@ -280,5 +285,37 @@ describe("BrowserAgent select", () => {
   it("lists the options when none matches", async () => {
     const page = webTab(() => ({ error: "no-option", value: "XL", available: ["Small", "Large"] }));
     await expect(page.agent.run("h1", { action: "select", ref: 3, values: ["XL"] })).rejects.toThrow(/no option "XL"\. Options: Small \| Large/);
+  });
+});
+
+describe("BrowserAgent recording", () => {
+  it("starts on the page it drives and reports the saved video with a link to it", async () => {
+    const page = webTab(() => null);
+    const calls: unknown[] = [];
+    Object.assign(page.browser, {
+      startRecording: async (_tab: unknown, source: { start?: unknown }) => calls.push(["start", typeof source.start]),
+      stopRecording: async (_tab: unknown, file?: string) => (
+        calls.push(["stop", file]),
+        { file: "/Users/me/Movies/pi-gna/localhost 5173.mp4", mimeType: "video/mp4;codecs=avc1.640020", bytes: 2_097_152, durationMs: 12_340, width: 1280, height: 800, frames: 300 }
+      ),
+    });
+    expect((await page.agent.run("h1", { action: "record", op: "start" })).text).toMatch(/^Recording tab \[t1\]/);
+    const stopped = await page.agent.run("h1", { action: "record", op: "stop", file: "/tmp/demo.mp4" });
+    expect(calls).toEqual([
+      ["start", "function"],
+      ["stop", "/tmp/demo.mp4"],
+    ]);
+    expect(stopped.text).toBe(
+      "Saved 12.3 s of video (1280x800, 2.0 MB, video/mp4) to /Users/me/Movies/pi-gna/localhost 5173.mp4. Link it in your reply as [recording](/Users/me/Movies/pi-gna/localhost%205173.mp4) so the user can play it.",
+    );
+    expect(stopped.recording?.file).toBe("/Users/me/Movies/pi-gna/localhost 5173.mp4");
+  });
+
+  it("draws the agent's clicks into the recording", async () => {
+    const page = webTab(() => ({ x: 40, y: 60 }));
+    const pointers: unknown[] = [];
+    Object.assign(page.browser, { recordPointer: (_tab: unknown, x: number, y: number, click: boolean) => pointers.push([x, y, click]) });
+    await page.agent.run("h1", { action: "click", ref: 2 });
+    expect(pointers).toEqual([[40, 60, true]]);
   });
 });

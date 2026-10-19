@@ -421,8 +421,8 @@ function createWindow(): void {
     reveal: (chat) => publish({ kind: "browser.reveal", chat }),
     annotation: (annotation, send) => publish({ kind: "browser.annotation", annotation, send }),
   });
-  agent = new BrowserAgent(browser);
   remoteBrowser = new RemoteBrowser(browser);
+  agent = new BrowserAgent(browser, () => remoteBrowser);
   attachContextMenu(window.webContents, {
     page: false,
     openTab: (url) => {

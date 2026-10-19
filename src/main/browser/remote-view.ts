@@ -36,6 +36,8 @@ const COMMENT_LIMIT = 4000;
 interface Viewer {
   params: FrameParams;
   onFrame(frame: Frame): void;
+  /** A viewer on this Mac (a tab recording), which `closeAll` leaves alone. */
+  local?: boolean;
 }
 
 interface Cast {
@@ -62,15 +64,19 @@ export class RemoteBrowser {
     return this.casts.size;
   }
 
-  /** Start sending frames of a tab to `onFrame`; the screencast runs only while someone watches. Throws on an unknown tab. */
-  open(id: string, viewer: ViewerSpec, onFrame: (frame: Frame) => void): ViewHandle {
+  /**
+   * Start sending frames of a tab to `onFrame`; the screencast runs only while someone watches. Throws on an unknown tab.
+   * A tab has one screencast, shared by the phones watching it and a recording of it (browser_record, `local`, with its
+   * own `params`).
+   */
+  open(id: string, viewer: ViewerSpec, onFrame: (frame: Frame) => void, options: { params?: FrameParams; local?: boolean } = {}): ViewHandle {
     let cast = this.casts.get(id);
     if (!cast) {
       const tab = this.browser.hold(id);
       cast = this.makeCast(tab);
       this.casts.set(id, cast);
     }
-    const entry: Viewer = { params: frameParams(viewer), onFrame };
+    const entry: Viewer = { params: options.params ?? frameParams(viewer), onFrame, local: options.local };
     cast.viewers.add(entry);
     // A viewer joining late gets the picture at once instead of waiting for the page to change.
     if (cast.last) onFrame(cast.last);
@@ -88,10 +94,10 @@ export class RemoteBrowser {
     };
   }
 
-  /** Close every stream (remote access turned off, device revoked, quit). */
+  /** Close every remote stream (remote access turned off, device revoked, quit); a recording keeps its frames. */
   closeAll(): void {
     for (const [id, cast] of [...this.casts]) {
-      cast.viewers.clear();
+      for (const viewer of [...cast.viewers]) if (!viewer.local) cast.viewers.delete(viewer);
       void this.apply(id, cast);
     }
   }

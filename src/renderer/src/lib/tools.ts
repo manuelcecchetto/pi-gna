@@ -198,6 +198,10 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       const amount = args.deltaX ? `${String(args.deltaX)}px right` : `${String(args.deltaY ?? 600)}px down`;
       return { category: "browser", verb: "Scrolled", activeVerb: "Scrolling", target: amount, meta: args.ref !== undefined ? `at [${String(args.ref)}]` : undefined };
     }
+    case "browser_record":
+      if (args.op === "start") return { category: "browser", verb: "Started recording", activeVerb: "Starting a recording", target: "" };
+      if (args.op === "stop") return { category: "browser", verb: "Saved the recording", activeVerb: "Saving the recording", target: args.save ? rel(str(args.save)) : "" };
+      return { category: "browser", verb: "Checked the recording", activeVerb: "Checking the recording", target: "" };
     case "browser_emulate": {
       if (args.reset) return { category: "browser", verb: "Cleared emulation", activeVerb: "Clearing emulation", target: "" };
       const target = [args.colorScheme && `${str(args.colorScheme)} scheme`, args.reducedMotion && `motion: ${str(args.reducedMotion)}`].filter(Boolean).join(", ");

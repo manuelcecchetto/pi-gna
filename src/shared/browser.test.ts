@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLocalUrl, mediaFeatures, mediaLine, mergeMedia, normalizeAddress, pageToolsText, screenshotSize, viewportAction, viewportLine } from "./browser";
+import { isLocalUrl, mediaFeatures, mediaLine, mergeMedia, normalizeAddress, pageToolsText, recordingName, screenshotSize, viewportAction, viewportLine, withVideoExtension } from "./browser";
 import { resolveViewport } from "./viewport";
 
 describe("normalizeAddress", () => {
@@ -83,5 +83,22 @@ describe("pageToolsText", () => {
   it("caps a long list", () => {
     const many = Array.from({ length: 45 }, (_, i) => ({ name: `t${i}`, description: "" }));
     expect(pageToolsText(many, false)).toMatch(/\n- t39: \n… and 5 more$/);
+  });
+});
+
+describe("recording files", () => {
+  it("gives the file the extension of the format it was encoded in", () => {
+    expect(withVideoExtension("/v/demo.mp4", "video/mp4;codecs=avc1.640033")).toBe("/v/demo.mp4");
+    expect(withVideoExtension("/v/demo.mp4", "video/webm;codecs=vp9")).toBe("/v/demo.webm");
+    expect(withVideoExtension("/v/demo", "video/mp4")).toBe("/v/demo.mp4");
+    expect(withVideoExtension("/v/demo.v2", "video/webm")).toBe("/v/demo.v2.webm");
+  });
+
+  it("names a recording after the site and the time", () => {
+    const at = new Date(2026, 9, 19, 11, 20, 5);
+    expect(recordingName("http://localhost:5173/cart", at)).toBe("localhost 5173 2026-10-19 11.20.05.mp4");
+    expect(recordingName("https://example.com/", at)).toBe("example.com 2026-10-19 11.20.05.mp4");
+    expect(recordingName("pigna-file://t0k/docs/a%20b.md", at)).toBe("a b.md 2026-10-19 11.20.05.mp4");
+    expect(recordingName("", at)).toBe("page 2026-10-19 11.20.05.mp4");
   });
 });

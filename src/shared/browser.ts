@@ -30,6 +30,26 @@ export interface BrowserTab {
   faviconKey?: string;
   /** Media features the agent emulates on the tab (light/dark, reduced motion); absent when none. */
   media?: MediaEmulation;
+  /** When the agent started recording the tab (ms since epoch); absent when it is not recording. */
+  recording?: number;
+}
+
+/** A recording's file with the extension of its format: `.mp4` for MP4, `.webm` for WebM, whatever `file` had. */
+export function withVideoExtension(file: string, mimeType: string): string {
+  const ext = mimeType.startsWith("video/mp4") ? ".mp4" : ".webm";
+  return /\.(mp4|webm|mov|m4v)$/i.test(file) ? file.replace(/\.(mp4|webm|mov|m4v)$/i, ext) : `${file}${ext}`;
+}
+
+/** File name of a recording of `url` at `at`: 'localhost 5173 2026-10-19 11.20.05.mp4' (no characters a file system refuses). */
+export function recordingName(url: string, at: Date): string {
+  let site = "page";
+  try {
+    const parsed = new URL(url);
+    site = parsed.protocol === "pigna-file:" ? decodeURIComponent(parsed.pathname.split("/").at(-1) ?? "") || "preview" : `${parsed.hostname}${parsed.port ? ` ${parsed.port}` : ""}` || "page";
+  } catch {}
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}.${pad(at.getMinutes())}.${pad(at.getSeconds())}`;
+  return `${site.replace(/[\\/:*?"<>|]+/g, "-").slice(0, 60)} ${stamp}.mp4`;
 }
 
 /** Media features emulated on a tab over CDP (Emulation.setEmulatedMedia); an absent key follows the system. */
@@ -167,6 +187,7 @@ export type AgentAction = (
   | { action: "drag"; from: number | string; to: number | string }
   | { action: "scroll"; ref?: number; deltaX?: number; deltaY?: number }
   | { action: "emulate"; set?: MediaRequest; reset?: boolean }
+  | { action: "record"; op: "start" | "stop" | "status"; file?: string }
 ) & {
   /** Tab id to act on (from browser_window); default is the session's current tab. */
   tab?: string;
@@ -184,6 +205,8 @@ export interface AgentResult {
   viewport?: ViewportSpec;
   /** Emulated media features of the tab; absent when none. */
   media?: MediaEmulation;
+  /** A recording saved by browser_record stop. */
+  recording?: { file: string; mimeType: string; bytes: number; durationMs: number; width: number; height: number };
 }
 
 /** 'Viewport: 393x852 @3x, mobile, iPhone 15 (set by you)'. */

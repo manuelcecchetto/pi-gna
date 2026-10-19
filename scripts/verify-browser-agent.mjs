@@ -4,8 +4,8 @@
 //   node scripts/verify-browser-agent.mjs
 // Starts a fixture HTTP server and a throwaway app instance (fake pi, which hands its bridge token to this script),
 // drives the browser_* bridge the way the agent tools do, and prints a pass/fail table. Exit code 1 on any failure.
-import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -196,6 +196,11 @@ try {
   check("off-screen dialog: the agent answers it, the box closes", (await openBoxes()).length === 0);
   check("off-screen dialog: the page gets the answer", (await read("out.textContent")) === "late:true", `${during.title} → ${await read("out.textContent")}`);
 
+  // Recording: everything from here to the drag is filmed.
+  const recordStarted = Date.now();
+  const recording = await call({ action: "record", op: "start" });
+  check("record: starts", /^Recording tab/.test(recording.text ?? ""), recording.text?.slice(0, 40));
+
   // Select
   snap = await call({ action: "snapshot" });
   const select = refOf(snap, 'select "Size');
@@ -215,6 +220,29 @@ try {
   const dragged = await call({ action: "drag", from: refOf(snap, 'div "Card"'), to: "#lane" });
   check("drag: HTML drag and drop onto a selector", (await read("out.textContent")) === "dropped:card-1", `${dragged.text?.slice(0, 60)} → ${await read("out.textContent")}`);
 
+  const video = join(work, "flow.mp4");
+  const saved = await call({ action: "record", op: "stop", file: video }, 60_000);
+  const seconds = (Date.now() - recordStarted) / 1000;
+  check(
+    "record: saves an MP4 with a link for the reply",
+    saved.recording?.file === video && existsSync(video) && statSync(video).size > 10_000 && saved.text?.includes(`[recording](${encodeURI(video)})`),
+    `${saved.recording?.mimeType} ${saved.recording?.width}x${saved.recording?.height} ${saved.recording?.bytes} B`,
+  );
+  const probe = (file) => {
+    try {
+      return JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration:stream=codec_name,width,height", "-of", "json", file], { encoding: "utf8" }));
+    } catch {
+      return undefined;
+    }
+  };
+  const probed = probe(video);
+  if (probed) {
+    const duration = Number(probed.format.duration);
+    check("record: ffprobe reads H.264 lasting the recording", probed.streams[0]?.codec_name === "h264" && Math.abs(duration - seconds) < 1.5, `${duration.toFixed(2)} s of ${seconds.toFixed(2)} s wall`);
+  }
+  const notRecording = await attempt({ action: "record", op: "stop" });
+  check("record: a second stop says there is nothing to stop", /not being recorded/.test(notRecording.error ?? ""), notRecording.error);
+
   // Hover
   await call({ action: "hover", ref: "#hov" });
   check("hover: reveals the tooltip", (await read("tip.hidden")) === "false");
@@ -231,6 +259,19 @@ try {
   const scrolled = await call({ action: "scroll", deltaY: 1200 });
   const y = Number(await read("String(scrollY)"));
   check("scroll: wheel scrolls the page", y > 0 && /page scrolled to 0,/.test(scrolled.text ?? ""), `scrollY ${y}`);
+
+  // A tab nobody sees keeps drawing frames for its recording (the recording holds it).
+  await renderer("window.studio.browser.layout({ visible: false, bounds: { x: 0, y: 0, width: 0, height: 0 } })");
+  await call({ action: "record", op: "start" });
+  // A screencast sends a frame only when what is in view changes: back to the top, where #out ticks.
+  await call({ action: "evaluate", expression: "scrollTo(0, 0); let n = 0; window.tick = setInterval(() => (out.textContent = 'tick ' + ++n), 100); 'ok'" });
+  await sleep(2000);
+  const status = await call({ action: "record", op: "status" });
+  const hidden = await call({ action: "record", op: "stop", file: join(work, "hidden") }, 60_000);
+  await call({ action: "evaluate", expression: "clearInterval(window.tick)" });
+  await renderer("window.studio.browser.layout({ visible: true, bounds: { x: 0, y: 0, width: 800, height: 600 } })");
+  const frames = Number(/(\d+) frames/.exec(status.text ?? "")?.[1] ?? 0);
+  check("record: an off-screen tab still records", frames >= 10 && existsSync(join(work, "hidden.mp4")), `${status.text} → ${hidden.recording?.file?.split("/").at(-1)}`);
 
   // Media emulation
   const dark = await call({ action: "emulate", set: { colorScheme: "dark" } });

@@ -99,4 +99,17 @@ describe("browser extension", () => {
     vi.unstubAllGlobals();
     expect(result.content[0]?.text).toContain("Emulating: prefers-color-scheme: dark");
   });
+
+  it("sends the recording's save path resolved against the cwd", async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ url: "http://localhost:5173/", title: "App", text: "Saved" }) };
+    });
+    const record = tools.find((tool) => tool.name === "browser_record");
+    await record?.execute?.("1", { op: "stop", save: "videos/demo" }, undefined, undefined, { cwd: "/p", hasUI: false });
+    await record?.execute?.("2", { op: "start", save: "ignored" }, undefined, undefined, { cwd: "/p", hasUI: false });
+    vi.unstubAllGlobals();
+    expect(bodies).toEqual([{ action: "record", op: "stop", file: "/p/videos/demo" }, { action: "record", op: "start" }]);
+  });
 });

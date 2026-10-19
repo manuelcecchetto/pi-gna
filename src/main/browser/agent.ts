@@ -14,6 +14,8 @@ import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import { cdp } from "./cdp";
 import type { AgentPage, BrowserManager, PendingDialog, Tab } from "./manager";
+import { RECORDING_FRAMES, type FrameSource, screencastSource } from "./recorder";
+import type { RemoteBrowser } from "./remote-view";
 import { fileTarget, focusForTyping, ISOLATED_WORLD, locate, PAGE_TOOLS, pointOf, runPageTool, selectOptions, SNAPSHOT, type Target, targetLabel, waitCheck } from "./page-scripts";
 
 const TEXT_LIMIT = 20_000;
@@ -29,7 +31,7 @@ const PAGE_TOOL_MS = 30_000;
 /** How long a click on an upload control may take to open its file chooser. */
 const CHOOSER_WAIT_MS = 3_000;
 /** Actions that still work while the page waits on a dialog: everything else would block on the paused page. */
-const DURING_DIALOG = new Set(["dialog", "console", "state"]);
+const DURING_DIALOG = new Set(["dialog", "console", "state", "record"]);
 interface KeyDef {
   key: string;
   code: string;
@@ -97,6 +99,7 @@ const ACTIONS = new Set([
   "drag",
   "scroll",
   "emulate",
+  "record",
 ]);
 
 const missing = (target: Target) =>
@@ -120,7 +123,11 @@ export class BrowserAgent {
   /** Per-session queue: pi runs one message's tool calls in parallel, but a page is sequential. */
   private readonly queues = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly browser: BrowserManager) {}
+  /** `remote`: the phones' screencasts, which a recording of a web tab shares (a tab has one screencast). */
+  constructor(
+    private readonly browser: BrowserManager,
+    private readonly remote: () => RemoteBrowser | undefined = () => undefined,
+  ) {}
 
   run(handle: string, request: AgentAction): Promise<AgentResult> {
     const previous = this.queues.get(handle) ?? Promise.resolve();
@@ -183,12 +190,14 @@ export class BrowserAgent {
       case "click": {
         const target = await page();
         const before = target.wc.getURL();
-        await this.clickRef(target, request.ref);
+        await this.clickRef(target, request.ref, tab);
         return this.afterAction(target.wc, `Clicked [${request.ref}].`, before);
       }
       case "hover": {
         const { wc, scale } = await page();
-        const { x, y } = toInputCoords(...(await this.reach(wc, request.ref)), scale);
+        const at = await this.reach(wc, request.ref);
+        this.browser.recordPointer(tab, ...at, false);
+        const { x, y } = toInputCoords(...at, scale);
         // Not awaited, like the click's move: its ack waits for a frame (see clickRef).
         void cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }).catch(() => undefined);
         await delay(250); // hover menus and tooltips open on a timer or a transition
@@ -207,7 +216,7 @@ export class BrowserAgent {
         return this.afterAction(wc, `Selected ${(result.selected ?? []).map((label) => JSON.stringify(label)).join(", ")} in [${request.ref}].`, before);
       }
       case "drag":
-        return this.drag(await page(), request.from, request.to);
+        return this.drag(await page(), request.from, request.to, tab);
       case "scroll": {
         const { wc, scale } = await page();
         const deltaX = request.deltaX ?? 0;
@@ -227,7 +236,30 @@ export class BrowserAgent {
         return { ...this.where(wc), text: `Scrolled ${deltaX ? `${deltaX}px right, ` : ""}${deltaY}px down${request.ref === undefined ? "" : ` at [${request.ref}]`}; ${where}. Use browser_snapshot to see what is in view.` };
       }
       case "upload":
-        return this.upload(await page(), request.ref, request.files);
+        return this.upload(await page(), request.ref, request.files, tab);
+      case "record": {
+        if (request.op === "status") {
+          const { wc } = await page(false);
+          const recording = tab.recording;
+          return { ...this.where(wc), text: recording ? `Recording for ${((Date.now() - recording.startedAt) / 1000).toFixed(1)} s, ${recording.frames} frames.` : "Not recording." };
+        }
+        if (request.op === "start") {
+          const target = await page();
+          await this.browser.startRecording(tab, this.frameSource(tab, target));
+          const { wc } = target;
+          return {
+            ...this.where(wc),
+            text: `Recording tab [${tab.id}]. Your clicks, hovers and drags show as a pointer in the video. Stop with browser_record op: stop (it stops by itself after 10 minutes).`,
+          };
+        }
+        const result = await this.browser.stopRecording(tab, request.file);
+        const { wc } = await page(false);
+        return {
+          ...this.where(wc),
+          recording: result,
+          text: `${result.reason ? `The recording ${result.reason}. ` : ""}Saved ${(result.durationMs / 1000).toFixed(1)} s of video (${result.width}x${result.height}, ${(result.bytes / 1024 / 1024).toFixed(1)} MB, ${result.mimeType.split(";")[0]}) to ${result.file}. Link it in your reply as [recording](${encodeURI(result.file)}) so the user can play it.`,
+        };
+      }
       case "dialog": {
         const { wc } = await page(false);
         const dialog = tab.dialog;
@@ -437,6 +469,21 @@ export class BrowserAgent {
     return { url: result.url, title: result.title, text: [result.text || "(empty page)", tools].filter(Boolean).join("\n\n") };
   }
 
+  /** Frames for a recording: a web tab's shared screencast (RemoteBrowser), or one of the agent's copy of a preview. */
+  private frameSource(tab: Tab, target: AgentPage): FrameSource {
+    const remote = this.remote();
+    if (target.copy || !remote) return screencastSource(target.wc);
+    return {
+      start: async (onFrame) => {
+        const view = remote.open(tab.id, { width: RECORDING_FRAMES.maxWidth, height: RECORDING_FRAMES.maxHeight, dpr: 1 }, (frame) => onFrame(frame.jpeg.toString("base64"), frame.cssWidth), {
+          params: RECORDING_FRAMES,
+          local: true,
+        });
+        return () => view.close();
+      },
+    };
+  }
+
   /** The page's WebMCP tools; null without any, or when the page does not answer in time. */
   private async pageTools(wc: WebContents): Promise<PageTool[] | null> {
     const tools = await within(this.exec<PageTool[] | null>(wc, PAGE_TOOLS).catch(() => null), 2000);
@@ -451,9 +498,11 @@ export class BrowserAgent {
     return [point.x, point.y];
   }
 
-  private async clickRef({ wc, scale, touch }: AgentPage, ref: number): Promise<void> {
+  private async clickRef({ wc, scale, touch }: AgentPage, ref: number, tab: Tab): Promise<void> {
+    const at = await this.reach(wc, ref);
+    this.browser.recordPointer(tab, ...at, true);
     // Input takes view pixels; a fitted viewport is drawn scaled.
-    const { x, y } = toInputCoords(...(await this.reach(wc, ref)), scale);
+    const { x, y } = toInputCoords(...at, scale);
     if (touch) {
       // Under touch emulation a CDP mouse press becomes a touch whose ack never comes, which would wedge this queue; tap instead.
       await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
@@ -473,13 +522,16 @@ export class BrowserAgent {
    * dropped with drag events, which is how Chromium delivers one from synthetic input; a pointer-driven drag (sortable
    * lists, sliders) just follows the mouse moves and the release.
    */
-  private async drag(target: AgentPage, from: Target, to: Target): Promise<AgentResult> {
+  private async drag(target: AgentPage, from: Target, to: Target, tab: Tab): Promise<AgentResult> {
     const { wc, scale, touch } = target;
-    const start = toInputCoords(...(await this.reach(wc, from)), scale);
+    const origin = await this.reach(wc, from);
+    this.browser.recordPointer(tab, ...origin, true);
+    const start = toInputCoords(...origin, scale);
     const end = await this.exec<{ x: number; y: number; inside: boolean } | null>(wc, pointOf(to));
     if (!end) throw new Error(missing(to));
     if (!end.inside) throw new Error(`${targetLabel(to)} is outside the viewport once ${targetLabel(from)} is in view; scroll or resize so both are visible.`);
     const stop = toInputCoords(end.x, end.y, scale);
+    this.browser.recordPointer(tab, end.x, end.y, false);
     const steps = 8;
     const along = (i: number) => ({ x: Math.round(start.x + ((stop.x - start.x) * i) / steps), y: Math.round(start.y + ((stop.y - start.y) * i) / steps) });
     const before = wc.getURL();
@@ -516,7 +568,7 @@ export class BrowserAgent {
    * Give files to the page. A file input takes them directly (DOM.setFileInputFiles); any other control (a button
    * that opens the picker) is clicked with the file chooser intercepted, so no picker opens and its input gets them.
    */
-  private async upload(target: AgentPage, ref: number, files: string[]): Promise<AgentResult> {
+  private async upload(target: AgentPage, ref: number, files: string[], tab: Tab): Promise<AgentResult> {
     const { wc } = target;
     const bad = files.find((file) => !isAbsolute(file) || !existsSync(file));
     if (bad) throw new Error(`No file at ${bad}; give absolute paths of existing files.`);
@@ -546,7 +598,7 @@ export class BrowserAgent {
     try {
       await cdp(wc, "Page.enable");
       await cdp(wc, "Page.setInterceptFileChooserDialog", { enabled: true });
-      await this.clickRef(target, ref);
+      await this.clickRef(target, ref, tab);
       await within(waiting, CHOOSER_WAIT_MS);
       if (!chooser) throw new Error(`Clicking [${ref}] opened no file chooser. Upload to the page's <input type=file> instead (it may be hidden: find it with browser_evaluate).`);
       if (chooser.mode === "selectSingle" && files.length > 1) throw new Error(`The file chooser of [${ref}] takes a single file.`);
