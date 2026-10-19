@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The agent can do much more in the browser pane. Pages that offer WebMCP tools (`document.modelContext`, now on for every page, local dev servers included) list them in the agent's page snapshot, and it can call them directly instead of clicking through the page. It also waits for text, an element or a URL instead of guessing with sleeps; answers `alert()` and `confirm()` dialogs (before, a click that opened one left the agent stuck, and an answer it gave left the box on screen); uploads files, including through a button that opens a file picker, without the picker opening; picks options in native selects; drags and drops; hovers to open menus and tooltips; scrolls with the wheel; and checks dark mode and reduced motion. While it emulates dark or light mode, a "Dark ×" pill next to the address shows it; click it to follow your system again.
+
 ## 0.24.0 - 2026-10-17
 
 - Settings > General > Worktrees picks the folder card, Fix and new plan worktrees go in (under `.pi-gna/worktrees`), for example a separate disk or volume for agent work. Worktrees already made stay where they are and keep working.

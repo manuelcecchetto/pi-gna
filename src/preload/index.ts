@@ -80,6 +80,7 @@ const api: StudioApi = {
     command: (id, command) => ipcRenderer.send(IPC.browserCommand, id, command),
     annotate: (on) => ipcRenderer.send(IPC.browserAnnotate, on),
     inspect: (id) => ipcRenderer.send(IPC.browserInspect, id),
+    clearMedia: (id) => ipcRenderer.send(IPC.browserClearMedia, id),
     viewport: (id, request) => ipcRenderer.invoke(IPC.browserViewport, id, request),
     popOut: (id) => ipcRenderer.invoke(IPC.browserPopOut, id),
     returnToPane: (id) => ipcRenderer.invoke(IPC.browserReturn, id),

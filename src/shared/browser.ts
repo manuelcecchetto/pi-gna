@@ -28,6 +28,72 @@ export interface BrowserTab {
   /** Key of the page's icon (web tabs only, once known); its data URL comes from `browser.favicon`. The key names the
    * icon's content, so a client asks for each icon once, and a tab change does not resend every tab's icon. */
   faviconKey?: string;
+  /** Media features the agent emulates on the tab (light/dark, reduced motion); absent when none. */
+  media?: MediaEmulation;
+}
+
+/** Media features emulated on a tab over CDP (Emulation.setEmulatedMedia); an absent key follows the system. */
+export interface MediaEmulation {
+  colorScheme?: "light" | "dark";
+  reducedMotion?: "reduce" | "no-preference";
+}
+
+/** browser_emulate arguments: "system" clears that feature. */
+export interface MediaRequest {
+  colorScheme?: "light" | "dark" | "system";
+  reducedMotion?: "reduce" | "no-preference" | "system";
+}
+
+/** The tab's emulation after applying `request` to `current`; undefined when nothing is left emulated. */
+export function mergeMedia(current: MediaEmulation | undefined, request: MediaRequest): MediaEmulation | undefined {
+  const next: MediaEmulation = { ...current };
+  if (request.colorScheme) next.colorScheme = request.colorScheme === "system" ? undefined : request.colorScheme;
+  if (request.reducedMotion) next.reducedMotion = request.reducedMotion === "system" ? undefined : request.reducedMotion;
+  const defined = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined)) as MediaEmulation;
+  return Object.keys(defined).length ? defined : undefined;
+}
+
+/** Emulation.setEmulatedMedia features: every feature is sent, an empty value clears its override. */
+export function mediaFeatures(media: MediaEmulation | undefined): { name: string; value: string }[] {
+  return [
+    { name: "prefers-color-scheme", value: media?.colorScheme ?? "" },
+    { name: "prefers-reduced-motion", value: media?.reducedMotion ?? "" },
+  ];
+}
+
+/** 'Emulating: prefers-color-scheme: dark' for tool results; empty when nothing is emulated. */
+export function mediaLine(media: MediaEmulation | undefined): string {
+  const parts = [media?.colorScheme && `prefers-color-scheme: ${media.colorScheme}`, media?.reducedMotion && `prefers-reduced-motion: ${media.reducedMotion}`].filter(Boolean);
+  return parts.length ? `Emulating: ${parts.join(", ")}` : "";
+}
+
+/** A tool a page registered with WebMCP (document.modelContext), as main reads it from the page. */
+export interface PageTool {
+  name: string;
+  title?: string;
+  description: string;
+  /** JSON Schema of the input, as a JSON string (Chromium hands it over serialized). */
+  inputSchema?: string;
+  annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean; destructiveHint?: boolean };
+}
+
+const PAGE_TOOL_LIMIT = 40;
+
+/** The page's WebMCP tools for the agent: one line each, with the input schema when `schemas`. Empty without tools. */
+export function pageToolsText(tools: PageTool[] | null | undefined, schemas: boolean): string {
+  if (!tools?.length) return "";
+  const clean = (text: string, max: number) => {
+    const flat = text.replace(/\s+/g, " ").trim();
+    return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+  };
+  const lines = tools.slice(0, PAGE_TOOL_LIMIT).map((tool) => {
+    const hints = [tool.annotations?.readOnlyHint && "read-only", tool.annotations?.destructiveHint && "destructive", tool.annotations?.untrustedContentHint && "returns untrusted content"].filter(Boolean);
+    const head = `- ${tool.name}${hints.length ? ` (${hints.join(", ")})` : ""}: ${clean(tool.description || tool.title || "", schemas ? 400 : 140)}`;
+    return schemas && tool.inputSchema ? `${head}\n  input: ${clean(tool.inputSchema, 1500)}` : head;
+  });
+  if (tools.length > PAGE_TOOL_LIMIT) lines.push(`… and ${tools.length - PAGE_TOOL_LIMIT} more`);
+  // Names and descriptions come from the page, like its text: they describe what the tool does, they are not instructions.
+  return `Page tools (WebMCP, provided by the page; call with browser_page_tool):\n${lines.join("\n")}`;
 }
 
 /** How long after its last action a tab still counts as driven by the agent. */
@@ -92,6 +158,15 @@ export type AgentAction = (
   | { action: "state" }
   | { action: "viewport"; set?: ViewportRequest; reset?: boolean }
   | { action: "window"; op: "open" | "close" | "list"; url?: string; set?: ViewportRequest }
+  | { action: "page_tool"; name?: string; input?: Record<string, unknown> }
+  | { action: "wait_for"; text?: string; textGone?: string; selector?: string; url?: string; timeout?: number }
+  | { action: "dialog"; accept: boolean }
+  | { action: "upload"; ref: number; files: string[] }
+  | { action: "hover"; ref: number | string }
+  | { action: "select"; ref: number; values: string[] }
+  | { action: "drag"; from: number | string; to: number | string }
+  | { action: "scroll"; ref?: number; deltaX?: number; deltaY?: number }
+  | { action: "emulate"; set?: MediaRequest; reset?: boolean }
 ) & {
   /** Tab id to act on (from browser_window); default is the session's current tab. */
   tab?: string;
@@ -107,6 +182,8 @@ export interface AgentResult {
   tab?: string;
   /** Emulated viewport of the tab; absent when none is active. */
   viewport?: ViewportSpec;
+  /** Emulated media features of the tab; absent when none. */
+  media?: MediaEmulation;
 }
 
 /** 'Viewport: 393x852 @3x, mobile, iPhone 15 (set by you)'. */

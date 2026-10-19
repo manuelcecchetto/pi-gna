@@ -69,6 +69,7 @@ export const IPC = {
   browserCommand: "browser:command",
   browserAnnotate: "browser:annotate",
   browserInspect: "browser:inspect",
+  browserClearMedia: "browser:clear-media",
   browserViewport: "browser:viewport",
   browserPopOut: "browser:pop-out",
   browserReturn: "browser:return",
@@ -497,6 +498,8 @@ export interface BrowserApi {
   command(id: string, command: BrowserCommand): void;
   annotate(on: boolean): void;
   inspect(id: string): void;
+  /** Stop the media emulation (light/dark, reduced motion) the agent set on a tab. */
+  clearMedia(id: string): void;
   /** A still (JPEG data URL) of the page drawn in the pane, or null: shown in its place while a DOM overlay hides it. */
   still(): Promise<string | null>;
   /** Set a tab's emulated viewport (resolved through resolveViewport) or reset it with null. Rejects invalid input. */

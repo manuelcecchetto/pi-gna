@@ -416,6 +416,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     "browser.command": any<{ id: string; command: BrowserCommand }>("remote", (_ctx, { id, command }) => deps.browser()?.command(id, command)),
     "browser.annotate": any<{ on: boolean }>("remote", (_ctx, { on }) => deps.browser()?.setAnnotating(on)),
     "browser.inspect": any<{ id: string }>("remote", (_ctx, { id }) => deps.browser()?.inspect(id)),
+    "browser.clearMedia": any<{ id: string }>("remote", (_ctx, { id }) => deps.browser()?.clearMedia(id)),
     "browser.viewport": method<{ id: string; request: ViewportRequest | null }>(
       "remote",
       (raw) => {
@@ -938,6 +939,7 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.browserCommand, "browser.command", (id, command) => ({ id, command }), true),
   route(IPC.browserAnnotate, "browser.annotate", (on) => ({ on }), true),
   route(IPC.browserInspect, "browser.inspect", (id) => ({ id }), true),
+  route(IPC.browserClearMedia, "browser.clearMedia", (id) => ({ id }), true),
   route(IPC.browserViewport, "browser.viewport", (id, request) => ({ id, request })),
   route(IPC.browserPopOut, "browser.popOut", (id) => ({ id })),
   route(IPC.browserReturn, "browser.returnToPane", (id) => ({ id })),

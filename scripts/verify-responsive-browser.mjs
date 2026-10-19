@@ -37,7 +37,8 @@ const base = `http://127.0.0.1:${server.address().port}`;
 
 // A pi stand-in that leaves its bridge address and token behind, then behaves like fake pi.
 const pi = join(work, "pi.mjs");
-writeFileSync(pi, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(join(work, "env.json"))}, JSON.stringify({ url: process.env.PIGNA_BRIDGE, token: process.env.PIGNA_TOKEN }));\nawait import(${JSON.stringify(join(root, "scripts", "fake-pi.mjs"))});\n`);
+// pi-gna also runs pi for other things (model list, version) without a bridge; only a chat's pi records it.
+writeFileSync(pi, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nif (process.env.PIGNA_BRIDGE) writeFileSync(${JSON.stringify(join(work, "env.json"))}, JSON.stringify({ url: process.env.PIGNA_BRIDGE, token: process.env.PIGNA_TOKEN }));\nawait import(${JSON.stringify(join(root, "scripts", "fake-pi.mjs"))});\n`);
 chmodSync(pi, 0o755);
 
 const app = spawn("node", [join(root, "bin", "pi-gna.mjs"), `--remote-debugging-port=${port}`, `--inspect=${inspect}`], {

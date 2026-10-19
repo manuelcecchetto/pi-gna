@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLocalUrl, normalizeAddress, screenshotSize, viewportAction, viewportLine } from "./browser";
+import { isLocalUrl, mediaFeatures, mediaLine, mergeMedia, normalizeAddress, pageToolsText, screenshotSize, viewportAction, viewportLine } from "./browser";
 import { resolveViewport } from "./viewport";
 
 describe("normalizeAddress", () => {
@@ -42,5 +42,46 @@ describe("viewport agent helpers", () => {
   it("caps the long edge only", () => {
     expect(screenshotSize(1179, 2556, 1600)).toEqual({ width: 738, height: 1600 });
     expect(screenshotSize(1280, 800, 1600)).toBeUndefined();
+  });
+});
+
+describe("media emulation", () => {
+  it("merges a request into the tab's emulation; system clears a feature", () => {
+    const dark = mergeMedia(undefined, { colorScheme: "dark" });
+    expect(dark).toEqual({ colorScheme: "dark" });
+    expect(mergeMedia(dark, { reducedMotion: "reduce" })).toEqual({ colorScheme: "dark", reducedMotion: "reduce" });
+    expect(mergeMedia(dark, { colorScheme: "system" })).toBeUndefined();
+  });
+
+  it("sends every feature, an empty value clearing its override", () => {
+    expect(mediaFeatures({ colorScheme: "dark" })).toEqual([
+      { name: "prefers-color-scheme", value: "dark" },
+      { name: "prefers-reduced-motion", value: "" },
+    ]);
+    expect(mediaFeatures(undefined).every((feature) => feature.value === "")).toBe(true);
+  });
+
+  it("describes the emulation for tool results", () => {
+    expect(mediaLine({ colorScheme: "light", reducedMotion: "reduce" })).toBe("Emulating: prefers-color-scheme: light, prefers-reduced-motion: reduce");
+    expect(mediaLine(undefined)).toBe("");
+  });
+});
+
+describe("pageToolsText", () => {
+  const tool = { name: "add_topping", description: "Add one   or more\ntoppings", inputSchema: '{"type":"object"}', annotations: { destructiveHint: true } };
+
+  it("is empty without tools", () => {
+    expect(pageToolsText(null, false)).toBe("");
+    expect(pageToolsText([], true)).toBe("");
+  });
+
+  it("lists names, hints and flattened descriptions, with schemas on request", () => {
+    expect(pageToolsText([tool], false)).toBe("Page tools (WebMCP, provided by the page; call with browser_page_tool):\n- add_topping (destructive): Add one or more toppings");
+    expect(pageToolsText([tool], true)).toContain('\n  input: {"type":"object"}');
+  });
+
+  it("caps a long list", () => {
+    const many = Array.from({ length: 45 }, (_, i) => ({ name: `t${i}`, description: "" }));
+    expect(pageToolsText(many, false)).toMatch(/\n- t39: \n… and 5 more$/);
   });
 });

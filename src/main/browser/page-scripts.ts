@@ -11,7 +11,7 @@ export const ISOLATED_WORLD = 4317;
 export const SNAPSHOT = String.raw`(() => {
   const LIMIT = 12000;
   for (const el of document.querySelectorAll("[data-pi-ref]")) el.removeAttribute("data-pi-ref");
-  const INTERACTIVE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=option],[role=switch],[role=combobox],[role=textbox],[contenteditable=""],[contenteditable=true],[onclick]';
+  const INTERACTIVE = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[role=option],[role=switch],[role=combobox],[role=textbox],[contenteditable=""],[contenteditable=true],[onclick],[draggable=true]';
   const TEXT = /^(P|LI|TD|TH|PRE|BLOCKQUOTE|DT|DD|FIGCAPTION|CAPTION|LABEL|SPAN|DIV)$/;
   const clean = (s, n = 90) => (s || "").replace(/\s+/g, " ").trim().slice(0, n);
   const visible = (el) => {
@@ -66,14 +66,138 @@ export const SNAPSHOT = String.raw`(() => {
   return { url: location.href, title: document.title, text: lines.join("\n"), refs: ref };
 })()`;
 
-/** Scroll the ref into view and return its center in viewport coordinates, or null. */
-export function locate(ref: number): string {
+/** An element the agent names: a ref from the snapshot, or a CSS selector for one without a ref (a drop zone). */
+export type Target = number | string;
+
+/** How results and errors name a target: `[3]` or `".lane"`. */
+export const targetLabel = (target: Target): string => (typeof target === "number" ? `[${target}]` : JSON.stringify(target));
+
+/** Page expression finding a target (null when missing or the selector is invalid). */
+const find = (target: Target): string =>
+  `(() => { try { return document.querySelector(${JSON.stringify(typeof target === "number" ? `[data-pi-ref="${target}"]` : target)}); } catch { return null; } })()`;
+
+/** Scroll the target into view and return its center in viewport coordinates, or null. */
+export function locate(target: Target): string {
   return String.raw`(() => {
-    const el = document.querySelector('[data-pi-ref="${ref}"]');
+    const el = ${find(target)};
     if (!el) return null;
     el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
     const r = el.getBoundingClientRect();
     return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+  })()`;
+}
+
+/** The target's center in viewport coordinates without scrolling, and whether it is inside the viewport; null when missing. */
+export function pointOf(target: Target): string {
+  return String.raw`(() => {
+    const el = ${find(target)};
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const x = Math.round(r.left + r.width / 2);
+    const y = Math.round(r.top + r.height / 2);
+    return { x, y, inside: x >= 0 && y >= 0 && x < innerWidth && y < innerHeight };
+  })()`;
+}
+
+/** What a ref is for an upload: "input" for <input type=file>, "other" for anything else, null when missing. */
+export function fileTarget(ref: number): string {
+  return String.raw`(() => {
+    const el = document.querySelector('[data-pi-ref="${ref}"]');
+    if (!el) return null;
+    return el instanceof HTMLInputElement && el.type === "file" ? "input" : "other";
+  })()`;
+}
+
+/**
+ * Choose options of a native <select> by value or visible label, then fire input and change like a user's pick
+ * (React reads a select's change event without its value tracker, so this reaches its onChange too).
+ */
+export function selectOptions(ref: number, values: string[]): string {
+  return String.raw`(() => {
+    const el = document.querySelector('[data-pi-ref="${ref}"]');
+    if (!el) return { error: "missing" };
+    if (!(el instanceof HTMLSelectElement)) return { error: "not-select", tag: el.tagName.toLowerCase() };
+    const options = Array.from(el.options);
+    const label = (o) => (o.label || o.textContent || "").replace(/\s+/g, " ").trim();
+    const wanted = ${JSON.stringify(values)};
+    const picked = [];
+    for (const want of wanted) {
+      const lower = want.toLowerCase();
+      const match = options.find((o) => o.value === want) || options.find((o) => label(o) === want) || options.find((o) => label(o).toLowerCase() === lower);
+      if (!match) return { error: "no-option", value: want, available: options.slice(0, 40).map(label) };
+      if (match.disabled) return { error: "disabled", value: want };
+      picked.push(match);
+    }
+    if (!el.multiple && picked.length > 1) return { error: "single" };
+    el.focus();
+    for (const option of options) option.selected = picked.includes(option);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return { selected: picked.map(label) };
+  })()`;
+}
+
+export interface WaitCondition {
+  text?: string;
+  textGone?: string;
+  selector?: string;
+  url?: string;
+}
+
+/** Which of `condition`'s parts the page does not meet yet (empty when all are met); visible text only. */
+export function waitCheck(condition: WaitCondition): string {
+  return String.raw`(() => {
+    const c = ${JSON.stringify(condition)};
+    const missing = [];
+    const text = document.body ? document.body.innerText : "";
+    if (c.text !== undefined && !text.includes(c.text)) missing.push("text " + JSON.stringify(c.text));
+    if (c.textGone !== undefined && text.includes(c.textGone)) missing.push("text " + JSON.stringify(c.textGone) + " to disappear");
+    if (c.selector !== undefined) {
+      let el = null;
+      try { el = document.querySelector(c.selector); } catch { return { invalid: "Invalid CSS selector " + JSON.stringify(c.selector) }; }
+      const r = el && el.getBoundingClientRect();
+      if (!el || !r || r.width < 1 || r.height < 1) missing.push("a visible element matching " + JSON.stringify(c.selector));
+    }
+    if (c.url !== undefined && !location.href.includes(c.url)) missing.push("a URL containing " + JSON.stringify(c.url));
+    return { missing };
+  })()`;
+}
+
+/** The page's WebMCP tools (document.modelContext); null when the page has none or the API is missing. */
+export const PAGE_TOOLS = String.raw`(async () => {
+  const mc = document.modelContext;
+  if (!mc || typeof mc.getTools !== "function") return null;
+  const tools = await mc.getTools();
+  const schema = (s) => (s === undefined || s === null ? undefined : typeof s === "string" ? s : JSON.stringify(s));
+  const hints = (a) => (a ? { readOnlyHint: !!a.readOnlyHint, untrustedContentHint: !!a.untrustedContentHint, destructiveHint: !!a.destructiveHint } : undefined);
+  return tools.map((t) => ({ name: String(t.name), title: t.title ? String(t.title) : undefined, description: String(t.description || ""), inputSchema: schema(t.inputSchema), annotations: hints(t.annotations) }));
+})()`;
+
+/**
+ * Run one of the page's WebMCP tools. Chromium 152 takes the input as a JSON string where the spec takes an object;
+ * the object form is tried only when the browser refused to parse the string, before the tool ran.
+ */
+export function runPageTool(name: string, input: Record<string, unknown>): string {
+  return String.raw`(async () => {
+    const mc = document.modelContext;
+    if (!mc || typeof mc.executeTool !== "function") return { error: "This page has no WebMCP tools (document.modelContext is missing)." };
+    const tools = await mc.getTools();
+    const tool = tools.find((t) => t.name === ${JSON.stringify(name)});
+    if (!tool) return { error: "No page tool named " + ${JSON.stringify(JSON.stringify(name))} + ". The page has: " + (tools.map((t) => t.name).join(", ") || "none") + "." };
+    const input = ${JSON.stringify(input)};
+    const message = (e) => String((e && e.message) || e);
+    const refused = (e) => /failed to parse input arguments|is not of type 'object'/i.test(message(e));
+    const text = (value) => (typeof value === "string" ? value : value === undefined || value === null ? "" : JSON.stringify(value));
+    try {
+      return { result: text(await mc.executeTool(tool, JSON.stringify(input))) };
+    } catch (first) {
+      if (!refused(first)) return { error: message(first) };
+      try {
+        return { result: text(await mc.executeTool(tool, input)) };
+      } catch (second) {
+        return { error: message(second) };
+      }
+    }
   })()`;
 }
 

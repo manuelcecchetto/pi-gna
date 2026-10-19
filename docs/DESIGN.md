@@ -235,7 +235,9 @@ tabs close when its session ends. The phone still lists every chat's tabs.
   a state, now 1.6 KB). The strip shows it instead of the globe, and instead of the agent's icon unless the agent is
   driving the tab right now; the phone shows it too.
 - **Agent tools**: `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press`,
-  `browser_screenshot`, `browser_evaluate`, `browser_console`, `browser_viewport`, `browser_window`. The extension calls `POST /browser` on a
+  `browser_screenshot`, `browser_evaluate`, `browser_console`, `browser_viewport`, `browser_window`, `browser_page_tool`,
+  `browser_wait_for`, `browser_dialog`, `browser_upload`, `browser_hover`, `browser_select`, `browser_drag`,
+  `browser_scroll`, `browser_emulate`. The extension calls `POST /browser` on a
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
   and its actions run through a per-session queue, because a page is sequential.
@@ -260,8 +262,35 @@ tabs close when its session ends. The phone still lists every chat's tabs.
 - **Input and screenshots go through CDP** (`webContents.debugger`), not `sendInputEvent`/`capturePage`: those
   need composited frames, which Chromium stops producing while the app window is hidden behind other windows
   (verified: the click did nothing and capture failed with "Current display surface not available").
-- **Snapshots** run in an isolated world (shared DOM, separate JS globals) and tag interactive elements with
-  `data-pi-ref` numbers that click/type use.
+- **Snapshots** run in an isolated world (shared DOM, separate JS globals) and tag interactive elements (and
+  `draggable` ones) with `data-pi-ref` numbers that the actions use; hover and drag also take a CSS selector, for a drop
+  zone or a tooltip trigger without a ref.
+- **WebMCP** (page tools): `index.ts` turns on Chromium's `WebMCPTesting` feature, so every page has
+  `document.modelContext`, not only pages with an origin-trial token (no dev server has one). The snapshot appends the
+  page's tools (`registerTool` and `<form toolname>`), one line each; `browser_page_tool` without a name lists them with
+  their input schemas, with a name runs one (`page-scripts.ts` `runPageTool`, isolated world, 30 s limit). Chromium 152
+  hands `inputSchema` over as a JSON string and `executeTool` wants its input as one, where the spec says objects: the
+  object form is tried only when the browser refused to parse the string, so a tool that failed while running never
+  runs twice. Names, descriptions and results are the page's content, labelled as such.
+- **Dialogs**: `alert()`/`confirm()` stop the page until answered, and a CDP input event that opened one is not acked
+  before: a click on a Delete button would block the session's queue, `browser_dialog` included. So every action
+  races "a dialog opened" (`BrowserManager.nextDialog`) and returns the dialog instead; while one is open only
+  `browser_dialog`, `browser_console` and `state` run. The manager owns Electron's internal `-run-dialog` event (its
+  own handler shows a message box that `Page.handleJavaScriptDialog` answers but leaves on screen: measured, and
+  clicking it later is a no-op). pi-gna shows the box as a sheet on the window that shows the tab, only while it does
+  (`syncDialogBox`), and closes it with an `AbortSignal` when the agent answers. Never without a parent: a parentless
+  box is app-modal on macOS and stalled the main process until it was answered (verify run, 95 s). `prompt()` throws
+  in Electron's renderer before it gets here.
+- **Uploads**: an `<input type=file>` ref gets the files through `DOM.setFileInputFiles`; any other ref (a button that
+  opens the picker) is clicked with `Page.setInterceptFileChooserDialog` on for the moment, so no native picker opens
+  and the chooser's input gets them. The extension resolves paths against the chat's cwd and refuses missing files.
+- **Drag** uses `Input.setInterceptDrags`: an HTML5 drag started by synthetic mouse moves is intercepted and dropped
+  with `Input.dispatchDragEvent`; a pointer-driven drag (sortable lists, sliders) follows the moves and the release.
+- **Media emulation** (`browser_emulate`): `Emulation.setEmulatedMedia` for `prefers-color-scheme` and
+  `prefers-reduced-motion`, kept on the tab (`Tab.media`) and re-sent after a debugger detach or crash and to the
+  agent's copy of a preview. The user sees the page the same way, so the toolbar shows a "Dark ×" pill that clears it.
+- **End to end**: `pnpm build && pnpm verify:browser-agent` drives all of the above through a throwaway instance's
+  bridge against a fixture page (fixed ports 9488/9489).
 - **Policy** lives in the extension: loopback and `*.localhost` URLs are allowed; any other origin asks once per
   session through `ctx.ui.select`, which renders as a pi-gna approval card (with Yolo on, `SessionHost` allows it
   without a card; see Computer Use's policy). Actions that navigate are re-checked afterwards and stepped back if

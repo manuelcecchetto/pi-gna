@@ -171,6 +171,38 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
     }
     case "browser_console":
       return { category: "browser", verb: "Read the console", activeVerb: "Reading the console", target: "" };
+    case "browser_page_tool":
+      if (!args.name) return { category: "browser", verb: "Listed page tools", activeVerb: "Listing page tools", target: "" };
+      return { category: "browser", verb: "Ran page tool", activeVerb: "Running page tool", target: str(args.name), meta: args.input ? firstLine(JSON.stringify(args.input), 60) : undefined };
+    case "browser_wait_for": {
+      const target = [args.text && `"${str(args.text)}"`, args.textGone && `"${str(args.textGone)}" gone`, str(args.selector), args.url && `URL ${str(args.url)}`].filter(Boolean).join(", ");
+      return { category: "browser", verb: "Waited for", activeVerb: "Waiting for", target: firstLine(target, 80) };
+    }
+    case "browser_dialog":
+      return { category: "browser", verb: args.accept ? "Accepted a dialog" : "Dismissed a dialog", activeVerb: "Answering a dialog", target: "" };
+    case "browser_upload": {
+      const files = Array.isArray(args.files) ? (args.files as unknown[]).map(str) : [];
+      return { category: "browser", verb: "Uploaded", activeVerb: "Uploading", target: files.map((file) => rel(file)).join(", "), meta: `to [${String(args.ref ?? "")}]` };
+    }
+    case "browser_hover":
+      return { category: "browser", verb: "Hovered", activeVerb: "Hovering", target: typeof args.ref === "string" ? args.ref : `[${String(args.ref ?? "")}]` };
+    case "browser_select": {
+      const values = Array.isArray(args.values) ? (args.values as unknown[]).map(str) : [];
+      return { category: "browser", verb: "Selected", activeVerb: "Selecting", target: firstLine(values.join(", "), 60), meta: `in [${String(args.ref ?? "")}]` };
+    }
+    case "browser_drag": {
+      const name = (target: unknown) => (typeof target === "string" ? target : `[${String(target ?? "")}]`);
+      return { category: "browser", verb: "Dragged", activeVerb: "Dragging", target: `${name(args.from)} onto ${name(args.to)}` };
+    }
+    case "browser_scroll": {
+      const amount = args.deltaX ? `${String(args.deltaX)}px right` : `${String(args.deltaY ?? 600)}px down`;
+      return { category: "browser", verb: "Scrolled", activeVerb: "Scrolling", target: amount, meta: args.ref !== undefined ? `at [${String(args.ref)}]` : undefined };
+    }
+    case "browser_emulate": {
+      if (args.reset) return { category: "browser", verb: "Cleared emulation", activeVerb: "Clearing emulation", target: "" };
+      const target = [args.colorScheme && `${str(args.colorScheme)} scheme`, args.reducedMotion && `motion: ${str(args.reducedMotion)}`].filter(Boolean).join(", ");
+      return { category: "browser", verb: "Emulated", activeVerb: "Emulating", target };
+    }
     case "threads_list":
       return { category: "agent", verb: "Listed threads", activeVerb: "Listing threads", target: str(args.query) || (args.all ? "every project" : "") };
     case "thread_read":

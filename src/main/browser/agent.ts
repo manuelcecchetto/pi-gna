@@ -3,21 +3,33 @@
 // frames, which Chromium stops producing while the app window is hidden behind other windows.
 // A web page is the one the user sees; a file preview is read and driven in the agent's own copy
 // (BrowserManager.agentPage), so the user's zoom, scroll and pane never reach it.
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { isAbsolute } from "node:path";
 import { type NativeImage, nativeImage, type WebContents } from "electron";
-import { type AgentAction, type AgentResult, normalizeAddress, screenshotSize, viewportLine } from "../../shared/browser";
+import { type AgentAction, type AgentResult, normalizeAddress, type PageTool, pageToolsText, screenshotSize, viewportLine } from "../../shared/browser";
 import { parseLocalTarget, previewLabel } from "../../shared/preview";
 import { resolveViewport, toInputCoords, type ViewportSpec } from "../../shared/viewport";
 import { bridgeError, type Route } from "../bridge";
 import { log } from "../log";
 import { cdp } from "./cdp";
-import type { AgentPage, BrowserManager, Tab } from "./manager";
-import { focusForTyping, ISOLATED_WORLD, locate, SNAPSHOT } from "./page-scripts";
+import type { AgentPage, BrowserManager, PendingDialog, Tab } from "./manager";
+import { fileTarget, focusForTyping, ISOLATED_WORLD, locate, PAGE_TOOLS, pointOf, runPageTool, selectOptions, SNAPSHOT, type Target, targetLabel, waitCheck } from "./page-scripts";
 
 const TEXT_LIMIT = 20_000;
 const SCREENSHOT_LONG_EDGE = 1600;
 /** How long a capture may wait for the page to draw a frame before falling back, then failing. */
 const SCREENSHOT_WAIT_MS = 5_000;
+/** browser_wait_for: default and longest wait, and how often the page is checked. */
+const WAIT_DEFAULT_MS = 10_000;
+const WAIT_MAX_MS = 60_000;
+const WAIT_POLL_MS = 250;
+/** A page tool (WebMCP) that has not answered by then is reported as stuck; it may wait for the user. */
+const PAGE_TOOL_MS = 30_000;
+/** How long a click on an upload control may take to open its file chooser. */
+const CHOOSER_WAIT_MS = 3_000;
+/** Actions that still work while the page waits on a dialog: everything else would block on the paused page. */
+const DURING_DIALOG = new Set(["dialog", "console", "state"]);
 interface KeyDef {
   key: string;
   code: string;
@@ -63,7 +75,35 @@ interface Evaluated {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const ACTIONS = new Set(["open", "snapshot", "click", "type", "press", "screenshot", "evaluate", "console", "back", "state", "viewport", "window"]);
+const ACTIONS = new Set([
+  "open",
+  "snapshot",
+  "click",
+  "type",
+  "press",
+  "screenshot",
+  "evaluate",
+  "console",
+  "back",
+  "state",
+  "viewport",
+  "window",
+  "page_tool",
+  "wait_for",
+  "dialog",
+  "upload",
+  "hover",
+  "select",
+  "drag",
+  "scroll",
+  "emulate",
+]);
+
+const missing = (target: Target) =>
+  typeof target === "number" ? `No element [${target}] on the page. Take a new browser_snapshot first.` : `No element matches the selector ${JSON.stringify(target)}.`;
+
+const dialogNote = (dialog: PendingDialog) =>
+  `The page is showing a ${dialog.type} dialog: ${JSON.stringify(dialog.message)}. It is paused until the dialog is answered: use browser_dialog (accept: true for OK${dialog.type === "confirm" ? ", false for Cancel" : ""}), or wait for the user.`;
 
 /** POST /browser on the agent bridge: the browser_* tools. */
 export function browserRoute(agent: () => BrowserAgent | undefined): Route {
@@ -95,10 +135,12 @@ export class BrowserAgent {
   /** Every result carries the tab's viewport, so a size the user changed is visible to the agent. */
   private async perform(handle: string, request: AgentAction): Promise<AgentResult> {
     const result = await this.dispatch(handle, request);
-    if (result.viewport) return result;
     const tab = this.agentTab(handle);
+    const media = result.media ?? tab?.media;
+    const withMedia = media ? { ...result, media } : result;
+    if (result.viewport) return withMedia;
     const viewport = tab && this.browser.agentViewport(tab);
-    return viewport ? { ...result, viewport } : result;
+    return viewport ? { ...withMedia, viewport } : withMedia;
   }
 
   private async dispatch(handle: string, request: AgentAction): Promise<AgentResult> {
@@ -108,10 +150,20 @@ export class BrowserAgent {
     // A tab of a chat that is not on screen is in no window; holding it keeps the page rendering for the action. The
     // agent's copy of a preview has a window of its own already (the keeper, or the offscreen holder on Linux).
     const held = !tab.preview;
+    if (tab.dialog && !DURING_DIALOG.has(request.action)) throw new Error(dialogNote(tab.dialog));
     if (held) this.browser.hold(tab.id);
+    // An action that makes the page open a dialog would wait for its answer, and so would every later action of this
+    // session's queue, browser_dialog included: report the dialog instead, and let the action finish in the background.
+    const dialog = this.browser.nextDialog(tab);
     try {
-      return await this.act(handle, request, tab);
+      const acting = this.act(handle, request, tab);
+      acting.catch(() => undefined);
+      return await Promise.race([
+        acting,
+        dialog.opened.then((opened) => ({ url: tab.view.webContents.getURL(), title: tab.view.webContents.getTitle(), text: dialogNote(opened) })),
+      ]);
     } finally {
+      dialog.cancel();
       this.browser.staleStill(tab);
       if (held) this.browser.release(tab.id);
     }
@@ -129,26 +181,82 @@ export class BrowserAgent {
       case "snapshot":
         return this.snapshot((await page()).wc);
       case "click": {
-        const { wc, scale, touch } = await page();
-        const point = await this.exec<{ x: number; y: number } | null>(wc, locate(request.ref));
-        if (!point) throw new Error(`No element [${request.ref}] on the page. Take a new browser_snapshot first.`);
-        await delay(60); // let scrollIntoView settle
+        const target = await page();
+        const before = target.wc.getURL();
+        await this.clickRef(target, request.ref);
+        return this.afterAction(target.wc, `Clicked [${request.ref}].`, before);
+      }
+      case "hover": {
+        const { wc, scale } = await page();
+        const { x, y } = toInputCoords(...(await this.reach(wc, request.ref)), scale);
+        // Not awaited, like the click's move: its ack waits for a frame (see clickRef).
+        void cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }).catch(() => undefined);
+        await delay(250); // hover menus and tooltips open on a timer or a transition
+        return { ...this.where(wc), text: `Hovering over ${targetLabel(request.ref)}. Use browser_snapshot to see what it revealed.` };
+      }
+      case "select": {
+        const { wc } = await page(false);
         const before = wc.getURL();
-        // Input takes view pixels; a fitted viewport is drawn scaled.
-        const { x, y } = toInputCoords(point.x, point.y, scale);
-        if (touch) {
-          // Under touch emulation a CDP mouse press becomes a touch whose ack never comes, which would wedge this queue; tap instead.
-          await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
-          await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-        } else {
-          // The hover move is not awaited: its ack waits for a frame, which a minimized window or one on another
-          // virtual desktop never draws on Wayland (~5 s per click). CDP keeps the order, so the press still follows it.
-          void cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", clickCount: 1 }).catch(() => undefined);
-          for (const type of ["mousePressed", "mouseReleased"]) {
-            await cdp(wc, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
-          }
+        const result = await this.exec<{ selected?: string[]; error?: string; tag?: string; value?: string; available?: string[] }>(wc, selectOptions(request.ref, request.values));
+        if (result.error === "missing") throw new Error(`No element [${request.ref}] on the page. Take a new browser_snapshot first.`);
+        if (result.error === "not-select")
+          throw new Error(`[${request.ref}] is a <${result.tag}>, not a native <select>. For a custom dropdown, click it open and click the option.`);
+        if (result.error === "no-option") throw new Error(`[${request.ref}] has no option ${JSON.stringify(result.value)}. Options: ${(result.available ?? []).join(" | ")}`);
+        if (result.error === "disabled") throw new Error(`The option ${JSON.stringify(result.value)} of [${request.ref}] is disabled.`);
+        if (result.error === "single") throw new Error(`[${request.ref}] takes one option; give one value.`);
+        return this.afterAction(wc, `Selected ${(result.selected ?? []).map((label) => JSON.stringify(label)).join(", ")} in [${request.ref}].`, before);
+      }
+      case "drag":
+        return this.drag(await page(), request.from, request.to);
+      case "scroll": {
+        const { wc, scale } = await page();
+        const deltaX = request.deltaX ?? 0;
+        const deltaY = request.deltaY ?? (request.deltaX ? 0 : 600);
+        const at =
+          request.ref === undefined
+            ? await this.exec<[number, number]>(wc, "[Math.round(innerWidth / 2), Math.round(innerHeight / 2)]")
+            : await this.reach(wc, request.ref);
+        const { x, y } = toInputCoords(...at, scale);
+        // The wheel's ack can wait for a frame like a mouse move; the scroll is applied either way.
+        await within(cdp(wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX, deltaY }), 3000);
+        await delay(150);
+        const where = await this.exec<string>(
+          wc,
+          "`page scrolled to ${Math.round(scrollX)},${Math.round(scrollY)} of ${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight} (viewport ${innerWidth}x${innerHeight})`",
+        );
+        return { ...this.where(wc), text: `Scrolled ${deltaX ? `${deltaX}px right, ` : ""}${deltaY}px down${request.ref === undefined ? "" : ` at [${request.ref}]`}; ${where}. Use browser_snapshot to see what is in view.` };
+      }
+      case "upload":
+        return this.upload(await page(), request.ref, request.files);
+      case "dialog": {
+        const { wc } = await page(false);
+        const dialog = tab.dialog;
+        if (!dialog) throw new Error("No dialog is open on the page.");
+        const before = wc.getURL();
+        dialog.answer(request.accept);
+        const answer = dialog.type === "alert" ? "Closed" : request.accept ? "Accepted" : "Dismissed";
+        return this.afterAction(wc, `${answer} the ${dialog.type} dialog ${JSON.stringify(dialog.message)}.`, before);
+      }
+      case "wait_for":
+        return this.waitFor((await page(false)).wc, request);
+      case "page_tool": {
+        const { wc } = await page();
+        if (!request.name) {
+          const tools = await this.pageTools(wc);
+          return { ...this.where(wc), text: pageToolsText(tools, true) || "This page registers no WebMCP tools (document.modelContext)." };
         }
-        return this.afterAction(wc, `Clicked [${request.ref}].`, before);
+        const before = wc.getURL();
+        const run = this.exec<{ result?: string; error?: string }>(wc, runPageTool(request.name, request.input ?? {}));
+        const outcome = await within(run, PAGE_TOOL_MS);
+        if (!outcome) throw new Error(`The page tool ${request.name} did not answer within ${PAGE_TOOL_MS / 1000} s; it may be waiting for the user.`);
+        if (outcome.error !== undefined) throw new Error(`Page tool ${request.name} failed: ${outcome.error}`);
+        const result = await this.afterAction(wc, `Ran page tool ${request.name}.`, before);
+        return { ...result, text: `${result.text ?? ""}\n\nResult:\n${clip(outcome.result || "(empty)")}` };
+      }
+      case "emulate": {
+        const { wc } = await page();
+        const media = await this.browser.setMedia(tab, request.reset ? undefined : request.set);
+        return { ...this.where(wc), media, text: media ? undefined : "No media emulation is active (the page follows the system)." };
       }
       case "type": {
         const { wc } = await page();
@@ -325,7 +433,150 @@ export class BrowserAgent {
 
   private async snapshot(wc: WebContents): Promise<AgentResult> {
     const result = await this.exec<{ url: string; title: string; text: string; refs: number }>(wc, SNAPSHOT);
-    return { url: result.url, title: result.title, text: result.text || "(empty page)" };
+    const tools = pageToolsText(await this.pageTools(wc), false);
+    return { url: result.url, title: result.title, text: [result.text || "(empty page)", tools].filter(Boolean).join("\n\n") };
+  }
+
+  /** The page's WebMCP tools; null without any, or when the page does not answer in time. */
+  private async pageTools(wc: WebContents): Promise<PageTool[] | null> {
+    const tools = await within(this.exec<PageTool[] | null>(wc, PAGE_TOOLS).catch(() => null), 2000);
+    return tools ?? null;
+  }
+
+  /** Scroll a target into view and return its center in viewport (CSS) pixels. */
+  private async reach(wc: WebContents, target: Target): Promise<[number, number]> {
+    const point = await this.exec<{ x: number; y: number } | null>(wc, locate(target));
+    if (!point) throw new Error(missing(target));
+    await delay(60); // let scrollIntoView settle
+    return [point.x, point.y];
+  }
+
+  private async clickRef({ wc, scale, touch }: AgentPage, ref: number): Promise<void> {
+    // Input takes view pixels; a fitted viewport is drawn scaled.
+    const { x, y } = toInputCoords(...(await this.reach(wc, ref)), scale);
+    if (touch) {
+      // Under touch emulation a CDP mouse press becomes a touch whose ack never comes, which would wedge this queue; tap instead.
+      await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      return;
+    }
+    // The hover move is not awaited: its ack waits for a frame, which a minimized window or one on another
+    // virtual desktop never draws on Wayland (~5 s per click). CDP keeps the order, so the press still follows it.
+    void cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", clickCount: 1 }).catch(() => undefined);
+    for (const type of ["mousePressed", "mouseReleased"]) {
+      await cdp(wc, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+    }
+  }
+
+  /**
+   * Drag one ref onto another. An HTML5 drag (draggable, dataTransfer) is intercepted (Input.setInterceptDrags) and
+   * dropped with drag events, which is how Chromium delivers one from synthetic input; a pointer-driven drag (sortable
+   * lists, sliders) just follows the mouse moves and the release.
+   */
+  private async drag(target: AgentPage, from: Target, to: Target): Promise<AgentResult> {
+    const { wc, scale, touch } = target;
+    const start = toInputCoords(...(await this.reach(wc, from)), scale);
+    const end = await this.exec<{ x: number; y: number; inside: boolean } | null>(wc, pointOf(to));
+    if (!end) throw new Error(missing(to));
+    if (!end.inside) throw new Error(`${targetLabel(to)} is outside the viewport once ${targetLabel(from)} is in view; scroll or resize so both are visible.`);
+    const stop = toInputCoords(end.x, end.y, scale);
+    const steps = 8;
+    const along = (i: number) => ({ x: Math.round(start.x + ((stop.x - start.x) * i) / steps), y: Math.round(start.y + ((stop.y - start.y) * i) / steps) });
+    const before = wc.getURL();
+    if (touch) {
+      await cdp(wc, "Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+      for (let i = 1; i <= steps; i++) await cdp(wc, "Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [along(i)] });
+      await cdp(wc, "Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      return this.afterAction(wc, `Dragged ${targetLabel(from)} onto ${targetLabel(to)}.`, before);
+    }
+    let data: unknown;
+    const onMessage = (_event: unknown, method: string, params: { data?: unknown }) => {
+      if (method === "Input.dragIntercepted") data = params.data;
+    };
+    wc.debugger.on("message", onMessage);
+    try {
+      await cdp(wc, "Input.setInterceptDrags", { enabled: true });
+      await within(cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", ...start }), 2000);
+      await cdp(wc, "Input.dispatchMouseEvent", { type: "mousePressed", ...start, button: "left", buttons: 1, clickCount: 1 });
+      for (let i = 1; i <= steps && !data; i++) {
+        await within(cdp(wc, "Input.dispatchMouseEvent", { type: "mouseMoved", ...along(i), button: "left", buttons: 1 }), 2000);
+      }
+      if (data) {
+        for (const type of ["dragEnter", "dragOver", "drop"]) await cdp(wc, "Input.dispatchDragEvent", { type, ...stop, data });
+      }
+      await cdp(wc, "Input.dispatchMouseEvent", { type: "mouseReleased", ...stop, button: "left", clickCount: 1 });
+    } finally {
+      wc.debugger.off("message", onMessage);
+      await cdp(wc, "Input.setInterceptDrags", { enabled: false }).catch(() => undefined);
+    }
+    return this.afterAction(wc, `Dragged ${targetLabel(from)} onto ${targetLabel(to)}${data ? " (HTML drag and drop)" : ""}.`, before);
+  }
+
+  /**
+   * Give files to the page. A file input takes them directly (DOM.setFileInputFiles); any other control (a button
+   * that opens the picker) is clicked with the file chooser intercepted, so no picker opens and its input gets them.
+   */
+  private async upload(target: AgentPage, ref: number, files: string[]): Promise<AgentResult> {
+    const { wc } = target;
+    const bad = files.find((file) => !isAbsolute(file) || !existsSync(file));
+    if (bad) throw new Error(`No file at ${bad}; give absolute paths of existing files.`);
+    const kind = await this.exec<"input" | "other" | null>(wc, fileTarget(ref));
+    if (!kind) throw new Error(`No element [${ref}] on the page. Take a new browser_snapshot first.`);
+    const names = files.map((file) => file.split(/[\\/]/).at(-1)).join(", ");
+    const before = wc.getURL();
+    if (kind === "input") {
+      const found = (await cdp(wc, "Runtime.evaluate", { expression: `document.querySelector('[data-pi-ref="${ref}"]')`, objectGroup: "pigna-upload" })) as Evaluated;
+      try {
+        if (!found.result.objectId) throw new Error(`No element [${ref}] on the page. Take a new browser_snapshot first.`);
+        await cdp(wc, "DOM.setFileInputFiles", { files, objectId: found.result.objectId });
+      } finally {
+        await cdp(wc, "Runtime.releaseObjectGroup", { objectGroup: "pigna-upload" }).catch(() => undefined);
+      }
+      return this.afterAction(wc, `Gave ${names} to the file input [${ref}].`, before);
+    }
+    let chooser: { backendNodeId: number; mode: string } | undefined;
+    let opened: () => void = () => undefined;
+    const waiting = new Promise<void>((resolve) => (opened = resolve));
+    const onMessage = (_event: unknown, method: string, params: { backendNodeId: number; mode: string }) => {
+      if (method !== "Page.fileChooserOpened") return;
+      chooser = params;
+      opened();
+    };
+    wc.debugger.on("message", onMessage);
+    try {
+      await cdp(wc, "Page.enable");
+      await cdp(wc, "Page.setInterceptFileChooserDialog", { enabled: true });
+      await this.clickRef(target, ref);
+      await within(waiting, CHOOSER_WAIT_MS);
+      if (!chooser) throw new Error(`Clicking [${ref}] opened no file chooser. Upload to the page's <input type=file> instead (it may be hidden: find it with browser_evaluate).`);
+      if (chooser.mode === "selectSingle" && files.length > 1) throw new Error(`The file chooser of [${ref}] takes a single file.`);
+      await cdp(wc, "DOM.setFileInputFiles", { files, backendNodeId: chooser.backendNodeId });
+    } finally {
+      wc.debugger.off("message", onMessage);
+      await cdp(wc, "Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => undefined);
+    }
+    return this.afterAction(wc, `Clicked [${ref}] and gave ${names} to its file chooser.`, before);
+  }
+
+  /** Check the page until every given condition holds, or fail with what is still missing. */
+  private async waitFor(wc: WebContents, request: Extract<AgentAction, { action: "wait_for" }>): Promise<AgentResult> {
+    const condition = { text: request.text, textGone: request.textGone, selector: request.selector, url: request.url };
+    if (Object.values(condition).every((value) => value === undefined)) throw new Error("Give at least one of text, textGone, selector or url.");
+    const limit = Math.min(Math.max(request.timeout ?? WAIT_DEFAULT_MS, 0), WAIT_MAX_MS);
+    const started = Date.now();
+    let missing: string[] = ["the page to answer"];
+    for (;;) {
+      // A navigation in between drops the isolated world; the next check runs in the new page.
+      const check = await within(this.exec<{ missing?: string[]; invalid?: string }>(wc, waitCheck(condition)).catch(() => undefined), 2000);
+      if (check?.invalid) throw new Error(check.invalid);
+      if (check?.missing) missing = check.missing;
+      if (check?.missing?.length === 0) break;
+      if (Date.now() - started >= limit) throw new Error(`Still waiting after ${(limit / 1000).toFixed(1)} s for ${missing.join(", ")}.`);
+      await delay(WAIT_POLL_MS);
+    }
+    if (wc.isLoading()) await waitForStop(wc, 5_000);
+    const snap = await this.snapshot(wc).catch(() => this.where(wc));
+    return { ...snap, text: `Condition met after ${((Date.now() - started) / 1000).toFixed(1)} s.\n\n${snap.text ?? ""}` };
   }
 
   /** Wait for a navigation the action may have caused, then report where we are. */

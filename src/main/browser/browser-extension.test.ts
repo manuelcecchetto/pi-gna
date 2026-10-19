@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -27,6 +27,9 @@ describe("browser extension", () => {
   it("registers the browser tools", () => {
     expect(tools.map((tool) => tool.name)).toContain("browser_screenshot");
     expect(tools.length).toBeGreaterThanOrEqual(10);
+    for (const name of ["browser_page_tool", "browser_wait_for", "browser_dialog", "browser_upload", "browser_hover", "browser_select", "browser_drag", "browser_scroll", "browser_emulate"]) {
+      expect(tools.map((tool) => tool.name)).toContain(name);
+    }
   });
 
   // pi runs a message's tool calls in parallel otherwise, and the bridge would order them by arrival:
@@ -59,5 +62,41 @@ describe("browser extension", () => {
     const file = join(cwd, "shots", "home.jpg");
     expect(readFileSync(file)).toEqual(Buffer.from("/9j/AA==", "base64"));
     expect(result.content.find((block) => block.type === "text")?.text).toContain(`Saved to ${file}`);
+  });
+
+  // The bridge runs in pi-gna, not in the agent's directory: the extension hands it absolute paths of real files.
+  it("resolves upload paths against the cwd and refuses missing files", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pigna-upload-"));
+    writeFileSync(join(cwd, "a.txt"), "a");
+    const bodies: { files?: string[] }[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ url: "http://localhost:5173/", title: "App", text: "Gave a.txt" }) };
+    });
+    const upload = tools.find((tool) => tool.name === "browser_upload");
+    await upload?.execute?.("1", { ref: 2, files: ["a.txt"] }, undefined, undefined, { cwd, hasUI: false });
+    await expect(upload?.execute?.("2", { ref: 2, files: ["missing.txt"] }, undefined, undefined, { cwd, hasUI: false })).rejects.toThrow(/No file at/);
+    vi.unstubAllGlobals();
+    expect(bodies).toEqual([{ action: "upload", ref: 2, files: [join(cwd, "a.txt")] }]);
+  });
+
+  it("accepts page tool arguments sent as a JSON string", async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ url: "http://localhost:5173/", title: "App", text: "Ran" }) };
+    });
+    await tools.find((tool) => tool.name === "browser_page_tool")?.execute?.("1", { name: "echo", input: '{"text":"hi"}' }, undefined, undefined, { cwd: "/", hasUI: false });
+    vi.unstubAllGlobals();
+    expect(bodies).toEqual([{ action: "page_tool", name: "echo", input: { text: "hi" } }]);
+  });
+
+  it("puts the emulated media in the result", async () => {
+    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => ({ url: "http://localhost:5173/", title: "App", media: { colorScheme: "dark" } }) }));
+    const result = (await tools.find((tool) => tool.name === "browser_emulate")?.execute?.("1", { colorScheme: "dark" }, undefined, undefined, { cwd: "/", hasUI: false })) as {
+      content: { text: string }[];
+    };
+    vi.unstubAllGlobals();
+    expect(result.content[0]?.text).toContain("Emulating: prefers-color-scheme: dark");
   });
 });

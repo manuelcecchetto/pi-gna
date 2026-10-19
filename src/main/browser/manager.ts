@@ -3,13 +3,17 @@
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { app, BrowserWindow, nativeImage, session, shell, WebContentsView, type WebContents } from "electron";
+import { app, BrowserWindow, dialog, nativeImage, session, shell, WebContentsView, type WebContents } from "electron";
 import {
   type Annotation,
   type BrowserCommand,
   type BrowserLayout,
   type BrowserState,
   type HistoryEntry,
+  type MediaEmulation,
+  type MediaRequest,
+  mediaFeatures,
+  mergeMedia,
   normalizeAddress,
 } from "../../shared/browser";
 import { parsePreviewUrl, PREVIEW_SCHEME, previewFor, previewLabel, previewUrl, type PreviewMode, type PreviewOpenOptions, type TabPreview } from "../../shared/preview";
@@ -49,6 +53,17 @@ interface PreviewState {
   stop: () => void;
 }
 
+/** A JavaScript dialog the page waits on; `answer` resolves it from the user's box or the agent. */
+export interface PendingDialog {
+  type: "alert" | "confirm";
+  message: string;
+  /** Origin of the frame that opened it, shown under the message. */
+  origin?: string;
+  answer(accept: boolean): void;
+  /** Close the box without answering: the page dropped the dialog (navigation, crash) or the tab closed. */
+  close(): void;
+}
+
 export interface Tab {
   id: string;
   view: WebContentsView;
@@ -80,6 +95,12 @@ export interface Tab {
   favicon?: TabIcon & { origin: string };
   /** Bumped per favicon request, so a slow one for an earlier page cannot win. */
   faviconSeq?: number;
+  /** Media features the agent emulates (light/dark, reduced motion), re-sent after a debugger detach. */
+  media?: MediaEmulation;
+  /** The dialog the page is blocked on, if any. */
+  dialog?: PendingDialog;
+  /** Agent actions waiting to hear that a dialog opened (see `nextDialog`). */
+  dialogWaiters?: Set<(dialog: PendingDialog) => void>;
 }
 
 /** Electron decodes the bitmap (PNG, JPEG; ICO where the platform can) and shrinks it for the tab strip. */
@@ -166,6 +187,8 @@ export class BrowserManager {
   private historyTimer?: ReturnType<typeof setTimeout>;
   /** Client-hint headers Electron does not send itself, by webContents id, for emulated tabs. */
   private readonly hintHeaders = new Map<number, Record<string, string>>();
+  /** The box each open dialog shows, and the window it is a sheet on. */
+  private readonly dialogBoxes = new WeakMap<PendingDialog, { parent: BrowserWindow; controller: AbortController }>();
   private readonly historyPath = join(app.getPath("userData"), "browser-history.json");
 
   constructor(
@@ -219,6 +242,7 @@ export class BrowserManager {
             card: tab.card,
             start: tab.start,
             faviconKey: tab.preview || tab.card || tab.favicon?.origin !== originOf(wc.getURL()) ? undefined : tab.favicon?.key,
+            media: tab.media,
           },
         ];
       }),
@@ -301,7 +325,123 @@ export class BrowserManager {
       this.pushConsole(tab, details.level, details.message, `${details.sourceId.split("/").at(-1) ?? ""}:${details.lineNumber}`);
     });
     this.guard(wc, tab);
+    this.ownDialogs(tab);
     attachContextMenu(wc, { page: true, openTab: (url) => this.createTab(url, tab.agent) });
+  }
+
+  /**
+   * alert() and confirm() of a tab. Electron's own handler (lib/browser/api/web-contents.ts, the internal `-run-dialog`
+   * event) shows a message box that an answer over CDP (Page.handleJavaScriptDialog) leaves on screen, so pi-gna shows
+   * the box itself and closes it when the agent answers instead (browser_dialog). The box is a sheet on the window that
+   * shows the tab, only while it does (see `syncDialogBox`). prompt() never gets here: Electron's renderer throws
+   * "prompt() is not supported".
+   */
+  private ownDialogs(tab: Tab): void {
+    const emitter = tab.view.webContents as unknown as NodeJS.EventEmitter;
+    emitter.removeAllListeners("-run-dialog");
+    emitter.on("-run-dialog", (info: { dialogType: string; messageText: string; frame?: { origin?: string } }, callback: (accept: boolean, text: string) => void) => {
+      if ((info.dialogType !== "alert" && info.dialogType !== "confirm") || tab.dialog || !this.tabs.has(tab.id)) return callback(false, "");
+      const finish = () => {
+        this.dialogBoxes.get(pending)?.controller.abort();
+        this.dialogBoxes.delete(pending);
+        if (tab.dialog === pending) tab.dialog = undefined;
+        this.staleStill(tab);
+        this.emitState();
+      };
+      const pending: PendingDialog = {
+        type: info.dialogType,
+        message: info.messageText,
+        origin: info.frame?.origin && info.frame.origin !== "null" ? info.frame.origin : undefined,
+        answer: (accept) => {
+          if (tab.dialog !== pending) return;
+          finish();
+          callback(accept, "");
+        },
+        close: finish,
+      };
+      tab.dialog = pending;
+      log.info("browser", `tab ${tab.id} ${info.dialogType} dialog opened`);
+      this.emitState();
+      for (const waiter of tab.dialogWaiters ?? []) waiter(pending);
+      this.syncDialogBox(tab);
+    });
+    // A navigation or crash drops the page's dialog: close the box without answering.
+    emitter.on("-cancel-dialogs", () => {
+      if (!tab.dialog) return;
+      log.info("browser", `tab ${tab.id} dialog cancelled by the page`);
+      tab.dialog.close();
+    });
+  }
+
+  /**
+   * Show the tab's dialog box where the user sees the tab: a sheet on its own window, or on the app window while the
+   * pane shows it. A tab off screen (another chat's, parked in the keeper) shows none; the agent was told and can answer
+   * it, and the box comes back when the tab does. A box without a parent window is app-modal on macOS and stalls the main
+   * process's event loop until it is answered, so there is never one.
+   */
+  private syncDialogBox(tab: Tab): void {
+    const pending = tab.dialog;
+    if (!pending) return;
+    const parent = tab.win && !tab.win.isDestroyed() ? tab.win : this.attached === tab.view ? this.window : undefined;
+    const box = this.dialogBoxes.get(pending);
+    if (box?.parent === parent) return;
+    box?.controller.abort();
+    this.dialogBoxes.delete(pending);
+    if (!parent) return;
+    const controller = new AbortController();
+    this.dialogBoxes.set(pending, { parent, controller });
+    const confirm = pending.type === "confirm";
+    void dialog
+      .showMessageBox(parent, {
+        message: pending.message,
+        detail: pending.origin ? `From ${pending.origin}` : undefined,
+        signal: controller.signal,
+        ...(confirm ? { buttons: ["OK", "Cancel"], defaultId: 0, cancelId: 1 } : { buttons: ["OK"], defaultId: -1, cancelId: 0 }),
+      })
+      .then(
+        (result) => {
+          // Closed by us (answered, moved) or with its window (a tab returning to the pane): not the user's answer.
+          if (controller.signal.aborted || parent.isDestroyed() || tab.dialog !== pending) {
+            if (this.dialogBoxes.get(pending)?.controller === controller) this.dialogBoxes.delete(pending);
+            return;
+          }
+          log.info("browser", `tab ${tab.id} dialog answered in its box (${result.response === 0 ? "OK" : "Cancel"})`);
+          pending.answer(result.response === 0);
+        },
+        () => undefined,
+      );
+  }
+
+  /** Resolves with the next dialog the tab opens; `cancel` stops listening. */
+  nextDialog(tab: Tab): { opened: Promise<PendingDialog>; cancel: () => void } {
+    let waiter: ((dialog: PendingDialog) => void) | undefined;
+    const opened = new Promise<PendingDialog>((resolve) => (waiter = resolve));
+    const waiters = (tab.dialogWaiters ??= new Set());
+    if (waiter) waiters.add(waiter);
+    return { opened, cancel: () => waiter && waiters.delete(waiter) };
+  }
+
+  /** Emulate media features (light/dark, reduced motion) on a tab and the agent's copy of its preview. */
+  async setMedia(tab: Tab, request: MediaRequest | undefined): Promise<MediaEmulation | undefined> {
+    tab.media = request ? mergeMedia(tab.media, request) : undefined;
+    await this.applyMedia(tab);
+    this.staleStill(tab);
+    this.emitState();
+    return tab.media;
+  }
+
+  /** The user turned the agent's media emulation off from the toolbar. */
+  clearMedia(id: string): void {
+    const tab = this.tabs.get(id);
+    if (tab?.media) void this.setMedia(tab, undefined).catch((error) => log.warn("browser", `clearing media emulation failed: ${(error as Error).message}`));
+  }
+
+  private async applyMedia(tab: Tab): Promise<void> {
+    const pages = [tab.view.webContents, tab.agentView?.webContents].filter((wc): wc is WebContents => !!wc && !wc.isDestroyed());
+    for (const wc of pages) {
+      if (!tab.media && !wc.debugger.isAttached()) continue;
+      await cdp(wc, "Emulation.setEmulatedMedia", { features: mediaFeatures(tab.media) });
+    }
   }
 
   /** Popups and target=_blank links open as tabs in the same pane. */
@@ -352,6 +492,7 @@ export class BrowserManager {
     this.order.splice(this.order.indexOf(id), 1);
     if (tab.agent && this.recent.get(tab.agent) === id) this.recent.delete(tab.agent);
     this.tabs.delete(id);
+    tab.dialog?.close();
     this.hintHeaders.delete(tab.view.webContents.id);
     if (tab.preview) this.dropPreview(tab.preview);
     tab.preview = undefined;
@@ -719,7 +860,9 @@ export class BrowserManager {
   }
 
   private reapply(tab: Tab): void {
-    if (!tab.viewport || !this.tabs.has(tab.id)) return;
+    if (!this.tabs.has(tab.id)) return;
+    if (tab.media) void this.applyMedia(tab).catch((error) => log.warn("browser", `media re-apply failed: ${(error as Error).message}`));
+    if (!tab.viewport) return;
     tab.emulatedScale = undefined;
     void this.emulate(tab).catch((error) => log.warn("browser", `viewport re-apply failed: ${(error as Error).message}`));
   }
@@ -794,6 +937,7 @@ export class BrowserManager {
   private applyLayout(): void {
     this.applyPane();
     this.syncParked();
+    for (const tab of this.tabs.values()) this.syncDialogBox(tab);
   }
 
   private applyPane(): void {
@@ -1013,6 +1157,7 @@ export class BrowserManager {
     if (hash || !samePreviewPage(wc.getURL(), want)) await loadPage(wc, want + hash);
     // Device metrics need a page that navigated (see `emulate`).
     if (fresh && tab.agentViewport) await this.emulateAgentView(tab);
+    if (fresh && tab.media) await cdp(wc, "Emulation.setEmulatedMedia", { features: mediaFeatures(tab.media) });
     return { wc, scale: 1, touch: false, viewport: tab.agentViewport, copy: true };
   }
 

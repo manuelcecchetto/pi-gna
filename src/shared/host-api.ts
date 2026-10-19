@@ -593,6 +593,7 @@ export interface HostMethods {
   "browser.command": { args: { id: string; command: BrowserCommand }; result: null };
   "browser.annotate": { args: { on: boolean }; result: null };
   "browser.inspect": { args: { id: string }; result: null };
+  "browser.clearMedia": { args: { id: string }; result: null };
   "browser.viewport": { args: { id: string; request: ViewportRequest | null }; result: ViewportSpec | null };
   "browser.view": { args: { id: string; on: boolean; maxWidth?: number }; result: { stream: string } | null };
   "browser.input": { args: { id: string; input: BrowserInput }; result: { annotation?: Annotation } | null };

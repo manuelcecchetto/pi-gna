@@ -36,7 +36,7 @@ import {
   type IconComponent,
 } from "./icons";
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { BrowserTab, HistoryEntry } from "../../../shared/browser";
+import type { BrowserTab, HistoryEntry, MediaEmulation } from "../../../shared/browser";
 import { kindFor, parseLocalTarget, type TabPreview } from "../../../shared/preview";
 import { DEVICE_PRESETS, fitViewport, type ViewportRequest, type ViewportSpec } from "../../../shared/viewport";
 import { useFavicon } from "../lib/favicons";
@@ -184,6 +184,7 @@ export function BrowserPane() {
             {active.loading ? <X size={15} /> : <RotateCw size={14} />}
           </IconButton>
           <AddressBar tab={active} onSuggesting={setSuggesting} />
+          {active.media && <MediaChip tab={active} media={active.media} />}
           {!active.start && <>
           <IconButton
             title={state.annotating ? "Stop commenting (Esc in page)" : "Comment on elements"}
@@ -752,6 +753,24 @@ function NumberField({ value, onCommit, title, step }: { value: number; onCommit
       onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
       className={`${field} w-14`}
     />
+  );
+}
+
+/** The media features the agent emulates on the tab (browser_emulate): the page may not look like the system's setting, so say so, and let the user stop it. */
+function MediaChip({ tab, media }: { tab: BrowserTab; media: MediaEmulation }) {
+  const label = [media.colorScheme === "dark" ? "Dark" : media.colorScheme === "light" ? "Light" : "", media.reducedMotion === "reduce" ? "Reduced motion" : media.reducedMotion ? "Full motion" : ""]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <button
+      type="button"
+      title="The agent emulates this on the page (prefers-color-scheme, prefers-reduced-motion). Click to follow the system again."
+      onClick={() => browser().clearMedia(tab.id)}
+      className="ml-1 flex shrink-0 items-center gap-1 rounded-full bg-sunken px-2 py-0.5 font-medium text-[11px] text-muted hover:bg-raised hover:text-fg"
+    >
+      {label}
+      <X size={11} />
+    </button>
   );
 }
 

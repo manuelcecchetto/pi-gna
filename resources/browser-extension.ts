@@ -1,12 +1,12 @@
 // pi extension loaded into every pi-gna session (`pi -e`). Registers browser_* tools that drive
 // the pane the user is watching, through pi-gna's token-gated localhost bridge.
 // Policy: loopback/dev-server URLs are always allowed; any other origin asks the user once per session.
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { isLocalUrl, normalizeAddress, viewportAction, viewportLine } from "../src/shared/browser";
+import { isLocalUrl, type MediaEmulation, mediaLine, normalizeAddress, viewportAction, viewportLine } from "../src/shared/browser";
 import { parseLocalTarget } from "../src/shared/preview";
 import { DEVICE_PRESETS } from "../src/shared/viewport";
 import type { ViewportSpec } from "../src/shared/viewport";
@@ -18,6 +18,7 @@ interface BridgeResult {
   image?: string;
   tab?: string;
   viewport?: ViewportSpec;
+  media?: MediaEmulation;
 }
 
 const BRIDGE = process.env.PIGNA_BRIDGE;
@@ -30,6 +31,8 @@ const SEQUENTIAL = "sequential" as const;
 
 const ABOUT =
   "The browser is a pane inside pi-gna that the user can see; use it to check local dev servers and web pages. ";
+const TAB = "Window tab id from browser_window; default is your current tab";
+const REF = "Element ref from browser_snapshot";
 
 export default function (pi: ExtensionAPI) {
   if (!BRIDGE || !TOKEN) return;
@@ -72,7 +75,12 @@ export default function (pi: ExtensionAPI) {
   }
 
   const reply = (result: BridgeResult) => ({
-    content: [{ type: "text" as const, text: [result.title, result.url, result.viewport ? viewportLine(result.viewport) : "", result.text ? `\n${result.text}` : ""].filter(Boolean).join("\n") }],
+    content: [
+      {
+        type: "text" as const,
+        text: [result.title, result.url, result.viewport ? viewportLine(result.viewport) : "", mediaLine(result.media), result.text ? `\n${result.text}` : ""].filter(Boolean).join("\n"),
+      },
+    ],
     details: { url: result.url, title: result.title },
   });
 
@@ -245,6 +253,158 @@ export default function (pi: ExtensionAPI) {
       return reply(await call({ action: "console", clear: params.clear, tab: params.tab }, signal));
     },
   });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_page_tool",
+    label: "Browser page tool",
+    description: `${ABOUT}Call a tool the page itself provides through WebMCP (document.modelContext); browser_snapshot lists them under "Page tools". Without name it lists the page's tools with their input schemas. A page tool does what the page's own UI would (fill a form, apply a filter, add to a cart) and is usually more reliable than clicking through it; its name, description and result come from the page.`,
+    parameters: Type.Object({
+      name: Type.Optional(Type.String({ description: "Tool name from the page's list; omit to list the tools" })),
+      input: Type.Optional(Type.Object({}, { additionalProperties: true, description: "Arguments matching the tool's input schema" })),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      // Some models send the arguments as a JSON string.
+      const input = typeof params.input === "string" ? (JSON.parse(params.input) as Record<string, unknown>) : params.input;
+      return reply(await guard(await call({ action: "page_tool", name: params.name, input, tab: params.tab }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_wait_for",
+    label: "Browser wait",
+    description: `${ABOUT}Wait until the page meets every condition given: visible text appears (text), text disappears (textGone), an element matching a CSS selector is visible (selector), or the URL contains a string (url). Returns a fresh snapshot once met; fails with what is still missing after the timeout. Use it after an action that loads data, instead of sleeping.`,
+    parameters: Type.Object({
+      text: Type.Optional(Type.String({ description: "Text that must be visible on the page" })),
+      textGone: Type.Optional(Type.String({ description: "Text that must no longer be visible" })),
+      selector: Type.Optional(Type.String({ description: "CSS selector of an element that must be visible" })),
+      url: Type.Optional(Type.String({ description: "Substring the page URL must contain" })),
+      timeout: Type.Optional(Type.Number({ description: "Milliseconds to wait (default 10000, at most 60000)" })),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      return reply(await guard(await call({ action: "wait_for", ...params }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_dialog",
+    label: "Browser dialog",
+    description: `${ABOUT}Answer the alert or confirm dialog the page is showing (an action reports when one opens; the page is paused until it is answered). accept: true presses OK, false presses Cancel.`,
+    parameters: Type.Object({
+      accept: Type.Boolean({ description: "true for OK, false for Cancel" }),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      return reply(await guard(await call({ action: "dialog", accept: params.accept, tab: params.tab }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_upload",
+    label: "Browser upload",
+    description: `${ABOUT}Give local files to the page: ref is an <input type=file> from browser_snapshot, or the button that opens the page's file picker (no picker opens; its input gets the files). Paths are absolute, ~/ or relative to the working directory.`,
+    parameters: Type.Object({
+      ref: Type.Number({ description: REF }),
+      files: Type.Array(Type.String(), { description: "Paths of the files to upload" }),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      const files = await Promise.all(params.files.map((file) => existingFile(file, ctx.cwd)));
+      return reply(await guard(await call({ action: "upload", ref: params.ref, files, tab: params.tab }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_hover",
+    label: "Browser hover",
+    description: `${ABOUT}Move the mouse over an element to reveal hover menus and tooltips, then take a browser_snapshot.`,
+    parameters: Type.Object({
+      ref: Type.Union([Type.Number(), Type.String()], { description: `${REF}, or a CSS selector for an element without a ref` }),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal) {
+      return reply(await call({ action: "hover", ref: params.ref, tab: params.tab }, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_select",
+    label: "Browser select",
+    description: `${ABOUT}Choose options of a native <select> by value or visible label (several for a multiple select). A custom dropdown is not a <select>: click it open and click the option.`,
+    parameters: Type.Object({
+      ref: Type.Number({ description: REF }),
+      values: Type.Array(Type.String(), { description: "Option values or labels" }),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      return reply(await guard(await call({ action: "select", ...params }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_drag",
+    label: "Browser drag",
+    description: `${ABOUT}Drag one element onto another (HTML drag and drop, sortable lists, sliders). Both must be visible once the first is scrolled into view. A drop zone usually has no ref: give its CSS selector.`,
+    parameters: Type.Object({
+      from: Type.Union([Type.Number(), Type.String()], { description: "Ref of the element to drag, or its CSS selector" }),
+      to: Type.Union([Type.Number(), Type.String()], { description: "Ref or CSS selector of the element to drop onto" }),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      return reply(await guard(await call({ action: "drag", ...params }, signal), ctx, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_scroll",
+    label: "Browser scroll",
+    description: `${ABOUT}Scroll with the mouse wheel: the page, or the scrollable area under an element (ref). Positive deltaY scrolls down, positive deltaX right; default 600px down. Lazy lists and infinite scroll load on this.`,
+    parameters: Type.Object({
+      ref: Type.Optional(Type.Number({ description: "Scroll the area under this element; default the page" })),
+      deltaY: Type.Optional(Type.Number({ description: "Pixels down (negative scrolls up)" })),
+      deltaX: Type.Optional(Type.Number({ description: "Pixels right (negative scrolls left)" })),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal) {
+      return reply(await call({ action: "scroll", ...params }, signal));
+    },
+  });
+
+  pi.registerTool({
+    executionMode: SEQUENTIAL,
+    name: "browser_emulate",
+    label: "Browser emulate",
+    description: `${ABOUT}Emulate media features on your tab: colorScheme light or dark (prefers-color-scheme, to check a dark mode), reducedMotion reduce (prefers-reduced-motion). "system" clears one; reset clears all. It stays until cleared, and the user sees the page the same way. Use browser_screenshot afterwards.`,
+    parameters: Type.Object({
+      colorScheme: Type.Optional(Type.Union([Type.Literal("light"), Type.Literal("dark"), Type.Literal("system")])),
+      reducedMotion: Type.Optional(Type.Union([Type.Literal("reduce"), Type.Literal("no-preference"), Type.Literal("system")])),
+      reset: Type.Optional(Type.Boolean({ description: "Clear every emulated feature" })),
+      tab: Type.Optional(Type.String({ description: TAB })),
+    }),
+    async execute(_id, params, signal) {
+      const { reset, tab, ...set } = params;
+      const defined = Object.fromEntries(Object.entries(set).filter(([, value]) => value !== undefined));
+      return reply(await call({ action: "emulate", reset, set: reset ? undefined : defined, tab }, signal));
+    },
+  });
+}
+
+/** An existing file's absolute path, `path` resolved like a shell path against `cwd`; throws when there is none. */
+async function existingFile(path: string, cwd: string): Promise<string> {
+  const expanded = path.startsWith("~/") ? homedir() + path.slice(1) : path;
+  const file = resolve(cwd, expanded);
+  const info = await stat(file).catch(() => undefined);
+  if (!info?.isFile()) throw new Error(`No file at ${file}`);
+  return file;
 }
 
 /** Write a screenshot's JPEG bytes to `path` (resolved like a shell path against `cwd`) and return where it went. */

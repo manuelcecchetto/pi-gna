@@ -91,6 +91,10 @@ if (process.env.PIGNA_USER_DATA) {
 // The browser pane's cookies would otherwise be encrypted with a key in the login keychain ("pi-gna Safe Storage"),
 // and with an ad-hoc signature macOS asks for it again after every update. A fixed key is enough for this profile.
 if (process.platform === "darwin") app.commandLine.appendSwitch("use-mock-keychain");
+// WebMCP (document.modelContext): pages register tools the agent lists in browser_snapshot and runs with
+// browser_page_tool. Chromium ships it behind this flag (chrome://flags/#enable-webmcp-testing) and an origin trial;
+// without the flag only pages with a trial token have it, which leaves out every local dev server.
+app.commandLine.appendSwitch("enable-features", "WebMCPTesting");
 // Test instances (PIGNA_BACKGROUND=1) stay out of the way of whoever works on this Mac: no Dock icon or menu bar, and
 // a window that never takes focus, is fully transparent and lets clicks through. CDP still drives and captures it.
 const background = process.env.PIGNA_BACKGROUND === "1";
