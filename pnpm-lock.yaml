@@ -60,6 +60,9 @@ importers:
       marked:
         specifier: 18.0.14
         version: 18.0.14
+      pele:
+        specifier: 1.7.0
+        version: 1.7.0
       qrcode-generator:
         specifier: ^2.0.4
         version: 2.0.4
@@ -2363,6 +2366,10 @@ packages:
   pe-library@0.4.1:
     resolution: {integrity: sha512-eRWB5LBz7PpDu4PUlwT0PhnQfTQJlDDdPa35urV4Osrm0t0AqQFGn+UIkU3klZvwJ8KPO3VbBFsXquA6p6kqZw==}
     engines: {node: '>=12', npm: '>=6'}
+
+  pele@1.7.0:
+    resolution: {integrity: sha512-nkYb5VnxsTgwD4NThF6j4pJEC4AhGLJ9ptiL4q/vIzGr9q6ZtoRE3hFr94LgHpZ/xy56d1pw42UAQGaZkjM5XA==}
+    engines: {node: '>=20'}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -5054,6 +5061,8 @@ snapshots:
       '@napi-rs/canvas': 1.0.10
 
   pe-library@0.4.1: {}
+
+  pele@1.7.0: {}
 
   picocolors@1.1.1: {}
 

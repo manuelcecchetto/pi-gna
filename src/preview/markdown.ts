@@ -1,6 +1,7 @@
 // Rendered Markdown: marked (GFM) + DOMPurify from the app's own pipeline, shiki fences, heading anchors, a table of
 // contents for long documents and links/images resolved against the preview origin. The file is untrusted; the
 // viewer CSP additionally blocks remote images and any script.
+import { hydrateDiagrams } from "../renderer/src/lib/diagrams";
 import { highlightWithin } from "../renderer/src/lib/highlight";
 import { markdownBlockLines, renderMarkdown } from "../renderer/src/lib/markdown";
 import { PREVIEW_LIMITS } from "../shared/preview";
@@ -163,6 +164,7 @@ export async function showMarkdown(source: Source): Promise<void> {
     }
   });
   highlightWithin(article);
+  hydrateDiagrams(article);
   const hash = decodeURIComponent(window.location.hash.slice(1));
   if (hash) scrollToAnchor(hash);
 }

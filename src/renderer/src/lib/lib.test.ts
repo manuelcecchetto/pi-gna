@@ -282,6 +282,26 @@ describe("markdownToHtml visual fences", () => {
   });
 });
 
+describe("markdownToHtml mermaid fences", () => {
+  it("wraps a closed fence's code block for the diagram, with visuals on or off", () => {
+    for (const options of [{}, { visuals: true }]) {
+      const html = markdownToHtml("Flow:\n\n```mermaid\nflowchart LR\n  A --> B\n```", options);
+      expect(html).toContain('<div class="diagram" data-diagram><div class="code-block">');
+      expect(html).toContain('<code data-lang="mermaid">flowchart LR\n  A --&gt; B</code>');
+    }
+  });
+
+  it("keeps a fence that is still streaming a plain code block", () => {
+    const html = markdownToHtml("```mermaid\nflowchart LR\n  A -->");
+    expect(html).not.toContain("data-diagram");
+    expect(html).toContain('<code data-lang="mermaid">');
+  });
+
+  it("keeps a mermaid fence nested in a longer fence as code", () => {
+    expect(markdownToHtml("````md\n```mermaid\ngraph TD\n```\n````")).not.toContain("data-diagram");
+  });
+});
+
 describe("applyQueueOp", () => {
   const queues = { steering: ["fix the test", "also lint"], followUp: ["then summarize", "fix the test"] };
 

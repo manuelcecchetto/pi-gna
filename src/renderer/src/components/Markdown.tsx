@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { type ChatLinks, type ChatUi, ChatUiProvider, type ChatUiState, useChatActions, useChatUiHandle, useChatUi } from "../lib/chat-ui";
 import { VisualFrame } from "./VisualFrame";
 import { highlightWithin, observeHighlight } from "../lib/highlight";
+import { hydrateDiagrams, releaseDiagrams } from "../lib/diagrams";
 import { type LexedMarkdown, lexMarkdown, renderMarkdownBlocks, renderMarkdownCached } from "../lib/markdown";
 import { decorateWebLinks, loadChatImages, openCardLink, openFileLink, resolveCardLinks, resolveFileLinks } from "../lib/preview";
 
@@ -135,6 +136,12 @@ export const Markdown = memo(function Markdown({
   }, [blocks, streaming]);
   // Code blocks highlight as they near the viewport, once the message is complete.
   useEffect(() => (streaming ? undefined : highlightWithin(ref.current)), [blocks, streaming]);
+  // A Mermaid fence draws as soon as it closes, streaming or not: its block keeps its nodes once another follows it.
+  useEffect(() => hydrateDiagrams(ref.current), [blocks]);
+  useEffect(() => {
+    const root = ref.current;
+    return () => releaseDiagrams(root);
+  }, []);
   // File links and embedded images settle once the message is complete, not on every streamed token.
   useEffect(() => {
     if (!streaming) void resolveFileLinks(ref.current, links, homeDir).then(() => loadChatImages(ref.current, links));

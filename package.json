@@ -55,6 +55,7 @@
     "electron-vite": "5.0.0",
     "jszip": "^3.10.2",
     "marked": "18.0.14",
+    "pele": "1.7.0",
     "qrcode-generator": "^2.0.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",

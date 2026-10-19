@@ -196,7 +196,9 @@ const base = `http://127.0.0.1:${server.address().port}`;
 
 // The app, with a pi stand-in that leaves its bridge address and token behind.
 const pi = join(work, "pi.mjs");
-writeFileSync(pi, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(join(work, "env.json"))}, JSON.stringify({ url: process.env.PIGNA_BRIDGE, token: process.env.PIGNA_TOKEN }));\nawait import(${JSON.stringify(join(root, "scripts", "fake-pi.mjs"))});\n`);
+// Only a chat's pi has a bridge: pi-gna also runs the binary without one (model lists, version checks), which must not
+// overwrite the token.
+writeFileSync(pi, `#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nif (process.env.PIGNA_BRIDGE) writeFileSync(${JSON.stringify(join(work, "env.json"))}, JSON.stringify({ url: process.env.PIGNA_BRIDGE, token: process.env.PIGNA_TOKEN }));\nawait import(${JSON.stringify(join(root, "scripts", "fake-pi.mjs"))});\n`);
 chmodSync(pi, 0o755);
 const app = spawn("node", [join(root, "bin", "pi-gna.mjs"), `--remote-debugging-port=${port}`, `--inspect=${inspect}`], {
   cwd: root,

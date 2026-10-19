@@ -1843,8 +1843,8 @@ Verified live (pi 1.0.0, Oct 2026):
   joined slices are byte-identical to the whole block's HTML (`highlight.test.ts`). Blocks over 30 KB stay plain
   (TypeScript costs up to ~9 ms per KB); the cache keys by language, length and a cyrb53 hash. `CodeView` (tool
   results, a visual's source) highlights the same way; `highlight()` runs at once for the file previews. pi-gna sessions get `--append-system-prompt resources/pigna-prompt.md`, which tells the
-  model its replies render as Markdown here (tables, code fences, task lists; no remote images, HTML, math,
-  footnotes or Mermaid). It only applies to pi-gna sessions; opening a terminal session in pi-gna adds that
+  model its replies render as Markdown here (tables, code fences, task lists, Mermaid diagrams; no remote images, HTML,
+  math or footnotes). It only applies to pi-gna sessions; opening a terminal session in pi-gna adds that
   prompt section on its next request.
 - Context meter (`ContextMeter`, Codex-style): a ring with the percent next to the send button; hover for a
   card with tokens in context / window, where pi auto-compacts (`contextWindow - reserveTokens`, read from
@@ -1988,6 +1988,32 @@ and `strokeWidth` thickens one. A new icon is a new `icon()` entry drawn in that
 markdown link icons in `styles.css` (`--file-icon` data URIs) reuse the same paths. That class is what scripts select
 an icon by (`svg.icon-pin` in the remote e2e): renaming an icon means grepping `scripts/` too, which typecheck does not
 cover (the pin check still looked for `svg.lucide-pin` after the switch).
+
+## Diagrams
+
+A ```` ```mermaid ```` fence in a reply or a Markdown preview draws as a diagram with Pele (`pele`, obsidianmd/pele, MIT,
+no dependencies; every Mermaid 12 type), always on, not behind the Inline visuals setting. `markdown.ts` wraps a closed
+fence's ordinary code block in `<div class="diagram" data-diagram>`; `hydrateDiagrams` (`lib/diagrams.ts`, called from
+`Markdown.tsx` on every block change and from `preview/markdown.ts`) mounts Pele over it and hides the code block, which
+stays as Source and as the fallback: a diagram Pele cannot draw keeps it, with the parse error's first line and
+expectation above it as text (Pele's messages quote the source). A fence still streaming stays a code block; once it
+closes its block's HTML no longer changes (`patchBlocks` keeps its nodes), so it draws mid-answer and stays drawn.
+
+- Same document, no frame: Pele's output is SVG shapes and text (labels escaped, no scripts, handlers or HTML labels;
+  `click` callbacks dropped), links and images are off, and each SVG goes through DOMPurify's SVG profile (`sanitize`
+  option of `mount`). Unlike a visual it costs no process, and Pele's own limits (50,000 source characters, 5,000
+  edges, 4 MB of SVG) bound a hostile one.
+- Loaded on demand: `import("pele/lazy")` is about 38 KB and each diagram type is its own chunk (20 to 45 KB), so a
+  chat without diagrams loads none of it (the full bundle is 680 KB).
+- `mount` follows the container's width (Pele reflows and may turn a wide `LR` flowchart vertical under 640 px) and
+  shrinks a diagram that still does not fit, with zoom (pinch, ⌘-wheel, buttons shown on hover). Font size is the
+  prose's; `--pele-font` is the app's sans.
+- Theme: `.diagram` maps `--pele-*` onto the app tokens (`--canvas`, `--fg`, `--panel`, `--line-strong`, `--accent`,
+  `--bad`) and the visual kit's categorical palette (`light-dark()`), in both `styles.css` and the preview's `style.css`,
+  so a theme or mode change recolours drawn diagrams without drawing them again. Colors a diagram fixes itself
+  (`style`, `classDef`) stay; the prompt asks the agent not to set them.
+- The prompts: `pigna-prompt.md` says Mermaid renders and when to use it; `pigna-visual-prompt.md` sends branching
+  flows, state machines and sequences to a mermaid fence instead of hand-drawn `<svg>`.
 
 ## Visuals
 

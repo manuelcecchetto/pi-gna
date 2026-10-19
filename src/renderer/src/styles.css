@@ -596,6 +596,79 @@ body,
     animation: none;
   }
 }
+/* Mermaid fences drawn by Pele (lib/diagrams.ts): its variables follow the theme, so a theme change recolours a drawn
+   diagram without drawing it again. Fixed colours a diagram sets itself (style, classDef) stay. */
+.diagram {
+  --pele-bg: var(--canvas);
+  --pele-fg: var(--fg);
+  --pele-muted: var(--muted);
+  --pele-line: var(--muted);
+  --pele-surface: var(--panel);
+  --pele-surface-alt: color-mix(in srgb, var(--panel) 55%, var(--canvas));
+  --pele-border: var(--line-strong);
+  --pele-accent: var(--accent);
+  --pele-critical: var(--bad);
+  --pele-error: var(--bad);
+  --pele-font: var(--font-sans);
+  --pele-font-mono: var(--font-mono);
+  --pele-radius: 6px;
+  /* The visuals' categorical palette (resources/visual/kit.css): eight hues apart, so pie slices and git branches differ. */
+  --pele-series-1: var(--accent);
+  --pele-series-2: light-dark(#d08a1c, #e8a33d);
+  --pele-series-3: light-dark(#1f9d6f, #3fb68b);
+  --pele-series-4: light-dark(#d63c5a, #e5566f);
+  --pele-series-5: light-dark(#7a5ae0, #9b7cf0);
+  --pele-series-6: light-dark(#1593a6, #2fb3c4);
+  --pele-series-7: light-dark(#a8922e, #c9b45a);
+  --pele-series-8: light-dark(#cc5f30, #e07b4f);
+}
+.diagram-view {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+/* Zoom (a diagram shrunk to fit): its buttons sit over the drawing, so they show on hover, like the actions. */
+.diagram .pele-zoom {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.diagram:hover .pele-zoom,
+.diagram:focus-within .pele-zoom {
+  opacity: 1;
+}
+.diagram-note {
+  font-size: 12px;
+  color: var(--faint);
+}
+.diagram-actions {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 22px;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.diagram:hover .diagram-actions,
+.diagram:focus-within .diagram-actions {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .diagram-actions {
+    opacity: 1;
+  }
+}
+.diagram-actions button {
+  font: 11px var(--font-sans);
+  color: var(--faint);
+  border: 0;
+  background: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.diagram-actions button:hover {
+  background: var(--raised);
+  color: var(--fg);
+}
 .visual-frame {
   display: block;
   width: 100%;

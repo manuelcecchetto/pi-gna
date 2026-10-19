@@ -82,7 +82,11 @@ const marked = new Marked({
           return `<div class="visual" data-visual><pre class="visual-src" hidden>${escapeHtml(text)}</pre></div>`;
         }
       }
-      return note + `<div class="code-block"><header><span>${label}</span><button type="button" data-copy>Copy</button></header><pre><code data-lang="${label}">${escapeHtml(text)}</code></pre></div>`;
+      const block = `<div class="code-block"><header><span>${label}</span><button type="button" data-copy>Copy</button></header><pre><code data-lang="${label}">${escapeHtml(text)}</code></pre></div>`;
+      // A finished Mermaid fence: the component draws it with Pele over its code block, which stays as the source
+      // and the fallback (lib/diagrams.ts). While it streams it is a plain code block.
+      if (label === "mermaid" && isClosedFence(raw)) return `<div class="diagram" data-diagram>${block}</div>`;
+      return note + block;
     },
     // Local file targets get no href (nothing can navigate); the component resolves and opens them.
     link({ href, tokens }) {
@@ -159,7 +163,7 @@ let purifier: ReturnType<typeof DOMPurify> | undefined;
 function sanitize(html: string): string {
   if (!purifier) {
     purifier = DOMPurify(window);
-    purifier.setConfig({ ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-file", "data-card", "data-kind", "data-path", "data-image", "data-width", "data-height"], FORBID_TAGS: ["style", "form", "input"] });
+    purifier.setConfig({ ADD_ATTR: ["data-lang", "data-copy", "data-visual", "data-diagram", "data-file", "data-card", "data-kind", "data-path", "data-image", "data-width", "data-height"], FORBID_TAGS: ["style", "form", "input"] });
   }
   return purifier.sanitize(html);
 }

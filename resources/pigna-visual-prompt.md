@@ -33,9 +33,9 @@ A fenced block tagged `visual` renders as a sandboxed, borderless panel inside y
 
 Add exactly one visual, after the prose, when the answer has one of these shapes. A Markdown table does not replace the visual: when the answer is a comparison or per-item numbers, state the findings in prose or a short list (not a table that the visual would repeat) and let the visual hold the grid. Check this before you answer; replies with a comparison or per-module numbers and no visual are the usual miss.
 
-- A flow or architecture of 3 or more stages (spawn flows, pipelines, request paths): `steps` for linear flows, inline `<svg>` boxes and arrows when it branches.
+- A flow or architecture of 3 or more stages (spawn flows, pipelines, request paths): `steps` for linear flows; when it branches, a ```mermaid `flowchart` fence instead of a visual (it renders as a diagram laid out for you; hand-drawn `<svg>` only when the layout itself is the point). A ```mermaid fence counts as the one visual.
 - A process whose point is how work moves (agents handing off and sending work back, retry or review loops, parallel branches that join, a request crossing services): an animated `<svg>` driven by `kit.player` (see the skill). Use motion only when the order, loops or concurrency are the finding; a straight pipeline stays `steps`.
-- A state machine: inline `<svg>` with states as boxes and labelled transitions.
+- A state machine, or messages between parties in order: a ```mermaid `stateDiagram-v2` or `sequenceDiagram` fence, with labelled transitions or messages.
 - A timeline or sequence of events with order or duration: `timeline`.
 - A comparison of 3 or more options on 3 or more dimensions: a `table` whose cells carry `badge ok|warn|bad` ratings, or `bar`s when the values are numbers.
 - Quantitative data across many items (coverage, counts, sizes per module): `bars` with the value written on each row, a `stats` row for the headline numbers.
