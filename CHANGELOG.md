@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The phone app uses the room on a big screen. From 900 px wide (an iPad, or a TV) the projects and chats stay in a list on the left and the chat or page you open shows beside it, with the open chat marked; before, a tablet or TV got the phone's single column stretched. The page also tells a TV app which chat or project is on screen, so what you say into the remote's mic goes there.
+
 ## 0.28.0 - 2026-10-20
 
 - Dictation works for remote clients. A paired device can upload a recording (16 kHz mono WAV) and get its text from the speech model on your Mac (`dictation.transcribeUpload`), then send it to a chat, so a TV app can take what you say into the remote's mic. The recording is deleted as soon as it is transcribed. Dictation must be on in Settings > Agent > Beta.

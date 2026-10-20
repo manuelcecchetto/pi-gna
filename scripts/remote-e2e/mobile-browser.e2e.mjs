@@ -58,7 +58,8 @@ b.onclick=()=>hit('click');i.oninput=()=>hit('input',i.value);addEventListener('
     await until("the projects screen", () => exists('[data-testid="open-folder"]'), 30_000, 250);
     check(!(await exists('[data-testid="open-browser"]')), "the projects header has no browser button");
     await A.ok("browser.newTab", { url });
-    check(await tap("project"), "the projects list");
+    // The rows arrive after the header: tap once one is there, as openChatOnPhone does.
+    await until("the projects list", () => tap("project"), 20_000, 250);
     await until("the chats screen", present("Earlier question 1"));
     await tap("Earlier question 1");
     await until("the chat's browser button", () => exists('[data-testid="open-browser"]'), 30_000, 250);

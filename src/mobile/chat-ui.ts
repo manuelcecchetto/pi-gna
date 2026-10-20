@@ -14,6 +14,7 @@ import type { QueueOp } from "../shared/queue";
 import type { HostClient } from "./client/host-client";
 import { Sheet } from "./Sheets";
 import { toast } from "./toasts";
+import { setScreenChat } from "./screen";
 
 const lightbox = createStore<LightboxView | undefined>(undefined);
 export const useLightbox = (): LightboxView | undefined => useStore(lightbox, (view) => view);
@@ -25,6 +26,7 @@ export const stepLightbox = (delta: number): void => lightbox.set((view) => view
 let showing: { handle: string; cwd: string } | undefined;
 export const showChat = (chat: { handle: string; cwd: string } | undefined): void => {
   showing = chat;
+  setScreenChat(chat);
 };
 
 /**

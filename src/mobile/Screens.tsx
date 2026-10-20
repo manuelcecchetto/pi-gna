@@ -1,4 +1,5 @@
-// Projects and Chats: the two list screens above a chat.
+// Projects and Chats: the two list screens above a chat, and what a wide screen shows beside them before one opens.
+import pigna from "../renderer/src/assets/setup/pigna-cool.webp";
 import { ChevronLeft, ChevronRight, EyeOff, FolderOpen, Pin, Search, Settings, SquarePen } from "../renderer/src/components/icons";
 import { useState } from "react";
 import { useStore } from "../renderer/src/lib/store";
@@ -170,10 +171,10 @@ export function Projects({ client, homeDir, push }: { client: HostClient; homeDi
   );
 }
 
-function ChatRow({ item, onOpen, onMenu }: { item: ChatItem; onOpen: () => void; onMenu: () => void }) {
+function ChatRow({ item, active, onOpen, onMenu }: { item: ChatItem; active: boolean; onOpen: () => void; onMenu: () => void }) {
   const { guard, ...handlers } = useLongPress(onMenu);
   return (
-    <button type="button" className={row} onClick={guard(onOpen)} {...handlers} data-testid="chat-row">
+    <button type="button" className={`${row} ${active ? "bg-raised" : ""}`} aria-current={active || undefined} onClick={guard(onOpen)} {...handlers} data-testid="chat-row">
       <div className="min-w-0 flex-1">
         <div className="line-clamp-2 text-[15px] text-fg">{item.title}</div>
         {item.time !== undefined && <div className="font-mono text-[11px] text-faint">{relativeTime(item.time)}</div>}
@@ -184,7 +185,8 @@ function ChatRow({ item, onOpen, onMenu }: { item: ChatItem; onOpen: () => void;
   );
 }
 
-export function Chats({ client, homeDir, cwd, push, back }: { client: HostClient; homeDir: string; cwd: string; push: (route: Route) => void; back: () => void }) {
+/** `selected`: the session file or handle of the chat open beside the list (a wide screen). */
+export function Chats({ client, homeDir, cwd, push, back, selected }: { client: HostClient; homeDir: string; cwd: string; push: (route: Route) => void; back: () => void; selected?: string }) {
   const projects = useStore(client.store, (s) => s.global.projects);
   const pins = useStore(client.store, (s) => s.global.ui?.pins);
   const attention = useStore(client.store, (s) => s.global.attention);
@@ -242,7 +244,7 @@ export function Chats({ client, homeDir, cwd, push, back }: { client: HostClient
         {all?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No chats in this project.</div>}
         {all && all.length > 0 && items?.length === 0 && <div className="p-6 text-center text-[13.5px] text-faint">No chat matches.</div>}
         {items?.map((item) => (
-          <ChatRow key={item.path} item={item} onOpen={() => open(item)} onMenu={() => setMenu(item)} />
+          <ChatRow key={item.path} item={item} active={selected !== undefined && (selected === item.path || selected === item.handle)} onOpen={() => open(item)} onMenu={() => setMenu(item)} />
         ))}
       </div>
       {menu && (
@@ -277,6 +279,21 @@ export function PageSoon({ route, back }: { route: Extract<Route, { screen: "pag
     <div className="flex min-h-0 flex-1 flex-col">
       <Header title={PAGE_TITLES[route.page]} subtitle={name(route.cwd)} onBack={back} />
       <div className="p-6 text-center text-[13.5px] text-faint">This page is not on the phone yet. Use the Mac for now.</div>
+    </div>
+  );
+}
+
+/** A wide screen's right side while the list on the left has nothing open: what to pick, or a new chat in the project. */
+export function Detailless({ cwd, push }: { cwd?: string; push: (route: Route) => void }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-8 text-center" data-testid="detailless">
+      <img src={pigna} alt="" className="h-40 w-auto select-none opacity-90" draggable={false} />
+      <div className="text-[15px] text-muted">{cwd ? `Pick a chat in ${name(cwd)}, or start one.` : "Pick a project to see its chats."}</div>
+      {cwd && (
+        <button type="button" onClick={() => push({ screen: "chat", cwd })} className="flex items-center gap-2 rounded-xl border border-line-strong bg-panel px-4 py-2.5 text-[14.5px] text-fg active:bg-raised" data-testid="detailless-new-chat">
+          <SquarePen size={17} /> New chat
+        </button>
+      )}
     </div>
   );
 }

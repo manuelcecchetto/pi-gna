@@ -1,4 +1,5 @@
-// The paired app: one HostClient for the page, the connection banner, and the Projects -> Chats -> Chat stack.
+// The paired app: one HostClient for the page, the connection banner, and the Projects -> Chats -> Chat stack; on a
+// wide screen (tablet, TV) the list stays on the left and the chat or page opens beside it.
 import { useEffect, useMemo, useState } from "react";
 import { chatOfHash } from "./push";
 import { ChatUiProvider } from "../renderer/src/lib/chat-ui";
@@ -16,13 +17,28 @@ import { AtpScreen } from "./Atp";
 import { GithubScreen } from "./Github";
 import { BrowserScreen } from "./Browser";
 import { FileScreen } from "./FileView";
-import { Chats, PageSoon, Projects } from "./Screens";
+import { Chats, Detailless, PageSoon, Projects } from "./Screens";
+import { onOpenChat, setScreenProject } from "./screen";
 import { SettingsScreen } from "./SettingsScreen";
 import { noticeFor } from "./notices";
 import { toast, Toasts } from "./toasts";
 
 type ChatRoute = Extract<Route, { screen: "chat" }>;
 const chatKey = (route: ChatRoute) => `${route.sessionPath ?? ""}:${route.handle ?? ""}`;
+
+/** From this width the list and the open chat or page show side by side. */
+const SPLIT = "(min-width: 900px)";
+
+function useSplit(): boolean {
+  const [split, setSplit] = useState(() => matchMedia(SPLIT).matches);
+  useEffect(() => {
+    const query = matchMedia(SPLIT);
+    const sync = () => setSplit(query.matches);
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return split;
+}
 
 const BANNER: Partial<Record<ConnectionState, string>> = {
   connecting: "Connecting…",
@@ -60,6 +76,12 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
   );
   const [homeDir, setHomeDir] = useState("");
   const { route, push, replace, back } = useRoute();
+  const split = useSplit();
+  // The project whose chats the list shows: the route's, kept under a file or the browser, none on the projects list.
+  const [listCwd, setListCwd] = useState<string>();
+  const routeCwd = route.screen === "projects" ? undefined : "cwd" in route ? route.cwd : listCwd;
+  if (routeCwd !== listCwd) setListCwd(routeCwd);
+  useEffect(() => setScreenProject(routeCwd), [routeCwd]);
 
   // A chat started here has a session file only once pi writes it, which the host does not announce: list again when
   // a list screen comes up, and on one when a live chat starts, stops or gets its file. A settled run's row comes as
@@ -67,7 +89,7 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
   const liveKey = useStore(client.store, (s) =>
     Object.values(s.global.attention).map((c) => `${c.handle}:${c.sessionPath ?? ""}`).join("|"),
   );
-  const listing = route.screen === "projects" || route.screen === "chats";
+  const listing = split || route.screen === "projects" || route.screen === "chats";
   useEffect(() => {
     if (listing) void client.refreshProjects();
   }, [client, liveKey, listing]);
@@ -100,20 +122,26 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
       if (summary) push({ screen: "chat", cwd: summary.cwd, handle, title: summary.title });
       return !!summary;
     };
+    // A chat that just started (the TV's mic, a notification at launch) has its summary only after the next sync: wait once.
+    const openSoon = (handle: string) => {
+      stop?.();
+      if (!open(handle)) stop = client.store.subscribe(() => summaryOf(handle) && (stop?.(), open(handle)));
+    };
     const fromHash = () => {
       const handle = chatOfHash(location.hash);
       if (!handle) return;
       history.replaceState(history.state, "", location.pathname);
-      // The attention summaries arrive with the first sync: wait for the chat's once.
-      if (!open(handle)) stop = client.store.subscribe(() => summaryOf(handle) && (stop?.(), open(handle)));
+      openSoon(handle);
     };
     const onMessage = (event: MessageEvent) => {
       if (event.data?.type === "open-chat" && typeof event.data.chat === "string") open(event.data.chat);
     };
     fromHash();
     navigator.serviceWorker?.addEventListener("message", onMessage);
+    const offOpenChat = onOpenChat(openSoon);
     return () => {
       stop?.();
+      offOpenChat();
       navigator.serviceWorker?.removeEventListener("message", onMessage);
     };
     // Mount only: `push` is stable.
@@ -131,30 +159,55 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
   const joined = useStore(client.store, (s) => (over ? over in s.chats : false));
   const chat = route.screen === "chat" ? route : joined ? lastChat : undefined;
 
+  // Split: the list's Back leaves the project even with a chat open beside it.
+  const listBack = () => (route.screen === "chats" ? back() : push({ screen: "projects" }));
+  const list =
+    split || route.screen === "projects" || route.screen === "chats"
+      ? split
+        ? routeCwd
+          ? <Chats client={client} homeDir={homeDir} cwd={routeCwd} push={push} back={listBack} selected={chat && (chat.sessionPath ?? chat.handle)} />
+          : <Projects client={client} homeDir={homeDir} push={push} />
+        : route.screen === "projects"
+          ? <Projects client={client} homeDir={homeDir} push={push} />
+          : <Chats client={client} homeDir={homeDir} cwd={routeCwd ?? ""} push={push} back={back} />
+      : undefined;
+  const detail = (
+    <>
+      {split && (route.screen === "projects" || route.screen === "chats") && <Detailless cwd={routeCwd} push={push} />}
+      {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
+      {route.screen === "file" && <FileScreen key={`${route.path}:${route.line ?? ""}`} client={client} handle={route.handle} path={route.path} line={route.line} push={push} back={back} />}
+      {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} push={push} back={back} />}
+      {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
+      {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
+      {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
+      {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
+      {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
+      {chat && (
+        <div className={route.screen === "chat" ? "contents" : "invisible absolute inset-0 flex flex-col"} inert={route.screen !== "chat"}>
+          <ChatScreen key={chatKey(chat)} client={client} route={chat} back={back} push={push} replace={replace} />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <ChatUiProvider ui={ui}>
       <ThemeRoot client={client} ui={ui} cwd={"cwd" in route ? route.cwd : undefined} />
       {/* No top padding: every screen's Header covers the status bar itself. */}
       <div className="safe-area relative flex h-full flex-col bg-canvas pt-0">
         <ConnectionBanner client={client} />
-        {/* The screen's box: a chat covered by a file or the browser keeps exactly this size, so its scroll position holds. */}
-        <div className="relative flex min-h-0 flex-1 flex-col">
-          {route.screen === "projects" && <Projects client={client} homeDir={homeDir} push={push} />}
-          {route.screen === "chats" && <Chats client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
-          {route.screen === "settings" && <SettingsScreen client={client} section={route.section} push={push} back={back} signOut={signOut} />}
-          {route.screen === "file" && <FileScreen key={`${route.path}:${route.line ?? ""}`} client={client} handle={route.handle} path={route.path} line={route.line} push={push} back={back} />}
-          {route.screen === "browser" && <BrowserScreen key={route.tab} client={client} handle={route.handle} initialTab={route.tab} push={push} back={back} />}
-          {route.screen === "page" && route.page === "board" && <BoardScreen key={route.cwd} client={client} cwd={route.cwd} cardId={route.cardId} push={push} back={back} />}
-          {route.screen === "page" && route.page === "laments" && <LamentsScreen client={client} cwd={route.cwd} push={push} back={back} />}
-          {route.screen === "page" && route.page === "github" && <GithubScreen client={client} cwd={route.cwd} push={push} back={back} />}
-          {route.screen === "page" && route.page === "atp" && <AtpScreen client={client} homeDir={homeDir} cwd={route.cwd} push={push} back={back} />}
-          {route.screen === "page" && route.page !== "board" && route.page !== "laments" && route.page !== "github" && route.page !== "atp" && <PageSoon route={route} back={back} />}
-          {chat && (
-            <div className={route.screen === "chat" ? "contents" : "invisible absolute inset-0 flex flex-col"} inert={route.screen !== "chat"}>
-              <ChatScreen key={chatKey(chat)} client={client} route={chat} back={back} push={push} replace={replace} />
-            </div>
-          )}
-        </div>
+        {split ? (
+          <div className="flex min-h-0 flex-1" data-testid="split">
+            <div className="flex w-[340px] shrink-0 flex-col border-r border-line">{list}</div>
+            {/* The screen's box: a chat covered by a file or the browser keeps exactly this size, so its scroll position holds. */}
+            <div className="relative flex min-w-0 min-h-0 flex-1 flex-col">{detail}</div>
+          </div>
+        ) : (
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {list}
+            {detail}
+          </div>
+        )}
       </div>
       <Toasts />
       <Lightbox />

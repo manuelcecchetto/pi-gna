@@ -581,7 +581,14 @@ service-worker `push`/`notificationclick`, doc updates in `docs/DESIGN.md`, a CH
 
 ### Mobile chat slice (T19, `src/mobile`)
 
-- **Stack:** Projects (`chat.list`, ordered like the sidebar by `projectViews` with the host's pins) -> Chats (rows carry the live chat's attention mark, matched by `sessionPath`) -> Chat, on `history` so the back swipe works. A reload inside a chat lands on Projects.
+- **Stack:** Projects (`chat.list`, ordered like the sidebar by `projectViews` with the host's pins) -> Chats (rows carry the live chat's attention mark, matched by `sessionPath`) -> Chat, on `history` so the back swipe works. A reload inside a chat lands on Projects. From 900 px wide (an iPad, a TV) the list
+  stays on the left (Projects, or the project's Chats with the open chat marked) and the chat, page, settings, file or
+  browser opens beside it, the same route stack underneath; the list's Back goes to Projects.
+- **Driven from outside:** the page publishes what is on screen as `window.pignaScreen` and a `pigna-screen` event
+  (`{ handle, cwd }` of the chat, else `{ cwd }` of the project, else `{}`; `src/mobile/screen.ts`), and opens a chat on a
+  `pigna-open-chat` event whose detail is its handle. The TV app (pigna-tv, a WebView of this page) reads the first when
+  the remote's mic is pressed, to send what it heard to that chat or a new chat in that project, and fires the second to
+  show a chat it started. Frames cannot reach either: they are on the top window only.
 - **Joining a chat:** `chat.open { request: { cwd, sessionPath } }` (or `chat.attach` for a handle the list already knows), then `HostClient.setChats([handle])` subscribes the stream and reads `chat.snapshot`; `chat.viewing` marks it seen. Leaving sends `chat.viewing false` + `chat.detach` and drops the subscription; the host keeps a running chat going. When the stream is live again after a drop the screen attaches once more (the lease may have lapsed).
 - **Transcript:** the desktop's `Transcript`, `Activity`, `ToolDetails`, `Markdown`, `Dialogs` and `QueueCard`, unchanged but for `src/renderer/src/lib/chat-ui.tsx`: they read expansion state, board cards, wallpaper/visuals and actions (lightbox, open link, answer dialog, edit queue) from a `ChatUi` context. The desktop provides it from its store in `renderer/src/main.tsx`; the phone from `src/mobile/chat-ui.ts` (no visual frames or wallpaper, links open in the phone's browser). "Show earlier turns" pages `chat.snapshot { before }` through `HostClient.loadEarlier`, keeping the scroll position; scrolling within 600 px of the top loads the next page by itself. Touch sizing uses the `touch:` Tailwind variant (`pointer: coarse`).
 - **Composer:** text drafts are per chat in `localStorage` (`pigna:draft:<session file>`). Send is a steer while the agent works (`chat.send mode: "send"`), Queue is `mode: "followUp"`, Stop asks first, then `chat.interrupt` and the returned queued texts go in front of the draft. `@` mentions and slash-command pickers are later nodes.
@@ -665,6 +672,7 @@ offscreen window of the instance itself (iPhone 15 size, mobile user agent, touc
 | `mobile-chat` | Projects, Chats, Chat (first page, earlier turns on scroll up), a prompt from the phone's composer, Allow, following the stream, Stop with confirmation, then the composer's chrome (`composerChecks`). |
 | `mobile-meter` | The context meter outside a run watched from start: a chat opened idle, one that finished while the phone was away, a run joined mid-way (while it streams and after), and a Stop. |
 | `mobile-transcript` | Tool sheets (no Expand all or turn list in the header), images and the lightbox, links, visuals and their watchdog. |
+| `mobile-split` | The wide layout at TV (960x540) and iPad sizes: the list beside the chat, the open chat marked, the list's Back, `pignaScreen` and `pigna-open-chat`; the phone keeps the stack. |
 | `mobile-projects` | Projects and Chats parity: search, long-press sheets, board from a chat, Kanban off, Close chat, pins, the folder browser. |
 | `mobile-board` | The Kanban board: counts, card edits with conflicts, tags, GitHub links, moves, drag reorder, add card with a photo, task chats. |
 | `mobile-laments`, `mobile-github`, `mobile-atp`, `mobile-settings` | Those pages' parity with the desktop (ATP runs a three-node plan on fake-pi workers; GitHub reads a public repository through the host's `gh`). |
