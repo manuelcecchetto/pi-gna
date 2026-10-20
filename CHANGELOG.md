@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.29.1 - 2026-10-20
+
 - No keyboard on the TV. In the TV app the composer is a bar that says to press the mic on the remote, which sends what you say to the chat on screen, and the chat and project lists have no search box; the Stop button stays while the agent works.
 
 ## 0.29.0 - 2026-10-20
