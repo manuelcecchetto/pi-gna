@@ -1,6 +1,9 @@
 // What is on screen, for a client that drives this page from outside: the TV app (pigna-tv) sends what the remote's
 // mic hears to the chat or project shown here, and opens a chat it started. Other clients ignore both.
 
+/** Opened by the TV app (its WebView adds `pigna-tv` to the user agent): no keyboard there, the remote's mic is the input. */
+export const onTv = (userAgent: string = navigator.userAgent): boolean => /\bpigna-tv\b/.test(userAgent);
+
 /** The chat on screen, else the project; empty on the projects list. */
 export type Screen = { handle?: string; cwd?: string };
 

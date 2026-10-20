@@ -4,7 +4,7 @@
 // thinking sheets, tok/s, the context meter, the queue card, retry callouts and extension widgets.
 // The host composes and delivers the message (`chat.send`); the draft stays on the phone, per chat.
 import { useStore } from "../renderer/src/lib/store";
-import { ArrowUp, ChevronDown, ListEnd, Plus, RotateCw, Square, Zap } from "../renderer/src/components/icons";
+import { ArrowUp, ChevronDown, ListEnd, Mic, Plus, RotateCw, Square, Zap } from "../renderer/src/components/icons";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ContextMeter } from "../renderer/src/components/ContextMeter";
 import { QueueCard } from "../renderer/src/components/QueueCard";
@@ -25,6 +25,7 @@ import { fastApplies, isFast, modelChipLabel } from "../shared/fast";
 import { modelKey } from "../shared/model-pins";
 import { draftKey, loadDraft, saveDraft, withRestored } from "./drafts";
 import { toast } from "./toasts";
+import { onTv } from "./screen";
 import { annotations as phoneAnnotations, useAnnotations } from "./annotations";
 import { AnnotationChips } from "./Browser";
 
@@ -261,6 +262,19 @@ export function MobileComposer({ client, session: reduced, initialText = "", car
               Keep going
             </button>
           </div>
+        </div>
+      ) : onTv() ? (
+        // The TV has no keyboard: what the remote's mic hears goes to this chat (the TV app sends it).
+        <div className="flex items-center gap-2">
+          <div className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-[22px] border border-line-strong bg-panel px-4 text-[15px] text-muted" data-testid="talk-hint">
+            <Mic size={18} className="shrink-0 text-accent" />
+            <span className="truncate">{ended ? "This chat has ended" : running ? "Press the mic on the remote to steer" : "Press the mic on the remote to talk"}</span>
+          </div>
+          {running && (
+            <button type="button" aria-label="Stop" data-testid="stop" onClick={() => setConfirmStop(true)} className={`${circle} bg-bad/15 text-bad`}>
+              <Square size={14} fill="currentColor" />
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex items-end gap-2">

@@ -13,6 +13,7 @@ import { useLongPress } from "./long-press";
 import { ChatSheet, ConfirmClose, FolderPicker, ProjectSheet } from "./ProjectSheets";
 import { markSeen, useSeen } from "./seen";
 import { toast } from "./toasts";
+import { onTv } from "./screen";
 import type { HostClient } from "./client/host-client";
 import type { Route } from "./nav";
 
@@ -61,7 +62,9 @@ export function copy(text: string): void {
   );
 }
 
+/** Not on the TV, which has no keyboard to type a search with. */
 function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  if (onTv()) return null;
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2">
       <Search size={15} className="shrink-0 text-faint" />

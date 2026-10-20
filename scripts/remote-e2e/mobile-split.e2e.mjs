@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // The remote app on a wide screen (a TV, an iPad): the list stays on the left and the chat opens beside it; the page tells
-// a driving client (the TV app) which chat or project is on screen, and opens a chat when asked.
+// a driving client (the TV app) which chat or project is on screen, and opens a chat when asked; inside the TV app the
+// composer is a hint to talk into the remote's mic (no keyboard there).
 import { sleep, log, check, until, project, openPhone, scenario } from "./harness.mjs";
 
 const TV = { width: 960, height: 540, deviceScaleFactor: 2, mobile: false, screenOrientation: { type: "landscapePrimary", angle: 0 } };
@@ -51,15 +52,27 @@ await scenario("mobile split view", async (ctx) => {
   check(await exists('[data-testid="send"]'), "pigna-open-chat opens the chat");
   await shot("4-tv-opened-chat");
 
+  log("in the TV app: no keyboard, so no text field and no search");
+  const ua = await phone.eval("navigator.userAgent");
+  await phone.send("Emulation.setUserAgentOverride", { userAgent: `${ua} pigna-tv` });
+  await phone.eval("location.reload(), true");
+  await until("the composer after the reload", () => exists('[data-testid="talk-hint"]'), 30_000, 250);
+  check(!(await exists("textarea")) && !(await exists('[data-testid="send"]')), "the TV's composer has no text field and no Send");
+  check(!(await exists('[data-testid="search"]')), "the TV's lists have no search box");
+  await shot("5-tv-talk-hint");
+  await phone.send("Emulation.setUserAgentOverride", { userAgent: ua });
+  await phone.eval("location.reload(), true");
+  await until("the text composer again", () => exists('[data-testid="send"]'), 30_000, 250);
+
   log("iPad landscape: split too");
   await phone.send("Emulation.setDeviceMetricsOverride", IPAD);
   await sleep(400);
   check(await exists('[data-testid="split"]'), "an iPad in landscape shows the split");
-  await shot("5-ipad-chat");
+  await shot("6-ipad-chat");
 
   log("iPhone: the stack as before");
   await phone.send("Emulation.setDeviceMetricsOverride", IPHONE);
   await until("no split", async () => !(await exists('[data-testid="split"]')));
   check(!(await exists('[data-testid="chat-row"]')), "the phone shows the chat alone");
-  await shot("6-phone-chat");
+  await shot("7-phone-chat");
 });
