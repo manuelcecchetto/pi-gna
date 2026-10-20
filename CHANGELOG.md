@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Mermaid diagrams stay readable. A wide one (a state machine with long labels, say) used to be shrunk to fit the column until its text was a few pixels high; now it is laid out top to bottom when that fits better, and if it still does not fit it shows at full size and scrolls sideways. Agents are also asked to keep diagrams column-sized: top to bottom, labels of a few words, details in the text.
+
 ## 0.27.0 - 2026-10-19
 
 - Mermaid diagrams render in chat replies and Markdown previews. A ```` ```mermaid ```` fence becomes a diagram drawn with [Pele](https://pele.run) (flowcharts, sequence, state, class and ER diagrams, Gantt, pie, mindmaps and every other Mermaid type), in the app's colors and font, following light and dark mode, and fitted to the column, on the phone too (a wide flowchart turns vertical on a narrow screen; one that still does not fit zooms with pinch or ⌘-scroll). It draws as soon as its fence closes, Source under it shows the Mermaid text, and a diagram that cannot be drawn stays as code with the reason above it. Agents are told to use one for flows, state machines and message sequences instead of ASCII art or hand-drawn SVG.

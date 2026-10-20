@@ -35,7 +35,7 @@ Add exactly one visual, after the prose, when the answer has one of these shapes
 
 - A flow or architecture of 3 or more stages (spawn flows, pipelines, request paths): `steps` for linear flows; when it branches, a ```mermaid `flowchart` fence instead of a visual (it renders as a diagram laid out for you; hand-drawn `<svg>` only when the layout itself is the point). A ```mermaid fence counts as the one visual.
 - A process whose point is how work moves (agents handing off and sending work back, retry or review loops, parallel branches that join, a request crossing services): an animated `<svg>` driven by `kit.player` (see the skill). Use motion only when the order, loops or concurrency are the finding; a straight pipeline stays `steps`.
-- A state machine, or messages between parties in order: a ```mermaid `stateDiagram-v2` or `sequenceDiagram` fence, with labelled transitions or messages.
+- A state machine, or messages between parties in order: a ```mermaid `stateDiagram-v2` or `sequenceDiagram` fence, with short labelled transitions or messages (1 to 4 words; the rules for mermaid above apply).
 - A timeline or sequence of events with order or duration: `timeline`.
 - A comparison of 3 or more options on 3 or more dimensions: a `table` whose cells carry `badge ok|warn|bad` ratings, or `bar`s when the values are numbers.
 - Quantitative data across many items (coverage, counts, sizes per module): `bars` with the value written on each row, a `stats` row for the headline numbers.

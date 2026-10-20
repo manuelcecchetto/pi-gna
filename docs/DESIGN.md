@@ -2005,9 +2005,14 @@ closes its block's HTML no longer changes (`patchBlocks` keeps its nodes), so it
   edges, 4 MB of SVG) bound a hostile one.
 - Loaded on demand: `import("pele/lazy")` is about 38 KB and each diagram type is its own chunk (20 to 45 KB), so a
   chat without diagrams loads none of it (the full bundle is 680 KB).
-- `mount` follows the container's width (Pele reflows and may turn a wide `LR` flowchart vertical under 640 px) and
-  shrinks a diagram that still does not fit, with zoom (pinch, ⌘-wheel, buttons shown on hover). Font size is the
-  prose's; `--pele-font` is the app's sans.
+- Never shrunk past readable. Pele alone shrinks any diagram to its container, which drew a real 3,087 px `direction
+  LR` state machine with sentence labels at 0.24x (4 px text). `layoutFor` measures with `render` first: as written
+  while it shows at 0.75x or larger (Pele zooms such a fit: pinch, ⌘-wheel, buttons on hover), else top to bottom
+  (`directionBreakpoint` above any width) when that is larger, else `responsive: false` at natural size in a
+  `.diagram-view.scroll` box that scrolls sideways. A ResizeObserver swaps the options when the width calls for
+  another layout; `mount` follows the width otherwise. Font size is the prose's; `--pele-font` is the app's sans.
+- The prompt asks for diagrams that fit a column (top to bottom, 1 to 4 word labels, about 15 nodes, details in the
+  prose): the same machine with short labels lays out 622 px wide, at full size.
 - Theme: `.diagram` maps `--pele-*` onto the app tokens (`--canvas`, `--fg`, `--panel`, `--line-strong`, `--accent`,
   `--bad`) and the visual kit's categorical palette (`light-dark()`), in both `styles.css` and the preview's `style.css`,
   so a theme or mode change recolours drawn diagrams without drawing them again. Colors a diagram fixes itself

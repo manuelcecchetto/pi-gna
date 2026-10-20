@@ -627,6 +627,14 @@ body,
   justify-content: center;
   padding: 4px 0;
 }
+/* Too wide to show readably even top to bottom (lib/diagrams.ts, layoutFor): full size, scrolling sideways. */
+.diagram-view.scroll {
+  justify-content: safe center;
+  overflow-x: auto;
+}
+.diagram-view.scroll > svg {
+  flex: none;
+}
 /* Zoom (a diagram shrunk to fit): its buttons sit over the drawing, so they show on hover, like the actions. */
 .diagram .pele-zoom {
   opacity: 0;
