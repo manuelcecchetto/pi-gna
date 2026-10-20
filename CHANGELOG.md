@@ -5,6 +5,7 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Dictation works for remote clients. A paired device can upload a recording (16 kHz mono WAV) and get its text from the speech model on your Mac (`dictation.transcribeUpload`), then send it to a chat, so a TV app can take what you say into the remote's mic. The recording is deleted as soon as it is transcribed. Dictation must be on in Settings > Agent > Beta.
 - Mermaid diagrams stay readable. A wide one (a state machine with long labels, say) used to be shrunk to fit the column until its text was a few pixels high; now it is laid out top to bottom when that fits better, and if it still does not fit it shows at full size and scrolls sideways. Agents are also asked to keep diagrams column-sized: top to bottom, labels of a few words, details in the text.
 
 ## 0.27.0 - 2026-10-19

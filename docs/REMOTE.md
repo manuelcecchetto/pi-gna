@@ -141,6 +141,8 @@ channel today. Arg/result types are in `host-api.ts` (`HostMethods`).
 | `fs.describePaths` | desktop | no | `describePaths`: reads any absolute path (image bytes), so it is desktop-only; the phone sends uploads instead (security test: remote-server.security.test.ts). |
 | `PUT /api/uploads?name=&type=` | remote | yes | **a route, not a method**: the raw body is the file (no base64, no 1 MiB JSON cap). Same pipeline as POST (device cookie, Origin, `X-Pigna-Client`). Stored under `userData/remote-uploads/<device>/<uuid>/<sanitized name>` and nowhere else (`sanitizeUploadName` drops separators, control characters and leading dots); an image type (png/jpeg/gif/webp) gives the stored name its extension. 25 MiB per file, checked on `Content-Length` and while streaming (413, nothing kept). Answers `{ id, path, name, image?: { mimeType } }`. Uploads older than 30 days are deleted at startup. |
 | `uploads.discard` | remote | yes | `{ id }`; the caller's own upload only. |
+| `dictation.status` | remote | no | `DictationStatus`: whether the host's speech model is off, installing or ready (a client shows its mic only when ready). |
+| `dictation.transcribeUpload` | remote | yes | `{ upload }`: the caller's own upload, a 16 kHz mono WAV (16-bit PCM or 32-bit float, at most 5 minutes); answers the text. The upload is deleted once read, transcribed or not (an `Idempotency-Key` retry gets the cached text). `bad_request` for another format, `unavailable` while Dictation is off on the host. `dictation.transcribe` (raw PCM over IPC), `warm` and `retry` stay desktop. |
 
 **devices, remote, hello**
 

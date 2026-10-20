@@ -1,10 +1,16 @@
+import { mkdtemp, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({ app: { getAppPath: () => "/app", getPath: () => "/tmp" }, shell: {}, dialog: {} }));
 
 import { DESKTOP_ONLY_METHODS, HOST_ERROR_STATUS, methodScope, type HostMethod } from "../shared/host-api";
 import { IPC } from "../shared/ipc";
+import { wav } from "./dictation/wav.fixture";
 import { createHostCore, dispatch, type HostContext, type HostDeps, IPC_ROUTES, suggestRequest } from "./host-core";
+import { Uploads } from "./uploads";
 
 const calls: unknown[][] = [];
 const record = (name: string) => (...args: unknown[]) => (calls.push([name, ...args]), Promise.resolve({ name }));
@@ -422,5 +428,43 @@ describe("autocomplete.suggest", () => {
 
   it("is the desktop's alone", () => {
     expect(() => dispatch(core, phone(), "autocomplete.suggest", { request: { cwd: "/p", draft: "x" } })).toThrow(expect.objectContaining({ code: "scope_denied" }));
+  });
+});
+
+describe("dictation from a phone", () => {
+  const setup = async (transcribe: (pcm: Float32Array) => Promise<string>) => {
+    const dir = await mkdtemp(join(tmpdir(), "pigna-dictation-"));
+    const uploads = new Uploads(dir);
+    const heard: Float32Array[] = [];
+    const core = createHostCore({ ...deps, uploads, dictation: { get: () => ({ phase: "ready" }), transcribe: (pcm: Float32Array) => (heard.push(pcm), transcribe(pcm)) } } as unknown as HostDeps);
+    const put = (file: Buffer, device = "d1") => uploads.put(device, "speech.wav", "audio/wav", Readable.from([file]));
+    const left = async () => (await readdir(join(dir, "d1")).catch(() => [])).length;
+    return { core, put, heard, left };
+  };
+
+  it("lets a phone read the status and transcribe its upload, which is deleted afterwards", async () => {
+    const { core, put, heard, left } = await setup(async () => "hello there");
+    const { id } = await put(wav([0, 16384]));
+    expect(await dispatch(core, phone(), "dictation.status", {})).toEqual({ phase: "ready" });
+    expect(await dispatch(core, phone(), "dictation.transcribeUpload", { upload: id })).toBe("hello there");
+    expect(Array.from(heard[0]!)).toEqual([0, 0.5]);
+    expect(await left()).toBe(0);
+  });
+
+  it("deletes the recording when it is refused or the model fails, and says why", async () => {
+    const { core, put, left } = await setup(() => Promise.reject(new Error("Dictation is not ready yet.")));
+    const bad = await put(wav([1], { rate: 48_000 }));
+    await expect(dispatch(core, phone(), "dictation.transcribeUpload", { upload: bad.id })).rejects.toMatchObject({ code: "bad_request" });
+    const good = await put(wav([1]));
+    await expect(dispatch(core, phone(), "dictation.transcribeUpload", { upload: good.id })).rejects.toMatchObject({ code: "unavailable", message: "Dictation is not ready yet." });
+    expect(await left()).toBe(0);
+  });
+
+  it("reads only the caller's own uploads, and never for the desktop", async () => {
+    const { core, put, heard } = await setup(async () => "x");
+    const { id } = await put(wav([1]), "d2");
+    await expect(dispatch(core, phone(), "dictation.transcribeUpload", { upload: id })).rejects.toMatchObject({ code: "not_found" });
+    await expect(dispatch(core, desktop(), "dictation.transcribeUpload", { upload: id })).rejects.toMatchObject({ code: "scope_denied" });
+    expect(heard).toHaveLength(0);
   });
 });

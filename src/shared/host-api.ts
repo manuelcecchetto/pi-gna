@@ -687,11 +687,13 @@ export interface HostMethods {
   "autocomplete.suggest": { args: { request: SuggestRequest }; result: string };
   "autocomplete.retry": { args: Record<string, never>; result: null };
 
-  // dictation (desktop only: the microphone and the model are on this computer)
+  // dictation: the model is on this computer; the desktop records with its microphone, a remote client uploads a WAV
   "dictation.status": { args: Record<string, never>; result: DictationStatus };
   "dictation.warm": { args: Record<string, never>; result: null };
   "dictation.transcribe": { args: { pcm: Float32Array }; result: string };
   "dictation.retry": { args: Record<string, never>; result: null };
+  /** The text spoken in the caller's own upload (16 kHz mono WAV); the upload is deleted once read. */
+  "dictation.transcribeUpload": { args: { upload: string }; result: string };
 
   // setup (desktop only: installs run code on the Mac)
   "setup.status": { args: Record<string, never>; result: SetupStatus };
@@ -797,7 +799,6 @@ export const DESKTOP_ONLY_METHODS = [
   "autocomplete.status",
   "autocomplete.suggest",
   "autocomplete.retry",
-  "dictation.status",
   "dictation.warm",
   "dictation.transcribe",
   "dictation.retry",

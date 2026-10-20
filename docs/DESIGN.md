@@ -1085,7 +1085,7 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   usefulness is modest: a first word is right about 1 time in 6, three or more words about 1 time in 80. No model is
   trained on anyone's messages: a model trained on one user's prompts could memorise them, so it could never ship.
   Unverified: Windows and Linux (Vulkan fallback and zip extraction run only in unit tests on macOS).
-- **Dictation** (Agent > Beta, `dictation`, off by default; desktop only): a mic button beside Attach, and Right
+- **Dictation** (Agent > Beta, `dictation`, off by default; the desktop records, remote clients upload, see below): a mic button beside Attach, and Right
   Option (Right Alt / AltGr elsewhere) for the active chat while no other text field has the focus: a tap starts a
   recording and the next tap stops it; held for 250 ms it records until let go (`RightOptionGesture`,
   `src/renderer/src/lib/dictation.ts`). Any other key while it is down calls it off, so ⌥← and ⌥e and AltGr characters
@@ -1107,6 +1107,12 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   (`electron.vite.config.ts`), since the bundle has no package.json to read it from. The model loads when a recording
   starts (`dictation.warm`), so it is usually ready when the recording ends; the worker stops after 10 minutes without
   a recording and when the switch goes off.
+  A remote client (a TV app holding the remote's mic, a phone) records itself and transcribes on the host: it uploads
+  the recording (`PUT /api/uploads`) as a 16 kHz mono WAV, 16-bit PCM or 32-bit float (`dictation/wav.ts`; the host
+  decodes no other format, the client records or resamples to it), then calls `dictation.transcribeUpload { upload }`
+  for the text and sends it with `chat.send` like typed text. The upload is deleted once read, transcribed or not; the
+  call answers `unavailable` while the setting is off or the model is not installed. `dictation.status` is readable
+  remotely so a client can hide its mic; `warm` and `retry` stay the Mac's.
   Model choice (2026-10-13, transcribe.cpp v0.4.0's own catalog of its GGUF builds, FLEURS WER at Q8_0): Parakeet
   Ultra 4.26% English, 2.34% Italian, 4.58% German, about 200x real time on an M4 with Metal; Parakeet-TDT-0.6B-v3
   4.83 / 3.02 / 5.24 at the same size; Whisper large-v3-turbo 4.38 / 2.77 / 4.54 at a quarter of the speed;

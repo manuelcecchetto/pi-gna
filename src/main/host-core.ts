@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute } from "node:path";
 import { isDraftId, isPlanPath } from "../shared/atp";
@@ -52,6 +53,7 @@ import type { ChatImporter } from "./chat-import";
 import type { Autocomplete } from "./autocomplete";
 import type { Dictation } from "./dictation";
 import { MAX_SAMPLES } from "../shared/dictation";
+import { decodeWav } from "./dictation/wav";
 import type { SuggestRequest } from "../shared/autocomplete";
 import type { PiSetup } from "./setup";
 import type { SessionHost } from "./session-host";
@@ -797,7 +799,7 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       (ctx, { request }) => deps.autocomplete.suggest(ctx.clientId, request),
     ),
     "autocomplete.retry": any("desktop", () => (deps.autocomplete.retry(), null)),
-    "dictation.status": any("desktop", () => deps.dictation.get()),
+    "dictation.status": any("remote", () => deps.dictation.get()),
     "dictation.warm": any("desktop", () => (deps.dictation.warm(), null)),
     "dictation.transcribe": method<{ pcm: Float32Array }>(
       "desktop",
@@ -808,6 +810,19 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
       (_ctx, { pcm }) => deps.dictation.transcribe(pcm),
     ),
     "dictation.retry": any("desktop", () => (deps.dictation.retry(), null)),
+    // A recording is someone's voice: it is deleted as soon as it is read, transcribed or not.
+    "dictation.transcribeUpload": any<{ upload: string }>("remote", async (ctx, { upload }) => {
+      const device = deviceOf(ctx);
+      const { path } = await deps.uploads.resolve(device, upload);
+      try {
+        const pcm = decodeWav(await readFile(path));
+        return await deps.dictation.transcribe(pcm).catch((error: Error) => {
+          throw new HostError("unavailable", error.message);
+        });
+      } finally {
+        await deps.uploads.discard(device, upload);
+      }
+    }),
     "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
     "plugins.logout": method<{ cwd?: string; server: string }>(
       "desktop",
