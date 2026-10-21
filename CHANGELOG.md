@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.29.3 - 2026-10-21
+
 - More room for the chat on the TV. In the TV app the chat or page you open fills the screen; the Menu button on the remote shows the list of chats beside it (and hides it again), and picking a chat there closes it. Holding Menu opens the TV app's setup.
 
 ## 0.29.2 - 2026-10-21
