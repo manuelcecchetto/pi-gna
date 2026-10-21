@@ -1,6 +1,6 @@
 // The paired app: one HostClient for the page, the connection banner, and the Projects -> Chats -> Chat stack; on a
 // wide screen (tablet, TV) the list stays on the left and the chat or page opens beside it.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { chatOfHash } from "./push";
 import { ChatUiProvider } from "../renderer/src/lib/chat-ui";
 import { useStore } from "../renderer/src/lib/store";
@@ -18,7 +18,7 @@ import { GithubScreen } from "./Github";
 import { BrowserScreen } from "./Browser";
 import { FileScreen } from "./FileView";
 import { Chats, Detailless, PageSoon, Projects } from "./Screens";
-import { onOpenChat, setScreenProject } from "./screen";
+import { onOpenChat, onToggleList, onTv, setScreenProject } from "./screen";
 import { SettingsScreen } from "./SettingsScreen";
 import { noticeFor } from "./notices";
 import { toast, Toasts } from "./toasts";
@@ -159,6 +159,26 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
   const joined = useStore(client.store, (s) => (over ? over in s.chats : false));
   const chat = route.screen === "chat" ? route : joined ? lastChat : undefined;
 
+  // On the TV the open chat or page takes the whole screen; the remote's Menu button shows the list beside it until the
+  // next screen opens. With nothing open the list shows anyway.
+  const tv = useMemo(() => onTv(), []);
+  const [listShown, setListShown] = useState(false);
+  const [listFor, setListFor] = useState(route);
+  if (route !== listFor) {
+    setListFor(route);
+    setListShown(false);
+  }
+  useEffect(() => onToggleList(() => setListShown((shown) => !shown)), []);
+  const listHidden = tv && route.screen !== "projects" && route.screen !== "chats" && !listShown;
+  const listBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = listBox.current;
+    if (!tv || !box) return;
+    // The remote's arrows go on from the focus: into the list when it opens (the open chat's row), out when it closes.
+    if (listShown) box.querySelector<HTMLElement>('[aria-current="true"], [data-testid="chat-row"], [data-testid="project-row"]')?.focus();
+    else if (document.activeElement instanceof HTMLElement && box.contains(document.activeElement)) document.activeElement.blur();
+  }, [tv, listShown]);
+
   // Split: the list's Back leaves the project even with a chat open beside it.
   const listBack = () => (route.screen === "chats" ? back() : push({ screen: "projects" }));
   const list =
@@ -198,7 +218,9 @@ export function App({ onUnauthorized, signOut }: { onUnauthorized: () => void; s
         <ConnectionBanner client={client} />
         {split ? (
           <div className="flex min-h-0 flex-1" data-testid="split">
-            <div className="flex w-[340px] shrink-0 flex-col border-r border-line">{list}</div>
+            <div ref={listBox} className={`w-[340px] shrink-0 flex-col border-r border-line ${listHidden ? "hidden" : "flex"}`} data-testid="split-list">
+              {list}
+            </div>
             {/* The screen's box: a chat covered by a file or the browser keeps exactly this size, so its scroll position holds. */}
             <div className="relative flex min-w-0 min-h-0 flex-1 flex-col">{detail}</div>
           </div>

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The remote app on a wide screen (a TV, an iPad): the list stays on the left and the chat opens beside it; the page tells
 // a driving client (the TV app) which chat or project is on screen, and opens a chat when asked; inside the TV app the
-// composer is a hint to talk into the remote's mic (no keyboard there).
+// composer is a hint to talk into the remote's mic (no keyboard there), and the chat takes the whole screen until the
+// remote's Menu button shows the list.
 import { sleep, log, check, until, project, openPhone, scenario } from "./harness.mjs";
 
 const TV = { width: 960, height: 540, deviceScaleFactor: 2, mobile: false, screenOrientation: { type: "landscapePrimary", angle: 0 } };
@@ -57,9 +58,26 @@ await scenario("mobile split view", async (ctx) => {
   await phone.send("Emulation.setUserAgentOverride", { userAgent: `${ua} pigna-tv` });
   await phone.eval("location.reload(), true");
   await until("the composer after the reload", () => exists('[data-testid="talk-hint"]'), 30_000, 250);
+  await phone.send("Emulation.setDeviceMetricsOverride", TV); // a reload drops the emulated size
   check(!(await exists("textarea")) && !(await exists('[data-testid="send"]')), "the TV's composer has no text field and no Send");
   check(!(await exists('[data-testid="search"]')), "the TV's lists have no search box");
   await shot("5-tv-talk-hint");
+
+  log("in the TV app the chat takes the whole screen; the remote's Menu (pigna-toggle-list) shows the list beside it");
+  const listShows = () => phone.eval(`document.querySelector('[data-testid="split-list"]').offsetWidth > 0`);
+  const toggleList = () => phone.eval(`window.dispatchEvent(new CustomEvent("pigna-toggle-list")), true`);
+  check(!(await listShows()), "the TV's chat has no list beside it");
+  await toggleList();
+  await until("the list beside the chat", listShows);
+  check(await phone.eval(`document.activeElement?.closest('[data-testid="split-list"]') != null`), "the list takes the focus, for the remote's arrows");
+  await shot("5b-tv-list");
+  await toggleList();
+  await until("the list hidden again", async () => !(await listShows()));
+  check(await phone.eval(`!document.activeElement?.closest('[data-testid="split-list"]')`), "the hidden list lets go of the focus");
+  await toggleList();
+  await until("the list again", listShows);
+  await click("chat-row");
+  await until("a chat opened from the list, the list gone", async () => !(await listShows()) && (await exists('[data-testid="talk-hint"]')));
   await phone.send("Emulation.setUserAgentOverride", { userAgent: ua });
   await phone.eval("location.reload(), true");
   await until("the text composer again", () => exists('[data-testid="send"]'), 30_000, 250);

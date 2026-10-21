@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- More room for the chat on the TV. In the TV app the chat or page you open fills the screen; the Menu button on the remote shows the list of chats beside it (and hides it again), and picking a chat there closes it. Holding Menu opens the TV app's setup.
+
 ## 0.29.2 - 2026-10-21
 
 - Security: Electron 44.9.3 (from 44.5.1) distrusts the compromised eMudhra intermediate certificates. Their private keys were recoverable, so anyone could forge a certificate for any site; the browser pane and the app's own connections loaded such sites before and now refuse them (`ERR_CERT_REVOKED`). Electron gets no Chrome CRLSet updates, so the fix comes with the app. The agents (pi) run on your installed Node.js, which needs its own update once Node ships the fix.

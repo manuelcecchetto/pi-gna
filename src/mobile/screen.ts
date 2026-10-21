@@ -30,6 +30,12 @@ export function setScreenChat(next: { handle: string; cwd: string } | undefined)
   publish();
 }
 
+/** `pigna-toggle-list`: the TV app's Menu button shows or hides the list beside the open chat or page. */
+export function onToggleList(toggle: () => void): () => void {
+  window.addEventListener("pigna-toggle-list", toggle);
+  return () => window.removeEventListener("pigna-toggle-list", toggle);
+}
+
 /** `pigna-open-chat` with a chat handle as its detail: the page opens that chat. A frame cannot fire it on this window. */
 export function onOpenChat(open: (handle: string) => void): () => void {
   const listener = (event: Event) => {
