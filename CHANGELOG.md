@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Security: Electron 44.9.3 (from 44.5.1) distrusts the compromised eMudhra intermediate certificates. Their private keys were recoverable, so anyone could forge a certificate for any site; the browser pane and the app's own connections loaded such sites before and now refuse them (`ERR_CERT_REVOKED`). Electron gets no Chrome CRLSet updates, so the fix comes with the app. The agents (pi) run on your installed Node.js, which needs its own update once Node ships the fix.
+
 ## 0.29.1 - 2026-10-20
 
 - No keyboard on the TV. In the TV app the composer is a bar that says to press the mic on the remote, which sends what you say to the chat on screen, and the chat and project lists have no search box; the Stop button stays while the agent works.

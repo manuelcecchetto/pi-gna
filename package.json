@@ -50,7 +50,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
     "dompurify": "3.4.16",
-    "electron": "44.5.1",
+    "electron": "44.9.3",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "jszip": "^3.10.2",
