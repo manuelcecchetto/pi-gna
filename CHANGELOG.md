@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.29.2 - 2026-10-21
+
 - Security: Electron 44.9.3 (from 44.5.1) distrusts the compromised eMudhra intermediate certificates. Their private keys were recoverable, so anyone could forge a certificate for any site; the browser pane and the app's own connections loaded such sites before and now refuse them (`ERR_CERT_REVOKED`). Electron gets no Chrome CRLSet updates, so the fix comes with the app. The agents (pi) run on your installed Node.js, which needs its own update once Node ships the fix.
 
 ## 0.29.1 - 2026-10-20
