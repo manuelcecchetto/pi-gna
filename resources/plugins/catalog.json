@@ -137,7 +137,7 @@
       "description": "Web search, page and PDF fetching, GitHub repos and YouTube videos as tools.",
       "homepage": "https://www.npmjs.com/package/pi-web-access",
       "icon": "globe",
-      "source": "npm:pi-web-access@0.35.0",
+      "source": "npm:pi-web-access@0.45.0",
       "recommended": true
     },
     {
