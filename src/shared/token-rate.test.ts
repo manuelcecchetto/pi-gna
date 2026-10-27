@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AssistantMessage, SessionEntry, SessionEvent } from "./protocol";
 import { type AssistantItem, createSession, hydrate, reduceSessionEvent, type SessionState } from "./session-state";
-import { latestRate, rateHistory, rateMoving, responseRate } from "./token-rate";
+import { latestRate, rateHistory, rateMoving, responseRate, tokenizerRatios } from "./token-rate";
 
-const usage = (output: number) => ({ input: 0, output, cacheRead: 0, cacheWrite: 0, totalTokens: output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
-const assistant = (content: AssistantMessage["content"], output = 0): AssistantMessage => ({
-  role: "assistant", content, api: "x", provider: "p", model: "m", usage: usage(output), stopReason: "stop", timestamp: 1,
+const usage = (output: number, reasoning?: number) => ({ input: 0, output, reasoning, cacheRead: 0, cacheWrite: 0, totalTokens: output, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } });
+const assistant = (content: AssistantMessage["content"], output = 0, model = "m", reasoning?: number): AssistantMessage => ({
+  role: "assistant", content, api: "x", provider: "p", model, usage: usage(output, reasoning), stopReason: "stop", timestamp: 1,
 });
 
 /** Events at the given times (ms). */
@@ -54,9 +54,9 @@ describe("token rate", () => {
   });
 
   it("switches to the provider's output count over the whole response once it ends", () => {
-    const state = play([...streamed, ...ended(3000, 180), [3100, { type: "agent_settled" }]]);
+    const state = play([...streamed, ...ended(3000, 100), [3100, { type: "agent_settled" }]]);
     // Later clocks do not change a finished response.
-    expect(responseRate(lastAssistant(state), 60_000)).toEqual({ perSecond: 90, tokens: 180, seconds: 2, estimated: false, live: false });
+    expect(responseRate(lastAssistant(state), 60_000)).toEqual({ perSecond: 50, tokens: 100, seconds: 2, estimated: false, live: false });
   });
 
   it("counts tool-call arguments, streamed or finished", () => {
@@ -70,8 +70,8 @@ describe("token rate", () => {
     expect(responseRate(lastAssistant(play(calling)), 1000)).toMatchObject({ tokens: 500, seconds: 1, estimated: true });
     const finished = play([[2000, { type: "message_update", assistantMessageEvent: { type: "toolcall_end", contentIndex: 0, toolCall: call } }]], play(calling));
     expect(responseRate(lastAssistant(finished), 2000)).toMatchObject({ tokens: 1000, seconds: 2, estimated: true });
-    const done = play([[2000, { type: "message_end", message: assistant([call], 1100) }]], finished);
-    expect(responseRate(lastAssistant(done), 60_000)).toEqual({ perSecond: 550, tokens: 1100, seconds: 2, estimated: false, live: false });
+    const done = play([[2000, { type: "message_end", message: assistant([call], 1000) }]], finished);
+    expect(responseRate(lastAssistant(done), 60_000)).toMatchObject({ perSecond: 500, tokens: 1000, seconds: 2, estimated: false, live: false });
   });
 
   it("counts thinking, but not redacted thinking", () => {
@@ -92,26 +92,26 @@ describe("token rate", () => {
   });
 
   it("waits for half a second of a response, keeping the previous one meanwhile", () => {
-    const first = play([...streamed, ...ended(2000, 180)]);
+    const first = play([...streamed, ...ended(2000, 100)]);
     const next = play([
       [4000, { type: "message_start", message: assistant([]) }],
       [4000, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
       [4200, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "y".repeat(40) } }],
     ], first);
     expect(responseRate(lastAssistant(next), 4300)).toBeUndefined();
-    expect(latestRate(next.items, 4300)).toMatchObject({ perSecond: 180, live: false });
+    expect(latestRate(next.items, 4300)).toMatchObject({ perSecond: 100, live: false });
     expect(latestRate(next.items, 5000)).toMatchObject({ perSecond: 10, tokens: 10, live: true });
   });
 
   it("charts every measured response oldest first, the streaming one at now", () => {
-    const first = play([...streamed, ...ended(2000, 180)]);
+    const first = play([...streamed, ...ended(2000, 100)]);
     const next = play([
       [4000, { type: "message_start", message: assistant([]) }],
       [4000, { type: "message_update", assistantMessageEvent: { type: "text_start", contentIndex: 0 } }],
       [4200, { type: "message_update", assistantMessageEvent: { type: "text_delta", contentIndex: 0, delta: "y".repeat(40) } }],
     ], first);
     expect(rateHistory(next.items, 5000)).toMatchObject([
-      { at: 2000, perSecond: 180, live: false },
+      { at: 2000, perSecond: 100, live: false },
       { at: 5000, perSecond: 10, live: true },
     ]);
     // Too short yet: only the finished one.
@@ -124,14 +124,40 @@ describe("token rate", () => {
       type: "message", id, parentId: null, timestamp: written, message: { ...assistant([{ type: "text", text: "x".repeat(400) }], output), timestamp: at },
     });
     const state = hydrate(createSession("h", "/repo"), [
-      entry("a", sent, "2026-10-03T10:00:04Z", 200),
-      entry("b", sent + 10_000, "2026-10-03T10:00:10.200Z", 5), // under half a second: no rate
+      entry("a", sent, "2026-10-03T10:00:04Z", 100),
+      entry("b", sent + 10_000, "2026-10-03T10:00:10.200Z", 100), // under half a second: no rate
     ]);
-    expect(latestRate(state.items, 0)).toMatchObject({ perSecond: 50, tokens: 200, seconds: 4, estimated: false, live: false });
-    expect(rateHistory(state.items, 0)).toMatchObject([{ at: sent + 4000, perSecond: 50 }]);
+    expect(latestRate(state.items, 0)).toMatchObject({ perSecond: 25, tokens: 100, seconds: 4, estimated: false, live: false });
+    expect(rateHistory(state.items, 0)).toMatchObject([{ at: sent + 4000, perSecond: 25 }]);
     // Then a live response joins the chart after them.
-    const live = play([...streamed.map(([at, event]): [number, SessionEvent] => [sent + 20_000 + at, event]), ...ended(sent + 22_000, 180)], state);
-    expect(rateHistory(live.items, 0).map((point) => point.perSecond)).toEqual([50, 180]);
+    const live = play([...streamed.map(([at, event]): [number, SessionEvent] => [sent + 20_000 + at, event]), ...ended(sent + 22_000, 100)], state);
+    expect(rateHistory(live.items, 0).map((point) => point.perSecond)).toEqual([25, 100]);
+  });
+
+  it("counts every model in four-character tokens, by its characters per token in the chat", () => {
+    const sent = Date.parse("2026-10-03T10:00:00Z");
+    const entry = (id: string, at: number, message: AssistantMessage): SessionEntry => ({
+      type: "message", id, parentId: null, timestamp: new Date(at + 10_000).toISOString(), message: { ...message, timestamp: at },
+    });
+    const prose = [{ type: "text" as const, text: "x".repeat(8000) }];
+    const state = hydrate(createSession("h", "/repo"), [
+      // A dense tokenizer, 2 characters a token: more tokens for the same text.
+      entry("c", sent, assistant(prose, 4000, "dense")),
+      // 4 characters a token, and 1000 tokens of hidden reasoning that still count.
+      entry("o", sent + 60_000, assistant([{ type: "thinking", thinking: "summary" }, ...prose], 3000, "sparse", 1000)),
+    ]);
+    const ratios = tokenizerRatios(state.items);
+    // Pulled toward 4 by 500 tokens of prior: (8000 + 2000) / (4000 + 500).
+    expect(ratios.get("p/dense")).toBeCloseTo(2.222, 3);
+    expect(ratios.get("p/sparse")).toBe(4);
+    // Raw counts would read 400 and 300 tok/s, the dense model ahead.
+    expect(rateHistory(state.items, 0).map((point) => Math.round(point.perSecond))).toEqual([222, 300]);
+  });
+
+  it("learns no ratio from shown thinking whose tokens the provider does not report", () => {
+    const item = { kind: "assistant" as const, key: "k", streaming: false, message: assistant([{ type: "thinking", thinking: "t".repeat(4000) }, { type: "text", text: "x".repeat(400) }], 1100) };
+    expect(tokenizerRatios([item]).size).toBe(0);
+    expect(responseRate({ ...item, span: { start: 0, end: 1000 } }, 1000)).toMatchObject({ tokens: 1100 });
   });
 
   it("has no rate for a response cut off mid-stream", () => {

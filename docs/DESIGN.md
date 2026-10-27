@@ -1868,13 +1868,20 @@ Verified live (pi 1.0.0, Oct 2026):
   ~300 tok/s, and capping the gaps between events inflated the rate of anything that streams in chunks. Providers
   report output tokens only when a response ends (pi's `message_update` usage is not live), so while it streams the
   count is estimated from the streamed text, thinking and tool-call argument text (4 characters a token, shown as
-  `~`), and `message_end`'s `usage.output` replaces it. Under half a second there is no rate (a response delivered
+  `~`), and `message_end`'s `usage.output` replaces it. Every count is in tokens of 4 characters, because tokenizers
+  differ: measured over a week of sessions (2026-10-27), an OpenAI token (gpt-6.1-terra, gpt-6-astra) carried 3.5 to
+  3.7 characters of answer and a claude-opus-5-5 token 2.05, so raw tok/s showed Terra slower than Opus (66 vs 90) while
+  it streamed more characters a second (199 vs 172). A finished response's `usage.output` is multiplied by its model's
+  characters per token over 4; the ratio is learned from the chat's finished responses of that `provider/model`
+  (`tokenizerRatios`: text and tool-argument characters over `output - reasoning` tokens, since reasoning is hidden or
+  summarized; a response whose thinking shows without a `reasoning` count is skipped), starting from 500 tokens at 4
+  characters so the first responses do not swing it. Hidden reasoning thus counts by its token count. Under half a second there is no rate (a response delivered
   in one chunk would read as thousands of tok/s). The readout ticks (500 ms) only while a response streams
   (`rateMoving`). The last response's rate stays, dimmed, after the run. Responses read from a session file are timed
   from the message's own `timestamp` (pi stamps it when it sends the request) to its entry's (written at
   `message_end`), so a reopened chat shows its rates too. Hovering it opens a card charting every measured response
   of the chat (`rateHistory`): when it ended across (pauses over 5 minutes squeezed to a dotted break, so a chat
-  picked up hours later still shows its work), tok/s up, the line and its dots colored red to orange to green at fixed speeds (20, 50, 100 tok/s,
+  picked up hours later still shows its work), tok/s up, the line and its dots colored red to orange to green at fixed speeds (10, 25, 50 tok/s,
   not relative to the chart's scale, so a slow model reads red however its responses vary), with the last response's
   tokens and time and the session average.
 - Compaction visibility: `compaction_start` adds a running transcript record; `compaction_end` updates that

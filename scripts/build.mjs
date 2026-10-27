@@ -9,5 +9,6 @@ const env = { ...process.env, PIGNA_BUILD: process.env.PIGNA_BUILD ?? Date.now()
 for (const args of [["electron-vite", "build"], ["vite", "build", "-c", "vite.mobile.config.ts"], ["vite", "build", "-c", "vite.preview.config.ts"]]) {
   // pnpm is a .cmd on Windows, which only starts through a shell (the arguments here are fixed).
   const run = spawnSync("pnpm", ["exec", ...args], { cwd: root, env, stdio: "inherit", shell: process.platform === "win32" });
+  if (run.error) console.error(`build: could not run pnpm: ${run.error.message}`);
   if (run.status !== 0) process.exit(run.status ?? 1);
 }

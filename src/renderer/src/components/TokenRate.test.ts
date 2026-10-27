@@ -48,8 +48,9 @@ describe("TokenRate", () => {
     const live = render(play(streamed), 2000);
     expect(live).toContain("~100 tok/s");
     expect(live).toContain("text-muted");
-    const done = render(play([...streamed, ...ended(2000, 15), [3100, { type: "agent_settled" }]]), 60_000);
-    expect(done).toContain("15 tok/s");
+    const done = render(play([...streamed, ...ended(2000, 30), [3100, { type: "agent_settled" }]]), 60_000);
+    // 30 tokens reported for 400 characters, 4.5 characters each in this chat after the prior: 34 four-character tokens.
+    expect(done).toContain("34 tok/s");
     expect(done).not.toContain("~");
     expect(done).toContain("text-faint");
   });

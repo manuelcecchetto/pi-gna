@@ -1,16 +1,17 @@
 // Output speed next to the context meter: tokens per second of the response streaming now, else of the last one.
 // Hover for a card charting every measured response of the session: time across, tok/s up, the line colored from
-// red (slow) through orange to green (fast).
+// red (slow) through orange to green (fast). Tokens are four characters each, the same for every model
+// (shared/token-rate.ts).
 import { memo, useEffect, useId, useRef, useState } from "react";
 import { formatDuration, formatTokens } from "../lib/format";
 import type { Item } from "../../../shared/session-state";
 import { latestRate, type RatePoint, rateHistory, rateMoving } from "../../../shared/token-rate";
 import { useNow } from "./primitives";
 
-/** Where the line turns from red to orange to green, in tok/s. */
-const SLOW = 20;
-const MEDIUM = 50;
-const FAST = 100;
+/** Where the line turns from red to orange to green, in four-character tokens a second (about twice that in Claude's). */
+const SLOW = 10;
+const MEDIUM = 25;
+const FAST = 50;
 
 export const TokenRate = memo(function TokenRate({ items, running }: { items: Item[]; running: boolean }) {
   // Ticks while a response streams: its time runs on between stream events.
@@ -48,7 +49,7 @@ export function RateCard({ points }: { points: RatePoint[] }) {
   const tokens = points.reduce((sum, point) => sum + point.tokens, 0);
   const seconds = points.reduce((sum, point) => sum + point.seconds, 0);
   return (
-    <div className="absolute right-0 bottom-full z-30 mb-2 w-80 rounded-xl border border-line-strong bg-panel p-3.5 text-[12.5px] shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
+    <div className="absolute right-0 bottom-full z-30 mb-2 w-80 whitespace-normal rounded-xl border border-line-strong bg-panel p-3.5 text-[12.5px] shadow-[0_12px_40px_-12px_rgb(0_0_0/0.5)]">
       <div className="flex items-baseline justify-between">
         <span className="font-medium text-fg">Output speed</span>
         <span className="font-mono text-[11.5px] tabular-nums" style={{ color: speedColor(last.perSecond) }}>
