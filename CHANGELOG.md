@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.29.4 - 2026-10-27
+
 - tok/s compares across models. Tokenizers differ (an OpenAI token holds about 1.7 times the characters of a Claude token), so OpenAI models like Terra read slower than Opus while they streamed more text a second. Every response is now counted in tokens of 4 characters, converted with each model's characters per token learned from the chat, hidden reasoning included; the red, orange and green marks moved to 10, 25 and 50 to match. The speed card's note also wraps instead of running off its edge.
 - Web search tools are lighter. The pi-web-access plugin is pinned to 0.45.0: its tool definitions take 60% less of the context, and a DuckDuckGo lockout is fixed.
 
