@@ -69,7 +69,7 @@ mac:
   category: public.app-category.developer-tools
   # Dictation (Settings > Agent > Beta) records the microphone; macOS asks the first time with this line.
   extendInfo:
-    NSMicrophoneUsageDescription: pi-gna uses the microphone for dictation in the composer. The audio is transcribed on this Mac and never leaves it.
+    NSMicrophoneUsageDescription: pi-gna uses the microphone for dictation in the composer and for voice calls. The audio is processed on this Mac and never leaves it.
   darkModeSupport: true
   target:
     - target: dmg

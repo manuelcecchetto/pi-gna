@@ -52,6 +52,8 @@ import type { PiPlugins } from "./plugins";
 import type { ChatImporter } from "./chat-import";
 import type { Autocomplete } from "./autocomplete";
 import type { Dictation } from "./dictation";
+import type { Voice } from "./voice";
+import { MAX_CHUNK } from "../shared/voice";
 import { MAX_SAMPLES } from "../shared/dictation";
 import { decodeWav } from "./dictation/wav";
 import type { SuggestRequest } from "../shared/autocomplete";
@@ -113,6 +115,7 @@ export interface HostDeps {
   chatImport: ChatImporter;
   autocomplete: Autocomplete;
   dictation: Dictation;
+  voice: Voice;
   setup: PiSetup;
   browser(): BrowserManager | undefined;
   /** Frames and input for phones; exists with the browser manager. */
@@ -190,6 +193,12 @@ const maybeProject = (cwd: unknown): string | undefined => (cwd === undefined ||
 
 const text = (value: unknown, what: string): string => {
   if (typeof value !== "string" || !value || value.length > 4096) throw new Error(`invalid ${what}`);
+  return value;
+};
+
+/** A voice call's id, as the window named it. */
+const callId = (value: unknown): string => {
+  if (typeof value !== "string" || !/^[\w-]{1,64}$/.test(value)) throw new Error("invalid call");
   return value;
 };
 
@@ -823,6 +832,31 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
         await deps.uploads.discard(device, upload);
       }
     }),
+    "voice.status": any("desktop", () => deps.voice.get()),
+    "voice.retry": any("desktop", () => (deps.voice.retry(), null)),
+    "voice.start": method<{ call: string; cwd: string }>(
+      "desktop",
+      (raw) => ({ call: callId(raw?.call), cwd: project(raw?.cwd) }),
+      (_ctx, { call, cwd }) => (deps.voice.startCall(call, cwd), null),
+    ),
+    "voice.audio": method<{ call: string; pcm: Float32Array }>(
+      "desktop",
+      (raw) => {
+        if (!(raw?.pcm instanceof Float32Array) || !raw.pcm.length || raw.pcm.length > MAX_CHUNK) throw new Error("invalid audio");
+        return { call: callId(raw.call), pcm: raw.pcm };
+      },
+      (_ctx, { call, pcm }) => (deps.voice.audio(call, pcm), null),
+    ),
+    "voice.control": method<{ call: string; control: { playing?: boolean; assistantMuted?: boolean; micMuted?: boolean } }>(
+      "desktop",
+      (raw) => {
+        const control = raw?.control as Record<string, unknown> | undefined;
+        const flag = (key: string) => (typeof control?.[key] === "boolean" ? { [key]: control[key] as boolean } : {});
+        return { call: callId(raw?.call), control: { ...flag("playing"), ...flag("assistantMuted"), ...flag("micMuted") } };
+      },
+      (_ctx, { call, control }) => (deps.voice.control(call, control), null),
+    ),
+    "voice.end": method<{ call: string }>("desktop", (raw) => ({ call: callId(raw?.call) }), (_ctx, { call }) => (deps.voice.endCall(call), null)),
     "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
     "plugins.logout": method<{ cwd?: string; server: string }>(
       "desktop",
@@ -1041,6 +1075,12 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.dictationWarm, "dictation.warm", () => ({}), true),
   route(IPC.dictationTranscribe, "dictation.transcribe", (pcm) => ({ pcm })),
   route(IPC.dictationRetry, "dictation.retry"),
+  route(IPC.voiceGet, "voice.status"),
+  route(IPC.voiceRetry, "voice.retry"),
+  route(IPC.voiceStart, "voice.start", (call, cwd) => ({ call, cwd })),
+  route(IPC.voiceAudio, "voice.audio", (call, pcm) => ({ call, pcm }), true),
+  route(IPC.voiceControl, "voice.control", (call, control) => ({ call, control }), true),
+  route(IPC.voiceEnd, "voice.end", (call) => ({ call }), true),
   route(IPC.githubProject, "github.project", (cwd, refresh) => ({ cwd, refresh })),
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),
   route(IPC.githubList, "github.list", (cwd, kind, filter) => ({ cwd, kind, filter })),

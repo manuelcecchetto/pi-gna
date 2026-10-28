@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import type { AutocompleteStatus } from "../../../shared/autocomplete";
 import { useDictationStatus } from "../lib/dictation";
+import { useVoiceStatus } from "../lib/voice";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, MIN_PROB_RANGE, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { author, bugs, homepage, license } from "../../../../package.json";
 import { tildify } from "../lib/format";
@@ -472,6 +473,39 @@ function DictationRow() {
   );
 }
 
+/** Voice calls' switch, with the voice model's download and start under it. */
+function VoiceRow() {
+  const on = useApp((state) => state.settings.voice);
+  const status = useVoiceStatus(on);
+  const phase = on ? status?.phase : undefined;
+  const note =
+    phase === "downloading"
+      ? `Downloading the voice model… ${Math.round((status?.progress ?? 0) * 100)}%`
+      : phase === "starting"
+        ? "Loading the voice model…"
+        : phase === "ready"
+          ? "Ready. Start a call with the waveform button beside the composer's mic."
+          : phase === "error"
+            ? status?.error
+            : undefined;
+  return (
+    <Row
+      title="Voice calls"
+      about={
+        <>
+          Talk to pi-gna: it hears you, sends what you ask to the project's chats, reads them to answer you, and says when one finishes or needs you.
+          A small voice model (Liquid AI's LFM3-Audio-2B, LFM Open License, about 1.5 GB, downloaded once) runs on this computer; nothing leaves the
+          computer. It can misunderstand: what it sent shows on the call screen and in the chat.
+          {note && <span className={`mt-1 block ${phase === "error" ? "text-bad" : "text-muted"}`} data-testid="voice-status">{note}</span>}
+        </>
+      }
+    >
+      {phase === "error" && <Button onClick={() => void window.studio.voice.retry()}>Retry</Button>}
+      <Switch on={on} onChange={(next) => void applySettings({ type: "voice", on: next })} />
+    </Row>
+  );
+}
+
 /** How sure the model must be of each suggested word: lower suggests more often, and more often wrongly. The slider
  * moves freely and saves when let go. */
 function AutocompleteThresholdRow() {
@@ -547,6 +581,7 @@ function AgentSection({ pi }: { pi: Pi }) {
         <AutocompleteRow />
         {autocomplete && <AutocompleteThresholdRow />}
         <DictationRow />
+        <VoiceRow />
         {/* pi talks through FIFOs to outlive pi-gna: none on Windows. */}
         {!navigator.userAgent.includes("Windows") && (
           <Row

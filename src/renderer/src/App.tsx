@@ -13,6 +13,7 @@ import { deferred, preloadDeferred } from "./lib/deferred";
 import { showFileFinder } from "./lib/file-finder";
 import { BROWSER_MIN, CHAT_BESIDE_BROWSER } from "./lib/layout";
 import { boot, closeSettings, dismissToast, newChat, openLightbox, setPane, showBrowser, stepLightbox, store, toggleExpandAll, useApp } from "./state/app";
+import { VoiceCallScreen } from "./components/VoiceCall";
 
 // Out of the startup bundle (lib/deferred.ts): the pages, the browser pane, the command palette and first-run Setup.
 // Each loads when first shown; all of them load once the window is idle after startup.
@@ -139,6 +140,7 @@ export function App() {
       <Lightbox />
       <UpdateDialog />
       <CommandPalette />
+      <VoiceCallScreen />
       <SetupFlow />
     </div>
   );

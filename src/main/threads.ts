@@ -48,7 +48,7 @@ export function threadsRoute(sources: ThreadSources): Route {
       case "list":
         return { text: list(sessions, live, chat, request) };
       case "read": {
-        const thread = resolve(sessions, String(request.thread ?? ""));
+        const thread = resolveThread(sessions, String(request.thread ?? ""));
         return { text: read(thread, await sources.read(thread.path), live.get(thread.path), chat.path, request) };
       }
       case "send":
@@ -85,7 +85,7 @@ async function send(sessions: SessionSummary[], chat: { path: string; cwd: strin
   if (message.length > THREAD_LIMITS.message) throw bridgeError(400, `message is ${message.length} characters; at most ${THREAD_LIMITS.message}`);
   if (request.mode !== undefined && request.mode !== "steer" && request.mode !== "followUp") throw bridgeError(400, "mode is steer or followUp");
   const project = projectOf(chat.cwd);
-  const thread = resolve(sessions, String(request.thread ?? ""));
+  const thread = resolveThread(sessions, String(request.thread ?? ""));
   if (projectOf(thread.cwd) !== project) throw bridgeError(403, `Thread ${shortId(thread)} is in ${projectOf(thread.cwd)}; thread_send reaches this project's threads only.`);
   if (thread.path === chat.path) throw bridgeError(400, "That is this chat; pass another thread's id.");
   const self = sessions.find((session) => session.path === chat.path);
@@ -102,7 +102,7 @@ async function send(sessions: SessionSummary[], chat: { path: string; cwd: strin
 }
 
 /** A thread by id: its whole session id or a unique end of it. */
-function resolve(sessions: SessionSummary[], id: string): SessionSummary {
+export function resolveThread(sessions: SessionSummary[], id: string): SessionSummary {
   const wanted = id.trim().toLowerCase();
   if (wanted.length < 4) throw bridgeError(400, "pass thread: an id from threads_list (at least 4 characters)");
   const found = sessions.filter((session) => session.id.toLowerCase().endsWith(wanted));
@@ -111,7 +111,7 @@ function resolve(sessions: SessionSummary[], id: string): SessionSummary {
   throw bridgeError(409, `Thread id ${id} is ambiguous: ${found.map((session) => `${session.id} ${session.title}`).join("; ")}. Pass more of it.`);
 }
 
-interface Turn {
+export interface Turn {
   at: string;
   lines: string[];
 }
@@ -142,7 +142,7 @@ function read(thread: SessionSummary, entries: SessionEntry[], live: AttentionSu
 }
 
 /** The branch as turns: each starts at a user prompt; what comes before the first prompt is turn-less and dropped. */
-function toTurns(entries: SessionEntry[]): Turn[] {
+export function toTurns(entries: SessionEntry[]): Turn[] {
   const turns: Turn[] = [];
   const failed = new Set(entries.flatMap((entry) => (entry.type === "message" && entry.message.role === "toolResult" && entry.message.isError ? [entry.message.toolCallId] : [])));
   for (const entry of entries) {
@@ -213,7 +213,7 @@ function contentText(content: string | { type: string; text?: string }[]): strin
   return content.map((block) => (block.type === "text" ? block.text ?? "" : block.type === "image" ? "[image]" : "")).filter(Boolean).join("\n").trim();
 }
 
-function status(live: AttentionSummary | undefined): string {
+export function status(live: AttentionSummary | undefined): string {
   if (!live) return "";
   if (live.attention === "waiting") return "open, waiting for the user";
   if (live.running) return "open, running";
@@ -221,6 +221,6 @@ function status(live: AttentionSummary | undefined): string {
   return "open";
 }
 
-const shortId = (session: SessionSummary) => session.id.slice(-SHORT_ID);
+export const shortId = (session: SessionSummary) => session.id.slice(-SHORT_ID);
 const stamp = (at: number) => new Date(at).toISOString().slice(0, 16).replace("T", " ") + "Z";
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}… [${text.length - max + 1} more characters]` : text);

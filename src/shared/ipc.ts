@@ -1,6 +1,7 @@
 // Contract between the Electron main process and the renderer (exposed as window.studio).
 import type { AutocompleteStatus, SuggestRequest } from "./autocomplete";
 import type { DictationStatus } from "./dictation";
+import type { CallControl, CallEvent, VoiceStatus } from "./voice";
 import type { AtpPlan, AtpProjectPlans, AtpSession } from "./atp";
 import type { Board, BoardOp, Column } from "./board";
 import type { AuthMethod, AuthState, LoginResult, LoginUpdate } from "./auth";
@@ -160,6 +161,14 @@ export const IPC = {
   dictationWarm: "dictation:warm",
   dictationTranscribe: "dictation:transcribe",
   dictationRetry: "dictation:retry",
+  voiceGet: "voice:get",
+  voiceChanged: "voice:changed",
+  voiceRetry: "voice:retry",
+  voiceStart: "voice:start",
+  voiceAudio: "voice:audio",
+  voiceControl: "voice:control",
+  voiceEnd: "voice:end",
+  voiceEvent: "voice:event",
   setupStatus: "setup:status",
   setupInstallPi: "setup:install-pi",
   setupLine: "setup:line",
@@ -446,6 +455,21 @@ export interface DictationApi {
   retry(): Promise<null>;
 }
 
+/** Voice calls (src/shared/voice.ts): desktop only, the model runs on this computer. */
+export interface VoiceApi {
+  status(): Promise<VoiceStatus>;
+  onStatus(listener: (status: VoiceStatus) => void): () => void;
+  /** Downloads or starts again after an error. */
+  retry(): Promise<null>;
+  /** Starts the call `call` about `cwd`'s project, ending one going on; rejects when voice calls are not ready. */
+  start(call: string, cwd: string): Promise<null>;
+  /** 16 kHz mono microphone audio, at most a second at a time. */
+  audio(call: string, pcm: Float32Array): void;
+  control(call: string, control: CallControl & { micMuted?: boolean }): void;
+  end(call: string): void;
+  onEvent(listener: (call: string, event: CallEvent) => void): () => void;
+}
+
 export interface ImportApi {
   scan(): Promise<ImportScan>;
   /** Imports the chats of these projects (cwds from the scan); resolves when done. */
@@ -709,6 +733,7 @@ export interface StudioApi {
   imports: ImportApi;
   autocomplete: AutocompleteApi;
   dictation: DictationApi;
+  voice: VoiceApi;
   github: GithubApi;
   status: StatusApi;
   atp: AtpApi;

@@ -36,6 +36,7 @@ import {
 import { ColumnIcon } from "./ColumnIcon";
 import { ContextMeter } from "./ContextMeter";
 import { DictationButton, useComposerDictation } from "./ComposerDictation";
+import { VoiceCallButton } from "./VoiceCall";
 import { Dialogs } from "./Dialogs";
 import { QuestionsCard, questionsOf } from "./QuestionsCard";
 import { QueueCard } from "./QueueCard";
@@ -470,6 +471,7 @@ function ComposerBox({ session, placeholder, floating }: { session: ComposerSess
         <div className="flex items-center gap-1 px-2 pb-2">
           <AttachButton handle={handle} disabled={exited} />
           {dictation.on && <DictationButton dictation={dictation} />}
+          <VoiceCallButton cwd={session.cwd} />
           <ModelMenu session={session} />
           <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
             <SessionTokenRate handle={handle} running={session.running} />

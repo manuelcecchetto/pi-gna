@@ -70,6 +70,7 @@ import { flushSessionIndex, indexSettled, listSessions, persistSessionIndex, ses
 import { ChatImporter } from "./chat-import";
 import { Autocomplete } from "./autocomplete";
 import { Dictation } from "./dictation";
+import { Voice } from "./voice";
 import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
@@ -258,19 +259,17 @@ bridge.route("/kanban", settings.gate("kanban", kanbanRoute(board, (handle) => h
 bridge.route("/ask", askRoute((handle, questions, timeoutMs, signal) => host.requestAnswers(handle, questions, timeoutMs, signal)));
 // The chat titler (resources/title-extension.ts) asks at each new chat's first prompt, so a changed model applies at once.
 bridge.route("/title", async () => ({ model: taskModel(await settings.get(), "title") }));
-bridge.route(
-  "/threads",
-  threadsRoute({
-    identify: (handle) => host.identify(handle),
-    sessions: listSessions,
-    live: () => host.attentionAll(),
-    read: readActiveBranch,
-    deliver: async (thread, message, mode) => {
-      if (!chatTasks) throw new Error("pi-gna is still starting; try again in a moment");
-      return chatTasks.message(thread, message, mode);
-    },
-  }),
-);
+/** The project's chats, as the threads tools and voice calls see them. */
+const threadSources = {
+  sessions: listSessions,
+  live: () => host.attentionAll(),
+  read: readActiveBranch,
+  deliver: async (thread: { path: string; cwd: string }, message: string, mode: "steer" | "followUp") => {
+    if (!chatTasks) throw new Error("pi-gna is still starting; try again in a moment");
+    return chatTasks.message(thread, message, mode);
+  },
+};
+bridge.route("/threads", threadsRoute({ identify: (handle) => host.identify(handle), ...threadSources }));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
 const computerHelper = new ComputerService(
   process.platform === "linux"
@@ -342,6 +341,14 @@ const dictation = new Dictation({
   fetch: (url, init) => net.fetch(url, init),
   fork: (env) => utilityProcess.fork(join(import.meta.dirname, "dictation-worker.js"), [], { env: { ...process.env, ...env }, serviceName: "pi-gna Dictation" }),
   onStatus: (status) => send(IPC.dictationChanged, status),
+});
+// Voice calls: the same again, with the call's audio and events going to and from the window.
+const voice = new Voice({
+  dir: join(app.getPath("userData"), "voice"),
+  fetch: (url, init) => net.fetch(url, init),
+  sources: threadSources,
+  onStatus: (status) => send(IPC.voiceChanged, status),
+  onEvent: (call, event) => send(IPC.voiceEvent, call, event),
 });
 
 function createWindow(): void {
@@ -550,6 +557,7 @@ function registerIpc({ env: shellEnv, piDirs }: ShellEnv): void {
     chatImport,
     autocomplete,
     dictation,
+    voice,
     setup,
     browser: () => browser,
     remoteBrowser: () => remoteBrowser,
@@ -616,6 +624,7 @@ function applySettings(next: Settings): Promise<void> {
   autocomplete.minProb = next.autocompleteMinProb;
   autocomplete.setEnabled(next.autocomplete);
   dictation.setEnabled(next.dictation);
+  voice.setEnabled(next.voice);
   void remoteHost?.sync();
   // Test instances (PIGNA_USER_DATA) never register as login items: that would start them on the real profile's login.
   if (process.platform === "darwin" && !process.env.PIGNA_USER_DATA && app.getLoginItemSettings().openAtLogin !== next.openAtLogin) app.setLoginItemSettings({ openAtLogin: next.openAtLogin });
@@ -743,6 +752,7 @@ function init(): void {
     setup.dispose();
     autocomplete.dispose();
     dictation.dispose();
+    voice.dispose();
     updater?.installOnQuit();
   });
 
@@ -798,12 +808,12 @@ function init(): void {
   void app.whenReady().then(async () => {
     log.info("pigna", `${app.getName()} ${app.getVersion()} build ${__PIGNA_BUILD__}  electron ${process.versions.electron}  sessions ${sessionsDir()}  log ${logFile}`);
     log.info("pigna", `launch cwd ${launchCwd}${debugRpc ? "  (RPC debug on)" : "  (PIGNA_DEBUG=1 logs RPC traffic)"}`);
-    // The window asks for clipboard writes (copy buttons) and, with dictation on, the microphone (audio only, never the
-    // camera); the browser pane's partition has its own handler.
+    // The window asks for clipboard writes (copy buttons) and, with dictation or voice calls on, the microphone (audio
+    // only, never the camera); the browser pane's partition has its own handler.
     session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
       if (permission === "clipboard-sanitized-write") return callback(true);
       const audio = "mediaTypes" in details && details.mediaTypes?.length === 1 && details.mediaTypes[0] === "audio";
-      callback(permission === "media" && audio && current.dictation && contents === window?.webContents);
+      callback(permission === "media" && audio && (current.dictation || current.voice) && contents === window?.webContents);
     });
     serveVisual();
     servePreview(join(import.meta.dirname, "../preview"));

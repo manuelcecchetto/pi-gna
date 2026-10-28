@@ -100,6 +100,9 @@ export interface Settings {
   /** Beta: the composer's mic writes what you say, with a speech model that runs on this computer
    * (src/shared/dictation.ts). Turning it on downloads the model once. */
   dictation: boolean;
+  /** Beta: talk to pi-gna in a voice call: a speech model that runs on this computer hears you, sends what you ask to
+   * the project's chats and answers out loud (src/shared/voice.ts). Turning it on downloads the model once. */
+  voice: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;
   remote: RemoteSettings;
@@ -123,6 +126,7 @@ export type SettingsOp =
   | { type: "autocomplete"; on: boolean }
   | { type: "autocompleteMinProb"; value: number }
   | { type: "dictation"; on: boolean }
+  | { type: "voice"; on: boolean }
   | { type: "remoteEnabled"; on: boolean }
   | { type: "remotePort"; port: number }
   | { type: "keepAwake"; mode: KeepAwake }
@@ -153,6 +157,7 @@ export const emptySettings = (): Settings => ({
   autocomplete: false,
   autocompleteMinProb: MIN_WORD_PROB,
   dictation: false,
+  voice: false,
   models: {},
   remote: { enabled: false, port: REMOTE_DEFAULT_PORT, keepAwake: "while-working" },
   openAtLogin: false,
@@ -252,6 +257,10 @@ export function applySettingsOp(settings: Settings, op: SettingsOp): Settings {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn dictation ${String(op.on)}`);
       return settings.dictation === op.on ? settings : { ...settings, dictation: op.on };
     }
+    case "voice": {
+      if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn voice calls ${String(op.on)}`);
+      return settings.voice === op.on ? settings : { ...settings, voice: op.on };
+    }
     case "remoteEnabled": {
       if (typeof op.on !== "boolean") throw new SettingsError(`cannot turn remote access ${String(op.on)}`);
       return settings.remote.enabled === op.on ? settings : { ...settings, remote: { ...settings.remote, enabled: op.on } };
@@ -330,6 +339,8 @@ export function parseSettings(raw: unknown): { settings: Settings; dropped: numb
   else if (file.autocompleteMinProb !== undefined) dropped++;
   if (typeof file.dictation === "boolean") settings.dictation = file.dictation;
   else if (file.dictation !== undefined) dropped++;
+  if (typeof file.voice === "boolean") settings.voice = file.voice;
+  else if (file.voice !== undefined) dropped++;
   if (typeof file.openAtLogin === "boolean") settings.openAtLogin = file.openAtLogin;
   else if (file.openAtLogin !== undefined) dropped++;
   if (isFolder(file.worktreeBase)) settings.worktreeBase = file.worktreeBase;

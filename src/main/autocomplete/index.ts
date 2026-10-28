@@ -2,9 +2,7 @@
 // typeahead model when the setting turns on, runs the server on 127.0.0.1 behind a random API key while the composer
 // asks for suggestions, and stops it after a while without any. One suggestion in flight per client: a new keystroke
 // aborts the last one.
-import { type ChildProcess, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { createServer } from "node:net";
+import type { ChildProcess } from "node:child_process";
 import { join } from "node:path";
 import { type AutocompleteStatus, buildPrompt, cleanSuggestion, confidentText, pickExamples, type SuggestRequest, wantsSuggestion } from "../../shared/autocomplete";
 import { MIN_WORD_PROB } from "../../shared/settings";
@@ -12,6 +10,7 @@ import { log } from "../log";
 import { type Download, MODEL, type ServerBuild, serverBuilds } from "./assets";
 import { type Fetch, fetchVerified, installServer } from "./install";
 import { PromptHistory } from "./history";
+import { launchLlamaServer, type LlamaServer } from "./server";
 
 /** The server stops after this long without a suggestion, giving its memory back. */
 const IDLE_MS = 10 * 60_000;
@@ -29,22 +28,6 @@ export interface AutocompleteDeps {
   model?: Download & { file: string };
 }
 
-interface Server {
-  child: ChildProcess;
-  url: string;
-  key: string;
-}
-
-const freePort = () =>
-  new Promise<number>((resolve, reject) => {
-    const probe = createServer();
-    probe.once("error", reject);
-    probe.listen(0, "127.0.0.1", () => {
-      const address = probe.address();
-      probe.close(() => (address && typeof address === "object" ? resolve(address.port) : reject(new Error("no free port"))));
-    });
-  });
-
 export class Autocomplete {
   private status: AutocompleteStatus = { phase: "off" };
   private enabled = false;
@@ -54,7 +37,7 @@ export class Autocomplete {
   private executable: { build: ServerBuild; path: string } | undefined;
   private readonly failed = new Set<string>();
   private installing: { abort: AbortController; done: Promise<void> } | undefined;
-  private server: Promise<Server> | undefined;
+  private server: Promise<LlamaServer> | undefined;
   private child: ChildProcess | undefined;
   private idle: ReturnType<typeof setTimeout> | undefined;
   private readonly inflight = new Map<string, AbortController>();
@@ -132,7 +115,7 @@ export class Autocomplete {
     return join(this.deps.dir, "models", this.model.file);
   }
 
-  private start(): Promise<Server> {
+  private start(): Promise<LlamaServer> {
     this.server ??= this.launch().catch((error: Error) => {
       this.server = undefined;
       throw error;
@@ -140,38 +123,20 @@ export class Autocomplete {
     return this.server;
   }
 
-  private async launch(): Promise<Server> {
+  private async launch(): Promise<LlamaServer> {
     const executable = this.executable;
     if (!executable) throw new Error("not installed");
     this.set({ phase: "starting" });
-    const port = await freePort();
-    const key = randomBytes(24).toString("hex");
-    const args = ["-m", this.modelPath(), "--host", "127.0.0.1", "--port", String(port), "--api-key", key, "-c", "4096", "-np", "1", "-ngl", "99", "--cache-reuse", "256", "--no-webui"];
-    const child = spawn(executable.path, args, { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
-    let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => (stderr = (stderr + chunk.toString()).slice(-2000)));
-    const url = `http://127.0.0.1:${port}`;
-    const exited = new Promise<never>((_, reject) => child.once("exit", (code) => reject(new Error(`llama-server exited with ${code}: ${stderr.trim().split("\n").at(-1) ?? ""}`))));
-    this.child = child;
-    child.once("exit", () => {
-      // Crashed or stopped: the next suggestion starts a new one.
-      if (this.child !== child) return;
-      this.child = undefined;
-      this.server = undefined;
-    });
-    const ready = (async () => {
-      const deadline = Date.now() + START_MS;
-      while (Date.now() < deadline) {
-        const response = await fetch(`${url}/health`).catch(() => undefined);
-        if (response?.ok) return;
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
-      throw new Error("llama-server did not start in time");
-    })();
+    const args = ["-m", this.modelPath(), "-c", "4096", "-np", "1", "-ngl", "99", "--cache-reuse", "256"];
+    let server: LlamaServer;
     try {
-      await Promise.race([ready, exited]);
+      server = await launchLlamaServer(executable.path, args, START_MS, (child) => {
+        // Crashed or stopped: the next suggestion starts a new one.
+        if (this.child !== child) return;
+        this.child = undefined;
+        this.server = undefined;
+      });
     } catch (error) {
-      child.kill();
       // A GPU build that cannot run here (no Vulkan driver): the next build of the list is fetched and tried.
       this.failed.add(executable.build.id);
       this.executable = undefined;
@@ -181,8 +146,9 @@ export class Autocomplete {
       else this.set({ phase: "error", error: `The local model would not start: ${(error as Error).message}` });
       throw error;
     }
+    this.child = server.child;
     this.set({ phase: "ready" });
-    return { child, url, key };
+    return server;
   }
 
   /** Stops the server; the next suggestion starts it again. */

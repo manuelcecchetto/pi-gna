@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Voice calls (beta). Turn on Settings > Agent > Voice calls, then press the waveform button beside the composer's mic and talk: ask what your chats are doing, or tell one what to do next. A small voice model (Liquid AI's LFM3-Audio-2B, about 1.5 GB, downloaded once) runs on your computer, sends your words to the right chat, answers out loud, and tells you when a chat finishes, fails or needs you. Talk over it to interrupt. Nothing leaves your computer.
+
 ## 0.29.4 - 2026-10-27
 
 - tok/s compares across models. Tokenizers differ (an OpenAI token holds about 1.7 times the characters of a Claude token), so OpenAI models like Terra read slower than Opus while they streamed more text a second. Every response is now counted in tokens of 4 characters, converted with each model's characters per token learned from the chat, hidden reasoning included; the red, orange and green marks moved to 10, 25 and 50 to match. The speed card's note also wraps instead of running off its edge.

@@ -10,6 +10,7 @@ import type { McpLoginUpdate } from "../shared/plugins";
 import type { ImportProgress } from "../shared/chat-import";
 import type { AutocompleteStatus } from "../shared/autocomplete";
 import type { DictationStatus } from "../shared/dictation";
+import type { CallEvent, VoiceStatus } from "../shared/voice";
 import type { Settings, SettingsSection } from "../shared/settings";
 import type { UsageProgress } from "../shared/usage";
 import type { AtpPlanThreads, AtpRunnerState, DeviceInfo, PairingStatus, RemoteStatus, Revved, UiState } from "../shared/host-api";
@@ -220,6 +221,20 @@ const api: StudioApi = {
     warm: () => ipcRenderer.send(IPC.dictationWarm),
     transcribe: (pcm) => ipcRenderer.invoke(IPC.dictationTranscribe, pcm),
     retry: () => ipcRenderer.invoke(IPC.dictationRetry),
+  },
+  voice: {
+    status: () => ipcRenderer.invoke(IPC.voiceGet),
+    onStatus: (listener) => subscribe<VoiceStatus>(IPC.voiceChanged, listener),
+    retry: () => ipcRenderer.invoke(IPC.voiceRetry),
+    start: (call, cwd) => ipcRenderer.invoke(IPC.voiceStart, call, cwd),
+    audio: (call, pcm) => ipcRenderer.send(IPC.voiceAudio, call, pcm),
+    control: (call, control) => ipcRenderer.send(IPC.voiceControl, call, control),
+    end: (call) => ipcRenderer.send(IPC.voiceEnd, call),
+    onEvent: (listener) => {
+      const handler = (_event: unknown, call: string, event: CallEvent) => listener(call, event);
+      ipcRenderer.on(IPC.voiceEvent, handler);
+      return () => ipcRenderer.off(IPC.voiceEvent, handler);
+    },
   },
   setup: {
     status: () => ipcRenderer.invoke(IPC.setupStatus),

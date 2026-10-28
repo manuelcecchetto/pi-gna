@@ -1723,3 +1723,60 @@ code.hl span {
     transform: none;
   }
 }
+
+/* Voice call orb (components/VoiceCall.tsx): breathes while listening, swells with the voice (--level 0..1), a
+   light sweeps it while thinking. */
+.voice-orb {
+  --level: 0;
+  position: relative;
+  width: 176px;
+  height: 176px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 34% 28%, color-mix(in oklab, var(--accent) 22%, white) 0%, transparent 48%),
+    radial-gradient(circle at 50% 58%, var(--accent) 0%, color-mix(in oklab, var(--accent) 62%, black) 100%);
+  box-shadow: 0 0 calc(28px + 56px * var(--level)) color-mix(in oklab, var(--accent) 42%, transparent);
+  transform: scale(calc(1 + 0.14 * var(--level)));
+  transition:
+    transform 90ms linear,
+    box-shadow 90ms linear,
+    filter 400ms ease,
+    opacity 400ms ease;
+}
+.voice-orb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(from 0deg, transparent 0 55%, color-mix(in oklab, white 45%, transparent) 72%, transparent 88%);
+  mix-blend-mode: soft-light;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.voice-orb[data-state="connecting"] {
+  filter: saturate(0.35);
+  animation: voice-breathe 1.4s ease-in-out infinite;
+}
+.voice-orb[data-state="listening"] {
+  animation: voice-breathe 3.2s ease-in-out infinite;
+}
+.voice-orb[data-state="thinking"]::after {
+  opacity: 1;
+  animation: spin 1.4s linear infinite;
+}
+.voice-orb[data-state="ended"] {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+@keyframes voice-breathe {
+  50% {
+    transform: scale(1.04);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-orb,
+  .voice-orb::after {
+    animation: none !important;
+    transition: none;
+  }
+}

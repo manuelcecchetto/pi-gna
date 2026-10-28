@@ -140,6 +140,15 @@ export const Angry = icon("angry", <>{ring}<path d="M8.5 16.5a4.5 4.5 0 0 1 7 0M
 // Chat.
 export const MessageSquare = icon("message-square", bubble);
 export const Mic = icon("mic", <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></>);
+export const MicOff = icon("mic-off", <><path d="M15 9.5V6a3 3 0 0 0-5.6-1.5M9 9v2a3 3 0 0 0 4.9 2.3M5.5 11a6.5 6.5 0 0 0 10.6 5M18.5 11a6.4 6.4 0 0 1-.6 2.7M12 17.5V21M4 4l16 16" /></>);
+export const AudioLines = icon("audio-lines", <path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 10.5v3" />);
+const speaker = <path d="M4 9.8v4.4a1 1 0 0 0 1 1h2.8l4.2 3.6V5.2L7.8 8.8H5a1 1 0 0 0-1 1z" />;
+export const Volume2 = icon("volume-2", <>{speaker}<path d="M15.5 9.2a4 4 0 0 1 0 5.6M18.3 6.5a7.7 7.7 0 0 1 0 11" /></>);
+export const VolumeX = icon("volume-x", <>{speaker}<path d="M16 9.5l5 5M21 9.5l-5 5" /></>);
+export const PhoneOff = icon(
+  "phone-off",
+  <path d="M2.5 14.2c0-1.6 4.2-4.7 9.5-4.7s9.5 3.1 9.5 4.7v1.3a1.4 1.4 0 0 1-1.7 1.4l-3.1-.8a1.4 1.4 0 0 1-1-1.3v-1.6a10.6 10.6 0 0 0-7.4 0v1.6a1.4 1.4 0 0 1-1 1.3l-3.1.8a1.4 1.4 0 0 1-1.7-1.4z" />,
+);
 export const MessageSquarePlus = icon("message-square-plus", <>{bubble}<path d="M12 8v6M9 11h6" /></>);
 export const MessagesSquare = icon(
   "messages-square",
