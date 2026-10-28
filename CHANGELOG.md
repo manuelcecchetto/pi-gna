@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.30.1 - 2026-10-28
+
 - Voice calls no longer send anything to your chats, and no longer hear themselves. On "ciao", the small voice model sent a chat that chat's own old prompt as if you had asked, and with speakers on it heard its own voice and answered itself in a loop. A call now only reads your chats and answers; it does not listen while it talks and for a moment after (Mute assistant cuts it short). Sending comes back once a capable model does the deciding.
 
 ## 0.30.0 - 2026-10-28
