@@ -80,7 +80,7 @@ describe("VoiceCall", () => {
   });
 
   it("runs the tools a response calls, hands back their output and asks again", async () => {
-    const { call, server, events, run, spoken } = setup([callTool("threads_list", {}), callTool("thread_send", { thread: "c3d4", message: "push" }), say("Sent.")]);
+    const { call, server, events, run, spoken } = setup([callTool("threads_list", {}), callTool("thread_read", { thread: "2" }), say("It is waiting for you.")]);
     await call.start();
     call.audio(quiet(200));
     call.audio(voice(600));
@@ -88,38 +88,40 @@ describe("VoiceCall", () => {
     for (let i = 0; i < 10; i++) await tick();
     expect(run.mock.calls).toEqual([
       ["threads_list", {}],
-      ["thread_send", { thread: "c3d4", message: "push" }],
+      ["thread_read", { thread: "2" }],
     ]);
     expect(server.sent.filter((event) => event.type === "conversation.item.create")).toEqual([
       { type: "conversation.item.create", item: { type: "function_call_output", call_id: "c-threads_list", output: "threads_list ok" } },
-      { type: "conversation.item.create", item: { type: "function_call_output", call_id: "c-thread_send", output: "thread_send ok" } },
+      { type: "conversation.item.create", item: { type: "function_call_output", call_id: "c-thread_read", output: "thread_read ok" } },
     ]);
-    expect(events).toContainEqual({ type: "action", text: 'thread_send {"thread":"c3d4","message":"push"}' });
-    expect(spoken).toEqual(["Sent."]);
+    expect(events).toContainEqual({ type: "action", text: 'thread_read {"thread":"2"}' });
+    expect(spoken).toEqual(["It is waiting for you."]);
   });
 
-  it("stops talking when the user talks over it", async () => {
-    let aborted = false;
-    const { call, events } = setup([say("This is a long answer.")], {
-      async *tts(_text, signal) {
-        yield new Float32Array(240);
-        await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
-        aborted = true;
-      },
-    });
-    await call.start();
-    call.audio(quiet(200));
-    call.audio(voice(600));
-    call.audio(quiet(1000));
-    for (let i = 0; i < 5; i++) await tick();
-    expect(events.some((event) => event.type === "audio")).toBe(true);
-    call.control({ playing: true });
-    // Louder than the bar raised for the speakers' echo.
-    call.audio(samples(600, -10));
-    await tick();
-    expect(aborted).toBe(true);
-    expect(events).toContainEqual({ type: "flush" });
-    expect(events.at(-1)).toEqual({ type: "state", state: "hearing" });
+  it("does not hear its own voice: the microphone is ignored while it speaks and just after", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { call, server, states } = setup([say("This is the answer.")]);
+      await call.start();
+      call.audio(quiet(200));
+      call.audio(voice(600));
+      call.audio(quiet(1000));
+      for (let i = 0; i < 5; i++) await tick();
+      const sent = server.sent.length;
+      call.control({ playing: true });
+      // Its own voice, loud, from the speakers.
+      call.audio(samples(1500, -10));
+      call.control({ playing: false });
+      call.audio(samples(500, -10));
+      expect(server.sent.length).toBe(sent);
+      expect(states().at(-1)).toBe("listening");
+      vi.advanceTimersByTime(800);
+      call.audio(quiet(200));
+      call.audio(voice(600));
+      expect(states().at(-1)).toBe("hearing");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("cancels a response being written when the user goes on talking, then answers both", async () => {

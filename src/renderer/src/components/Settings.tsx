@@ -493,9 +493,9 @@ function VoiceRow() {
       title="Voice calls"
       about={
         <>
-          Talk to pi-gna: it hears you, sends what you ask to the project's chats, reads them to answer you, and says when one finishes or needs you.
+          Talk to pi-gna: it hears you, reads the project's chats to answer you, and says when one finishes or needs you. It cannot send anything to a chat yet.
           A small voice model (Liquid AI's LFM3-Audio-2B, LFM Open License, about 1.5 GB, downloaded once) runs on this computer; nothing leaves the
-          computer. It can misunderstand: what it sent shows on the call screen and in the chat.
+          computer. It does not listen while it talks: mute the assistant to cut it short.
           {note && <span className={`mt-1 block ${phase === "error" ? "text-bad" : "text-muted"}`} data-testid="voice-status">{note}</span>}
         </>
       }

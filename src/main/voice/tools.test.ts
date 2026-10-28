@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AttentionSummary } from "../../shared/host-api";
 import type { SessionSummary } from "../../shared/ipc";
 import type { SessionEntry } from "../../shared/protocol";
-import { type VoiceSources, VoiceTools, voiceMessage } from "./tools";
+import { type VoiceSources, VOICE_TOOLS, VoiceTools } from "./tools";
 
 const session = (id: string, title: string, cwd: string, modifiedAt: number): SessionSummary => ({
   path: `/sessions/${id}.jsonl`,
@@ -64,11 +64,11 @@ describe("VoiceTools", () => {
   });
 
   it("finds a chat by its number in the last list, the end of its id, or its title", async () => {
-    const { tools: voice, deliver } = tools();
+    const { tools: voice } = tools();
     await voice.run("threads_list", {});
-    for (const thread of ["2", "#2", "c3d4", "release v0.29.2", "the Release v0.29.2 chat"]) await voice.run("thread_send", { thread, message: "hi" });
-    expect(deliver.mock.calls.map(([chat]) => chat.path)).toEqual(Array(5).fill(SESSIONS[1]!.path));
-    expect((await voice.run("thread_send", { thread: "deploy", message: "hi" })).output).toBe("There is no chat deploy. Call threads_list for the chat ids.");
+    for (const thread of ["2", "#2", "c3d4", "release v0.29.2", "the Release v0.29.2 chat"])
+      expect((await voice.run("thread_read", { thread })).action).toBe("Read Release v0.29.2");
+    expect((await voice.run("thread_read", { thread: "deploy" })).output).toBe("There is no chat deploy. Call threads_list for the chat ids.");
   });
 
   it("reads a chat's last turn: the prompt and the final reply", async () => {
@@ -77,20 +77,18 @@ describe("VoiceTools", () => {
     expect(result.action).toBe("Read Fix flaky login test");
   });
 
-  it("sends a chat the user's request, marked as relayed from a voice call, at once if it runs", async () => {
+  it("cannot send anything to a chat", async () => {
     const { tools: voice, deliver } = tools();
-    const result = await voice.run("thread_send", { thread: "c3d4", message: "Go ahead and push, but run the tests first." });
-    expect(deliver).toHaveBeenCalledWith(SESSIONS[1], voiceMessage("Go ahead and push, but run the tests first."), "steer");
-    expect(voiceMessage("hi")).toMatch(/^\[Voice call: the user said this aloud/);
-    expect(result).toEqual({ output: "Sent to Release v0.29.2: it is running and reads it after its current step.", action: "Sent to Release v0.29.2: “Go ahead and push, but run the tests first.”" });
+    expect(VOICE_TOOLS.map((tool) => tool.name)).toEqual(["threads_list", "thread_read"]);
+    expect((await voice.run("thread_send", { thread: "c3d4", message: "push" })).output).toBe("There is no tool thread_send.");
+    expect(deliver).not.toHaveBeenCalled();
   });
 
   it("answers a wrong id, another project's chat or an unknown tool with words the model can recover from", async () => {
     const { tools: voice, deliver } = tools();
-    expect((await voice.run("thread_send", { thread: "Fix flaky login test (running)\nRelease v0.29.2 (waiting)", message: "x" })).output).toMatch(/^There is no chat [\s\S]* Call threads_list for the chat ids\.$/);
-    expect((await voice.run("thread_send", { thread: "99ff", message: "x" })).output).toBe("There is no chat 99ff. Call threads_list for the chat ids.");
-    expect((await voice.run("thread_send", { thread: "Other project chat", message: "x" })).output).toMatch(/^There is no chat/);
-    expect((await voice.run("thread_send", { thread: "c3d4" })).output).toBe("Pass message: what to tell the chat.");
+    expect((await voice.run("thread_read", { thread: "Fix flaky login test (running)\nRelease v0.29.2 (waiting)" })).output).toMatch(/^There is no chat [\s\S]* Call threads_list for the chat ids\.$/);
+    expect((await voice.run("thread_read", { thread: "99ff" })).output).toBe("There is no chat 99ff. Call threads_list for the chat ids.");
+    expect((await voice.run("thread_read", { thread: "Other project chat" })).output).toMatch(/^There is no chat/);
     expect((await voice.run("delete_everything", {})).output).toBe("There is no tool delete_everything.");
     expect(deliver).not.toHaveBeenCalled();
   });

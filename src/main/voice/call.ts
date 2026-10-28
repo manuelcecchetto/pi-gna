@@ -5,7 +5,8 @@
 //   "I'll send that" and does not), and the tools run here on the project's chats;
 // - speaking: the final text is said by /tts sentence by sentence while the window plays it, and the chats of the
 //   project keep working: one that finishes, fails or needs you during the call is announced.
-// Talking over the assistant interrupts it: its speech stops and a response being written is cancelled.
+// It does not listen while it speaks (its own voice came back through the microphone); Mute assistant stops it. Going on
+// talking while it writes an answer cancels that answer.
 import type { AttentionSummary } from "../../shared/host-api";
 import { type CallControl, type CallEvent, Endpointer, expectedSeconds, FRAME, level, sentences, spoken } from "../../shared/voice";
 import type { ToolResult } from "./tools";
@@ -37,8 +38,11 @@ export interface CallDeps {
 const MAX_ROUNDS = 4;
 /** Audio kept from before a turn starts, so its first syllable is not cut (frames of 20 ms). */
 const PREROLL = 15;
-/** While speech plays, talking must be this much louder to count: the speakers' echo is not the user. */
-const PLAYING_BOOST = 12;
+/**
+ * The microphone is not listened to while it speaks and this long after: the speakers' echo came back as a turn of
+ * its own and it answered itself in a loop (echo cancellation did not stop it on a MacBook's speakers).
+ */
+const DEAF_AFTER_MS = 700;
 const WATCH_MS = 2000;
 
 interface Call {
@@ -89,6 +93,7 @@ export class VoiceCall {
   private speech: AbortController | undefined;
   private speechId = 0;
   private playing = false;
+  private deafUntil = 0;
   private assistantMuted = false;
   private readonly news: string[] = [];
   private watch: ReturnType<typeof setInterval> | undefined;
@@ -132,6 +137,11 @@ export class VoiceCall {
   /** Microphone audio, 16 kHz mono, in chunks of any length. */
   audio(pcm: Float32Array): void {
     if (!this.ready || this.ended) return;
+    if (this.playing || this.speech || Date.now() < this.deafUntil) {
+      this.rest = new Float32Array(0);
+      this.preroll = [];
+      return;
+    }
     const all = new Float32Array(this.rest.length + pcm.length);
     all.set(this.rest);
     all.set(pcm, this.rest.length);
@@ -139,7 +149,7 @@ export class VoiceCall {
     let at = 0;
     for (; at + FRAME <= all.length; at += FRAME) {
       const frame = all.slice(at, at + FRAME);
-      const edge = this.endpointer.frame(level(frame), this.playing || this.speech ? PLAYING_BOOST : 0);
+      const edge = this.endpointer.frame(level(frame));
       if (edge === "start") {
         this.interrupt();
         this.deps.emit({ type: "state", state: "hearing" });
@@ -169,7 +179,10 @@ export class VoiceCall {
   control(control: CallControl): void {
     if (control.playing !== undefined) {
       this.playing = control.playing;
-      if (!control.playing) this.announce();
+      if (!control.playing) {
+        this.deafUntil = Date.now() + DEAF_AFTER_MS;
+        this.announce();
+      }
     }
     if (control.assistantMuted !== undefined) {
       this.assistantMuted = control.assistantMuted;

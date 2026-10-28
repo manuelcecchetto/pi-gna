@@ -1,7 +1,8 @@
-// The voice assistant's tools (docs/DESIGN.md, Voice calls): list the project's chats, read one's last turn, send one
-// what the user asked. They share the threads tools' sources (src/main/threads.ts) but answer in the small, plain
+// The voice assistant's tools (docs/DESIGN.md, Voice calls): list the project's chats and read one's last turn. They share the threads tools' sources (src/main/threads.ts) but answer in the small, plain
 // shape a 2B model handles: a list of numbered chats with title and status, one turn clipped short, and errors it can
 // recover from. Chats are numbered, not given their session ids: ids that differ in a few hex digits got mixed up.
+// It cannot send: the 2B model once answered "ciao" by sending a chat that chat's own old prompt, and the chat went to
+// work on it. Read-only until a capable model does the deciding (docs/DESIGN.md, Voice calls).
 import { projectOf } from "../../shared/board";
 import type { SessionSummary } from "../../shared/ipc";
 import { resolveThread, status, type ThreadSources, toTurns } from "../threads";
@@ -20,22 +21,12 @@ export const VOICE_TOOLS = [
     description: "Read a chat's latest turn: what the user asked it and what its agent did and answered.",
     parameters: { type: "object", properties: { thread: { type: "string", description: "Chat id from threads_list" } }, required: ["thread"] },
   },
-  {
-    type: "function",
-    name: "thread_send",
-    description: "Send a request to one chat's coding agent. message: what the user asked, close to their own words.",
-    parameters: {
-      type: "object",
-      properties: { thread: { type: "string", description: "Chat id from threads_list" }, message: { type: "string" } },
-      required: ["thread", "message"],
-    },
-  },
 ] as const;
 
 /** What the voice assistant is told: it acts with the tools and is heard, not read. */
 export const VOICE_INSTRUCTIONS =
-  "You are the voice of pi-gna, an app where the user runs coding agents in chats. You hear the user and act for them with tools: " +
-  "send their requests to the right chat with thread_send, and read chats to answer their questions. Call threads_list to find a chat's id. " +
+  "You are the voice of pi-gna, an app where the user runs coding agents in chats. You hear the user and answer questions about their chats: " +
+  "call threads_list to see them and thread_read to read one. For a greeting or small talk, just answer briefly without tools. " +
   "Your text is spoken aloud: answer in one or two short sentences, no markdown, no ids.";
 
 /** How many chats a list shows, and how much of a turn a read keeps. */
@@ -51,11 +42,6 @@ export interface ToolResult {
 }
 
 export type VoiceSources = Pick<ThreadSources, "sessions" | "live" | "read" | "deliver">;
-
-/** A message the voice assistant relays: the user said it, but a small model heard and worded it. */
-export function voiceMessage(text: string): string {
-  return `[Voice call: the user said this aloud to pi-gna's voice assistant, which relayed it; a word may be misheard or paraphrased.]\n\n${text.trim()}`;
-}
 
 export class VoiceTools {
   /** The numbers the last list gave, to the chat's session file. */
@@ -95,8 +81,6 @@ export class VoiceTools {
           return await this.list();
         case "thread_read":
           return await this.read(args.thread);
-        case "thread_send":
-          return await this.send(args.thread, args.message);
         default:
           return { output: `There is no tool ${name}.` };
       }
@@ -130,14 +114,4 @@ export class VoiceTools {
     return { output: `${head}\n${prompt}\n${reply}`, action: `Read ${thread.title}` };
   }
 
-  private async send(id: unknown, message: unknown): Promise<ToolResult> {
-    const text = String(message ?? "").trim();
-    if (!text) return { output: "Pass message: what to tell the chat." };
-    const thread = this.find(await this.chats(), id);
-    if (typeof thread === "string") return { output: thread };
-    // A chat at work hears it after its current tool call: in a call you talk to it now, not after its run.
-    const outcome = await this.sources.deliver(thread, voiceMessage(text), "steer");
-    const how = { started: "it started working on it", steer: "it is running and reads it after its current step", followUp: "it reads it when its run ends", opening: "it is opening and will start on it" }[outcome];
-    return { output: `Sent to ${thread.title}: ${how}.`, action: `Sent to ${thread.title}: “${text}”` };
-  }
 }

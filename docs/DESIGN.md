@@ -1149,7 +1149,13 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   "… failed.", "… needs you.") is said once nothing else goes on. Talking over the assistant interrupts it: louder
   than the speakers' echo (the bar is 12 dB higher while speech plays), it drops the speech not yet played (`flush`)
   and cancels a response being written, holding the new audio until the cancel is done.
-  The tools (`threads_list`, `thread_read`, `thread_send`) see the call's project only (`projectOf`). The list
+  Since 0.30.1 there is no `thread_send` and no barge-in. In real use (0.30.0, MacBook speakers) the speakers' sound
+  came back as a turn of its own and it answered itself in a loop, and on "ciao" it listed the chats, read the newest
+  and sent it its own first prompt as the user's request; that chat rewrote ~/.pi/agent config on it. The 2B model
+  calls tools on clear commands but cannot decide to do nothing, nor tell text it read from what was asked. The
+  microphone is now ignored while speech is made or plays and 700 ms after (`DEAF_AFTER_MS`). Next: the model only
+  transcribes and speaks, and a "Voice" pi chat on a capable model (openai-codex/gpt-6.1-terra) does the deciding.
+  The tools (`threads_list`, `thread_read`; `thread_send` until 0.30.0) see the call's project only (`projectOf`). The list
   numbers the chats (`1`, `2`, …) and a chat is found by that number, the end of its session id or its title: with
   session ids, ids that differed in a few hex digits got mixed up and it read the wrong chat. A read gives the last
   turn's prompt (300 characters) and final reply (1200). A send delivers through `ChatTasks.message` with `steer`
