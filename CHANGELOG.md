@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.31.0 - 2026-10-28
+
 - Voice calls work again, with a real brain. The small voice model only writes down what you say and speaks; a "Voice call" chat on GPT-6.1 Terra (Settings > Models > Voice calls) decides: it answers about your chats from a snapshot pi-gna gives it each turn, and passes clear requests on to the right chat in your words, with every condition you gave. It does nothing on small talk, asks when it is not sure which chat, and drops a request you take back. It waits for you to finish: a sentence that sounds unfinished gets more time, and going on after a pause adds to what you said instead of being cut off. Click the orb or press Space to stop it. What you say goes to Terra like a typed message; listening and speaking stay on your computer.
 
 ## 0.30.1 - 2026-10-28
