@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.30.0 - 2026-10-28
+
 - Voice calls (beta). Turn on Settings > Agent > Voice calls, then press the waveform button beside the composer's mic and talk: ask what your chats are doing, or tell one what to do next. A small voice model (Liquid AI's LFM3-Audio-2B, about 1.5 GB, downloaded once) runs on your computer, sends your words to the right chat, answers out loud, and tells you when a chat finishes, fails or needs you. Talk over it to interrupt. Nothing leaves your computer.
 
 ## 0.29.4 - 2026-10-27
