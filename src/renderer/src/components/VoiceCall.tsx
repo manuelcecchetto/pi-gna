@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CallState } from "../../../shared/voice";
 import { useVoiceStatus } from "../lib/voice";
 import { useApp } from "../state/app";
-import { endCall, outputLevel, startCall, toggleAssistant, toggleMic, useVoiceCall } from "../state/voice";
+import { endCall, interrupt, outputLevel, startCall, toggleAssistant, toggleMic, useVoiceCall } from "../state/voice";
 import { AudioLines, Mic, MicOff, PhoneOff, Volume2, VolumeX, X } from "./icons";
 
 const STATE_LABEL: Record<CallState, string> = {
@@ -58,10 +58,11 @@ export function VoiceCallScreen() {
   useEffect(() => {
     if (!call) return;
     const keydown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" && event.key !== " ") return;
       event.preventDefault();
       event.stopPropagation();
-      endCall();
+      if (event.key === "Escape") endCall();
+      else if (!event.repeat) interrupt();
     };
     window.addEventListener("keydown", keydown, true);
     return () => window.removeEventListener("keydown", keydown, true);
@@ -76,19 +77,31 @@ export function VoiceCallScreen() {
         <div className="text-[13px] text-muted">
           Voice call · <span className="text-fg">{project}</span>
         </div>
-        <div className="voice-orb" data-state={call.state} style={{ "--level": level.toFixed(3) } as React.CSSProperties} aria-hidden />
-        <div className="text-[15px] font-medium text-fg" aria-live="polite" data-testid="voice-state">
-          {ended && call.ended && call.ended !== "ended" ? call.ended : STATE_LABEL[call.state]}
+        <button
+          type="button"
+          className="voice-orb"
+          data-state={call.state}
+          style={{ "--level": level.toFixed(3) } as React.CSSProperties}
+          onClick={interrupt}
+          tabIndex={-1}
+          aria-label="Stop"
+          data-testid="voice-orb"
+        />
+        <div className="flex flex-col items-center gap-1">
+          <div className="text-[15px] font-medium text-fg" aria-live="polite" data-testid="voice-state">
+            {ended && call.ended && call.ended !== "ended" ? call.ended : STATE_LABEL[call.state]}
+          </div>
+          <div className={`text-[12px] text-faint ${call.state === "thinking" || call.state === "speaking" ? "" : "invisible"}`}>Click the orb or press Space to stop</div>
         </div>
         <ol className="flex min-h-[7.5rem] w-full max-w-xl flex-col justify-end gap-1.5 text-center" data-testid="voice-lines">
           {call.lines.map((line, index) => (
             <li
               key={`${index}:${line.text}`}
               className={
-                line.kind === "reply" ? "selectable text-[14px] leading-snug text-fg" : line.kind === "error" ? "text-[12.5px] text-bad" : "text-[12.5px] text-muted"
+                line.kind === "reply" ? "selectable text-[14px] leading-snug text-fg" : line.kind === "error" ? "text-[12.5px] text-bad" : "selectable text-[12.5px] text-muted"
               }
             >
-              {line.text}
+              {line.kind === "heard" ? `“${line.text}”` : line.text}
             </li>
           ))}
           {!call.lines.length && !ended && (

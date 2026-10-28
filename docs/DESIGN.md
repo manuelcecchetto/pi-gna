@@ -28,7 +28,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     chat-import/   ChatImporter: Codex and Claude Code transcripts -> pi session files (Settings > Import chats)
     autocomplete/  Autocomplete: composer ghost text from a local llama.cpp server and typeahead model (Settings > Agent > Beta)
     dictation/     Dictation: composer mic, local Parakeet Ultra speech model in a utility process (Settings > Agent > Beta)
-    voice/         Voice calls: talk to the project's chats through a local LFM3-Audio-2B on llama-server (Settings > Agent > Beta)
+    voice/         Voice calls: local LFM3-Audio-2B hears and speaks, a "Voice call" pi chat decides (Settings > Agent > Beta)
     files          `rg --files` for @ mentions, kept until a file comes or goes (a recursive watcher; 15 s on Linux)
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
@@ -1125,55 +1125,39 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   since Chromium's fake capture device delivered silence).
 - **Voice calls** (Agent > Beta, `voice`, off by default; desktop only for now): a waveform button beside the
   composer's mic starts a call about the chat's project, a screen over the window with an orb (connecting, listening,
-  hearing you, thinking, speaking), what the assistant did and said, and Mute assistant, Mute microphone and End call
-  (Esc ends it). You talk; a small model on this computer lists and reads the project's chats and sends them what you
-  ask, answers out loud, and says when a chat finishes, fails or needs you.
-  Model and server (`src/main/voice/`, pins in `assets.ts`): LiquidAI's LFM3-Audio-2B Q4_K_M (1.10 GB) and its audio
-  projector Q8_0 (338 MB) on llama.cpp `llama-server` b11969, the first builds with `/v1/realtime` (OpenAI Realtime
-  schema, tool calls) and `/tts` for LFM3. Autocomplete keeps its own older pin; both use the verified download and
-  `launchLlamaServer` (`autocomplete/server.ts`: 127.0.0.1, free port, random `--api-key`). Voice starts the server on
-  the first call with `-c 16384 -np 2` (the call's session and its speech at once) and stops it 10 minutes after the
-  last call, when the switch goes off and on quit. The WebSocket sends the key in `Authorization` (Node's WebSocket
-  takes headers); the server refuses a connection without it.
-  One call (`call.ts`, `VoiceCall`) runs three things at once. Listening: the window's microphone streams to main as
-  16 kHz float PCM (a ScriptProcessor at 16 kHz, echo cancellation on), and every 20 ms frame goes through an
-  endpointer (`Endpointer` in `src/shared/voice.ts`: louder than the room's floor by 12 dB, 160 ms starts a turn,
-  800 ms of quiet ends it, 30 s at most), since the server has no turn detection. A turn's audio, with 300 ms from
-  before it, is appended while you talk, so the server has read it when you stop; then commit and `response.create`.
-  Acting: the session answers in text (`output_modalities: ["text"]`); the tools run in main (`tools.ts`,
-  `VoiceTools`) and their output goes back as `function_call_output`, up to 4 rounds a turn. Speaking: the final
-  text, cleaned of markdown and ids (`spoken`), goes to `/tts` sentence by sentence (24 kHz float, streamed); the
-  window's `SpeechPlayer` starts a sentence once the rest of it will be made before the buffer runs out
-  (`readyToPlay`, from the measured rate), so a slow computer pauses between sentences instead of stuttering.
-  Meanwhile `ChatWatcher` looks at the project's open chats every 2 s and the news ("Release v0.29.2 finished.",
-  "… failed.", "… needs you.") is said once nothing else goes on. Talking over the assistant interrupts it: louder
-  than the speakers' echo (the bar is 12 dB higher while speech plays), it drops the speech not yet played (`flush`)
-  and cancels a response being written, holding the new audio until the cancel is done.
-  Since 0.30.1 there is no `thread_send` and no barge-in. In real use (0.30.0, MacBook speakers) the speakers' sound
-  came back as a turn of its own and it answered itself in a loop, and on "ciao" it listed the chats, read the newest
-  and sent it its own first prompt as the user's request; that chat rewrote ~/.pi/agent config on it. The 2B model
-  calls tools on clear commands but cannot decide to do nothing, nor tell text it read from what was asked. The
-  microphone is now ignored while speech is made or plays and 700 ms after (`DEAF_AFTER_MS`). Next: the model only
-  transcribes and speaks, and a "Voice" pi chat on a capable model (openai-codex/gpt-6.1-terra) does the deciding.
-  The tools (`threads_list`, `thread_read`; `thread_send` until 0.30.0) see the call's project only (`projectOf`). The list
-  numbers the chats (`1`, `2`, …) and a chat is found by that number, the end of its session id or its title: with
-  session ids, ids that differed in a few hex digits got mixed up and it read the wrong chat. A read gives the last
-  turn's prompt (300 characters) and final reply (1200). A send delivers through `ChatTasks.message` with `steer`
-  (a running chat reads it after its current step; a closed one is opened), as the user's words with a note that a
-  voice assistant relayed them and may have misheard (`voiceMessage`). A wrong id or tool answers with words the
-  model can act on, never a throw. It cannot answer approvals.
-  Why a text session and not the model's voice mode (measured 2026-10-28 on an M2, synthetic speech from `say`):
-  with speech output forced on, the model said "I'll list your chats first" and made no tool call in 4 of 4 runs; in
-  text it chained `threads_list` → `thread_send` with the right chat and the user's words in 6 of 6. Pasting a list
-  of the chats into its context instead of a tool made it call tools on "hi" and pass the whole list as an id. Timing
-  (M2, audio streamed at speaking pace): first text 0.25-0.35 s after the end of speech, a tool round 0.3-0.9 s,
-  `/tts` first audio about 0.6 s, speech made at about 0.66-1.5x real time (slower with two sessions at once). In
-  the app (QA, same Mac): "tell the release chat to go ahead and push, but run the tests first" listed, read and sent
-  to the right chat 2 s after the end of the sentence, and the answer was spoken 0.5 s later.
-  Unverified: a real microphone and speakers (QA fed `say` audio through a Web Audio stream in place of
-  getUserMedia and ran with `--mute-audio`; echo cancellation and the barge-in bar are untested with a room), other
-  languages than English, Windows and Linux builds (pinned, never run), and a call longer than a few minutes (the
-  context is 16k tokens; an error is shown and the call goes on, but nothing restarts the session yet).
+  hearing you, thinking, speaking), what it heard and what it answered, and Mute assistant, Mute microphone and End
+  call (Esc). Click the orb or press Space to stop it thinking or talking.
+  Two models. LiquidAI's LFM3-Audio-2B (Q4_K_M 1.10 GB plus projector Q8_0 338 MB, on llama.cpp `llama-server` b11969,
+  pins in `src/main/voice/assets.ts`) only writes down what you say (a `/v1/realtime` session with
+  `session.update {type: "transcription"}`) and speaks (`/tts`), on this computer. The deciding is a pi chat named
+  "Voice call" in the project (`brain.ts`, `VoiceBrain`), on the `voice` task's model (Settings > Models, default
+  `openai-codex/gpt-6.1-terra` at minimal thinking): each turn is sent to it as "The user said: ..." after a fresh
+  snapshot of the project's chats (15 newest: short id, title, status; the 6 newest with the start of their last
+  reply), so it answers or routes without listing and reading first; it has pi-gna's threads tools for more and
+  `thread_send` to pass requests on ("The user asked by voice: ..."). The first prompt carries the brief
+  (`VOICE_BRIEF`: route only clear requests, ask when unsure, do no work itself, answer in one or two spoken
+  sentences). Its last reply is what the call says. A run already going in that chat (a chat answering it) is waited
+  for before the user's turn.
+  Turns (`call.ts`, `VoiceCall`): the window streams the microphone as 16 kHz float PCM; an endpointer (`Endpointer`:
+  12 dB over the room's floor, 160 ms starts a turn, 800 ms of quiet ends it) finds turns, whose audio (with 300 ms
+  before) goes in while you talk. At a turn's end it commits and waits for the transcript. It waits for you to
+  finish: what sounds unfinished (`soundsUnfinished`: ends on a joining word, a comma, or runs on without a sentence
+  end) gets 1.5 s more, and talking again while the brain thinks aborts that run and asks once about all of it. It
+  does not listen while its answer is made or plays, nor 700 ms after (`DEAF_AFTER_MS`).
+  Why: 0.30.0 let the 2B model decide, with tools. With speakers its own voice came back as a turn and it answered
+  itself in a loop; on "ciao" it listed the chats, read the newest and sent it its own first prompt, and that chat
+  rewrote ~/.pi/agent config. 0.30.1 took away sending, and it then read chat after chat on anything said. Benchmark
+  (2026-10-28, M2, `say` audio, 14 cases x 2: small talk, questions, sends incl. Italian and a double send, ambiguous
+  and taken-back requests; /tmp/voice-bench): LFM3 as decider sent on "ciao" 2 of 2 and sent a kanban question to the
+  release chat 2 of 2; Terra (pi, mock threads tools) routed or abstained correctly in 28 of 28 (its 2 graded failures
+  were the grader's), never sent on small talk, median turn 3.6 s (max 7.8). Transcription: 28 of 28, median 262 ms
+  after the end of speech (max 551). `/tts`: first audio 430 ms median, 0.6-2.5x real time. In the app (QA, real pi
+  and Terra, seeded chats): words written down 0.85-1.8 s after you stop, answer 2.0 s (ciao) to 8 s (a send), sends
+  kept every condition, ambiguous and taken-back requests sent nothing, a sentence with a 1.3-1.4 s pause went out
+  once and whole.
+  Unverified: a real microphone and speakers (echo, the room's floor), languages other than English and Italian,
+  Windows and Linux, calls of more than a few minutes. A pause of more than about 2 s can still let the first half
+  reach the brain; the aborted run stays in its chat, and the next turn carries all of it.
 - **Keep chats running on restart** (Agent > Beta, `keepChatsOnRestart`, off by default, hidden on Windows): read when a
   chat starts (`SessionFeatures.keepOnRestart`). See "A restart keeps the chats running".
 - **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global

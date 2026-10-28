@@ -113,3 +113,11 @@ describe("readyToPlay", () => {
     expect(expectedSeconds("one two three four five six seven eight nine ten eleven twelve thirteen")).toBeCloseTo(5.3, 1);
   });
 });
+
+describe("soundsUnfinished", () => {
+  it("is done on a full sentence or a short reply, and waits on a joining word, a comma or a run-on", async () => {
+    const { soundsUnfinished } = await import("./voice");
+    for (const done of ["Ciao.", "ciao", "Thanks, that's all for now.", "Tell the release chat to push.", "Which chats are running?", "yes"]) expect(soundsUnfinished(done), done).toBe(false);
+    for (const open of ["Tell the release chat to push and", "Tell the release chat to push, but", "Tell the release chat to push,", "So um", "Di' alla chat di fare il push e", "Tell the release chat to go ahead"]) expect(soundsUnfinished(open), open).toBe(true);
+  });
+});

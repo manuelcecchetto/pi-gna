@@ -1,7 +1,7 @@
 // Voice calls (Settings > Agent > Beta, off by default): talk to pi-gna. A speech model that runs on this computer
-// (LFM3-Audio-2B on llama.cpp's /v1/realtime, src/main/voice) hears what you say, acts with tools on the project's
-// chats (lists and reads them, sends them your requests) and answers out loud. Nothing leaves the computer.
-// Everything here is pure, for both sides and the tests.
+// (LFM3-Audio-2B on llama.cpp, src/main/voice) writes down what you say and speaks the answers; a "Voice call" chat on
+// a capable model (the voice task's, gpt-6.1-terra by default) decides what to answer and which chats to tell what.
+// Your words go to that model's provider like a typed message. Everything here is pure, for both sides and the tests.
 
 import type { AutocompletePhase } from "./autocomplete";
 
@@ -26,25 +26,27 @@ export type CallState = "connecting" | "listening" | "hearing" | "thinking" | "s
 /** What main tells the window about a call. */
 export type CallEvent =
   | { type: "state"; state: Exclude<CallState, "speaking"> }
-  /** A tool ran: "Sent to Release v0.29.2", "Read Fix flaky login test". */
-  | { type: "action"; text: string }
-  /** What the assistant says (also when it is muted), or a chat's news it announces. */
+  /** What you said, as written down. */
+  | { type: "heard"; text: string }
+  /** What the assistant says (also when it is muted). */
   | { type: "reply"; text: string }
   /** One sentence's speech begins: `seconds` is its expected length, so playback can wait until it will not stall. */
   | { type: "speech"; id: number; seconds: number }
   | { type: "audio"; id: number; pcm: Float32Array }
   | { type: "speechEnd"; id: number }
-  /** You started talking over it: drop the speech not yet played. */
+  /** It stopped talking (Stop, or Mute assistant): drop the speech not yet played. */
   | { type: "flush" }
   | { type: "error"; message: string }
   | { type: "ended"; reason: string };
 
 /** What the window may change during a call. */
 export interface CallControl {
-  /** Speech is playing in the window: talking over it interrupts, and it raises the bar for what counts as talking. */
+  /** Speech is playing in the window: the microphone is not listened to meanwhile. */
   playing?: boolean;
   /** The assistant answers in text only. */
   assistantMuted?: boolean;
+  /** Stop thinking or talking and listen again. */
+  interrupt?: boolean;
 }
 
 /** Endpointing runs on 20 ms frames. */
@@ -169,4 +171,24 @@ export function readyToPlay(received: number, expected: number, rate: number, do
   if (rate >= 1.1) return true;
   const left = Math.max(0, expected - received);
   return left * Math.max(0, 1 - rate) / Math.max(rate, 0.05) + 0.25 <= received;
+}
+
+/** Words a sentence does not end on: when what was said stops on one, the speaker is likely not done. */
+const OPEN_ENDS = new Set([
+  "and", "but", "or", "so", "because", "then", "also", "the", "a", "an", "to", "with", "that", "which", "if", "of", "for", "about", "like", "um", "uh", "erm", "hmm",
+  "e", "ma", "o", "oppure", "perché", "che", "quindi", "poi", "il", "lo", "la", "i", "gli", "le", "un", "una", "di", "da", "con", "per", "tipo", "cioè", "ehm",
+]);
+
+/**
+ * Whether what was said sounds unfinished, so the call waits a little longer for the rest: it stops on a joining word,
+ * a comma or a trailing "...", or runs on for several words with no sentence end.
+ */
+export function soundsUnfinished(text: string): boolean {
+  const said = text.trim();
+  if (!said) return false;
+  if (/(,|;|:|\.\.\.|…|-)$/.test(said)) return true;
+  const words = said.toLowerCase().match(/[\p{L}']+/gu) ?? [];
+  const last = words.at(-1);
+  if (last && OPEN_ENDS.has(last) && !/[.?!]$/.test(said)) return true;
+  return !/[.?!]["')\]]*$/.test(said) && words.length > 3;
 }

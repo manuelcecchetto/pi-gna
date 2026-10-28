@@ -5,7 +5,7 @@ import { createStore, useStore } from "../lib/store";
 import { MicStream, SpeechPlayer } from "../lib/voice";
 
 export interface CallLine {
-  kind: "action" | "reply" | "error";
+  kind: "heard" | "reply" | "error";
   text: string;
 }
 
@@ -17,7 +17,7 @@ export interface VoiceCallView {
   assistantMuted: boolean;
   /** The microphone's level, 0..1, for the orb. */
   micLevel: number;
-  /** What happened, newest last: actions, what it said, errors. */
+  /** What happened, newest last: what you said, what it answered, errors. */
   lines: CallLine[];
   /** Why it ended, while the screen still shows it. */
   ended?: string;
@@ -47,7 +47,7 @@ function onEvent(id: string, event: CallEvent): void {
     case "state":
       mainState = event.state;
       return update((call) => ({ ...call, state: shown() }));
-    case "action":
+    case "heard":
     case "reply":
       return addLine({ kind: event.type, text: event.text });
     case "error":
@@ -121,6 +121,14 @@ export function toggleMic(): void {
   mic.muted = !call.micMuted;
   if (mic.muted) window.studio.voice.control(call.id, { micMuted: true });
   update((current) => ({ ...current, micMuted: !current.micMuted }));
+}
+
+/** Stop thinking or talking, and listen again. */
+export function interrupt(): void {
+  const call = calls.get();
+  if (!call || (call.state !== "thinking" && call.state !== "speaking")) return;
+  player?.flush();
+  window.studio.voice.control(call.id, { interrupt: true });
 }
 
 export function toggleAssistant(): void {

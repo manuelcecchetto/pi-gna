@@ -350,6 +350,7 @@ const TASK_INFO: Record<Task, { title: string; about: string; feature?: Feature 
   triage: { title: "Card triage", about: "Names, tags and briefly looks into every card you add. Quick and cheap, since it runs for each one.", feature: "kanban" },
   orchestrator: { title: "ATP orchestrator", about: "Writes and changes ATP plans with you.", feature: "atp" },
   worker: { title: "ATP worker", about: "Runs one node of a plan, in a fresh chat per node.", feature: "atp" },
+  voice: { title: "Voice calls", about: "Answers you on a voice call and passes what you ask on to your chats. You wait for it, so a fast model." },
 };
 
 function ModelsSection({ pi }: { pi: Pi }) {
@@ -493,9 +494,10 @@ function VoiceRow() {
       title="Voice calls"
       about={
         <>
-          Talk to pi-gna: it hears you, reads the project's chats to answer you, and says when one finishes or needs you. It cannot send anything to a chat yet.
-          A small voice model (Liquid AI's LFM3-Audio-2B, LFM Open License, about 1.5 GB, downloaded once) runs on this computer; nothing leaves the
-          computer. It does not listen while it talks: mute the assistant to cut it short.
+          Talk to pi-gna about the project's chats: ask what they are doing, or tell one what to do next. A small voice model (Liquid AI's LFM3-Audio-2B,
+          LFM Open License, about 1.5 GB, downloaded once) writes down what you say and speaks on this computer; a "Voice call" chat on the Voice calls
+          model (Settings &gt; Models) decides what to answer and what to send, so your words go to that model like a typed message. It listens while you
+          talk and answers when you stop; click the orb or press Space to stop it.
           {note && <span className={`mt-1 block ${phase === "error" ? "text-bad" : "text-muted"}`} data-testid="voice-status">{note}</span>}
         </>
       }

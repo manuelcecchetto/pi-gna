@@ -34,7 +34,7 @@ export interface TaskModel {
 }
 
 /** What pi-gna runs on a model of its choosing: a chat's title, and the chats it starts itself. */
-export const TASKS = ["title", "triage", "orchestrator", "worker"] as const;
+export const TASKS = ["title", "triage", "orchestrator", "worker", "voice"] as const;
 export type Task = (typeof TASKS)[number];
 
 export const TASK_DEFAULTS: Readonly<Record<Task, TaskModel>> = {
@@ -46,6 +46,8 @@ export const TASK_DEFAULTS: Readonly<Record<Task, TaskModel>> = {
   orchestrator: { id: "gpt-5.6-sol", thinking: "high" },
   /** Runs one ATP node per chat. */
   worker: { id: "claude-sonnet-5-5", thinking: "medium" },
+  /** Answers voice calls and passes requests on to the chats: fast, since you wait for it on the call. */
+  voice: { provider: "openai-codex", id: "gpt-6.1-terra", thinking: "minimal" },
 };
 
 /** When the Mac may not idle-sleep while remote access is on: never, only while a chat or ATP plan runs, or always. */

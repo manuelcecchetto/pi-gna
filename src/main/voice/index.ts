@@ -1,17 +1,17 @@
 // Voice calls' main side (docs/DESIGN.md, Voice calls): installs the pinned llama.cpp server and LFM3-Audio-2B when the
 // setting turns on, runs the server on 127.0.0.1 behind a random API key from the first call, and stops it a while
-// after the last one. One call at a time; the window streams the microphone in and plays the speech that comes back.
+// after the last one. The model only writes down what is said and speaks; the call's brain (brain.ts) decides. One call
+// at a time; the window streams the microphone in and plays the speech that comes back.
 import type { ChildProcess } from "node:child_process";
 import { join } from "node:path";
-import { projectOf } from "../../shared/board";
 import { type CallControl, type CallEvent, INPUT_RATE, OUTPUT_RATE, type VoiceStatus } from "../../shared/voice";
 import { log } from "../log";
 import type { Download, ServerBuild } from "../autocomplete/assets";
 import { type Fetch, fetchVerified, installServer } from "../autocomplete/install";
 import { launchLlamaServer, type LlamaServer } from "../autocomplete/server";
 import { MODEL, PROJECTOR, serverBuilds } from "./assets";
+import type { VoiceBrain } from "./brain";
 import { type RealtimeConnect, type RealtimeEvent, VoiceCall } from "./call";
-import { VOICE_INSTRUCTIONS, VOICE_TOOLS, type VoiceSources, VoiceTools } from "./tools";
 
 /** The server stops after this long without a call, giving its memory back. */
 const IDLE_MS = 10 * 60_000;
@@ -23,7 +23,8 @@ export interface VoiceDeps {
   /** userData/voice. */
   dir: string;
   fetch: Fetch;
-  sources: VoiceSources;
+  /** The call's brain: a pi chat in `cwd`'s project (brain.ts). */
+  brain(cwd: string): Pick<VoiceBrain, "warm" | "ask" | "end">;
   onStatus(status: VoiceStatus): void;
   /** A call's events, for the window that started it. */
   onEvent(id: string, event: CallEvent): void;
@@ -132,7 +133,7 @@ export class Voice {
     const executable = this.executable;
     if (!executable) throw new Error("Voice calls are not installed yet.");
     this.set({ phase: "starting" });
-    // Two slots: the call's session and the speech of its answers or announcements, at the same time.
+    // Two slots: the call's transcription session and the speech of its answers.
     const args = ["-m", this.path(this.model), "--mmproj", this.path(this.projector), "-c", "16384", "-np", "2", "-ngl", "99"];
     try {
       const server = await launchLlamaServer(executable.path, args, START_MS, (child) => {
@@ -164,44 +165,27 @@ export class Voice {
     void server?.then(({ child }) => child.kill()).catch(() => undefined);
   }
 
-  /**
-   * Starts the call `id` (the window's name for it) about the project `cwd` is in, ending one going on; its events
-   * go to onEvent until it ends. The server may still be loading: the call's state says so.
-   */
+  /** Starts the call `id` (the window's name for it) about `cwd`'s project, ending one going on; its events go to onEvent. */
   startCall(id: string, cwd: string): void {
     if (!this.enabled || !this.executable) throw new Error("Voice calls are not ready yet.");
     this.endCall();
     clearTimeout(this.idle);
-    const project = projectOf(cwd);
-    // Announcements name a chat as the sidebar does (an open chat's own title may still be its folder's name).
-    const titles = new Map<string, string>();
-    const refresh = () =>
-      void this.deps.sources
-        .sessions()
-        .then((groups) => groups.forEach((group) => group.sessions.forEach((session) => titles.set(session.path, session.title))))
-        .catch(() => undefined);
-    refresh();
-    const call = new VoiceCall(
-      {
-        connect: (onEvent, onClose) => this.start().then((server) => connect(server, onEvent, onClose)),
-        tts: (text, signal) => this.speak(text, signal),
-        tools: new VoiceTools(this.deps.sources, project),
-        instructions: VOICE_INSTRUCTIONS,
-        toolDefinitions: VOICE_TOOLS,
-        live: () => {
-          refresh();
-          return this.deps.sources.live().map((chat) => (chat.sessionPath && titles.has(chat.sessionPath) ? { ...chat, title: titles.get(chat.sessionPath)! } : chat));
-        },
-        emit: (event) => {
-          if (event.type === "ended" && this.call?.id === id) {
-            this.call = undefined;
-            this.idle = setTimeout(() => this.stop(), IDLE_MS);
-          }
-          this.deps.onEvent(id, event);
-        },
+    const brain = this.deps.brain(cwd);
+    // pi starts while the model loads and the user says the first thing.
+    brain.warm();
+    const call = new VoiceCall({
+      connect: (onEvent, onClose) => this.start().then((server) => connect(server, onEvent, onClose)),
+      tts: (text, signal) => this.speak(text, signal),
+      ask: (said, signal) => brain.ask(said, signal),
+      emit: (event) => {
+        if (event.type === "ended" && this.call?.id === id) {
+          this.call = undefined;
+          brain.end();
+          this.idle = setTimeout(() => this.stop(), IDLE_MS);
+        }
+        this.deps.onEvent(id, event);
       },
-      (chat) => projectOf(chat.cwd) === project,
-    );
+    });
     this.call = { id, call };
     void call.start();
   }

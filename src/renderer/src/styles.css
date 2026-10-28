@@ -1729,6 +1729,9 @@ code.hl span {
 .voice-orb {
   --level: 0;
   position: relative;
+  border: 0;
+  padding: 0;
+  cursor: default;
   width: 176px;
   height: 176px;
   border-radius: 9999px;
@@ -1759,6 +1762,10 @@ code.hl span {
 }
 .voice-orb[data-state="listening"] {
   animation: voice-breathe 3.2s ease-in-out infinite;
+}
+.voice-orb[data-state="thinking"],
+.voice-orb[data-state="speaking"] {
+  cursor: pointer;
 }
 .voice-orb[data-state="thinking"]::after {
   opacity: 1;

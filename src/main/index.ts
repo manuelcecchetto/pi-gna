@@ -71,6 +71,7 @@ import { ChatImporter } from "./chat-import";
 import { Autocomplete } from "./autocomplete";
 import { Dictation } from "./dictation";
 import { Voice } from "./voice";
+import { VoiceBrain } from "./voice/brain";
 import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
 import { LAUNCH_ENV, loadShellEnv, type ShellEnv } from "./shell-env";
@@ -346,7 +347,21 @@ const dictation = new Dictation({
 const voice = new Voice({
   dir: join(app.getPath("userData"), "voice"),
   fetch: (url, init) => net.fetch(url, init),
-  sources: threadSources,
+  brain: (cwd) =>
+    new VoiceBrain(
+      {
+        host,
+        sessions: listSessions,
+        live: () => host.attentionAll(),
+        read: readActiveBranch,
+        model: async () => taskModel(await settings.get(), "voice"),
+        useModel: (handle, model) => {
+          if (!chatTasks) throw new Error("pi-gna is still starting; try again in a moment");
+          return chatTasks.useModel(handle, model);
+        },
+      },
+      cwd,
+    ),
   onStatus: (status) => send(IPC.voiceChanged, status),
   onEvent: (call, event) => send(IPC.voiceEvent, call, event),
 });

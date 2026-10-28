@@ -45,6 +45,7 @@ export const TASK_INFO: Record<Task, { title: string; about: string; feature?: F
   triage: { title: "Card triage", about: "Names, tags and briefly looks into every card you add.", feature: "kanban" },
   orchestrator: { title: "ATP orchestrator", about: "Writes and changes ATP plans with you.", feature: "atp" },
   worker: { title: "ATP worker", about: "Runs one node of a plan, in a fresh chat per node.", feature: "atp" },
+  voice: { title: "Voice calls", about: "Answers you on a voice call and passes what you ask on to your chats. A fast model." },
 };
 
 export function updateSummary(update: UpdateState): string {
