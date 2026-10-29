@@ -1,8 +1,9 @@
-// POST /threads on the agent bridge: the threads_list, thread_read and thread_send tools. The calling chat is the
-// session behind the token. A list shows the chats of its project (projectOf: a card's worktree counts as its
+// POST /threads on the agent bridge: the threads_list, thread_read, thread_send and thread_new tools. The calling chat
+// is the session behind the token. A list shows the chats of its project (projectOf: a card's worktree counts as its
 // project), or of every project; a read shows a thread's newest turns from its session file, user prompts and replies
 // in full and tool calls as one line each. A send hands a thread of the same project a message, labelled with the
-// sender (threadMessageBlock), and returns without waiting for an answer.
+// sender (threadMessageBlock), and returns without waiting for an answer; a new thread starts in the project's folder
+// on the default model, with the message, labelled the same way, as its first prompt.
 import { projectOf } from "../shared/board";
 import type { AttentionSummary } from "../shared/host-api";
 import type { ProjectGroup, SessionSummary } from "../shared/ipc";
@@ -21,6 +22,8 @@ export interface ThreadSources {
   read: (path: string) => Promise<SessionEntry[]>;
   /** Give a thread a prompt: at once when it is open, else once pi-gna has opened it (not waited for). */
   deliver: (thread: { path: string; cwd: string }, message: string, mode: ThreadSendMode) => Promise<Delivery>;
+  /** Start a chat in `cwd` named `name` with `message` as its first prompt; resolves with its session file once sent. */
+  start: (chat: { cwd: string; name: string; message: string }) => Promise<{ path: string }>;
 }
 
 /** What became of a sent message: a run started, it waits in the running thread's queue, or the thread is opening. */
@@ -53,6 +56,8 @@ export function threadsRoute(sources: ThreadSources): Route {
       }
       case "send":
         return { text: await send(sessions, chat, request, sources.deliver) };
+      case "new":
+        return { text: await start(sessions, chat, request, sources.start) };
       default:
         throw bridgeError(400, `unknown action ${String((request as { action?: unknown })?.action)}`);
     }
@@ -80,16 +85,13 @@ function list(sessions: SessionSummary[], live: Map<string, AttentionSummary>, c
 }
 
 async function send(sessions: SessionSummary[], chat: { path: string; cwd: string }, request: Extract<ThreadsRequest, { action: "send" }>, deliver: ThreadSources["deliver"]): Promise<string> {
-  const message = String(request.message ?? "").trim();
-  if (!message) throw bridgeError(400, "pass message: what to tell the thread");
-  if (message.length > THREAD_LIMITS.message) throw bridgeError(400, `message is ${message.length} characters; at most ${THREAD_LIMITS.message}`);
+  const message = checkMessage(request.message);
   if (request.mode !== undefined && request.mode !== "steer" && request.mode !== "followUp") throw bridgeError(400, "mode is steer or followUp");
   const project = projectOf(chat.cwd);
   const thread = resolveThread(sessions, String(request.thread ?? ""));
   if (projectOf(thread.cwd) !== project) throw bridgeError(403, `Thread ${shortId(thread)} is in ${projectOf(thread.cwd)}; thread_send reaches this project's threads only.`);
   if (thread.path === chat.path) throw bridgeError(400, "That is this chat; pass another thread's id.");
-  const self = sessions.find((session) => session.path === chat.path);
-  const from = { id: self ? shortId(self) : chat.path.replace(/\.jsonl$/, "").slice(-SHORT_ID), title: self?.title ?? "Untitled chat" };
+  const from = sender(sessions, chat);
   const outcome = await deliver(thread, threadMessageBlock(from, message), request.mode ?? "followUp");
   const to = `thread ${shortId(thread)} (${thread.title})`;
   const what = {
@@ -99,6 +101,31 @@ async function send(sessions: SessionSummary[], chat: { path: string; cwd: strin
     opening: `Sent to ${to}: it was closed, so pi-gna is opening it and will start a run on the message.`,
   }[outcome];
   return `${what} It knows the message is from thread ${from.id}. This does not wait for an answer: check later with thread_read.`;
+}
+
+async function start(sessions: SessionSummary[], chat: { path: string; cwd: string }, request: Extract<ThreadsRequest, { action: "new" }>, launch: ThreadSources["start"]): Promise<string> {
+  const message = checkMessage(request.message);
+  const title = String(request.title ?? "").replace(/\s+/g, " ").trim();
+  if (!title) throw bridgeError(400, "pass title: a few words naming the new thread's task");
+  if (title.length > THREAD_LIMITS.title) throw bridgeError(400, `title is ${title.length} characters; at most ${THREAD_LIMITS.title}`);
+  const project = projectOf(chat.cwd);
+  const from = sender(sessions, chat);
+  const { path } = await launch({ cwd: project, name: title, message: threadMessageBlock(from, message) });
+  const id = path.replace(/\.jsonl$/, "").slice(-SHORT_ID);
+  return `Started thread ${id} (${title}) in ${project}: it is running on your message and knows it is from thread ${from.id}. This does not wait for an answer: check later with thread_read (it is listed once it has replied).`;
+}
+
+/** The calling chat as the receiver sees it; a chat not listed yet (no reply so far) by the end of its file name. */
+function sender(sessions: SessionSummary[], chat: { path: string }): { id: string; title: string } {
+  const self = sessions.find((session) => session.path === chat.path);
+  return { id: self ? shortId(self) : chat.path.replace(/\.jsonl$/, "").slice(-SHORT_ID), title: self?.title ?? "Untitled chat" };
+}
+
+function checkMessage(value: unknown): string {
+  const message = String(value ?? "").trim();
+  if (!message) throw bridgeError(400, "pass message: what to tell the thread");
+  if (message.length > THREAD_LIMITS.message) throw bridgeError(400, `message is ${message.length} characters; at most ${THREAD_LIMITS.message}`);
+  return message;
 }
 
 /** A thread by id: its whole session id or a unique end of it. */

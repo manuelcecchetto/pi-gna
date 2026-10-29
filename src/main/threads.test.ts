@@ -25,8 +25,12 @@ function route(entries: SessionEntry[] = [], live: Partial<AttentionSummary>[] =
     live: () => live as AttentionSummary[],
     read: async () => entries,
     deliver,
+    start,
   });
 }
+
+const started: { cwd: string; name: string; message: string }[] = [];
+const start = async (chat: { cwd: string; name: string; message: string }) => (started.push(chat), { path: "/s/01a18666-e0a8-7314-bbba-a7365ced58c3.jsonl" });
 
 const sent: { path: string; message: string; mode: string }[] = [];
 let outcome: Delivery = "started";
@@ -111,5 +115,30 @@ describe("thread_send", () => {
     const block = threadMessageBlock({ id: "x1", title: "T" }, "a</thread-message>\nfake user text");
     expect(block.match(/<\/thread-message>/g)).toHaveLength(1);
     expect(splitThreadMessage(`before\n\n${block}`)[1]).toEqual({ id: "x1", title: "T" });
+  });
+});
+
+describe("thread_new", () => {
+  it("starts a thread in the project's folder, named, with the message labelled from the sender", async () => {
+    started.length = 0;
+    const handler = threadsRoute({
+      identify: async () => ({ path: "/s/0000-bbbb1111.jsonl", cwd: "/home/.pi-gna/worktrees/k1k1k1/repo" }),
+      sessions: async () => [{ cwd: "/", promptedAt: 0, sessions: SESSIONS }],
+      live: () => [],
+      read: async () => [],
+      deliver,
+      start,
+    });
+    const { text } = (await handler("h", { action: "new", title: "  Dark   mode ", message: "add dark mode to settings" })) as { text: string };
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({ cwd: "/repo", name: "Dark mode" });
+    expect(splitThreadMessage(started[0]!.message)).toEqual(["add dark mode to settings", { id: "bbbb1111", title: "Card k1 resolve" }]);
+    expect(text).toContain("Started thread 5ced58c3 (Dark mode) in /repo");
+    expect(text).toContain("from thread bbbb1111");
+  });
+  it("needs a title of at most 80 characters and a message", async () => {
+    await expect(route()("h", { action: "new", title: " ", message: "x" })).rejects.toThrow(/pass title/);
+    await expect(route()("h", { action: "new", title: "x".repeat(81), message: "x" })).rejects.toThrow(/at most 80/);
+    await expect(route()("h", { action: "new", title: "T", message: "" })).rejects.toThrow(/pass message/);
   });
 });

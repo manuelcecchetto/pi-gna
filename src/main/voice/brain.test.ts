@@ -3,6 +3,7 @@ import type { AttentionSummary } from "../../shared/host-api";
 import type { SessionSummary } from "../../shared/ipc";
 import type { SessionEntry } from "../../shared/protocol";
 import type { Item, RunOutcome } from "../../shared/session-state";
+import { threadMessageBlock } from "../../shared/threads";
 import { type BrainDeps, snapshot, VOICE_BRIEF, VoiceBrain } from "./brain";
 
 const chat = (id: string, title: string, cwd: string, modifiedAt: number): SessionSummary => ({ path: `/s/${id}.jsonl`, id: `0199aaaa-0000-7000-8000-0000${id}`, cwd, title, named: true, createdAt: 0, modifiedAt, promptedAt: modifiedAt });
@@ -40,15 +41,24 @@ const deps = (host: ReturnType<typeof fakeHost>["host"]): BrainDeps => ({
   host: host as unknown as BrainDeps["host"],
   sessions: async () => [{ cwd: "/code", promptedAt: 0, sessions: CHATS }],
   live: () => [live(CHATS[0]!.path, "running", true), live(CHATS[1]!.path, "waiting", false)],
-  read: async (path) => (path === CHATS[0]!.path ? [entry("user", "fix it"), entry("assistant", "Fixed: the cookie race.")] : []),
+  read: async (path) =>
+    path === CHATS[0]!.path
+      ? [entry("user", "fix it"), entry("assistant", "Fixed: the cookie race.")]
+      : path === CHATS[1]!.path
+        ? [entry("user", threadMessageBlock({ id: "5ced58c3", title: "Voice call" }, "The user asked by voice: push the tag."))]
+        : [],
   model: async () => ({ provider: "openai-codex", id: "gpt-6.1-terra", thinking: "minimal" }),
   useModel: vi.fn(async () => undefined),
 });
 
 describe("snapshot", () => {
-  it("names the project's chats newest first with status and the newest ones' last reply, not the voice chat itself", async () => {
+  it("names the project's chats newest first with status, what the newest were asked and last said, not the voice chat itself", async () => {
     expect(await snapshot(deps(fakeHost().host), "/code/app", "/s/0000ffff.jsonl")).toBe(
-      "Chats now, newest first (id, title, status):\n- 0000a1b2 Fix flaky login test (running)\n  last reply: Fixed: the cookie race.\n- 0000c3d4 Release v0.29.2 (waiting for the user)",
+      [
+        "Chats now, newest first (id, title, status):",
+        "- 0000a1b2 Fix flaky login test (running)\n  working on: fix it\n  last reply: Fixed: the cookie race.",
+        "- 0000c3d4 Release v0.29.2 (waiting for the user)\n  last asked: The user asked by voice: push the tag.",
+      ].join("\n"),
     );
   });
 });

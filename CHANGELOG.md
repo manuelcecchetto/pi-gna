@@ -6,6 +6,8 @@ moves those lines under the new version, and they become its GitHub release note
 ## Unreleased
 
 - Voice calls now talk through OpenAI's GPT-Live instead of a model on your computer. It listens while it talks, so you interrupt it just by talking, waits through pauses mid-sentence, and answers in your language. What is about your chats it hands to the "Voice call" chat on GPT-6.1 Terra, which answers and passes requests on as before. A call needs your OpenAI API key in the Keychain (Settings > Agent > Voice calls shows the command) and costs $0.05 a minute; ChatGPT Pro includes monthly API credits. Your voice goes to OpenAI. The old voice model's 1.5 GB download is deleted.
+- Voice calls put a request where it belongs. Something that changes what a running chat is doing now reaches it right away ("don't add a sleep"); a next step waits until its current work is done ("then push and tag"); new work, or a new chat you ask for, starts a new chat in the project. When it can't tell which chat you mean, it asks.
+- Agents can start a new chat in their project (thread_new), when you ask for one or for a separate task to run alongside.
 
 ## 0.31.0 - 2026-10-28
 

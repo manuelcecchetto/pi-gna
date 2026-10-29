@@ -213,6 +213,8 @@ export function presentTool(name: string, args: Args, cwd: string, details?: unk
       return { category: "agent", verb: "Read thread", activeVerb: "Reading thread", target: str(args.thread) };
     case "thread_send":
       return { category: "agent", verb: "Messaged thread", activeVerb: "Messaging thread", target: `${str(args.thread)}: ${firstLine(str(args.message), 80)}` };
+    case "thread_new":
+      return { category: "agent", verb: "Started thread", activeVerb: "Starting thread", target: firstLine(str(args.title), 80) };
     case "kanban_list":
       return { category: "board", verb: "Read the board", activeVerb: "Reading the board", target: str(args.card) || str(args.column) };
     case "kanban_claim":

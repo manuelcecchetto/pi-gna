@@ -522,7 +522,13 @@ Behaviour and API shape follow the Codex app's Computer Use; no OpenAI code or b
   the body is escaped so it cannot forge text after the block) and hands it to `ChatTasks.message`: an open thread
   gets a `prompt` (with `streamingBehavior` steer or followUp, the sender's pick, default followUp, while it runs); a
   closed one is opened in the background under a `thread:` hold released when that run settles, like a task's chat.
-  It returns at once, never waiting for the answer. Deliberately no approval card and no hop limit (user decision):
+  It returns at once, never waiting for the answer. `thread_new` (`title` up to 80 characters, `message`) starts a
+  chat in the caller's project folder (`projectOf`, not a card's worktree) on the default model through
+  `ChatTasks.launch`, named `title`, with the message in the same block as its first prompt, held until that run
+  settles; it returns the new thread's id (the end of its file name: the listing has it only once it has replied).
+  Its guideline limits it to the user asking for a new chat or a separate task with no thread on it (user decision,
+  2026-10-29: every chat gets it, so a voice call can start one).
+  Deliberately no approval card and no hop limit (user decision):
   the label is the safeguard. The transcript shows the block as a "From thread" chip (`splitThreadMessage`).
 - **Chat tasks run on the host** (`src/main/chat-tasks.ts`, `ChatTasks`; methods `chat.startTask`, `board.addCard`,
   `chat.send`): the chat a card's triage, Investigate, Resolve or QA, a lament's Fix or a pull request's Review starts
@@ -1137,11 +1143,15 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   named "Voice call" in the project (`brain.ts`, `VoiceBrain`), on the `voice` task's model (Settings > Models,
   default `openai-codex/gpt-6.1-terra` at minimal thinking, on the subscription): each hand-off is sent to it with a
   fresh snapshot of the project's chats (15 newest: short id, title, status; the 6 newest with the start of their
-  last reply) and the call so far (`delegationPrompt`: the last 12 lines, at most 3000 characters, and what the user
+  last prompt and reply) and the call so far (`delegationPrompt`: the last 12 lines, at most 3000 characters, and what the user
   said since the last hand-off), so it answers or routes without listing and reading first; it has pi-gna's threads
-  tools for more and `thread_send` to pass requests on ("The user asked by voice: ..."). The first prompt carries
-  the brief (`VOICE_BRIEF`: route only clear requests with every condition given, ask when unsure, do no work
-  itself, answer in one to three short sentences). Its last reply is the commentary. A run already going in that
+  tools for more, `thread_send` to pass requests on ("The user asked by voice: ...") and `thread_new` to start a
+  chat. A running chat's last prompt reads "working on" (a thread message without its label), so the brain can
+  place a request: the brief (`VOICE_BRIEF`) says part of a running chat's
+  task goes in with mode steer when it changes the work under way and followUp when it is a next step after it, new
+  work or an asked-for new chat goes to `thread_new`, and when the chat (or chat vs new) is unclear, nothing is sent
+  and it says what is unclear; every condition is kept, it does no work itself and answers in one to three short
+  sentences, saying whether the chat takes it now, after its current work or as a new chat. Its last reply is the commentary. A run already going in that
   chat (a chat answering it) is waited for first.
   Transport: the window makes the WebRTC peer connection (microphone with echo cancellation, the `oai-events` data
   channel, ICE gathered before the offer) and gives main the SDP offer (`voice.start`); main, which holds the key

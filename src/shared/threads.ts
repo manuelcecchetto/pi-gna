@@ -1,11 +1,12 @@
 // The threads tools (resources/threads-extension.ts): an agent lists the other chats (threads) of its project, or of
-// every project, reads one's recent turns, and sends a thread of its project a message. POST /threads on the agent
-// bridge; the calling chat is known from its token.
+// every project, reads one's recent turns, sends a thread of its project a message, and starts a new thread there.
+// POST /threads on the agent bridge; the calling chat is known from its token.
 
 export type ThreadsRequest =
   | { action: "list"; all?: boolean; query?: string; limit?: number }
   | { action: "read"; thread: string; turns?: number; before?: number }
-  | { action: "send"; thread: string; message: string; mode?: ThreadSendMode };
+  | { action: "send"; thread: string; message: string; mode?: ThreadSendMode }
+  | { action: "new"; title: string; message: string };
 
 /** How a message reaches a thread that is mid-run: steer after its current tool call, or followUp once its run ends. */
 export type ThreadSendMode = "steer" | "followUp";
@@ -25,6 +26,8 @@ export const THREAD_LIMITS = {
   readChars: 40_000,
   /** Characters of a message one thread sends another. */
   message: 20_000,
+  /** Characters of a new thread's title. */
+  title: 80,
 } as const;
 
 export interface ThreadSender {

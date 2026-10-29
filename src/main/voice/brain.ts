@@ -1,32 +1,39 @@
 // The voice call's brain (docs/DESIGN.md, Voice calls): a pi chat named "Voice call" in the call's project, on the
 // voice task's model (gpt-6.1-terra by default). Each request GPT-Live hands off goes to it as a prompt with a fresh
-// snapshot of the project's chats, so it can answer or route without first listing and reading them; it keeps
-// pi-gna's threads tools for more, and thread_send to pass requests on. Its last reply goes back to GPT-Live to say.
+// snapshot of the project's chats (what each was asked and last said), so it can answer or route without first listing
+// and reading them; it keeps pi-gna's threads tools for more, thread_send to pass requests on (steered into a running
+// chat's work or queued after it) and thread_new to start a chat. Its last reply goes back to GPT-Live to say.
 import { randomUUID } from "node:crypto";
 import { projectOf } from "../../shared/board";
 import type { AttentionSummary } from "../../shared/host-api";
 import type { ProjectGroup, SessionSummary } from "../../shared/ipc";
+import { splitThreadMessage } from "../../shared/threads";
 import type { RpcSessionState, SessionEntry } from "../../shared/protocol";
 import type { Item, RunOutcome } from "../../shared/session-state";
 import type { TaskModel } from "../../shared/settings";
 import type { SessionHost } from "../session-host";
 import { shortId, toTurns } from "../threads";
 
-/** How many chats the snapshot names, how many of the newest carry their last reply, and how much of it. */
+/** How many chats the snapshot names, how many of the newest carry their last prompt and reply, and how much of each. */
 const CHATS = 15;
 const WITH_REPLY = 6;
+const ASKED_CHARS = 200;
 const REPLY_CHARS = 280;
 const READ_MS = 1500;
 const RUN_MS = 180_000;
 
 export const VOICE_BRIEF = `This chat is the backend of pi-gna's voice calls. The user talks with a voice assistant (OpenAI's GPT-Live); when the user asks about their chats (threads) of this project, or asks to tell one something, the voice assistant hands it to you. Each message gives the chats as they are now, the call so far as a speech transcript (a word may be misheard), and what the user said since the last hand-off.
 
-- When the user asks a chat to do something, send it one clear, self-contained prompt with thread_send. Start it with "The user asked by voice:", keep every detail and condition they gave, add nothing they did not ask for, in English. Use mode steer when the chat is running and the user wants it to change course now.
+- When the user wants something done, decide where it goes, from what each chat was asked and is doing:
+  - It is part of a chat's task (that chat, or the user names it): thread_send to it. When that chat is running, use mode steer if the request changes what it is doing now (a correction, "stop", "don't", "also handle this in that change"), and mode followUp if it is a next step for after its current work ("then push", "when it's done, open a PR"); it gets a followUp when its run ends. An idle chat starts on it either way.
+  - It is a new task no chat works on, or the user asks for a new chat: thread_new, with a title of a few words and the request as its message.
+  - When you cannot tell which chat, or whether it belongs to a chat or is new: send nothing and say what is unclear (name the chats that could fit), and the voice assistant will ask.
+- Every message you send starts with "The user asked by voice:", keeps every detail and condition they gave, adds nothing they did not ask for, and is in English.
 - When they ask about their chats, answer from the snapshot; use thread_read only when it does not say enough.
-- Never call thread_send for a greeting, small talk, thanks, thinking aloud, a request they take back, or when you are not sure which chat or what to send: say what is unclear instead, and the voice assistant will ask. If two chats could fit, name both.
+- Never send or start anything for a greeting, small talk, thanks, thinking aloud, or a request they take back.
 - Do no work yourself: no commands, no reading or editing files, no other tools. The chats do the work.
 
-Your reply goes to the voice assistant, which says it in its own words: one to three short sentences of plain facts (what you found, what you sent to which chat), no markdown, no ids, no lists.`;
+Your reply goes to the voice assistant, which says it in its own words: one to three short sentences of plain facts (what you found; which chat you told what, and whether it takes it now, after its current work, or as a new chat), no markdown, no ids, no lists.`;
 
 export interface BrainDeps {
   host: Pick<SessionHost, "open" | "command" | "release" | "stateOf" | "onSettled" | "onExit">;
@@ -46,23 +53,30 @@ export async function snapshot(deps: Pick<BrainDeps, "sessions" | "live" | "read
     .sort((a, b) => b.modifiedAt - a.modifiedAt)
     .slice(0, CHATS);
   if (!chats.length) return "Chats now: none in this project.";
-  const replies = await Promise.all(chats.map((chat, index) => (index < WITH_REPLY ? lastReply(deps, chat) : Promise.resolve(undefined))));
+  const turns = await Promise.all(chats.map((chat, index) => (index < WITH_REPLY ? lastTurn(deps, chat) : Promise.resolve(undefined))));
   const lines = chats.map((chat, index) => {
     const state = live.get(chat.path);
     const status = state?.attention === "waiting" ? "waiting for the user" : state?.running ? "running" : state?.attention === "failed" ? "last run failed" : "idle";
-    const reply = replies[index];
-    return `- ${shortId(chat)} ${chat.title} (${status})${reply ? `\n  last reply: ${reply}` : ""}`;
+    const turn = turns[index];
+    // A running chat's last prompt is what it works on now.
+    const asked = turn?.asked ? `\n  ${state?.running ? "working on" : "last asked"}: ${turn.asked}` : "";
+    return `- ${shortId(chat)} ${chat.title} (${status})${asked}${turn?.reply ? `\n  last reply: ${turn.reply}` : ""}`;
   });
   return `Chats now, newest first (id, title, status):\n${lines.join("\n")}`;
 }
 
-async function lastReply(deps: Pick<BrainDeps, "read">, chat: SessionSummary): Promise<string | undefined> {
+/** A chat's newest turn: its prompt (a thread's message without its label) and its last reply, clipped. */
+async function lastTurn(deps: Pick<BrainDeps, "read">, chat: SessionSummary): Promise<{ asked?: string; reply?: string }> {
   const entries = await Promise.race([deps.read(chat.path).catch(() => []), new Promise<SessionEntry[]>((resolve) => setTimeout(() => resolve([]), READ_MS))]);
-  const line = toTurns(entries)
-    .at(-1)
-    ?.lines.findLast((text) => text.startsWith("Assistant: "));
-  const text = line?.slice("Assistant: ".length).replace(/\s+/g, " ").trim();
-  return text && text.length > REPLY_CHARS ? `${text.slice(0, REPLY_CHARS - 1)}…` : text;
+  const lines = toTurns(entries).at(-1)?.lines ?? [];
+  const prompt = lines[0]?.startsWith("User: ") ? splitThreadMessage(lines[0].slice("User: ".length))[0] : undefined;
+  const reply = lines.findLast((text) => text.startsWith("Assistant: "))?.slice("Assistant: ".length);
+  return { asked: clip(prompt, ASKED_CHARS), reply: clip(reply, REPLY_CHARS) };
+}
+
+function clip(text: string | undefined, chars: number): string | undefined {
+  const flat = text?.replace(/\s+/g, " ").trim();
+  return flat && flat.length > chars ? `${flat.slice(0, chars - 1)}…` : flat || undefined;
 }
 
 /** The text of the last assistant message among `items` from `from` on. */

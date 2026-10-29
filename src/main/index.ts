@@ -270,6 +270,13 @@ const threadSources = {
     if (!chatTasks) throw new Error("pi-gna is still starting; try again in a moment");
     return chatTasks.message(thread, message, mode);
   },
+  // thread_new: like a task's chat, held until its first run ends, on the default model.
+  start: async ({ cwd, name, message }: { cwd: string; name: string; message: string }) => {
+    if (!chatTasks) throw new Error("pi-gna is still starting; try again in a moment");
+    const { handle, failed } = await chatTasks.launch({ cwd, name, prompt: message });
+    if (failed) throw new Error(`the new thread did not start: ${failed}`);
+    return host.identify(handle);
+  },
 };
 bridge.route("/threads", threadsRoute({ identify: (handle) => host.identify(handle), ...threadSources }));
 // The helper starts on first use only: the Computer Use page asking for permissions, or a tool.
