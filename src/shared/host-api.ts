@@ -18,7 +18,7 @@ import type { SetupInstallResult, SetupStatus } from "./setup";
 import type { ImportResult, ImportScan } from "./chat-import";
 import type { AutocompleteStatus, SuggestRequest } from "./autocomplete";
 import type { DictationStatus } from "./dictation";
-import type { CallControl, VoiceStatus } from "./voice";
+import type { LiveEvent, VoiceStatus } from "./voice";
 import type { ExtensionUiRequest, ExtensionUiResponse, RpcCommand, RpcCommandType, RpcResponse, RpcSessionState, SessionEvent } from "./protocol";
 import type { KeepAwake, Settings, SettingsOp } from "./settings";
 import type { TailscaleStatus } from "./tailscale";
@@ -696,14 +696,13 @@ export interface HostMethods {
   /** The text spoken in the caller's own upload (16 kHz mono WAV); the upload is deleted once read. */
   "dictation.transcribeUpload": { args: { upload: string }; result: string };
 
-  // voice calls (desktop only for now: the window's microphone streams in, its speakers play the answer)
+  // voice calls (desktop only for now: the window holds the WebRTC connection to GPT-Live, main holds the key)
   "voice.status": { args: Record<string, never>; result: VoiceStatus };
   "voice.retry": { args: Record<string, never>; result: null };
-  /** Starts the call `call` (the window's id for it) about `cwd`'s project; its events come on voice:event. */
-  "voice.start": { args: { call: string; cwd: string }; result: null };
+  /** Starts the call `call` (the window's id for it) about `cwd`'s project from a WebRTC offer; returns the answer. */
+  "voice.start": { args: { call: string; cwd: string; sdp: string }; result: string };
+  "voice.event": { args: { call: string; event: LiveEvent }; result: null };
   /** 16 kHz mono microphone audio, at most a second a message. */
-  "voice.audio": { args: { call: string; pcm: Float32Array }; result: null };
-  "voice.control": { args: { call: string; control: CallControl & { micMuted?: boolean } }; result: null };
   "voice.end": { args: { call: string }; result: null };
 
   // setup (desktop only: installs run code on the Mac)
@@ -816,8 +815,7 @@ export const DESKTOP_ONLY_METHODS = [
   "voice.status",
   "voice.retry",
   "voice.start",
-  "voice.audio",
-  "voice.control",
+  "voice.event",
   "voice.end",
   // git pull and switch change the Mac's checkout; the phone has no status card.
   "status.git",

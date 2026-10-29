@@ -53,7 +53,7 @@ import type { ChatImporter } from "./chat-import";
 import type { Autocomplete } from "./autocomplete";
 import type { Dictation } from "./dictation";
 import type { Voice } from "./voice";
-import { MAX_CHUNK } from "../shared/voice";
+import type { LiveEvent } from "../shared/voice";
 import { MAX_SAMPLES } from "../shared/dictation";
 import { decodeWav } from "./dictation/wav";
 import type { SuggestRequest } from "../shared/autocomplete";
@@ -834,27 +834,22 @@ export function createHostCore(deps: HostDeps): Record<string, HostMethodDef> {
     }),
     "voice.status": any("desktop", () => deps.voice.get()),
     "voice.retry": any("desktop", () => (deps.voice.retry(), null)),
-    "voice.start": method<{ call: string; cwd: string }>(
-      "desktop",
-      (raw) => ({ call: callId(raw?.call), cwd: project(raw?.cwd) }),
-      (_ctx, { call, cwd }) => (deps.voice.startCall(call, cwd), null),
-    ),
-    "voice.audio": method<{ call: string; pcm: Float32Array }>(
+    "voice.start": method<{ call: string; cwd: string; sdp: string }>(
       "desktop",
       (raw) => {
-        if (!(raw?.pcm instanceof Float32Array) || !raw.pcm.length || raw.pcm.length > MAX_CHUNK) throw new Error("invalid audio");
-        return { call: callId(raw.call), pcm: raw.pcm };
+        if (typeof raw?.sdp !== "string" || !raw.sdp.trim() || raw.sdp.length > 64_000) throw new Error("invalid connection offer");
+        return { call: callId(raw?.call), cwd: project(raw?.cwd), sdp: raw.sdp };
       },
-      (_ctx, { call, pcm }) => (deps.voice.audio(call, pcm), null),
+      (_ctx, { call, cwd, sdp }) => deps.voice.startCall(call, cwd, sdp),
     ),
-    "voice.control": method<{ call: string; control: { playing?: boolean; assistantMuted?: boolean; micMuted?: boolean } }>(
+    "voice.event": method<{ call: string; event: LiveEvent }>(
       "desktop",
       (raw) => {
-        const control = raw?.control as Record<string, unknown> | undefined;
-        const flag = (key: string) => (typeof control?.[key] === "boolean" ? { [key]: control[key] as boolean } : {});
-        return { call: callId(raw?.call), control: { ...flag("playing"), ...flag("assistantMuted"), ...flag("micMuted") } };
+        const event = raw?.event as LiveEvent | undefined;
+        if (!event || typeof event !== "object" || typeof event.type !== "string" || JSON.stringify(event).length > 32_000) throw new Error("invalid event");
+        return { call: callId(raw?.call), event };
       },
-      (_ctx, { call, control }) => (deps.voice.control(call, control), null),
+      (_ctx, { call, event }) => (deps.voice.event(call, event), null),
     ),
     "voice.end": method<{ call: string }>("desktop", (raw) => ({ call: callId(raw?.call) }), (_ctx, { call }) => (deps.voice.endCall(call), null)),
     "plugins.cancelLogin": any("desktop", () => (plugins.cancelSignIn(), null)),
@@ -1077,9 +1072,8 @@ export const IPC_ROUTES: IpcRoute[] = [
   route(IPC.dictationRetry, "dictation.retry"),
   route(IPC.voiceGet, "voice.status"),
   route(IPC.voiceRetry, "voice.retry"),
-  route(IPC.voiceStart, "voice.start", (call, cwd) => ({ call, cwd })),
-  route(IPC.voiceAudio, "voice.audio", (call, pcm) => ({ call, pcm }), true),
-  route(IPC.voiceControl, "voice.control", (call, control) => ({ call, control }), true),
+  route(IPC.voiceStart, "voice.start", (call, cwd, sdp) => ({ call, cwd, sdp })),
+  route(IPC.voiceLive, "voice.event", (call, event) => ({ call, event }), true),
   route(IPC.voiceEnd, "voice.end", (call) => ({ call }), true),
   route(IPC.githubProject, "github.project", (cwd, refresh) => ({ cwd, refresh })),
   route(IPC.githubChoose, "github.choose", (cwd, login) => ({ cwd, login })),

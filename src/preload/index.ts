@@ -226,9 +226,8 @@ const api: StudioApi = {
     status: () => ipcRenderer.invoke(IPC.voiceGet),
     onStatus: (listener) => subscribe<VoiceStatus>(IPC.voiceChanged, listener),
     retry: () => ipcRenderer.invoke(IPC.voiceRetry),
-    start: (call, cwd) => ipcRenderer.invoke(IPC.voiceStart, call, cwd),
-    audio: (call, pcm) => ipcRenderer.send(IPC.voiceAudio, call, pcm),
-    control: (call, control) => ipcRenderer.send(IPC.voiceControl, call, control),
+    start: (call, cwd, sdp) => ipcRenderer.invoke(IPC.voiceStart, call, cwd, sdp),
+    event: (call, event) => ipcRenderer.send(IPC.voiceLive, call, event),
     end: (call) => ipcRenderer.send(IPC.voiceEnd, call),
     onEvent: (listener) => {
       const handler = (_event: unknown, call: string, event: CallEvent) => listener(call, event);

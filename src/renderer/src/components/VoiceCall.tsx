@@ -1,10 +1,10 @@
-// The voice call screen (src/shared/voice.ts): an orb that shows what the call is doing, what the assistant did and
-// said, and the call's controls. It covers the window while a call is on; Esc ends the call.
+// The voice call screen (src/shared/voice.ts): an orb that shows who is talking, the call's live captions and the
+// hand-offs to the chats, and the call's controls. It covers the window while a call is on; Esc ends the call. GPT-Live
+// listens while it speaks, so you interrupt it by talking.
 import { useEffect, useRef, useState } from "react";
 import type { CallState } from "../../../shared/voice";
-import { useVoiceStatus } from "../lib/voice";
 import { useApp } from "../state/app";
-import { endCall, interrupt, outputLevel, startCall, toggleAssistant, toggleMic, useVoiceCall } from "../state/voice";
+import { endCall, orbLevel, startCall, toggleAssistant, toggleMic, useVoiceCall, useVoiceStatus } from "../state/voice";
 import { AudioLines, Mic, MicOff, PhoneOff, Volume2, VolumeX, X } from "./icons";
 
 const STATE_LABEL: Record<CallState, string> = {
@@ -16,20 +16,20 @@ const STATE_LABEL: Record<CallState, string> = {
   ended: "Call ended",
 };
 
-/** The level the orb swells with: the microphone while you talk, the speech while it plays. */
-function useOrbLevel(state: CallState, micLevel: number): number {
-  const [speech, setSpeech] = useState(0);
+/** The level the orb swells with: the voice while it speaks, the microphone while you do. */
+function useOrbLevel(state: CallState): number {
+  const [now, setNow] = useState(0);
   const frame = useRef(0);
   useEffect(() => {
-    if (state !== "speaking") return setSpeech(0);
+    if (state !== "speaking" && state !== "hearing") return setNow(0);
     const tick = () => {
-      setSpeech(outputLevel());
+      setNow(orbLevel());
       frame.current = requestAnimationFrame(tick);
     };
     frame.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame.current);
   }, [state]);
-  return state === "speaking" ? speech : state === "hearing" ? micLevel : 0;
+  return now;
 }
 
 function CallButton({ label, onClick, danger, pressed, children, testId }: { label: string; onClick: () => void; danger?: boolean; pressed?: boolean; children: React.ReactNode; testId: string }) {
@@ -54,15 +54,14 @@ function CallButton({ label, onClick, danger, pressed, children, testId }: { lab
 
 export function VoiceCallScreen() {
   const call = useVoiceCall();
-  const level = useOrbLevel(call?.state ?? "ended", call?.micLevel ?? 0);
+  const level = useOrbLevel(call?.state ?? "ended");
   useEffect(() => {
     if (!call) return;
     const keydown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== " ") return;
+      if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
-      if (event.key === "Escape") endCall();
-      else if (!event.repeat) interrupt();
+      endCall();
     };
     window.addEventListener("keydown", keydown, true);
     return () => window.removeEventListener("keydown", keydown, true);
@@ -77,31 +76,28 @@ export function VoiceCallScreen() {
         <div className="text-[13px] text-muted">
           Voice call · <span className="text-fg">{project}</span>
         </div>
-        <button
-          type="button"
-          className="voice-orb"
-          data-state={call.state}
-          style={{ "--level": level.toFixed(3) } as React.CSSProperties}
-          onClick={interrupt}
-          tabIndex={-1}
-          aria-label="Stop"
-          data-testid="voice-orb"
-        />
+        <div className="voice-orb" data-state={call.state} style={{ "--level": level.toFixed(3) } as React.CSSProperties} aria-hidden data-testid="voice-orb" />
         <div className="flex flex-col items-center gap-1">
           <div className="text-[15px] font-medium text-fg" aria-live="polite" data-testid="voice-state">
             {ended && call.ended && call.ended !== "ended" ? call.ended : STATE_LABEL[call.state]}
           </div>
-          <div className={`text-[12px] text-faint ${call.state === "thinking" || call.state === "speaking" ? "" : "invisible"}`}>Click the orb or press Space to stop</div>
+          <div className={`text-[12px] text-faint ${call.state === "speaking" ? "" : "invisible"}`}>Talk to interrupt</div>
         </div>
         <ol className="flex min-h-[7.5rem] w-full max-w-xl flex-col justify-end gap-1.5 text-center" data-testid="voice-lines">
           {call.lines.map((line, index) => (
             <li
               key={`${index}:${line.text}`}
               className={
-                line.kind === "reply" ? "selectable text-[14px] leading-snug text-fg" : line.kind === "error" ? "text-[12.5px] text-bad" : "selectable text-[12.5px] text-muted"
+                line.kind === "assistant"
+                  ? "selectable text-[14px] leading-snug text-fg"
+                  : line.kind === "error"
+                    ? "text-[12.5px] text-bad"
+                    : line.kind === "work"
+                      ? "text-[12px] text-faint"
+                      : "selectable text-[12.5px] text-muted"
               }
             >
-              {line.kind === "heard" ? `“${line.text}”` : line.text}
+              {line.kind === "user" ? `“${line.text.trim()}”` : line.text}
             </li>
           ))}
           {!call.lines.length && !ended && (
@@ -142,13 +138,8 @@ export function VoiceCallButton({ cwd }: { cwd: string }) {
   const on = useApp((state) => state.settings.voice);
   const status = useVoiceStatus(on);
   if (!on) return null;
-  const ready = status?.phase === "ready" || status?.phase === "starting";
-  const title =
-    status?.phase === "downloading"
-      ? `Voice call: downloading the voice model… ${Math.round((status.progress ?? 0) * 100)}%`
-      : status?.phase === "error"
-        ? `Voice call: ${status.error ?? "the voice model failed"} (Settings > Agent has Retry)`
-        : "Voice call: talk to this project's chats";
+  const ready = status?.phase === "ready";
+  const title = status?.phase === "error" ? `Voice call: ${status.error ?? "not ready"} (see Settings > Agent > Voice calls)` : "Voice call: talk to this project's chats";
   return (
     <button
       type="button"

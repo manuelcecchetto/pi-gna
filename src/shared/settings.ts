@@ -102,8 +102,8 @@ export interface Settings {
   /** Beta: the composer's mic writes what you say, with a speech model that runs on this computer
    * (src/shared/dictation.ts). Turning it on downloads the model once. */
   dictation: boolean;
-  /** Beta: talk to pi-gna in a voice call: a speech model that runs on this computer hears you, sends what you ask to
-   * the project's chats and answers out loud (src/shared/voice.ts). Turning it on downloads the model once. */
+  /** Beta: talk to pi-gna in a voice call: OpenAI's GPT-Live talks with you on your API key and hands questions about
+   * the project's chats to a "Voice call" pi chat (src/shared/voice.ts). */
   voice: boolean;
   /** Tasks whose model you changed; the others use TASK_DEFAULTS. */
   models: Partial<Record<Task, TaskModel>>;

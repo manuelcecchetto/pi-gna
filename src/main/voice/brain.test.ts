@@ -63,7 +63,7 @@ describe("VoiceBrain", () => {
     expect(commands).toContainEqual({ type: "set_session_name", name: "Voice call" });
     const prompts = () => commands.filter((command) => command.type === "prompt").map((command) => String(command.message));
     expect(prompts()[0]).toMatch(new RegExp(`^${VOICE_BRIEF.slice(0, 40)}`));
-    expect(prompts()[0]).toMatch(/Chats now[\s\S]*\n\nThe user said: Ciao\.$/);
+    expect(prompts()[0]).toMatch(/Chats now[\s\S]*\n\nCiao\.$/);
     await brain.ask("Thanks.", new AbortController().signal);
     expect(prompts()[1]).toMatch(/^Chats now/);
     expect(host.open).toHaveBeenCalledTimes(1);

@@ -1,8 +1,7 @@
 // The voice call's brain (docs/DESIGN.md, Voice calls): a pi chat named "Voice call" in the call's project, on the
-// voice task's model (gpt-6.1-terra by default). Each thing the user says goes to it as a prompt with a fresh snapshot
-// of the project's chats, so it can answer or route without first listing and reading them; it keeps pi-gna's threads
-// tools for more, and thread_send to pass requests on. Its last reply is what the call says. The small speech model
-// only hears and speaks: as the decider it answered "ciao" by sending a chat its own old prompt.
+// voice task's model (gpt-6.1-terra by default). Each request GPT-Live hands off goes to it as a prompt with a fresh
+// snapshot of the project's chats, so it can answer or route without first listing and reading them; it keeps
+// pi-gna's threads tools for more, and thread_send to pass requests on. Its last reply goes back to GPT-Live to say.
 import { randomUUID } from "node:crypto";
 import { projectOf } from "../../shared/board";
 import type { AttentionSummary } from "../../shared/host-api";
@@ -20,14 +19,14 @@ const REPLY_CHARS = 280;
 const READ_MS = 1500;
 const RUN_MS = 180_000;
 
-export const VOICE_BRIEF = `This chat is pi-gna's voice call: the user talks to you aloud and hears your answers. You run the user's other chats (threads) of this project for them. Each message gives the chats as they are now, then what the user said, as a speech-to-text transcript (a word may be misheard).
+export const VOICE_BRIEF = `This chat is the backend of pi-gna's voice calls. The user talks with a voice assistant (OpenAI's GPT-Live); when the user asks about their chats (threads) of this project, or asks to tell one something, the voice assistant hands it to you. Each message gives the chats as they are now, the call so far as a speech transcript (a word may be misheard), and what the user said since the last hand-off.
 
 - When the user asks a chat to do something, send it one clear, self-contained prompt with thread_send. Start it with "The user asked by voice:", keep every detail and condition they gave, add nothing they did not ask for, in English. Use mode steer when the chat is running and the user wants it to change course now.
 - When they ask about their chats, answer from the snapshot; use thread_read only when it does not say enough.
-- Never call thread_send for a greeting, small talk, thanks, thinking aloud, a request they take back, or when you are not sure which chat or what to send: ask a short question instead. If two chats could fit, ask which.
+- Never call thread_send for a greeting, small talk, thanks, thinking aloud, a request they take back, or when you are not sure which chat or what to send: say what is unclear instead, and the voice assistant will ask. If two chats could fit, name both.
 - Do no work yourself: no commands, no reading or editing files, no other tools. The chats do the work.
 
-Your reply is spoken aloud: one or two short sentences, plain words, no markdown, no ids, no lists, in the language the user spoke.`;
+Your reply goes to the voice assistant, which says it in its own words: one to three short sentences of plain facts (what you found, what you sent to which chat), no markdown, no ids, no lists.`;
 
 export interface BrainDeps {
   host: Pick<SessionHost, "open" | "command" | "release" | "stateOf" | "onSettled" | "onExit">;
@@ -111,14 +110,14 @@ export class VoiceBrain {
     void this.open().catch(() => undefined);
   }
 
-  /** The answer to what the user said; `signal` stops the chat's run. */
-  async ask(said: string, signal: AbortSignal): Promise<string> {
+  /** The answer to `request` (the call so far and what the user said, delegationPrompt); `signal` stops the chat's run. */
+  async ask(request: string, signal: AbortSignal): Promise<string> {
     const { host } = this.deps;
     const [handle, chats] = await Promise.all([this.open(), snapshot(this.deps, projectOf(this.cwd), this.path)]);
     if (signal.aborted) throw new Error("stopped");
     // A chat it told something may answer it (thread_send), which starts a run here: the user's turn waits for it.
     if (host.stateOf(handle)?.running) await this.idle(handle, signal);
-    const message = `${this.first ? `${VOICE_BRIEF}\n\n` : ""}${chats}\n\nThe user said: ${said}`;
+    const message = `${this.first ? `${VOICE_BRIEF}\n\n` : ""}${chats}\n\n${request}`;
     this.first = false;
     const from = host.stateOf(handle)?.items.length ?? 0;
     let off: (() => void)[] = [];

@@ -1,123 +1,62 @@
 import { describe, expect, it } from "vitest";
-import { Endpointer, expectedSeconds, FRAME, level, readyToPlay, sentences, spoken } from "./voice";
+import { addFragment, clipCommentary, COMMENTARY_CHARS, delegationPrompt, KEY_COMMAND, type TranscriptLine } from "./voice";
 
-const tone = (db: number) => {
-  const amplitude = Math.sqrt(2) * 10 ** (db / 20);
-  return Float32Array.from({ length: FRAME }, (_, i) => amplitude * Math.sin(i / 3));
-};
-
-/** Feeds `frames` frames at `db` and returns the edges, by frame index. */
-const feed = (endpointer: Endpointer, plan: [db: number, frames: number][], boost = 0) => {
-  const edges: [number, string][] = [];
-  let index = 0;
-  for (const [db, frames] of plan)
-    for (let i = 0; i < frames; i++, index++) {
-      const edge = endpointer.frame(db, boost);
-      if (edge) edges.push([index, edge]);
-    }
-  return edges;
-};
-
-describe("level", () => {
-  it("measures a frame in dBFS", () => {
-    expect(level(tone(-20))).toBeCloseTo(-20, 0);
-    expect(level(new Float32Array(FRAME))).toBeLessThan(-100);
+describe("addFragment", () => {
+  it("grows the speaker's line with fragments as received and starts a line for the other speaker", () => {
+    let lines: TranscriptLine[] = [];
+    lines = addFragment(lines, "user", " Tell the release", 1200);
+    lines = addFragment(lines, "user", " chat to push", 1800);
+    lines = addFragment(lines, "assistant", " Sure,", 1900);
+    lines = addFragment(lines, "user", " but run the tests first", 2600);
+    expect(lines).toEqual([
+      { speaker: "user", text: " Tell the release chat to push", end: 1800 },
+      { speaker: "assistant", text: " Sure,", end: 1900 },
+      { speaker: "user", text: " but run the tests first", end: 2600 },
+    ]);
   });
 });
 
-describe("Endpointer", () => {
-  it("starts a turn after 160 ms of voice and ends it after 800 ms of quiet", () => {
-    const edges = feed(new Endpointer(), [
-      [-70, 50],
-      [-25, 50],
-      [-70, 60],
-    ]);
-    expect(edges).toEqual([
-      [57, "start"],
-      [139, "end"],
-    ]);
-  });
+describe("delegationPrompt", () => {
+  const lines: TranscriptLine[] = [
+    { speaker: "user", text: " Ciao.", end: 1000 },
+    { speaker: "assistant", text: " Ciao, come va?", end: 2000 },
+    { speaker: "user", text: " Tell the release chat to push,", end: 4000 },
+    { speaker: "assistant", text: " Okay,", end: 4300 },
+    { speaker: "user", text: " but run the tests first.", end: 5200 },
+  ];
 
-  it("does not start on a click, nor end on a short pause between words", () => {
-    const edges = feed(new Endpointer(), [
-      [-70, 50],
-      [-25, 3],
-      [-70, 20],
-      [-25, 30],
-      [-70, 20],
-      [-25, 30],
-      [-70, 50],
-    ]);
-    expect(edges.map(([, edge]) => edge)).toEqual(["start", "end"]);
-  });
-
-  it("follows a noisy room's floor, so its steady noise is not a voice", () => {
-    expect(feed(new Endpointer(), [[-40, 400]])).toEqual([]);
-  });
-
-  it("needs a louder voice while the assistant plays", () => {
-    expect(feed(new Endpointer(), [[-70, 50], [-45, 50]], 12)).toEqual([]);
-    expect(feed(new Endpointer(), [[-70, 50], [-25, 50]], 12).map(([, edge]) => edge)).toEqual(["start"]);
-  });
-
-  it("ends a turn that runs past the longest one", () => {
-    const edges = feed(new Endpointer({ startMs: 100, endMs: 800, maxMs: 2000 }), [
-      [-70, 10],
-      [-25, 200],
-    ]);
-    expect(edges.map(([, edge]) => edge)).toEqual(["start", "end", "start", "end"]);
-  });
-});
-
-describe("spoken", () => {
-  it("drops markdown, code, links and chat ids", () => {
-    expect(spoken("**Done.** The chat `Release` (id: c3d4) pushed, see [the run](https://x.y/1) or https://ci.example/2.")).toBe(
-      "Done. The chat Release pushed, see the run or a link.",
+  it("gives the call so far and what the user said since the last hand-off", () => {
+    expect(delegationPrompt(lines, 2000)).toBe(
+      "The call so far (a speech transcript, a word may be misheard):\nUser: Ciao.\nVoice assistant: Ciao, come va?\nUser: Tell the release chat to push,\nVoice assistant: Okay,\nUser: but run the tests first.\n\nThe voice assistant handed this to you. What the user said since the last hand-off: Tell the release chat to push, but run the tests first.",
     );
-    expect(spoken("1. Fix the login test\n- Release v0.29.2\n```ts\nconst x = 1\n```")).toBe("Fix the login test Release v0.29.2");
   });
 
-  it("keeps whole sentences up to the limit", () => {
-    expect(spoken("First one is here. Second one is here. Third one is long enough to go.", 40)).toBe("First one is here. Second one is here.");
-    expect(spoken("one two three four five six", 12)).toBe("one two…");
+  it("says when nothing new was said", () => {
+    expect(delegationPrompt(lines, 6000)).toMatch(/since the last hand-off: \(nothing new; answer from the call so far\)$/);
+    expect(delegationPrompt([], -1)).toMatch(/^The call so far[^\n]*\n\(nothing yet\)/);
   });
-});
 
-describe("sentences", () => {
-  it("splits on sentence ends and joins short ones to the next", () => {
-    expect(sentences("Sent. The release chat will run the tests first, then push. Anything else?")).toEqual([
-      "Sent. The release chat will run the tests first, then push.",
-      "Anything else?",
-    ]);
-    expect(sentences("no end mark")).toEqual(["no end mark"]);
+  it("keeps only the newest lines of a long call", () => {
+    const long = Array.from({ length: 40 }, (_, index): TranscriptLine => ({ speaker: index % 2 ? "assistant" : "user", text: ` line ${index}`, end: index }));
+    const prompt = delegationPrompt(long, 38);
+    expect(prompt).toContain("line 39");
+    expect(prompt).not.toContain("line 20\n");
+    expect(prompt.split("\n").filter((line) => /^(User|Voice assistant):/.test(line))).toHaveLength(12);
   });
 });
 
-describe("readyToPlay", () => {
-  it("plays at once when speech comes faster than real time", () => {
-    expect(readyToPlay(0.1, 5, 1.5, false)).toBe(true);
-  });
-
-  it("waits on a slow computer until the rest will be made before the buffer runs out", () => {
-    // 4 s at 0.66x real time: 1.36 s of the 2.6 s still to come is missing, so about 1.6 s must be buffered.
-    expect(readyToPlay(1, 4, 0.66, false)).toBe(false);
-    expect(readyToPlay(1.7, 4, 0.66, false)).toBe(true);
-  });
-
-  it("plays what there is once the sentence is done, and nothing before any audio", () => {
-    expect(readyToPlay(0.4, 4, 0.5, true)).toBe(true);
-    expect(readyToPlay(0, 4, 2, false)).toBe(false);
-  });
-
-  it("guesses a sentence's length from its words", () => {
-    expect(expectedSeconds("one two three four five six seven eight nine ten eleven twelve thirteen")).toBeCloseTo(5.3, 1);
+describe("clipCommentary", () => {
+  it("flattens whitespace and stays under GPT-Live's append limit", () => {
+    expect(clipCommentary("Sent.\n\n  The chat will   run the tests.")).toBe("Sent. The chat will run the tests.");
+    expect(clipCommentary("word ".repeat(1000)).length).toBe(COMMENTARY_CHARS);
   });
 });
 
-describe("soundsUnfinished", () => {
-  it("is done on a full sentence or a short reply, and waits on a joining word, a comma or a run-on", async () => {
-    const { soundsUnfinished } = await import("./voice");
-    for (const done of ["Ciao.", "ciao", "Thanks, that's all for now.", "Tell the release chat to push.", "Which chats are running?", "yes"]) expect(soundsUnfinished(done), done).toBe(false);
-    for (const open of ["Tell the release chat to push and", "Tell the release chat to push, but", "Tell the release chat to push,", "So um", "Di' alla chat di fare il push e", "Tell the release chat to go ahead"]) expect(soundsUnfinished(open), open).toBe(true);
+describe("KEY_COMMAND", () => {
+  it("reads the key hidden and passes it on stdin, not as an argument the 128-character prompt would cut", () => {
+    expect(KEY_COMMAND).toMatch(/^read -rs /);
+    expect(KEY_COMMAND).toContain("| /usr/bin/security -i");
+    expect(KEY_COMMAND).toContain("-s pi-gna.openai-api-key");
+    expect(KEY_COMMAND).toMatch(/unset K$/);
   });
 });

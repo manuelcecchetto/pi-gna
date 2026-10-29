@@ -28,7 +28,7 @@ terminal: pi-gna            -> logs (main + pi stderr), Ctrl-C quits
     chat-import/   ChatImporter: Codex and Claude Code transcripts -> pi session files (Settings > Import chats)
     autocomplete/  Autocomplete: composer ghost text from a local llama.cpp server and typeahead model (Settings > Agent > Beta)
     dictation/     Dictation: composer mic, local Parakeet Ultra speech model in a utility process (Settings > Agent > Beta)
-    voice/         Voice calls: local LFM3-Audio-2B hears and speaks, a "Voice call" pi chat decides (Settings > Agent > Beta)
+    voice/         Voice calls: OpenAI GPT-Live talks, a "Voice call" pi chat answers its hand-offs (Settings > Agent > Beta)
     files          `rg --files` for @ mentions, kept until a file comes or goes (a recursive watcher; 15 s on Linux)
     bridge         AgentBridge: token-gated localhost server for pi-gna's pi extensions (POST /browser, /kanban, /lament)
     browser/       BrowserManager (WebContentsView tabs), BrowserAgent (CDP actions), preview-protocol (the pigna-file:// scheme: token registry and handler for file previews)
@@ -1125,39 +1125,50 @@ Holding ⌘ for 300 ms shows ⌘1–⌘9 on those sections, and on the visible c
   since Chromium's fake capture device delivered silence).
 - **Voice calls** (Agent > Beta, `voice`, off by default; desktop only for now): a waveform button beside the
   composer's mic starts a call about the chat's project, a screen over the window with an orb (connecting, listening,
-  hearing you, thinking, speaking), what it heard and what it answered, and Mute assistant, Mute microphone and End
-  call (Esc). Click the orb or press Space to stop it thinking or talking.
-  Two models. LiquidAI's LFM3-Audio-2B (Q4_K_M 1.10 GB plus projector Q8_0 338 MB, on llama.cpp `llama-server` b11969,
-  pins in `src/main/voice/assets.ts`) only writes down what you say (a `/v1/realtime` session with
-  `session.update {type: "transcription"}`) and speaks (`/tts`), on this computer. The deciding is a pi chat named
-  "Voice call" in the project (`brain.ts`, `VoiceBrain`), on the `voice` task's model (Settings > Models, default
-  `openai-codex/gpt-6.1-terra` at minimal thinking): each turn is sent to it as "The user said: ..." after a fresh
-  snapshot of the project's chats (15 newest: short id, title, status; the 6 newest with the start of their last
-  reply), so it answers or routes without listing and reading first; it has pi-gna's threads tools for more and
-  `thread_send` to pass requests on ("The user asked by voice: ..."). The first prompt carries the brief
-  (`VOICE_BRIEF`: route only clear requests, ask when unsure, do no work itself, answer in one or two spoken
-  sentences). Its last reply is what the call says. A run already going in that chat (a chat answering it) is waited
-  for before the user's turn.
-  Turns (`call.ts`, `VoiceCall`): the window streams the microphone as 16 kHz float PCM; an endpointer (`Endpointer`:
-  12 dB over the room's floor, 160 ms starts a turn, 800 ms of quiet ends it) finds turns, whose audio (with 300 ms
-  before) goes in while you talk. At a turn's end it commits and waits for the transcript. It waits for you to
-  finish: what sounds unfinished (`soundsUnfinished`: ends on a joining word, a comma, or runs on without a sentence
-  end) gets 1.5 s more, and talking again while the brain thinks aborts that run and asks once about all of it. It
-  does not listen while its answer is made or plays, nor 700 ms after (`DEAF_AFTER_MS`).
-  Why: 0.30.0 let the 2B model decide, with tools. With speakers its own voice came back as a turn and it answered
-  itself in a loop; on "ciao" it listed the chats, read the newest and sent it its own first prompt, and that chat
-  rewrote ~/.pi/agent config. 0.30.1 took away sending, and it then read chat after chat on anything said. Benchmark
-  (2026-10-28, M2, `say` audio, 14 cases x 2: small talk, questions, sends incl. Italian and a double send, ambiguous
-  and taken-back requests; /tmp/voice-bench): LFM3 as decider sent on "ciao" 2 of 2 and sent a kanban question to the
-  release chat 2 of 2; Terra (pi, mock threads tools) routed or abstained correctly in 28 of 28 (its 2 graded failures
-  were the grader's), never sent on small talk, median turn 3.6 s (max 7.8). Transcription: 28 of 28, median 262 ms
-  after the end of speech (max 551). `/tts`: first audio 430 ms median, 0.6-2.5x real time. In the app (QA, real pi
-  and Terra, seeded chats): words written down 0.85-1.8 s after you stop, answer 2.0 s (ciao) to 8 s (a send), sends
-  kept every condition, ambiguous and taken-back requests sent nothing, a sentence with a 1.3-1.4 s pause went out
-  once and whole.
-  Unverified: a real microphone and speakers (echo, the room's floor), languages other than English and Italian,
-  Windows and Linux, calls of more than a few minutes. A pause of more than about 2 s can still let the first half
-  reach the brain; the aborted run stays in its chat, and the next turn carries all of it.
+  hearing you, speaking), what it heard and what it said, "Checking with your chats…" while the brain works, and Mute
+  assistant, Mute microphone and End call (Esc). Talk to interrupt it.
+  Two models. OpenAI's GPT-Live (`gpt-live-1`, voice `marin`; $0.05 a minute, billed per second, on the user's own API
+  key) holds the conversation: it listens while it talks, finds turns, takes barge-in and speaks. It has client
+  delegation (`delegation: {type: "client"}`): what is about the user's chats it hands off with
+  `session.delegation.created`, which carries no text, and says what comes back as `session.commentary.append`
+  (`delegation_id`, at most about 500 tokens; clipped to 1200 characters, `clipCommentary`). Its prompt
+  (`LIVE_INSTRUCTIONS`) says what to hand off, to say only what the answer says was done, and to answer in the
+  language of the user's latest full sentence (alone, "ciao" switched it to Italian). The answering is a pi chat
+  named "Voice call" in the project (`brain.ts`, `VoiceBrain`), on the `voice` task's model (Settings > Models,
+  default `openai-codex/gpt-6.1-terra` at minimal thinking, on the subscription): each hand-off is sent to it with a
+  fresh snapshot of the project's chats (15 newest: short id, title, status; the 6 newest with the start of their
+  last reply) and the call so far (`delegationPrompt`: the last 12 lines, at most 3000 characters, and what the user
+  said since the last hand-off), so it answers or routes without listing and reading first; it has pi-gna's threads
+  tools for more and `thread_send` to pass requests on ("The user asked by voice: ..."). The first prompt carries
+  the brief (`VOICE_BRIEF`: route only clear requests with every condition given, ask when unsure, do no work
+  itself, answer in one to three short sentences). Its last reply is the commentary. A run already going in that
+  chat (a chat answering it) is waited for first.
+  Transport: the window makes the WebRTC peer connection (microphone with echo cancellation, the `oai-events` data
+  channel, ICE gathered before the offer) and gives main the SDP offer (`voice.start`); main, which holds the key
+  (login Keychain item `pi-gna.openai-api-key`, read with `/usr/bin/security`; elsewhere `OPENAI_API_KEY`; Settings
+  shows a Terminal command that stores it without echoing it, `KEY_COMMAND`), posts it to `POST /v1/live/sessions`
+  and returns the answer SDP, so the key never reaches the window. The window forwards transcript deltas, hand-offs
+  and `session.closed` to main (`voice.event`) and sends what main returns on the data channel. End call sends
+  `session.close` and waits up to 5 s for `session.closed`.
+  Hand-offs (`live.ts`, `LiveCall`): GPT-Live can hand off before the user's words are all transcribed, so a
+  hand-off waits at least 1 s, then until no user words came for 600 ms (at most 4 s), and is answered one at a
+  time, in order. It also hands off in a pause mid-sentence ("tell the release chat to push… but run the tests
+  first"): words within 3 s of a hand-off go to the brain afterwards as a follow-up, so it can correct what it sent;
+  it answers NOTHING when nothing changes. A failure is said as "That did not work: …".
+  Why: 0.30 and 0.31 ran LiquidAI's LFM3-Audio-2B on llama.cpp on this computer (1.5 GB download, now deleted at
+  launch from userData/voice): 0.30 let it decide with tools, and on "ciao" it sent a chat its own old prompt; 0.31
+  kept it only to transcribe and speak, with a homemade endpointer, half-duplex (deaf while speaking) and pauses
+  that cut sentences. Benchmark of the deciders (2026-10-28, 14 cases x 2, /tmp/voice-bench): LFM3 sent on "ciao" 2
+  of 2; Terra routed or abstained correctly 28 of 28, median 3.6 s. GPT-Live is full duplex, handles turns and
+  barge-in, and leads to phone calls (it has a SIP transport). Trade-off: the user's voice goes to OpenAI.
+  QA (2026-10-29, real API, real pi and Terra, seeded chats, `say` audio through a Web Audio stream in place of
+  getUserMedia): connected in about 2 s; "which chats are running" answered right; a taken-back request and "ciao"
+  sent nothing; a vague request was asked about; Italian worked; two sentences with a pause in the middle went out
+  whole with every condition ("Go ahead and push, but run the tests first"); two requests in one sentence went to
+  two chats; GPT-Live acknowledges at once and says the brain's answer 6-9 s after the user stops on a send.
+  Unverified: a real microphone and speakers, calls of more than a few minutes, Windows and Linux. Not done: a
+  chat's later answer to the Voice call chat is not spoken unless the user asks (client delegation commentary needs
+  a hand-off to attach to).
 - **Keep chats running on restart** (Agent > Beta, `keepChatsOnRestart`, off by default, hidden on Windows): read when a
   chat starts (`SessionFeatures.keepOnRestart`). See "A restart keeps the chats running".
 - **pi's settings** (Models, Agent): a fixed list of keys (`PI_SETTINGS` in `src/shared/pi-settings.ts`) in pi's global

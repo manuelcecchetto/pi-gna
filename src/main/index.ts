@@ -1,6 +1,7 @@
 import { EventHub } from "./event-hub";
 import { responsePreview } from "../shared/push-rules";
 import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainEvent, type IpcMainInvokeEvent, ipcMain, Menu, nativeImage, nativeTheme, net, powerSaveBlocker, screen, session, shell, utilityProcess } from "electron";
@@ -70,7 +71,7 @@ import { flushSessionIndex, indexSettled, listSessions, persistSessionIndex, ses
 import { ChatImporter } from "./chat-import";
 import { Autocomplete } from "./autocomplete";
 import { Dictation } from "./dictation";
-import { Voice } from "./voice";
+import { readKey, Voice } from "./voice";
 import { VoiceBrain } from "./voice/brain";
 import { defaultConcurrency, openWorkerExtractor } from "./usage-index";
 import { UsageService } from "./usage-service";
@@ -343,10 +344,10 @@ const dictation = new Dictation({
   fork: (env) => utilityProcess.fork(join(import.meta.dirname, "dictation-worker.js"), [], { env: { ...process.env, ...env }, serviceName: "pi-gna Dictation" }),
   onStatus: (status) => send(IPC.dictationChanged, status),
 });
-// Voice calls: the same again, with the call's audio and events going to and from the window.
+// Voice calls: GPT-Live in the window over WebRTC; main holds the key and answers the call's hand-offs.
 const voice = new Voice({
-  dir: join(app.getPath("userData"), "voice"),
-  fetch: (url, init) => net.fetch(url, init),
+  key: readKey,
+  fetch: (url, init) => net.fetch(String(url), init),
   brain: (cwd) =>
     new VoiceBrain(
       {
@@ -365,6 +366,8 @@ const voice = new Voice({
   onStatus: (status) => send(IPC.voiceChanged, status),
   onEvent: (call, event) => send(IPC.voiceEvent, call, event),
 });
+// 0.30 and 0.31 downloaded LFM3-Audio and llama-server (about 1.5 GB) here for calls; GPT-Live needs neither.
+void rm(join(app.getPath("userData"), "voice"), { recursive: true, force: true }).catch(() => undefined);
 
 function createWindow(): void {
   const stateFile = join(app.getPath("userData"), "window-state.json");

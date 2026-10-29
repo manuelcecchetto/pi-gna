@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState } from "react";
 import { PI_SETTINGS, type PiKey, type PiPatch, type PiSettingsState, type PiValue } from "../../../shared/pi-settings";
 import type { AutocompleteStatus } from "../../../shared/autocomplete";
 import { useDictationStatus } from "../lib/dictation";
-import { useVoiceStatus } from "../lib/voice";
+import { useVoiceStatus } from "../state/voice";
+import { KEY_COMMAND } from "../../../shared/voice";
 import { type Feature, FEATURE_LABELS, FEATURES, type SettingsSection, type Task, TASK_DEFAULTS, TASKS, type TaskModel, KEEP_AWAKE_LABELS, KEEP_AWAKE_MODES, MIN_PROB_RANGE, THEMES, type Theme, THINKING_LEVELS, WALLPAPERS } from "../../../shared/settings";
 import { author, bugs, homepage, license } from "../../../../package.json";
 import { tildify } from "../lib/format";
@@ -479,26 +480,43 @@ function VoiceRow() {
   const on = useApp((state) => state.settings.voice);
   const status = useVoiceStatus(on);
   const phase = on ? status?.phase : undefined;
-  const note =
-    phase === "downloading"
-      ? `Downloading the voice model… ${Math.round((status?.progress ?? 0) * 100)}%`
-      : phase === "starting"
-        ? "Loading the voice model…"
-        : phase === "ready"
-          ? "Ready. Start a call with the waveform button beside the composer's mic."
-          : phase === "error"
-            ? status?.error
-            : undefined;
+  const [copied, setCopied] = useState(false);
+  const mac = navigator.userAgent.includes("Mac");
   return (
     <Row
       title="Voice calls"
       about={
         <>
-          Talk to pi-gna about the project's chats: ask what they are doing, or tell one what to do next. A small voice model (Liquid AI's LFM3-Audio-2B,
-          LFM Open License, about 1.5 GB, downloaded once) writes down what you say and speaks on this computer; a "Voice call" chat on the Voice calls
-          model (Settings &gt; Models) decides what to answer and what to send, so your words go to that model like a typed message. It listens while you
-          talk and answers when you stop; click the orb or press Space to stop it.
-          {note && <span className={`mt-1 block ${phase === "error" ? "text-bad" : "text-muted"}`} data-testid="voice-status">{note}</span>}
+          Talk to pi-gna about the project's chats: ask what they are doing, or tell one what to do next. OpenAI's GPT-Live holds the conversation (it
+          listens while it talks, so you interrupt it by talking) and hands questions about your chats to a "Voice call" chat on the Voice calls model
+          (Settings &gt; Models), which answers and passes requests on. Your voice goes to OpenAI on your own API key, $0.05 a minute; ChatGPT Pro
+          includes monthly API credits.
+          {phase === "ready" && <span className="mt-1 block text-muted" data-testid="voice-status">Ready. Start a call with the waveform button in the composer.</span>}
+          {phase === "error" && (
+            <span className="mt-1 block" data-testid="voice-status">
+              <span className="block text-bad">{status?.error}</span>
+              {mac ? (
+                <>
+                  <span className="block text-muted">Store your key in the Keychain: run this in Terminal (it asks for the key without showing it), then Retry.</span>
+                  <span className="mt-1 flex items-start gap-2">
+                    <code className="selectable block min-w-0 flex-1 rounded-md bg-sunken px-2 py-1 font-mono text-[11px] break-all text-fg">{KEY_COMMAND}</code>
+                    <Button
+                      onClick={() =>
+                        void navigator.clipboard.writeText(KEY_COMMAND).then(() => {
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1500);
+                        })
+                      }
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </Button>
+                  </span>
+                </>
+              ) : (
+                <span className="block text-muted">Set OPENAI_API_KEY in the environment pi-gna starts in, then Retry.</span>
+              )}
+            </span>
+          )}
         </>
       }
     >
