@@ -1755,19 +1755,23 @@ Verified live (pi 1.0.0, Oct 2026):
 - New chats are drafts (`isDraft`: started in pi-gna, nothing sent, not running or waiting) and stay out of the
   sidebar; the "New chat" row is highlighted instead, and clicking it again reuses the empty chat rather than
   spawning another pi. The chat gets its row once you send. (Not `sessionPath`: pi names the file when ready.)
-- Sidebar layout (Codex-style): header with the logo and a hide button, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L), "GitHub" (⌘⇧G) and "ATP" (⌘⇧A, with a count of running plans) rows
+- Sidebar layout (Codex-style): header with the logo, "New chat" (⌘N), "Kanban" (⌘⇧K), "Laments" (⌘⇧L), "GitHub" (⌘⇧G) and "ATP" (⌘⇧A, with a count of running plans) rows
   (each only while its feature is on), then a "Projects" title whose hover "+" opens a folder, then the folders,
   and "Settings" fixed at the foot. Holding ⌘ numbers the first nine chat rows you can see; ⌘1–⌘9 opens one. Resizable from its right edge (220-480px,
   never leaving the chat under 520px; double-click resets; dragging left of 120px snaps it collapsed, keeping the
   pre-drag width for when it reopens, and dragging back out in the same gesture reopens it), collapsible with ⌘⇧S (Codex's second binding; ⌘B is
-  the browser here). Width and collapsed state persist in localStorage. Collapsed, the sidebar is `inert` (not `aria-hidden`, which
-  Chromium blocks while a button inside still has focus). While collapsed, show-sidebar and
-  new-chat buttons sit right of the traffic lights (x=88, y center 25, matching the lights) and the leftmost
-  header gets `COLLAPSED_INSET` left padding.
+  the browser here). Width and collapsed state persist in localStorage. Collapsed, it is a 48px rail (`SIDEBAR_RAIL`):
+  the inner column keeps its full width and is clipped, so New chat, the pages, Settings and the Settings sections
+  keep their icons exactly in place while their labels fade (`RAIL_FADE`, `group-data-rail/side` on the `aside`); the
+  project list and the header fade and turn `inert` (not `aria-hidden`, which Chromium blocks while a button inside
+  still has focus). Rows are `NavRow` (`SidebarRow.tsx`) on one px grid: 32px tall, icon 16px from the edge, label and
+  chat titles 8px after it at x=40. It is px, not Tailwind spacing, which is rem and so 3.5px a step at the 14px root
+  while icons and sidebar text are px. One toggle sits right of the traffic lights in both states (`SidebarToggle`,
+  x=88, y center 25, matching the lights), and while collapsed the leftmost header gets `COLLAPSED_INSET` left padding.
 - Title bar and zoom: the traffic lights are native and keep their size and place at every page zoom (⌘+/⌘−), so
   whatever lines up with them is sized in screen px through `--unzoom` (1 / `webFrame.getZoomFactor()`, set in
   `main.tsx` and refreshed on `resize`, which every zoom change fires): the `titlebar` band (52 screen px, growing only
-  when zoomed-in content needs more), the sidebar header's 86px lights reserve, the collapsed controls' x=88 and the
+  when zoomed-in content needs more), the sidebar toggle's x=88 (and the header's logo after it) and the
   lights part of `COLLAPSED_INSET`. The content in the band still zooms. A new pane header uses `titlebar`, not `h-[52px]`.
 - Chat header (`SessionPane`): title, then the card chip, the browser toggle (⌘B) and expand-all (Ctrl+O). It has
   no close button: closing a chat stops its pi process and is rarely wanted mid-work, so it lives in the sidebar

@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- The sidebar collapses to a rail of icons instead of disappearing (⌘⇧S or the button beside the traffic lights, which now stays in one place). New chat, the pages and Settings keep their icons exactly where they were and only the labels fade, so you can still reach them in one click; hover one for its name. Every sidebar row sits on one grid: 32 px tall, icons 16 px from the edge, labels and chat titles lined up 8 px after them.
+
 ## 0.32.0 - 2026-10-29
 
 - Voice calls now talk through OpenAI's GPT-Live instead of a model on your computer. It listens while it talks, so you interrupt it just by talking, waits through pauses mid-sentence, and answers in your language. What is about your chats it hands to the "Voice call" chat on GPT-6.1 Terra, which answers and passes requests on as before. A call needs your OpenAI API key in the Keychain (Settings > Agent > Voice calls shows the command) and costs $0.05 a minute; ChatGPT Pro includes monthly API credits. Your voice goes to OpenAI. The old voice model's 1.5 GB download is deleted.

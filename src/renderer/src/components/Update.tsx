@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import type { UpdateState } from "../../../shared/ipc";
 import { setOverlay, showUpdate, useApp } from "../state/app";
 import { Markdown } from "./Markdown";
+import { RAIL_FADE } from "./SidebarRow";
 
 type Pending = Exclude<UpdateState, { phase: "idle" }>;
 
@@ -22,17 +23,23 @@ export function UpdateRow() {
   if (update.phase === "idle") return null;
   const failed = update.phase === "failed";
   return (
-    <div className="shrink-0 border-t border-line px-2 py-2">
+    <div className="flex shrink-0 flex-col border-t border-line px-[8px] py-2">
+      {/* On the sidebar's grid (SidebarRow): collapsed to the rail, the icon stays and says there is an update. */}
       <button
         type="button"
         onClick={() => showUpdate(true)}
-        className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-raised/60 ${failed ? "text-warn" : "text-fg/90"}`}
+        title={summary(update)}
+        className={`group flex h-[32px] w-full items-center gap-[8px] overflow-hidden rounded-lg px-[8px] text-left text-[12.5px] transition-[width] duration-200 ease-out group-data-rail/side:w-[32px] hover:bg-raised/60 ${failed ? "text-warn" : "text-fg/90"}`}
       >
-        <ArrowUpCircle size={14} className={`shrink-0 ${failed ? "" : "text-accent"}`} />
-        <span className="min-w-0 flex-1 truncate">{summary(update)}</span>
-        <ChevronRight size={13} className="shrink-0 text-faint group-hover:text-muted" />
+        <span className="grid w-[16px] shrink-0 place-items-center">
+          <ArrowUpCircle size={14} className={failed ? "" : "text-accent"} />
+        </span>
+        <span className={`flex min-w-0 flex-1 items-center gap-[8px] whitespace-nowrap ${RAIL_FADE}`}>
+          <span className="min-w-0 flex-1 truncate">{summary(update)}</span>
+          <ChevronRight size={13} className="shrink-0 text-faint group-hover:text-muted" />
+        </span>
       </button>
-      {update.phase === "downloading" && <Progress value={update.progress} className="mx-2.5 mt-1" />}
+      {update.phase === "downloading" && <Progress value={update.progress} className={`mx-[8px] mt-1 ${RAIL_FADE}`} />}
     </div>
   );
 }

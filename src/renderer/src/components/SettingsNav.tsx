@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import type { SettingsSection } from "../../../shared/settings";
 import { closeSettings, openSettings } from "../state/app";
 import { DigitHint, useCommandDigits } from "./primitives";
+import { NavRow, RAIL_FADE } from "./SidebarRow";
 
 type Group = "pi-gna" | "pi" | "Integrations";
 
@@ -111,15 +112,11 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
   const hints = useCommandDigits(useMemo(() => shown.map((section) => () => openSettings(section.id)), [shown]));
   return (
     <>
-      <div className="px-2 pb-1">
-        <button type="button" onClick={closeSettings} className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] text-fg/90 hover:bg-raised/60">
-          <ArrowLeft size={16} className="shrink-0 text-muted" />
-          <span className="flex-1">Back to app</span>
-          <span className="font-mono text-[11px] text-faint opacity-0 group-hover:opacity-100">esc</span>
-        </button>
+      <div className="flex flex-col px-[8px] pb-1">
+        <NavRow icon={ArrowLeft} label="Back to app" shortcut="esc" onClick={closeSettings} />
       </div>
-      <div className="px-2 pb-2">
-        <label className="flex items-center gap-2.5 rounded-lg bg-sunken px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-line-strong">
+      <div className="flex flex-col px-[8px] pb-2">
+        <label className="flex h-[32px] w-full items-center gap-[8px] overflow-hidden rounded-lg bg-sunken px-[8px] transition-[width] duration-200 ease-out group-data-rail/side:w-[32px] focus-within:ring-1 focus-within:ring-line-strong">
           <Search size={16} className="shrink-0 text-faint" />
           <input
             value={query}
@@ -133,37 +130,34 @@ export function SettingsNav({ current }: { current?: SettingsSection }) {
             }}
             placeholder="Search settings"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent text-[13.5px] text-fg outline-none placeholder:text-faint"
+            className={`min-w-0 flex-1 bg-transparent text-[13.5px] text-fg outline-none placeholder:text-faint ${RAIL_FADE}`}
           />
         </label>
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-[8px] pb-4">
         {GROUPS.map((group) => {
           const sections = shown.filter((section) => section.group === group);
           if (!sections.length) return null;
           return (
-            <div key={group} className="mb-3">
-              <div className="px-2.5 pt-1 pb-1 text-[13px] font-medium text-faint">{group}</div>
+            <div key={group} className="mb-3 flex flex-col">
+              <div className={`px-[8px] pt-1 pb-1 text-[13px] font-medium whitespace-nowrap text-faint ${RAIL_FADE}`}>{group}</div>
               {sections.map((section) => {
-                const Icon = section.icon;
                 const digit = shown.indexOf(section) + 1;
                 return (
-                  <button
+                  <NavRow
                     key={section.id}
-                    type="button"
+                    icon={section.icon}
+                    label={section.label}
+                    active={current === section.id}
+                    trailing={hints && digit <= 9 ? <DigitHint digit={digit} /> : undefined}
                     onClick={() => openSettings(section.id)}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[14px] ${current === section.id ? "bg-raised text-fg" : "text-fg/90 hover:bg-raised/60"}`}
-                  >
-                    <Icon size={16} className="shrink-0 text-muted" />
-                    <span className="min-w-0 flex-1 truncate">{section.label}</span>
-                    {hints && digit <= 9 && <DigitHint digit={digit} />}
-                  </button>
+                  />
                 );
               })}
             </div>
           );
         })}
-        {!shown.length && <p className="px-2.5 py-2 text-[13.5px] text-faint">No settings match “{query}”.</p>}
+        {!shown.length && <p className={`px-[8px] py-2 text-[13.5px] text-faint ${RAIL_FADE}`}>No settings match “{query}”.</p>}
       </nav>
     </>
   );

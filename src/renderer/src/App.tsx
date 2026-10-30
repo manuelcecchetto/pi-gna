@@ -5,7 +5,7 @@ import { SessionPane } from "./components/SessionPane";
 import { SubagentPane } from "./components/SubagentPane";
 import { HeroBackdrop } from "./components/Transcript";
 import { ThemeRoot } from "./components/ThemeRoot";
-import { CollapsedSidebarControls, Sidebar } from "./components/Sidebar";
+import { Sidebar, SidebarToggle } from "./components/Sidebar";
 import { ZoomCue } from "./components/ZoomCue";
 import { UpdateDialog } from "./components/Update";
 import { openFileDialog } from "./lib/preview";
@@ -76,7 +76,6 @@ export function App() {
   const paneState = useApp((state) => state.pane);
   // The browser belongs to the chat: a page (Kanban, Settings, ...) covers the window and hides it.
   const pane = { ...paneState, open: paneState.open && !page };
-  const collapsed = useApp((state) => state.sidebar.collapsed);
   const main = useRef<HTMLElement>(null);
 
   const startDrag = (event: React.PointerEvent) => {
@@ -100,7 +99,7 @@ export function App() {
     <div className="flex h-full">
       <ThemeRoot />
       <Sidebar />
-      <main ref={main} className={`flex min-w-0 flex-1 bg-canvas ${collapsed ? "" : "border-l border-line"}`}>
+      <main ref={main} className="flex min-w-0 flex-1 border-l border-line bg-canvas">
         <section className={`relative min-w-0 flex-1 ${pane.open && pane.full ? "hidden" : ""}`} style={pane.open && !pane.full ? CHAT_BESIDE_BROWSER : undefined}>
           {page?.kind === "settings" ? (
             <SettingsPage page={page} />
@@ -136,7 +135,7 @@ export function App() {
           </>
         )}
       </main>
-      <CollapsedSidebarControls />
+      <SidebarToggle />
       <Lightbox />
       <UpdateDialog />
       <CommandPalette />

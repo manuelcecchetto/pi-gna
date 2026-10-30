@@ -41,7 +41,7 @@ export function TreeToggle({ open, count, onToggle }: { open: boolean; count: nu
       onClick={() => onToggle(!open)}
       title={`${open ? "Hide" : "Show"} ${count} subagent${count === 1 ? "" : "s"}`}
       aria-expanded={open}
-      className="absolute top-[8.5px] -left-[3px] z-10 grid size-3.5 place-items-center rounded text-faint hover:text-fg"
+      className="absolute top-[10px] -left-[5px] z-10 grid size-3.5 place-items-center rounded text-faint hover:text-fg"
     >
       <ChevronRight size={10} className={`transition-transform ${open ? "rotate-90" : ""}`} />
     </button>
@@ -56,14 +56,14 @@ export function SubagentTree({ chat, live, cwd, title }: { chat: string; live?: 
   if (!agents.length) return null;
   const rows = all ? agents : agents.slice(0, TREE_FIRST);
   return (
-    <div className="mb-0.5 ml-[19px] flex flex-col border-l border-line pl-1" data-subagent-tree={chat}>
+    <div className="mb-0.5 ml-[15px] flex flex-col border-l border-line pl-[8px]" data-subagent-tree={chat}>
       {rows.map((agent) => (
         <button
           key={agent.id}
           type="button"
           onClick={() => openSubagent(chat, agent, cwd, title)}
           title={`${agent.description} · ${statusLabel(agent.status).toLowerCase()}`}
-          className={`flex min-w-0 items-center gap-2 rounded-md py-[3px] pr-2.5 pl-2 text-left text-[13px] ${agent.id === shown ? "bg-raised text-fg" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
+          className={`flex min-w-0 items-center gap-2 rounded-md py-[3px] pr-2.5 pl-[8px] text-left text-[13px] ${agent.id === shown ? "bg-raised text-fg" : "text-muted hover:bg-raised/50 hover:text-fg"}`}
         >
           <SubagentMark status={agent.status} size={11} />
           <span className="min-w-0 flex-1 truncate">{agent.description}</span>
