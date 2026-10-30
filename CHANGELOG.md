@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.33.0 - 2026-10-30
+
 - The sidebar collapses to a rail of icons instead of disappearing (⌘⇧S or the button beside the traffic lights, which now stays in one place). New chat, the pages and Settings keep their icons exactly where they were and only the labels fade, so you can still reach them in one click; hover one for its name. Every sidebar row sits on one grid: 32 px tall, icons 16 px from the edge, labels and chat titles lined up 8 px after them.
 
 ## 0.32.0 - 2026-10-29
