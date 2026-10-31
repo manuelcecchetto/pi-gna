@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+## 0.34.0 - 2026-10-31
+
 - Agents can drive the browser pane with browser-use (or any CDP client). Each chat gets a CDP endpoint in `$PIGNA_CDP` whose pages are that chat's own tabs, so `BU_CDP_WS=$PIGNA_CDP browser-use` opens and drives a tab you watch in pi-gna, with screenshots, clicks and JavaScript, while the chat is off screen too. The app window and other chats' tabs stay out of reach, and web pages cannot connect.
 
 ## 0.33.0 - 2026-10-30
