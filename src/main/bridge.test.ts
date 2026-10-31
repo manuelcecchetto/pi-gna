@@ -61,3 +61,50 @@ describe("AgentBridge tokens", () => {
     }
   });
 });
+
+describe("AgentBridge WebSockets", () => {
+  /** Opens a WebSocket at `path`; resolves "open" or the close code the bridge refused it with. */
+  const connect = (url: string, headers?: Record<string, string>) =>
+    new Promise<{ socket?: WebSocket; refused?: true }>((resolve) => {
+      // Node's WebSocket takes headers (undici); a browser's sends its Origin by itself.
+      const socket = new (WebSocket as unknown as new (url: string, options?: unknown) => WebSocket)(url, headers ? { headers } : undefined);
+      socket.onopen = () => resolve({ socket });
+      socket.onerror = () => resolve({ refused: true });
+    });
+
+  it("serves a socket route to a valid token only, with no Origin, and closes it when the token is unregistered", async () => {
+    const bridge = new AgentBridge();
+    await bridge.start();
+    try {
+      const handles: (string | undefined)[] = [];
+      const ws = bridge.url.replace("http:", "ws:");
+      let current: (() => string | undefined) | undefined;
+      bridge.socketRoute("echo", (handle, socket) => {
+        current = handle;
+        socket.onMessage((text) => {
+          handles.push(handle());
+          socket.send(text);
+        });
+      });
+      const token = bridge.register("chat1");
+      expect((await connect(`${ws}/echo/wrong`)).refused).toBe(true);
+      expect((await connect(`${ws}/nope/${token}`)).refused).toBe(true);
+      expect((await connect(`${ws}/echo/${token}`, { origin: "https://evil.example" })).refused).toBe(true);
+
+      const { socket } = await connect(`${ws}/echo/${token}`);
+      const reply = new Promise((resolve) => (socket!.onmessage = (event) => resolve(event.data)));
+      socket!.send("ping");
+      expect(await reply).toBe("ping");
+      expect(handles).toEqual(["chat1"]);
+      bridge.rename("chat1", "chat2");
+      expect(current?.()).toBe("chat2");
+
+      const closed = new Promise<number>((resolve) => (socket!.onclose = (event) => resolve(event.code)));
+      bridge.unregister("chat2");
+      expect(await closed).toBe(1008);
+      expect(current?.()).toBeUndefined();
+    } finally {
+      bridge.stop();
+    }
+  });
+});

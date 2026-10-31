@@ -5,6 +5,8 @@ moves those lines under the new version, and they become its GitHub release note
 
 ## Unreleased
 
+- Agents can drive the browser pane with browser-use (or any CDP client). Each chat gets a CDP endpoint in `$PIGNA_CDP` whose pages are that chat's own tabs, so `BU_CDP_WS=$PIGNA_CDP browser-use` opens and drives a tab you watch in pi-gna, with screenshots, clicks and JavaScript, while the chat is off screen too. The app window and other chats' tabs stay out of reach, and web pages cannot connect.
+
 ## 0.33.0 - 2026-10-30
 
 - The sidebar collapses to a rail of icons instead of disappearing (⌘⇧S or the button beside the traffic lights, which now stays in one place). New chat, the pages and Settings keep their icons exactly where they were and only the labels fade, so you can still reach them in one click; hover one for its name. Every sidebar row sits on one grid: 32 px tall, icons 16 px from the edge, labels and chat titles lined up 8 px after them.

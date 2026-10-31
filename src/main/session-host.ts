@@ -270,7 +270,10 @@ export class SessionHost {
     // ATP's chats run unattended: nobody would see their questions.
     if (atp) args.push(...this.atpArgs(atp));
     else args.push("-e", this.extensions.ask);
-    return { args, env: { PIGNA_BRIDGE: this.bridge.url, PIGNA_TOKEN: this.bridge.register(handle) } };
+    const token = this.bridge.register(handle);
+    // A CDP endpoint over the chat's pane tabs, for browser-use and other CDP clients the agent runs (cdp-endpoint.ts).
+    const cdp = `${this.bridge.url.replace(/^http:/, "ws:")}/cdp/${token}`;
+    return { args, env: { PIGNA_BRIDGE: this.bridge.url, PIGNA_TOKEN: token, PIGNA_CDP: cdp } };
   }
 
   /** An ATP chat: its own session folder, the ATP skills of its role, and its role's prompt (src/shared/atp.ts). */

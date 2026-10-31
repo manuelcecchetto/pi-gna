@@ -88,7 +88,7 @@ export default function (pi: ExtensionAPI) {
     executionMode: SEQUENTIAL,
     name: "browser_open",
     label: "Open in browser",
-    description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi-gna browser and return a snapshot of the page with numbered element refs for browser_click and browser_type. A local file path (absolute, ~/, relative to the project, file://, optionally path:line) opens a rendered preview tab for pdf, images, docx, pptx, xlsx, markdown, html and code; browser_snapshot, browser_screenshot and browser_evaluate work on it like any page.`,
+    description: `${ABOUT}Open a URL (for example http://localhost:5173) in the pi-gna browser and return a snapshot of the page with numbered element refs for browser_click and browser_type. A local file path (absolute, ~/, relative to the project, file://, optionally path:line) opens a rendered preview tab for pdf, images, docx, pptx, xlsx, markdown, html and code; browser_snapshot, browser_screenshot and browser_evaluate work on it like any page. To script the pane with a CDP client instead, $PIGNA_CDP is a CDP endpoint whose pages are this chat's tabs; for browser-use run \`BU_CDP_WS=$PIGNA_CDP BU_NAME=pigna-\${PIGNA_TOKEN:0:8} browser-use\` (it opens its own tab in the pane).`,
     parameters: Type.Object({
       url: Type.String({ description: "URL to open (bare localhost:PORT works), or a local file path to preview" }),
       newTab: Type.Optional(Type.Boolean({ description: "Open in a new tab instead of reusing this session's tab" })),

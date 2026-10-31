@@ -3,7 +3,9 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Duplex } from "node:stream";
 import { log } from "./log";
+import { acceptWebSocket, type WebSocketConnection } from "./websocket";
 
 const MAX_BODY = 1024 * 1024;
 
@@ -12,10 +14,19 @@ export type Route = (handle: string, body: unknown) => Promise<unknown>;
 
 export const bridgeError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
+/**
+ * Serves one WebSocket at `/<path>/<token>`. `handle` is the session the token acts for now: undefined once it was
+ * unregistered (the connection is closed then too), and it follows a spare's rename.
+ */
+export type SocketRoute = (handle: () => string | undefined, socket: WebSocketConnection) => void;
+
 export class AgentBridge {
   private server?: Server;
   private readonly tokens = new Map<string, string>();
   private readonly routes = new Map<string, Route>();
+  private readonly socketRoutes = new Map<string, SocketRoute>();
+  /** Open WebSockets by the token they were opened with, closed when it is unregistered. */
+  private readonly sockets = new Map<string, Set<WebSocketConnection>>();
   private listening?: Promise<void>;
   /** The port to listen on when it is free: the last pi-gna's, whose pis keep calling it after a restart. */
   private preferred = 0;
@@ -23,6 +34,14 @@ export class AgentBridge {
 
   route(path: string, route: Route): void {
     this.routes.set(path, route);
+  }
+
+  /**
+   * A WebSocket at `/<path>/<token>`: the token is in the URL because WebSocket clients (a CDP client's BU_CDP_WS) take
+   * a URL, not a header.
+   */
+  socketRoute(path: string, route: SocketRoute): void {
+    this.socketRoutes.set(path, route);
   }
 
   /** Listen on `port` if it is free (before `start`). */
@@ -52,6 +71,7 @@ export class AgentBridge {
         },
       );
     });
+    server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => this.upgrade(request, socket, head));
     const listen = (port: number) =>
       new Promise<void>((resolve, reject) => {
         server.once("error", reject);
@@ -90,11 +110,39 @@ export class AgentBridge {
   }
 
   unregister(handle: string): void {
-    for (const [token, owner] of this.tokens) if (owner === handle) this.tokens.delete(token);
+    for (const [token, owner] of this.tokens) {
+      if (owner !== handle) continue;
+      this.tokens.delete(token);
+      for (const socket of this.sockets.get(token) ?? []) socket.close(1008, "session ended");
+      this.sockets.delete(token);
+    }
   }
 
   stop(): void {
+    for (const open of this.sockets.values()) for (const socket of open) socket.close(1001, "pi-gna is quitting");
+    this.sockets.clear();
     this.server?.close();
+  }
+
+  private upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+    const refuse = (status: string): void => void socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+    // Same Host check as the POST routes. A web page can open a WebSocket to 127.0.0.1 (no CORS for WebSockets) and
+    // always sends an Origin; local clients (a CDP client) send none, so any Origin is refused.
+    if (request.headers.host !== this.url.slice("http://".length) || request.headers.origin !== undefined) return refuse("403 Forbidden");
+    const [, path, token, ...rest] = (request.url ?? "").split("?")[0]!.split("/");
+    const route = path === undefined ? undefined : this.socketRoutes.get(path);
+    if (!route || !token || rest.length) return refuse("404 Not Found");
+    if (!this.tokens.has(token)) return refuse("401 Unauthorized");
+    const connection = acceptWebSocket(request, socket, head);
+    if (!connection) return;
+    const open = this.sockets.get(token) ?? new Set();
+    open.add(connection);
+    this.sockets.set(token, open);
+    connection.onClose(() => {
+      open.delete(connection);
+      if (!open.size && this.sockets.get(token) === open) this.sockets.delete(token);
+    });
+    route(() => this.tokens.get(token), connection);
   }
 
   private async handle(request: IncomingMessage): Promise<unknown> {

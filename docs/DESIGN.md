@@ -243,6 +243,18 @@ tabs close when its session ends. The phone still lists every chat's tabs.
   loopback HTTP server; each pi process gets its own bearer token (env `PIGNA_TOKEN`), and the token, never
   the body, decides which session acts. Each session drives its own tab (or adopts the one you are looking at),
   and its actions run through a per-session queue, because a page is sequential.
+- **CDP endpoint** (`main/browser/cdp-endpoint.ts`): for CDP clients the agent runs itself, browser-use above all
+  (`BU_CDP_WS=$PIGNA_CDP`). Every pi gets `PIGNA_CDP=ws://127.0.0.1:<bridge port>/cdp/<its token>`, a WebSocket on the
+  agent bridge (`AgentBridge.socketRoute`, a small RFC 6455 server in `main/websocket.ts`, text only). It looks like a
+  browser whose pages are the chat's own web tabs (no previews or cards): `Target.*` is answered from the
+  `BrowserManager` (create, close, activate, attach in flatten mode), and each session is relayed to the tab's
+  `webContents.debugger`, the session the browser tools use. `Target.*` and `Browser.*` are refused on a page session,
+  and so are the screencast commands, whose one stream the phones and recordings share. An attached tab is held, so it
+  keeps drawing while its chat is off screen. Not Electron's `--remote-debugging-port`: that would expose the app
+  window and every chat's tabs to any local process. The Host check applies, any `Origin` is refused (a web page can
+  open a WebSocket to 127.0.0.1 and always sends one), and unregistering the token closes its sockets. The per-origin
+  question of `browser_open` does not apply to it: the agent drives the page directly, as it could with a shell.
+  `pnpm verify:cdp` checks it end to end.
 - **What the agent sees**: a web page is shared: the agent reads and drives the page in the pane, so the user can watch
   and step in (finish a login). A file preview is not: the user's zoom, scroll and pane size are theirs, so the agent
   reads and drives its own copy of the file (`BrowserManager.agentPage`), a second view in the keeper window at

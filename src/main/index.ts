@@ -24,6 +24,7 @@ import { pythonForHost } from "./python";
 import { AtpRuns } from "./atp-runner";
 import { AtpThreads } from "./atp-threads";
 import { BrowserAgent, browserRoute } from "./browser/agent";
+import { cdpRoute } from "./browser/cdp-endpoint";
 import { BrowserManager, PARTITION } from "./browser/manager";
 import { RemoteBrowser } from "./browser/remote-view";
 import { attachContextMenu } from "./context-menu";
@@ -251,6 +252,7 @@ const cardImages = new CardImages(join(app.getPath("userData"), "card-images"));
 const uploads = new Uploads(join(app.getPath("userData"), "remote-uploads"));
 void uploads.prune().catch((error: Error) => log.warn("remote", `could not prune old uploads: ${error.message}`));
 bridge.route("/browser", browserRoute(() => agent));
+bridge.socketRoute("cdp", cdpRoute(() => browser));
 const uiState = new UiStateStore(join(app.getPath("userData"), "ui-state.json"), (next) => publish({ kind: "ui", ui: next }));
 const computerPolicy = new ComputerStore(join(app.getPath("userData"), "computer-use.json"), (next) => {
   publish({ kind: "computer", settings: next });

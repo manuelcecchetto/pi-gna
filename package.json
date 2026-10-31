@@ -40,6 +40,7 @@
     "verify:responsive": "node scripts/verify-responsive-browser.mjs",
     "verify:preview": "node scripts/verify-file-preview.mjs",
     "verify:browser-agent": "node scripts/verify-browser-agent.mjs",
+    "verify:cdp": "node scripts/verify-cdp-endpoint.mjs",
     "verify:windows-preview": "node scripts/verify-windows-preview.mjs",
     "e2e:remote": "node scripts/remote-e2e/run.mjs"
   },
